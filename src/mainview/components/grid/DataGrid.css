@@ -75,7 +75,26 @@
 
 .data-grid__toolbar > .column-manager {
 	flex-shrink: 0;
-	padding-right: var(--spacing-md);
+}
+
+.data-grid__toolbar-btn {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	border: 1px solid var(--border-color);
+	border-radius: 3px;
+	background: transparent;
+	color: var(--text-secondary);
+	font-size: var(--font-size-xs);
+	cursor: pointer;
+	padding: 2px var(--spacing-sm);
+	height: 24px;
+	margin-right: var(--spacing-md);
+}
+
+.data-grid__toolbar-btn:hover {
+	color: var(--text-primary);
+	background: var(--bg-hover);
 }
 
 .data-grid__loading {

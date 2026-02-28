@@ -90,7 +90,7 @@
 | DOTAZ-037 | SavedViewPicker + SaveViewDialog | done | Active view tracking in grid store; Ctrl+S quick save; dropdown with Default + saved views |
 | DOTAZ-038 | FK navigation (follow foreign keys) | done | FK cells underlined with accent color; click navigates within tab; breadcrumb + back; context menu with "Go to referenced row" / "Open target table" |
 | DOTAZ-039 | Export service (CSV, JSON, SQL INSERT) | done | Streaming batched export (1000 rows/batch); CSV with configurable delimiter; JSON pretty-printed array; SQL INSERT with batch size; `qualifyTable` exported from query-executor |
-| DOTAZ-040 | ExportDialog | not started | |
+| DOTAZ-040 | ExportDialog | done | Format selection (CSV/JSON/SQL); scope (all/view/selected); format-specific options; preview; progress bar; native save dialog |
 | DOTAZ-041 | Query history backend + RPC | not started | |
 | DOTAZ-042 | QueryHistory component | not started | |
 | DOTAZ-043 | SchemaViewer | not started | |
@@ -218,6 +218,9 @@
 | 2026-02-28 | DOTAZ-039 | Formatter interface with preamble/formatBatch/epilogue | Clean separation: CSV/JSON/SQL formatters handle their own header/body/footer; streaming-friendly |
 | 2026-02-28 | DOTAZ-039 | Extended ExportOptions with delimiter, columns, filters, sort, batchSize | Issue requires configurable delimiter, column selection, filter/sort; added to shared types |
 | 2026-02-28 | DOTAZ-039 | Exported `qualifyTable` from query-executor | ExportService needs schema-qualified table names; reuse existing logic rather than duplicate |
+| 2026-02-28 | DOTAZ-040 | Selected rows export via PK `in` filter | Constructs IN filter from PK column values of selected rows; requires at least one PK column; composite PK uses IN on each column |
+| 2026-02-28 | DOTAZ-040 | Indeterminate progress bar during export | RPC is single request/response — no streaming progress; indeterminate animation sufficient for typical export sizes |
+| 2026-02-28 | DOTAZ-040 | Export button in DataGrid toolbar | Consistent with existing toolbar pattern (SavedViewPicker, FilterBar, ColumnManager); opens modal ExportDialog |
 
 ---
 
@@ -275,4 +278,4 @@
 
 ---
 
-*Last updated: 2026-02-28 (DOTAZ-039)*
+*Last updated: 2026-02-28 (DOTAZ-040)*

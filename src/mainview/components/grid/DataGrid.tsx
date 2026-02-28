@@ -15,6 +15,7 @@ import RowDetailDialog from "../edit/RowDetailDialog";
 import PendingChanges from "../edit/PendingChanges";
 import SavedViewPicker from "../views/SavedViewPicker";
 import SaveViewDialog from "../views/SaveViewDialog";
+import ExportDialog from "../export/ExportDialog";
 import ContextMenu from "../common/ContextMenu";
 import type { ContextMenuEntry } from "../common/ContextMenu";
 import "./DataGrid.css";
@@ -52,6 +53,7 @@ export default function DataGrid(props: DataGridProps) {
 	const [rowDetailIndex, setRowDetailIndex] = createSignal<number | null>(null);
 	const [showPendingPanel, setShowPendingPanel] = createSignal(false);
 	const [saveViewOpen, setSaveViewOpen] = createSignal(false);
+	const [exportOpen, setExportOpen] = createSignal(false);
 	const [fkContextMenu, setFkContextMenu] = createSignal<{
 		x: number;
 		y: number;
@@ -560,6 +562,13 @@ export default function DataGrid(props: DataGridProps) {
 								}
 								onReset={() => gridStore.resetColumnConfig(props.tabId)}
 							/>
+							<button
+								class="data-grid__toolbar-btn"
+								onClick={() => setExportOpen(true)}
+								title="Export data"
+							>
+								Export
+							</button>
 						</>
 					)}
 				</Show>
@@ -678,6 +687,15 @@ export default function DataGrid(props: DataGridProps) {
 				onSaved={() => {
 					// Dialog closes itself; picker will reload on next open
 				}}
+			/>
+
+			<ExportDialog
+				open={exportOpen()}
+				tabId={props.tabId}
+				connectionId={props.connectionId}
+				schema={currentSchema()}
+				table={currentTable()}
+				onClose={() => setExportOpen(false)}
 			/>
 
 			<Show when={fkContextMenu()}>
