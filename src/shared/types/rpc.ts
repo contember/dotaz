@@ -49,6 +49,7 @@ export interface TableParams {
 export interface ExecuteQueryParams {
 	connectionId: string;
 	sql: string;
+	queryId: string;
 	params?: unknown[];
 }
 
@@ -250,10 +251,10 @@ export type DotazRPC = {
 			// Query Execution
 			"query.execute": {
 				params: ExecuteQueryParams;
-				response: QueryResult;
+				response: QueryResult[];
 			};
 			"query.cancel": {
-				params: ConnectionIdParams;
+				params: { queryId: string };
 				response: void;
 			};
 			"query.format": {

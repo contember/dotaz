@@ -68,7 +68,7 @@
 | Issue | Title | Status | Notes |
 |-------|-------|--------|-------|
 | DOTAZ-025 | QueryExecutor service with cancellation | done | |
-| DOTAZ-026 | SQL console RPC handlers (execute, cancel, format) | not started | |
+| DOTAZ-026 | SQL console RPC handlers (execute, cancel, format) | done | |
 | DOTAZ-027 | Editor store (SQL console state) | not started | |
 | DOTAZ-028 | SqlEditor with CodeMirror 6 | not started | |
 | DOTAZ-029 | QueryToolbar (run/cancel/tx controls) | not started | |
@@ -173,6 +173,9 @@
 | 2026-02-28 | DOTAZ-025 | `QueryExecutor` uses `crypto.randomUUID()` for queryIds | Consistent with tab ID pattern (DOTAZ-011); unique across concurrent queries |
 | 2026-02-28 | DOTAZ-025 | Params only passed for single-statement queries | Multi-statement SQL is split and executed without params; params only make sense for a single parameterized statement |
 | 2026-02-28 | DOTAZ-025 | `Promise.race` for timeout implementation | Clean timeout via race between driver.execute and setTimeout rejection; no AbortController needed at executor level |
+| 2026-02-28 | DOTAZ-026 | Frontend-generated `queryId` passed to `executeQuery` | Frontend knows the queryId before calling execute, enabling cancellation via `query.cancel({ queryId })` while execute is in-flight |
+| 2026-02-28 | DOTAZ-026 | RPC `query.execute` returns `QueryResult[]` (not single) | Multi-statement SQL returns array of results; matches `QueryExecutor.executeQuery` return type |
+| 2026-02-28 | DOTAZ-026 | Simple tokenizer-based SQL formatter | Keyword uppercasing + clause-level line breaks; respects quoted strings and parenthesized subqueries; no external dependency |
 
 ---
 
@@ -230,4 +233,4 @@
 
 ---
 
-*Last updated: 2026-02-28 (DOTAZ-025)*
+*Last updated: 2026-02-28 (DOTAZ-026)*

@@ -331,6 +331,76 @@ describe("RPC Handlers", () => {
 		});
 	});
 
+	// ── query.* ─────────────────────────────────────────
+
+	describe("query.*", () => {
+		let connectionId: string;
+
+		beforeEach(async () => {
+			const conn = handlers["connections.create"]({
+				name: "SQLite Query Test",
+				config: sqliteConfig,
+			});
+			connectionId = conn.id;
+			await handlers["connections.connect"]({ connectionId });
+
+			const driver = cm.getDriver(connectionId);
+			await driver.execute(
+				"CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL, price REAL)",
+			);
+			await driver.execute("INSERT INTO items (name, price) VALUES ('Widget', 9.99)");
+			await driver.execute("INSERT INTO items (name, price) VALUES ('Gadget', 19.99)");
+		});
+
+		test("query.execute runs SQL and returns results", async () => {
+			const results = await handlers["query.execute"]({
+				connectionId,
+				sql: "SELECT * FROM items",
+				queryId: "q-1",
+			});
+			expect(results).toHaveLength(1);
+			expect(results[0].rows).toHaveLength(2);
+			expect(results[0].error).toBeUndefined();
+			expect(results[0].durationMs).toBeGreaterThanOrEqual(0);
+		});
+
+		test("query.execute multi-statement returns array", async () => {
+			const results = await handlers["query.execute"]({
+				connectionId,
+				sql: "SELECT * FROM items WHERE id = 1; SELECT COUNT(*) AS cnt FROM items",
+				queryId: "q-2",
+			});
+			expect(results).toHaveLength(2);
+			expect(results[0].rows).toHaveLength(1);
+			expect(results[0].rows[0].name).toBe("Widget");
+			expect(results[1].rows[0].cnt).toBe(2);
+		});
+
+		test("query.execute returns error for invalid SQL", async () => {
+			const results = await handlers["query.execute"]({
+				connectionId,
+				sql: "SELECT * FROM nonexistent_table",
+				queryId: "q-3",
+			});
+			expect(results).toHaveLength(1);
+			expect(results[0].error).toBeTruthy();
+		});
+
+		test("query.cancel does not throw for unknown queryId", async () => {
+			await handlers["query.cancel"]({ queryId: "nonexistent" });
+		});
+
+		test("query.format formats SQL", () => {
+			const result = handlers["query.format"]({
+				sql: "select * from users where id = 1",
+			});
+			expect(result.sql).toContain("SELECT");
+			expect(result.sql).toContain("FROM");
+			expect(result.sql).toContain("WHERE");
+			expect(result.sql).toContain("\n");
+		});
+	});
+
 	// ── Stub handlers ────────────────────────────────────
 
 	describe("stub handlers", () => {
@@ -338,9 +408,6 @@ describe("RPC Handlers", () => {
 			"data.getColumnStats",
 			"data.applyChanges",
 			"data.generateSql",
-			"query.execute",
-			"query.cancel",
-			"query.format",
 			"tx.begin",
 			"tx.commit",
 			"tx.rollback",

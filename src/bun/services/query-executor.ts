@@ -264,6 +264,7 @@ export class QueryExecutor {
 		sql: string,
 		params?: unknown[],
 		timeoutMs?: number,
+		queryId?: string,
 	): Promise<QueryResult[]> {
 		const driver = this.connectionManager.getDriver(connectionId);
 		const statements = splitStatements(sql);
@@ -272,9 +273,9 @@ export class QueryExecutor {
 			return [];
 		}
 
-		const queryId = crypto.randomUUID();
-		const entry: RunningQuery = { queryId, connectionId, cancelled: false };
-		this.runningQueries.set(queryId, entry);
+		const id = queryId ?? crypto.randomUUID();
+		const entry: RunningQuery = { queryId: id, connectionId, cancelled: false };
+		this.runningQueries.set(id, entry);
 
 		const timeout = timeoutMs ?? this.defaultTimeoutMs;
 		const results: QueryResult[] = [];
@@ -301,7 +302,7 @@ export class QueryExecutor {
 				}
 			}
 		} finally {
-			this.runningQueries.delete(queryId);
+			this.runningQueries.delete(id);
 		}
 
 		return results;

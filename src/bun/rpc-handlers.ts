@@ -1,14 +1,16 @@
 import type { BrowserWindow } from "electrobun/bun";
-import type { DotazRPC, OpenDialogParams, SaveDialogParams } from "../shared/types/rpc";
+import type { DotazRPC, ExecuteQueryParams, OpenDialogParams, SaveDialogParams } from "../shared/types/rpc";
 import type { ConnectionManager } from "./services/connection-manager";
 import type { GridDataRequest } from "../shared/types/grid";
-import { buildSelectQuery, buildCountQuery } from "./services/query-executor";
+import { buildSelectQuery, buildCountQuery, QueryExecutor } from "./services/query-executor";
+import { formatSql } from "./services/sql-formatter";
 
 function notImplemented(method: string): never {
 	throw new Error(`Not implemented yet: ${method}`);
 }
 
-export function createHandlers(cm: ConnectionManager) {
+export function createHandlers(cm: ConnectionManager, qe?: QueryExecutor) {
+	const queryExecutor = qe ?? new QueryExecutor(cm);
 	return {
 		// ── Connection Management ─────────────────────────
 		"connections.list": () => {
@@ -104,15 +106,15 @@ export function createHandlers(cm: ConnectionManager) {
 			notImplemented("data.generateSql");
 		},
 
-		// ── Query Execution (stub) ────────────────────────
-		"query.execute": () => {
-			notImplemented("query.execute");
+		// ── Query Execution ──────────────────────────────
+		"query.execute": async ({ connectionId, sql, queryId, params }: ExecuteQueryParams) => {
+			return queryExecutor.executeQuery(connectionId, sql, params, undefined, queryId);
 		},
-		"query.cancel": () => {
-			notImplemented("query.cancel");
+		"query.cancel": async ({ queryId }: { queryId: string }) => {
+			await queryExecutor.cancelQuery(queryId);
 		},
-		"query.format": () => {
-			notImplemented("query.format");
+		"query.format": ({ sql }: { sql: string }) => {
+			return { sql: formatSql(sql) };
 		},
 
 		// ── Transactions (stub) ───────────────────────────
