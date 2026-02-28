@@ -7,6 +7,7 @@ import ConnectionTree from "../connection/ConnectionTree";
 import ConnectionDialog from "../connection/ConnectionDialog";
 import DataGrid from "../grid/DataGrid";
 import SqlEditor from "../editor/SqlEditor";
+import QueryToolbar from "../editor/QueryToolbar";
 import type { ConnectionInfo } from "../../../shared/types/connection";
 import { tabsStore } from "../../stores/tabs";
 import "./AppShell.css";
@@ -91,6 +92,10 @@ export default function AppShell() {
 									</Match>
 									<Match when={tab().type === "sql-console"}>
 										<div class="sql-console">
+											<QueryToolbar
+												tabId={tab().id}
+												connectionId={tab().connectionId}
+											/>
 											<SqlEditor
 												tabId={tab().id}
 												connectionId={tab().connectionId}

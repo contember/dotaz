@@ -159,6 +159,11 @@ export default function SqlEditor(props: SqlEditorProps) {
 				const content = update.state.doc.toString();
 				editorStore.setContent(props.tabId, content);
 			}
+			if (update.selectionSet) {
+				const { from, to } = update.state.selection.main;
+				const selected = from !== to ? update.state.sliceDoc(from, to) : "";
+				editorStore.setSelectedText(props.tabId, selected);
+			}
 		});
 
 		const state = EditorState.create({

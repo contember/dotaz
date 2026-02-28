@@ -71,7 +71,7 @@
 | DOTAZ-026 | SQL console RPC handlers (execute, cancel, format) | done | |
 | DOTAZ-027 | Editor store (SQL console state) | done | |
 | DOTAZ-028 | SqlEditor with CodeMirror 6 | done | `basicSetup` from codemirror meta-package; dark theme via CSS variables; vertical resize handle between editor and results |
-| DOTAZ-029 | QueryToolbar (run/cancel/tx controls) | not started | |
+| DOTAZ-029 | QueryToolbar (run/cancel/tx controls) | done | Run/Cancel toggle; Run Selected; Format; Auto/Manual tx mode with Begin/Commit/Rollback; connection name; duration display |
 | DOTAZ-030 | SqlResultPanel (query results) | not started | |
 | DOTAZ-031 | SQL autocomplete (schema-aware) | not started | |
 
@@ -182,6 +182,9 @@
 | 2026-02-28 | DOTAZ-028 | Dark theme via `EditorView.theme()` with CSS variables | References app's CSS custom properties for consistent dark theme without separate color definitions |
 | 2026-02-28 | DOTAZ-028 | `createEffect` for bidirectional content sync | Editor → store via `updateListener`; store → editor (e.g. format) via `createEffect` comparing content strings to avoid infinite loops |
 | 2026-02-28 | DOTAZ-028 | Dialect selection from connection type | Looks up connection in `connectionsStore` to select `PostgreSQL` or `SQLite` dialect for syntax highlighting |
+| 2026-02-28 | DOTAZ-029 | `selectedText` tracked in editor store via `selectionSet` update | CodeMirror `updateListener` pushes selection into store; toolbar reads it reactively for "Run Selected" enable state |
+| 2026-02-28 | DOTAZ-029 | QueryToolbar placed in AppShell above SqlEditor | Toolbar is a sibling of SqlEditor inside `sql-console` div; both receive `tabId` + `connectionId` props |
+| 2026-02-28 | DOTAZ-029 | Segmented toggle for Auto/Manual transaction mode | Two-button toggle group instead of dropdown; visual indicator (TXN badge) when transaction is open |
 
 ---
 
@@ -239,4 +242,4 @@
 
 ---
 
-*Last updated: 2026-02-28 (DOTAZ-028)*
+*Last updated: 2026-02-28 (DOTAZ-029)*

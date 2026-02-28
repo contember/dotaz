@@ -9,6 +9,7 @@ export type TxMode = "auto-commit" | "manual";
 export interface TabEditorState {
 	connectionId: string;
 	content: string;
+	selectedText: string;
 	results: QueryResult[];
 	isRunning: boolean;
 	error: string | null;
@@ -22,6 +23,7 @@ function createDefaultEditorState(connectionId: string): TabEditorState {
 	return {
 		connectionId,
 		content: "",
+		selectedText: "",
 		results: [],
 		isRunning: false,
 		error: null,
@@ -67,6 +69,11 @@ function initTab(tabId: string, connectionId: string) {
 function setContent(tabId: string, content: string) {
 	ensureTab(tabId);
 	setState("tabs", tabId, "content", content);
+}
+
+function setSelectedText(tabId: string, selectedText: string) {
+	ensureTab(tabId);
+	setState("tabs", tabId, "selectedText", selectedText);
 }
 
 async function runQuery(tabId: string, sql: string) {
@@ -198,6 +205,7 @@ export const editorStore = {
 	getTab,
 	initTab,
 	setContent,
+	setSelectedText,
 	executeQuery,
 	executeSelected,
 	cancelQuery,

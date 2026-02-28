@@ -1,0 +1,144 @@
+.query-toolbar {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-xs);
+	padding: var(--spacing-xs) var(--spacing-sm);
+	background: var(--bg-panel);
+	border-bottom: 1px solid var(--border-color);
+	min-height: 32px;
+	flex-shrink: 0;
+}
+
+/* Toolbar buttons */
+.query-toolbar__btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	height: 24px;
+	padding: 0 var(--spacing-sm);
+	border: none;
+	border-radius: 3px;
+	background: transparent;
+	color: var(--text-secondary);
+	font-size: var(--font-size-xs);
+	font-family: var(--font-ui);
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.query-toolbar__btn:hover:not(:disabled) {
+	background: var(--bg-hover);
+	color: var(--text-primary);
+}
+
+.query-toolbar__btn:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
+/* Primary action (Run) */
+.query-toolbar__btn--run {
+	background: var(--accent);
+	color: var(--accent-fg);
+}
+
+.query-toolbar__btn--run:hover:not(:disabled) {
+	background: var(--accent-hover);
+	color: var(--accent-fg);
+}
+
+/* Cancel button */
+.query-toolbar__btn--cancel {
+	background: var(--color-error);
+	color: #fff;
+}
+
+.query-toolbar__btn--cancel:hover:not(:disabled) {
+	opacity: 0.9;
+	color: #fff;
+}
+
+/* Separator */
+.query-toolbar__separator {
+	width: 1px;
+	height: 16px;
+	background: var(--border-color);
+	flex-shrink: 0;
+}
+
+/* Transaction mode toggle */
+.query-toolbar__tx-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 0;
+	border: 1px solid var(--border-color);
+	border-radius: 3px;
+	overflow: hidden;
+	height: 24px;
+}
+
+.query-toolbar__tx-option {
+	height: 100%;
+	padding: 0 var(--spacing-sm);
+	border: none;
+	background: transparent;
+	color: var(--text-muted);
+	font-size: var(--font-size-xs);
+	font-family: var(--font-ui);
+	cursor: pointer;
+}
+
+.query-toolbar__tx-option:hover {
+	color: var(--text-primary);
+	background: var(--bg-hover);
+}
+
+.query-toolbar__tx-option--active {
+	background: var(--bg-active);
+	color: var(--text-primary);
+}
+
+/* Transaction indicator */
+.query-toolbar__tx-indicator {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 0 var(--spacing-sm);
+	height: 24px;
+	border-radius: 3px;
+	background: rgba(204, 167, 0, 0.15);
+	border: 1px solid var(--color-warning);
+	color: var(--color-warning);
+	font-size: var(--font-size-xs);
+	font-weight: 600;
+}
+
+/* Connection info */
+.query-toolbar__connection {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	color: var(--text-muted);
+	font-size: var(--font-size-xs);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 200px;
+}
+
+.query-toolbar__connection-name {
+	color: var(--text-secondary);
+}
+
+/* Spacer to push right-side items */
+.query-toolbar__spacer {
+	flex: 1;
+}
+
+/* Duration display */
+.query-toolbar__duration {
+	color: var(--text-muted);
+	font-size: var(--font-size-xs);
+	font-family: var(--font-mono);
+	white-space: nowrap;
+}
