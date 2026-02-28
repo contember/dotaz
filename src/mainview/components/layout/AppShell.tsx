@@ -540,40 +540,40 @@ export default function AppShell() {
 								</p>
 							</div>
 						</Show>
-						<Show when={tabsStore.activeTab}>
+						<Show when={tabsStore.activeTab} keyed>
 							{(tab) => (
 								<Switch>
-									<Match when={tab().type === "data-grid"}>
+									<Match when={tab.type === "data-grid"}>
 										<DataGrid
-											tabId={tab().id}
-											connectionId={tab().connectionId}
-											schema={tab().schema!}
-											table={tab().table!}
+											tabId={tab.id}
+											connectionId={tab.connectionId}
+											schema={tab.schema!}
+											table={tab.table!}
 										/>
 									</Match>
-									<Match when={tab().type === "sql-console"}>
+									<Match when={tab.type === "sql-console"}>
 										<div class="sql-console">
 											<QueryToolbar
-												tabId={tab().id}
-												connectionId={tab().connectionId}
+												tabId={tab.id}
+												connectionId={tab.connectionId}
 												onOpenHistory={() => setHistoryOpen(true)}
 											/>
 											<SqlEditor
-												tabId={tab().id}
-												connectionId={tab().connectionId}
+												tabId={tab.id}
+												connectionId={tab.connectionId}
 											/>
 											<SqlResultPanel
-												tabId={tab().id}
-												connectionId={tab().connectionId}
+												tabId={tab.id}
+												connectionId={tab.connectionId}
 											/>
 										</div>
 									</Match>
-									<Match when={tab().type === "schema-viewer"}>
+									<Match when={tab.type === "schema-viewer"}>
 										<SchemaViewer
-											tabId={tab().id}
-											connectionId={tab().connectionId}
-											schema={tab().schema!}
-											table={tab().table!}
+											tabId={tab.id}
+											connectionId={tab.connectionId}
+											schema={tab.schema!}
+											table={tab.table!}
 										/>
 									</Match>
 								</Switch>
