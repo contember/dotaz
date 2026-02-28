@@ -37,7 +37,7 @@
 | DOTAZ-004 | Local app SQLite database with migrations | done | |
 | DOTAZ-005 | DatabaseDriver interface + SQLite driver | done | |
 | DOTAZ-006 | PostgreSQL driver | done | |
-| DOTAZ-007 | ConnectionManager service | not started | |
+| DOTAZ-007 | ConnectionManager service | done | |
 | DOTAZ-008 | Complete RPC schema + wiring | not started | |
 | DOTAZ-009 | Frontend RPC client (Electroview) | not started | |
 | DOTAZ-010 | AppShell layout components (sidebar, tabs, status bar) | not started | |
@@ -137,6 +137,8 @@
 | 2026-02-28 | DOTAZ-006 | Use `reserve()` for transactions in PostgresDriver | Bun.SQL with pooled connections (`max > 1`) rejects raw `BEGIN`/`COMMIT`/`ROLLBACK` via `unsafe()`; `reserve()` pins a single connection |
 | 2026-02-28 | DOTAZ-006 | Use `SQL.Query.cancel()` for query cancellation | Bun.SQL's native cancel mechanism; sets `cancelled` flag but may not interrupt PG backend in Bun 1.3.9 |
 | 2026-02-28 | DOTAZ-006 | Detect PG `isAutoIncrement` via `nextval(` in `column_default` | SERIAL/BIGSERIAL columns have default `nextval('sequence_name'::regclass)` |
+| 2026-02-28 | DOTAZ-007 | Use listener pattern for status change events | Simple callback pattern (`onStatusChanged`) allows RPC handlers (DOTAZ-008) to hook in without coupling ConnectionManager to Electrobun RPC |
+| 2026-02-28 | DOTAZ-007 | ConnectionManager takes AppDatabase via constructor injection | Enables testing with in-memory AppDatabase without singletons |
 
 ---
 
@@ -191,4 +193,4 @@
 
 ---
 
-*Last updated: 2026-02-28*
+*Last updated: 2026-02-28 (DOTAZ-007)*
