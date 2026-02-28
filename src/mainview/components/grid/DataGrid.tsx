@@ -2,6 +2,7 @@ import { createSignal, onMount, Show } from "solid-js";
 import type { ColumnFilter } from "../../../shared/types/grid";
 import { gridStore } from "../../stores/grid";
 import { rpc } from "../../lib/rpc";
+import { createKeyHandler } from "../../lib/keyboard";
 import GridHeader from "./GridHeader";
 import VirtualScroller from "./VirtualScroller";
 import FilterBar from "./FilterBar";
@@ -17,10 +18,13 @@ interface DataGridProps {
 }
 
 const HEADER_HEIGHT = 34; // 32px height + 2px border
+const COPY_FLASH_DURATION = 400;
 
 export default function DataGrid(props: DataGridProps) {
 	const [fkColumns, setFkColumns] = createSignal<Set<string>>(new Set());
+	const [copyFeedback, setCopyFeedback] = createSignal<string | null>(null);
 	let scrollRef: HTMLDivElement | undefined;
+	let gridRef: HTMLDivElement | undefined;
 	let anchorRow = -1;
 
 	const tab = () => gridStore.getTab(props.tabId);
@@ -81,6 +85,11 @@ export default function DataGrid(props: DataGridProps) {
 	}
 
 	function handleRowClick(index: number, e: MouseEvent) {
+		// Detect which cell was clicked via data-column attribute
+		const target = e.target as HTMLElement;
+		const cellEl = target.closest<HTMLElement>("[data-column]");
+		const columnName = cellEl?.dataset.column ?? null;
+
 		if (e.shiftKey && anchorRow >= 0) {
 			gridStore.selectRange(props.tabId, anchorRow, index);
 		} else if (e.ctrlKey || e.metaKey) {
@@ -90,10 +99,55 @@ export default function DataGrid(props: DataGridProps) {
 			gridStore.selectRow(props.tabId, index);
 			anchorRow = index;
 		}
+
+		// Set focused cell for single-cell copy
+		if (columnName && !e.shiftKey) {
+			gridStore.setFocusedCell(props.tabId, { row: index, column: columnName });
+		}
 	}
 
+	async function handleCopy() {
+		const result = gridStore.buildClipboardTsv(props.tabId, visibleColumns());
+		if (!result) return;
+
+		try {
+			await navigator.clipboard.writeText(result.text);
+			const msg = result.rowCount === 0
+				? "Copied cell"
+				: `Copied ${result.rowCount} row${result.rowCount > 1 ? "s" : ""}`;
+			setCopyFeedback(msg);
+			setTimeout(() => setCopyFeedback(null), COPY_FLASH_DURATION);
+		} catch {
+			// Clipboard API may fail in some contexts
+		}
+	}
+
+	const handleKeyDown = createKeyHandler([
+		{
+			key: "c",
+			ctrl: true,
+			handler(e) {
+				e.preventDefault();
+				handleCopy();
+			},
+		},
+		{
+			key: "a",
+			ctrl: true,
+			handler(e) {
+				e.preventDefault();
+				gridStore.selectAll(props.tabId);
+			},
+		},
+	]);
+
 	return (
-		<div class="data-grid">
+		<div
+			ref={gridRef}
+			class="data-grid"
+			tabIndex={0}
+			onKeyDown={handleKeyDown}
+		>
 			<div class="data-grid__toolbar">
 				<Show when={tab()}>
 					{(tabState) => (
@@ -174,6 +228,10 @@ export default function DataGrid(props: DataGridProps) {
 						</div>
 					</>
 				)}
+			</Show>
+
+			<Show when={copyFeedback()}>
+				<div class="data-grid__copy-toast">{copyFeedback()}</div>
 			</Show>
 		</div>
 	);

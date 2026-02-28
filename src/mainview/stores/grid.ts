@@ -16,6 +16,11 @@ export interface ColumnConfig {
 
 // ── Per-tab grid state ───────────────────────────────────
 
+export interface FocusedCell {
+	row: number;
+	column: string;
+}
+
 export interface TabGridState {
 	connectionId: string;
 	schema: string;
@@ -28,6 +33,7 @@ export interface TabGridState {
 	sort: SortColumn[];
 	filters: ColumnFilter[];
 	selectedRows: Set<number>;
+	focusedCell: FocusedCell | null;
 	columnConfig: Record<string, ColumnConfig>;
 	columnOrder: string[];
 	loading: boolean;
@@ -50,6 +56,7 @@ function createDefaultTabState(
 		sort: [],
 		filters: [],
 		selectedRows: new Set(),
+		focusedCell: null,
 		columnConfig: {},
 		columnOrder: [],
 		loading: false,
@@ -232,6 +239,7 @@ function selectRange(tabId: string, from: number, to: number) {
 		next.add(i);
 	}
 	setState("tabs", tabId, "selectedRows", next);
+	setState("tabs", tabId, "focusedCell", null);
 }
 
 function selectAll(tabId: string) {
@@ -241,11 +249,58 @@ function selectAll(tabId: string) {
 		next.add(i);
 	}
 	setState("tabs", tabId, "selectedRows", next);
+	setState("tabs", tabId, "focusedCell", null);
+}
+
+function setFocusedCell(tabId: string, cell: FocusedCell | null) {
+	ensureTab(tabId);
+	setState("tabs", tabId, "focusedCell", cell);
 }
 
 function getSelectedData(tabId: string): Record<string, unknown>[] {
 	const tab = ensureTab(tabId);
 	return [...tab.selectedRows].sort((a, b) => a - b).map((i) => tab.rows[i]);
+}
+
+/** Format a cell value for TSV clipboard export. NULL → empty string. */
+function formatCellForClipboard(value: unknown): string {
+	if (value === null || value === undefined) return "";
+	if (typeof value === "object") return JSON.stringify(value);
+	return String(value).replace(/\t/g, " ").replace(/\n/g, " ").replace(/\r/g, "");
+}
+
+/**
+ * Build TSV string for clipboard from current selection.
+ * Returns the TSV text and the count of copied rows (0 = single cell).
+ */
+function buildClipboardTsv(
+	tabId: string,
+	visibleColumns: GridColumnDef[],
+): { text: string; rowCount: number } | null {
+	const tab = ensureTab(tabId);
+	const selected = tab.selectedRows;
+
+	if (selected.size === 0) return null;
+
+	// Single row + focused cell → copy just the cell value
+	if (selected.size === 1 && tab.focusedCell) {
+		const rowIdx = [...selected][0];
+		const row = tab.rows[rowIdx];
+		if (!row) return null;
+		const value = row[tab.focusedCell.column];
+		return { text: formatCellForClipboard(value), rowCount: 0 };
+	}
+
+	// Multi-row or single row without focused cell → copy all visible columns
+	const colNames = visibleColumns.map((c) => c.name);
+	const header = colNames.join("\t");
+	const sortedIndices = [...selected].sort((a, b) => a - b);
+	const rows = sortedIndices.map((i) => {
+		const row = tab.rows[i];
+		return colNames.map((col) => formatCellForClipboard(row[col])).join("\t");
+	});
+
+	return { text: [header, ...rows].join("\n"), rowCount: sortedIndices.length };
 }
 
 function setColumnWidth(tabId: string, column: string, width: number) {
@@ -393,6 +448,9 @@ export const gridStore = {
 	selectRange,
 	selectAll,
 	getSelectedData,
+	setFocusedCell,
+	buildClipboardTsv,
+	formatCellForClipboard,
 	setColumnWidth,
 	setColumnVisibility,
 	setColumnPinned,

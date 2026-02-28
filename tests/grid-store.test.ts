@@ -443,6 +443,156 @@ describe("grid store", () => {
 		});
 	});
 
+	describe("clipboard / TSV export", () => {
+		test("formatCellForClipboard handles null and undefined", () => {
+			expect(gridStore.formatCellForClipboard(null)).toBe("");
+			expect(gridStore.formatCellForClipboard(undefined)).toBe("");
+		});
+
+		test("formatCellForClipboard handles strings", () => {
+			expect(gridStore.formatCellForClipboard("hello")).toBe("hello");
+		});
+
+		test("formatCellForClipboard handles numbers and booleans", () => {
+			expect(gridStore.formatCellForClipboard(42)).toBe("42");
+			expect(gridStore.formatCellForClipboard(true)).toBe("true");
+		});
+
+		test("formatCellForClipboard serializes objects as JSON", () => {
+			expect(gridStore.formatCellForClipboard({ a: 1 })).toBe('{"a":1}');
+		});
+
+		test("formatCellForClipboard strips tabs and newlines from strings", () => {
+			expect(gridStore.formatCellForClipboard("a\tb\nc")).toBe("a b c");
+		});
+
+		test("buildClipboardTsv returns null when no rows selected", async () => {
+			await gridStore.loadTableData("tab-1", "conn-1", "public", "users");
+
+			const tab = gridStore.getTab("tab-1")!;
+			const cols = gridStore.getVisibleColumns(tab);
+			const result = gridStore.buildClipboardTsv("tab-1", cols);
+
+			expect(result).toBeNull();
+		});
+
+		test("buildClipboardTsv copies single cell when focusedCell is set", async () => {
+			await gridStore.loadTableData("tab-1", "conn-1", "public", "users");
+
+			gridStore.selectRow("tab-1", 0);
+			gridStore.setFocusedCell("tab-1", { row: 0, column: "name" });
+
+			const tab = gridStore.getTab("tab-1")!;
+			const cols = gridStore.getVisibleColumns(tab);
+			const result = gridStore.buildClipboardTsv("tab-1", cols);
+
+			expect(result).not.toBeNull();
+			expect(result!.text).toBe("Alice");
+			expect(result!.rowCount).toBe(0);
+		});
+
+		test("buildClipboardTsv copies single cell with NULL as empty string", async () => {
+			const response = makeResponse({
+				rows: [{ id: 1, name: null }],
+			});
+			mockGetTableData.mockImplementationOnce(() => Promise.resolve(response));
+			await gridStore.loadTableData("tab-1", "conn-1", "public", "users");
+
+			gridStore.selectRow("tab-1", 0);
+			gridStore.setFocusedCell("tab-1", { row: 0, column: "name" });
+
+			const tab = gridStore.getTab("tab-1")!;
+			const cols = gridStore.getVisibleColumns(tab);
+			const result = gridStore.buildClipboardTsv("tab-1", cols);
+
+			expect(result!.text).toBe("");
+		});
+
+		test("buildClipboardTsv copies multiple rows as TSV with header", async () => {
+			await gridStore.loadTableData("tab-1", "conn-1", "public", "users");
+
+			gridStore.selectRange("tab-1", 0, 2);
+
+			const tab = gridStore.getTab("tab-1")!;
+			const cols = gridStore.getVisibleColumns(tab);
+			const result = gridStore.buildClipboardTsv("tab-1", cols);
+
+			expect(result).not.toBeNull();
+			expect(result!.rowCount).toBe(3);
+
+			const lines = result!.text.split("\n");
+			expect(lines).toHaveLength(4); // header + 3 rows
+			expect(lines[0]).toBe("id\tname");
+			expect(lines[1]).toBe("1\tAlice");
+			expect(lines[2]).toBe("2\tBob");
+			expect(lines[3]).toBe("3\tCharlie");
+		});
+
+		test("buildClipboardTsv copies single row (no focused cell) as TSV with header", async () => {
+			await gridStore.loadTableData("tab-1", "conn-1", "public", "users");
+
+			gridStore.selectRow("tab-1", 1);
+			// Don't set focusedCell
+
+			const tab = gridStore.getTab("tab-1")!;
+			const cols = gridStore.getVisibleColumns(tab);
+			const result = gridStore.buildClipboardTsv("tab-1", cols);
+
+			expect(result).not.toBeNull();
+			expect(result!.rowCount).toBe(1);
+
+			const lines = result!.text.split("\n");
+			expect(lines).toHaveLength(2); // header + 1 row
+			expect(lines[0]).toBe("id\tname");
+			expect(lines[1]).toBe("2\tBob");
+		});
+
+		test("buildClipboardTsv with multiple rows ignores focusedCell", async () => {
+			await gridStore.loadTableData("tab-1", "conn-1", "public", "users");
+
+			gridStore.selectRange("tab-1", 0, 1);
+			// selectRange clears focusedCell, but even if it were set,
+			// multi-row copies all visible columns
+			const tab = gridStore.getTab("tab-1")!;
+			expect(tab.focusedCell).toBeNull();
+
+			const cols = gridStore.getVisibleColumns(tab);
+			const result = gridStore.buildClipboardTsv("tab-1", cols);
+
+			expect(result!.rowCount).toBe(2);
+		});
+	});
+
+	describe("focusedCell", () => {
+		test("setFocusedCell sets and clears focused cell", async () => {
+			await gridStore.loadTableData("tab-1", "conn-1", "public", "users");
+
+			gridStore.setFocusedCell("tab-1", { row: 0, column: "name" });
+			expect(gridStore.getTab("tab-1")!.focusedCell).toEqual({ row: 0, column: "name" });
+
+			gridStore.setFocusedCell("tab-1", null);
+			expect(gridStore.getTab("tab-1")!.focusedCell).toBeNull();
+		});
+
+		test("selectRange clears focusedCell", async () => {
+			await gridStore.loadTableData("tab-1", "conn-1", "public", "users");
+
+			gridStore.setFocusedCell("tab-1", { row: 0, column: "name" });
+			gridStore.selectRange("tab-1", 0, 2);
+
+			expect(gridStore.getTab("tab-1")!.focusedCell).toBeNull();
+		});
+
+		test("selectAll clears focusedCell", async () => {
+			await gridStore.loadTableData("tab-1", "conn-1", "public", "users");
+
+			gridStore.setFocusedCell("tab-1", { row: 0, column: "name" });
+			gridStore.selectAll("tab-1");
+
+			expect(gridStore.getTab("tab-1")!.focusedCell).toBeNull();
+		});
+	});
+
 	describe("error handling", () => {
 		test("throws for operations on non-existent tabs", () => {
 			expect(() => gridStore.selectRow("nonexistent", 0)).toThrow(

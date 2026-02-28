@@ -110,6 +110,7 @@ export default function GridCell(props: GridCellProps) {
 			}}
 			style={{ width: `${props.width}px`, ...props.pinStyle }}
 			title={tooltipValue()}
+			data-column={props.column.name}
 			onClick={isJson() && !isNull() ? handleJsonClick : undefined}
 		>
 			{displayValue()}

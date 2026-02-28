@@ -12,7 +12,7 @@
 | 0     | Project Setup         | DOTAZ-001 – 003 | done        |       |
 | 1     | Foundation            | DOTAZ-004 – 011 | done        |       |
 | 2     | Connection Management | DOTAZ-012 – 016 | done        |       |
-| 3     | Data Grid             | DOTAZ-017 – 024 | in progress |       |
+| 3     | Data Grid             | DOTAZ-017 – 024 | done        |       |
 | 4     | SQL Editor            | DOTAZ-025 – 031 | not started |       |
 | 5     | Data Editing          | DOTAZ-032 – 035 | not started |       |
 | 6     | Advanced Features     | DOTAZ-036 – 043 | not started |       |
@@ -62,7 +62,7 @@
 | DOTAZ-021 | Pagination + total count | done | Pagination component with nav, page size dropdown, row range; added `setPageSize` to grid store |
 | DOTAZ-022 | FilterBar (column filtering) | done | Type-aware operators; chips with remove; add filter inline form; Clear All; auto-reload on change |
 | DOTAZ-023 | ColumnManager (visibility, sorting, pin) | done | Gear icon trigger; drag & drop reorder; pin cycle (none/left/right); sticky positioning for pinned cells |
-| DOTAZ-024 | Clipboard support (Ctrl+C) | not started | |
+| DOTAZ-024 | Clipboard support (Ctrl+C) | done | Ctrl+C copies TSV; single cell via focusedCell; multi-row with headers; Ctrl+A select all; toast feedback |
 
 ### Phase 4 — SQL Editor
 | Issue | Title | Status | Notes |
@@ -166,6 +166,9 @@
 | 2026-02-28 | DOTAZ-023 | Separate `columnOrder` from `columnConfig` in grid store | `columnOrder: string[]` tracks column ordering independently from per-column config (visibility, width, pin) |
 | 2026-02-28 | DOTAZ-023 | Pin cycle: none → left → right → none | Single button cycles through pin states; left-pinned columns render first, right-pinned last in visible column list |
 | 2026-02-28 | DOTAZ-023 | `computePinStyles` returns sticky CSS as inline styles | Pin styles (position: sticky, left/right offset, z-index, background) applied inline to header cells and GridCells; z-index 3 to layer above normal cells |
+| 2026-02-28 | DOTAZ-024 | Event delegation for cell focus via `data-column` attribute | Instead of adding `onCellClick` prop through VirtualScroller→GridRow→GridCell, use `data-column` on GridCell and detect via `closest("[data-column]")` in DataGrid row click handler |
+| 2026-02-28 | DOTAZ-024 | `focusedCell` in grid store for single-cell copy | Single row + focused cell → copy cell value; multi-row or no focused cell → copy all visible columns with TSV headers |
+| 2026-02-28 | DOTAZ-024 | `createKeyHandler` utility with modifier matching | Reusable key binding dispatcher; treats Ctrl and Meta (Cmd) as equivalent for cross-platform support |
 
 ---
 
@@ -223,4 +226,4 @@
 
 ---
 
-*Last updated: 2026-02-28 (DOTAZ-023)*
+*Last updated: 2026-02-28 (DOTAZ-024)*
