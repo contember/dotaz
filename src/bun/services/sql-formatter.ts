@@ -190,7 +190,7 @@ export function formatSql(sql: string): string {
 			continue;
 		}
 		if (token.type === "symbol" && token.value === ")") {
-			parenDepth--;
+			if (parenDepth > 0) parenDepth--;
 			currentLine += token.value;
 			i++;
 			continue;

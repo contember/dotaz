@@ -83,6 +83,12 @@ export async function exportToFile(
 		return { rowCount: totalRows, sizeBytes: stat?.size ?? 0 };
 	} catch (err) {
 		await writer.end();
+		try {
+			const { unlink } = await import("node:fs/promises");
+			await unlink(filePath);
+		} catch {
+			// Best-effort cleanup
+		}
 		throw err;
 	}
 }
@@ -153,6 +159,23 @@ function buildExportQuery(
 	};
 }
 
+// ── Helpers ────────────────────────────────────────────────
+
+/** Collect all unique column names across all rows, preserving insertion order. */
+function collectAllColumns(rows: Record<string, unknown>[]): string[] {
+	const seen = new Set<string>();
+	const columns: string[] = [];
+	for (const row of rows) {
+		for (const key of Object.keys(row)) {
+			if (!seen.has(key)) {
+				seen.add(key);
+				columns.push(key);
+			}
+		}
+	}
+	return columns;
+}
+
 // ── Formatters ─────────────────────────────────────────────
 
 interface Formatter {
@@ -186,11 +209,18 @@ class CsvFormatter implements Formatter {
 		return "";
 	}
 
+	private columns: string[] | null = null;
+
 	formatBatch(rows: Record<string, unknown>[], isFirst: boolean): string {
 		if (rows.length === 0) return "";
 
+		// Derive columns from the first batch; subsequent batches reuse the same set
+		if (!this.columns) {
+			this.columns = collectAllColumns(rows);
+		}
+		const columns = this.columns;
+
 		const lines: string[] = [];
-		const columns = Object.keys(rows[0]);
 
 		if (isFirst && this.includeHeaders) {
 			lines.push(columns.map((c) => this.escapeField(c)).join(this.delimiter));
@@ -266,10 +296,16 @@ class SqlInsertFormatter implements Formatter {
 		return "";
 	}
 
+	private columns: string[] | null = null;
+
 	formatBatch(rows: Record<string, unknown>[], _isFirst: boolean): string {
 		if (rows.length === 0) return "";
 
-		const columns = Object.keys(rows[0]);
+		// Derive columns from the first batch; subsequent batches reuse the same set
+		if (!this.columns) {
+			this.columns = collectAllColumns(rows);
+		}
+		const columns = this.columns;
 		const quotedCols = columns.map((c) => `"${c.replace(/"/g, '""')}"`);
 		const colList = quotedCols.join(", ");
 
