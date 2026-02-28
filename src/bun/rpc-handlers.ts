@@ -1,5 +1,5 @@
 import type { BrowserWindow } from "electrobun/bun";
-import type { DotazRPC, ExecuteQueryParams, ApplyChangesParams, GenerateSqlParams, OpenDialogParams, SaveDialogParams, ViewListParams, SaveViewParams, UpdateViewParams } from "../shared/types/rpc";
+import type { DotazRPC, ExecuteQueryParams, ApplyChangesParams, GenerateSqlParams, OpenDialogParams, SaveDialogParams, ViewListParams, SaveViewParams, UpdateViewParams, HistoryListParams } from "../shared/types/rpc";
 import type { ConnectionManager } from "./services/connection-manager";
 import type { AppDatabase } from "./storage/app-db";
 import type { GridDataRequest } from "../shared/types/grid";
@@ -13,7 +13,7 @@ function notImplemented(method: string): never {
 }
 
 export function createHandlers(cm: ConnectionManager, qe?: QueryExecutor, appDb?: AppDatabase) {
-	const queryExecutor = qe ?? new QueryExecutor(cm);
+	const queryExecutor = qe ?? new QueryExecutor(cm, undefined, appDb);
 	return {
 		// ── Connection Management ─────────────────────────
 		"connections.list": () => {
@@ -181,12 +181,14 @@ export function createHandlers(cm: ConnectionManager, qe?: QueryExecutor, appDb?
 			return { content };
 		},
 
-		// ── History (stub) ────────────────────────────────
-		"history.list": () => {
-			notImplemented("history.list");
+		// ── History ───────────────────────────────────────
+		"history.list": (params: HistoryListParams) => {
+			if (!appDb) throw new Error("AppDatabase not available");
+			return appDb.listHistory(params);
 		},
-		"history.clear": () => {
-			notImplemented("history.clear");
+		"history.clear": ({ connectionId }: { connectionId?: string }) => {
+			if (!appDb) throw new Error("AppDatabase not available");
+			appDb.clearHistory(connectionId);
 		},
 
 		// ── Saved Views ──────────────────────────────────

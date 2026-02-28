@@ -657,6 +657,137 @@ describe("RPC Handlers", () => {
 		});
 	});
 
+	// ── history.* ────────────────────────────────────────
+
+	describe("history.*", () => {
+		let connectionId: string;
+		let appDb: AppDatabase;
+
+		beforeEach(async () => {
+			({ cm, handlers } = setup());
+			appDb = AppDatabase.getInstance(":memory:");
+			// Re-create handlers with appDb
+			handlers = createHandlers(cm, undefined, appDb);
+			const conn = handlers["connections.create"]({
+				name: "SQLite History Test",
+				config: sqliteConfig,
+			});
+			connectionId = conn.id;
+			await handlers["connections.connect"]({ connectionId });
+		});
+
+		test("history.list returns empty array initially", () => {
+			const result = handlers["history.list"]({});
+			expect(result).toEqual([]);
+		});
+
+		test("query.execute automatically logs to history", async () => {
+			await handlers["query.execute"]({
+				connectionId,
+				sql: "SELECT 1 AS val",
+				queryId: "h-1",
+			});
+
+			const history = handlers["history.list"]({});
+			expect(history).toHaveLength(1);
+			expect(history[0].sql).toBe("SELECT 1 AS val");
+			expect(history[0].status).toBe("success");
+			expect(history[0].connectionId).toBe(connectionId);
+			expect(history[0].durationMs).toBeGreaterThanOrEqual(0);
+			expect(history[0].rowCount).toBe(1);
+		});
+
+		test("failed queries are logged with error status", async () => {
+			await handlers["query.execute"]({
+				connectionId,
+				sql: "SELECT * FROM nonexistent_table",
+				queryId: "h-2",
+			});
+
+			const history = handlers["history.list"]({});
+			expect(history).toHaveLength(1);
+			expect(history[0].status).toBe("error");
+			expect(history[0].errorMessage).toBeTruthy();
+		});
+
+		test("history.list filters by connectionId", async () => {
+			const conn2 = handlers["connections.create"]({
+				name: "SQLite Other",
+				config: sqliteConfig,
+			});
+			await handlers["connections.connect"]({ connectionId: conn2.id });
+
+			await handlers["query.execute"]({ connectionId, sql: "SELECT 1", queryId: "h-3" });
+			await handlers["query.execute"]({ connectionId: conn2.id, sql: "SELECT 2", queryId: "h-4" });
+
+			const filtered = handlers["history.list"]({ connectionId });
+			expect(filtered).toHaveLength(1);
+			expect(filtered[0].sql).toBe("SELECT 1");
+		});
+
+		test("history.list supports search", async () => {
+			await handlers["query.execute"]({ connectionId, sql: "SELECT * FROM sqlite_master", queryId: "h-5" });
+			await handlers["query.execute"]({ connectionId, sql: "SELECT 1", queryId: "h-6" });
+
+			const results = handlers["history.list"]({ search: "sqlite_master" });
+			expect(results).toHaveLength(1);
+			expect(results[0].sql).toBe("SELECT * FROM sqlite_master");
+		});
+
+		test("history.list supports pagination", async () => {
+			for (let i = 0; i < 5; i++) {
+				await handlers["query.execute"]({ connectionId, sql: `SELECT ${i}`, queryId: `h-p-${i}` });
+			}
+
+			const page1 = handlers["history.list"]({ limit: 2, offset: 0 });
+			expect(page1).toHaveLength(2);
+
+			const page3 = handlers["history.list"]({ limit: 2, offset: 4 });
+			expect(page3).toHaveLength(1);
+		});
+
+		test("history.clear removes all history", async () => {
+			await handlers["query.execute"]({ connectionId, sql: "SELECT 1", queryId: "h-c-1" });
+			await handlers["query.execute"]({ connectionId, sql: "SELECT 2", queryId: "h-c-2" });
+
+			handlers["history.clear"]({});
+			expect(handlers["history.list"]({})).toHaveLength(0);
+		});
+
+		test("history.clear with connectionId removes only that connection's history", async () => {
+			const conn2 = handlers["connections.create"]({
+				name: "SQLite Other2",
+				config: sqliteConfig,
+			});
+			await handlers["connections.connect"]({ connectionId: conn2.id });
+
+			await handlers["query.execute"]({ connectionId, sql: "SELECT 1", queryId: "h-cc-1" });
+			await handlers["query.execute"]({ connectionId: conn2.id, sql: "SELECT 2", queryId: "h-cc-2" });
+
+			handlers["history.clear"]({ connectionId });
+			const remaining = handlers["history.list"]({});
+			expect(remaining).toHaveLength(1);
+			expect(remaining[0].connectionId).toBe(conn2.id);
+		});
+
+		test("multi-statement query is logged as single entry", async () => {
+			const driver = cm.getDriver(connectionId);
+			await driver.execute("CREATE TABLE test_log (id INTEGER PRIMARY KEY, val TEXT)");
+
+			await handlers["query.execute"]({
+				connectionId,
+				sql: "INSERT INTO test_log (val) VALUES ('a'); SELECT * FROM test_log",
+				queryId: "h-m-1",
+			});
+
+			const history = handlers["history.list"]({});
+			expect(history).toHaveLength(1);
+			expect(history[0].sql).toContain("INSERT INTO test_log");
+			expect(history[0].sql).toContain("SELECT * FROM test_log");
+			expect(history[0].status).toBe("success");
+		});
+	});
+
 	// ── Stub handlers ────────────────────────────────────
 
 	describe("stub handlers", () => {
@@ -666,8 +797,6 @@ describe("RPC Handlers", () => {
 			"tx.commit",
 			"tx.rollback",
 			"tx.status",
-			"history.list",
-			"history.clear",
 			"settings.get",
 			"settings.set",
 		] as const;

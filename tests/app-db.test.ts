@@ -372,5 +372,34 @@ describe("AppDatabase", () => {
 			expect(entry.rowCount).toBeUndefined();
 			expect(entry.errorMessage).toBeUndefined();
 		});
+
+		test("list supports search in SQL text", () => {
+			appDb.addHistory({ connectionId, sql: "SELECT * FROM users", status: "success" });
+			appDb.addHistory({ connectionId, sql: "INSERT INTO users VALUES (1)", status: "success" });
+			appDb.addHistory({ connectionId, sql: "SELECT * FROM orders", status: "success" });
+
+			const results = appDb.listHistory({ search: "users" });
+			expect(results).toHaveLength(2);
+
+			const selectOnly = appDb.listHistory({ search: "SELECT" });
+			expect(selectOnly).toHaveLength(2);
+
+			const insertOnly = appDb.listHistory({ search: "INSERT" });
+			expect(insertOnly).toHaveLength(1);
+			expect(insertOnly[0].sql).toBe("INSERT INTO users VALUES (1)");
+		});
+
+		test("list combines connectionId and search filters", () => {
+			const conn2 = appDb.createConnection({
+				name: "Other",
+				config: { type: "sqlite", path: "/tmp/other.db" },
+			});
+			appDb.addHistory({ connectionId, sql: "SELECT * FROM users", status: "success" });
+			appDb.addHistory({ connectionId: conn2.id, sql: "SELECT * FROM users", status: "success" });
+
+			const filtered = appDb.listHistory({ connectionId, search: "users" });
+			expect(filtered).toHaveLength(1);
+			expect(filtered[0].connectionId).toBe(connectionId);
+		});
 	});
 });

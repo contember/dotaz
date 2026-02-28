@@ -3,6 +3,7 @@ import type { ColumnFilter, SortColumn } from "../../shared/types/grid";
 import type { QueryResult } from "../../shared/types/query";
 import type { DataChange } from "../../shared/types/rpc";
 import type { ConnectionManager } from "./connection-manager";
+import type { AppDatabase } from "../storage/app-db";
 
 export interface WhereClauseResult {
 	sql: string;
@@ -417,10 +418,12 @@ export class QueryExecutor {
 	private connectionManager: ConnectionManager;
 	private runningQueries = new Map<string, RunningQuery>();
 	private defaultTimeoutMs: number;
+	private appDb?: AppDatabase;
 
-	constructor(connectionManager: ConnectionManager, defaultTimeoutMs = 30_000) {
+	constructor(connectionManager: ConnectionManager, defaultTimeoutMs = 30_000, appDb?: AppDatabase) {
 		this.connectionManager = connectionManager;
 		this.defaultTimeoutMs = defaultTimeoutMs;
+		this.appDb = appDb;
 	}
 
 	/**
@@ -472,6 +475,7 @@ export class QueryExecutor {
 			}
 		} finally {
 			this.runningQueries.delete(id);
+			this.logHistory(connectionId, sql, results);
 		}
 
 		return results;
@@ -549,6 +553,28 @@ export class QueryExecutor {
 		return new Promise((_, reject) => {
 			setTimeout(() => reject(new Error(`Query timed out after ${ms}ms`)), ms);
 		});
+	}
+
+	private logHistory(connectionId: string, sql: string, results: QueryResult[]): void {
+		if (!this.appDb) return;
+
+		const hasError = results.some((r) => r.error);
+		const totalDuration = results.reduce((sum, r) => sum + (r.durationMs ?? 0), 0);
+		const totalRows = results.reduce((sum, r) => sum + r.rowCount, 0);
+		const errorMessage = results.find((r) => r.error)?.error;
+
+		try {
+			this.appDb.addHistory({
+				connectionId,
+				sql,
+				status: hasError ? "error" : "success",
+				durationMs: Math.round(totalDuration),
+				rowCount: totalRows,
+				errorMessage,
+			});
+		} catch {
+			// Don't let history logging failures break query execution
+		}
 	}
 }
 

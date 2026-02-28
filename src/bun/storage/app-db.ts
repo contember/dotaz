@@ -157,16 +157,23 @@ export class AppDatabase {
 		const limit = params.limit ?? 100;
 		const offset = params.offset ?? 0;
 
-		let rows: HistoryRow[];
+		const conditions: string[] = [];
+		const queryParams: unknown[] = [];
+
 		if (params.connectionId) {
-			rows = this.db.prepare(
-				"SELECT * FROM query_history WHERE connection_id = ? ORDER BY executed_at DESC LIMIT ? OFFSET ?",
-			).all(params.connectionId, limit, offset) as HistoryRow[];
-		} else {
-			rows = this.db.prepare(
-				"SELECT * FROM query_history ORDER BY executed_at DESC LIMIT ? OFFSET ?",
-			).all(limit, offset) as HistoryRow[];
+			conditions.push("connection_id = ?");
+			queryParams.push(params.connectionId);
 		}
+		if (params.search) {
+			conditions.push("sql LIKE ?");
+			queryParams.push(`%${params.search}%`);
+		}
+
+		const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+		const sql = `SELECT * FROM query_history ${where} ORDER BY executed_at DESC LIMIT ? OFFSET ?`;
+		queryParams.push(limit, offset);
+
+		const rows = this.db.prepare(sql).all(...queryParams as any[]) as HistoryRow[];
 		return rows.map(rowToHistoryEntry);
 	}
 

@@ -106,6 +106,7 @@ export interface HistoryListParams {
 	connectionId?: string;
 	limit?: number;
 	offset?: number;
+	search?: string;
 }
 
 export interface SavedViewConfig {
