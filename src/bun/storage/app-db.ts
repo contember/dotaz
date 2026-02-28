@@ -1,6 +1,4 @@
 import Database from "bun:sqlite";
-import { join } from "path";
-import { mkdirSync, existsSync } from "fs";
 import { runMigrations } from "./migrations";
 import type { ConnectionConfig, ConnectionInfo } from "../../shared/types/connection";
 import type { QueryHistoryEntry, QueryHistoryStatus } from "../../shared/types/query";
@@ -241,11 +239,19 @@ interface HistoryRow {
 
 // ── Row-to-domain mappers ────────────────────────────────────
 
+function safeJsonParse<T>(json: string, context: string): T {
+	try {
+		return JSON.parse(json) as T;
+	} catch {
+		throw new Error(`Corrupted JSON in ${context}: ${json.slice(0, 100)}`);
+	}
+}
+
 function rowToConnectionInfo(row: ConnectionRow): ConnectionInfo {
 	return {
 		id: row.id,
 		name: row.name,
-		config: JSON.parse(row.config) as ConnectionConfig,
+		config: safeJsonParse<ConnectionConfig>(row.config, `connection "${row.name}"`),
 		state: "disconnected",
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
@@ -259,7 +265,7 @@ function rowToSavedView(row: SavedViewRow): SavedView {
 		schemaName: row.schema_name,
 		tableName: row.table_name,
 		name: row.name,
-		config: JSON.parse(row.config) as SavedViewConfig,
+		config: safeJsonParse<SavedViewConfig>(row.config, `saved view "${row.name}"`),
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};
