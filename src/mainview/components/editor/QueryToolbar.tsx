@@ -6,6 +6,7 @@ import "./QueryToolbar.css";
 interface QueryToolbarProps {
 	tabId: string;
 	connectionId: string;
+	onOpenHistory?: () => void;
 }
 
 export default function QueryToolbar(props: QueryToolbarProps) {
@@ -104,6 +105,17 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 			>
 				Format
 			</button>
+
+			{/* History */}
+			<Show when={props.onOpenHistory}>
+				<button
+					class="query-toolbar__btn"
+					onClick={props.onOpenHistory}
+					title="Query History"
+				>
+					History
+				</button>
+			</Show>
 
 			<div class="query-toolbar__separator" />
 

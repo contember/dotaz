@@ -5,6 +5,7 @@ import TabBar from "./TabBar";
 import StatusBar from "./StatusBar";
 import ConnectionTree from "../connection/ConnectionTree";
 import ConnectionDialog from "../connection/ConnectionDialog";
+import QueryHistory from "../history/QueryHistory";
 import DataGrid from "../grid/DataGrid";
 import SqlEditor from "../editor/SqlEditor";
 import QueryToolbar from "../editor/QueryToolbar";
@@ -22,6 +23,7 @@ export default function AppShell() {
 	const [sidebarCollapsed, setSidebarCollapsed] = createSignal(false);
 	const [dialogOpen, setDialogOpen] = createSignal(false);
 	const [connectionToEdit, setConnectionToEdit] = createSignal<ConnectionInfo | null>(null);
+	const [historyOpen, setHistoryOpen] = createSignal(false);
 
 	function handleResize(deltaX: number) {
 		setSidebarWidth((w) => Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, w + deltaX)));
@@ -96,6 +98,7 @@ export default function AppShell() {
 											<QueryToolbar
 												tabId={tab().id}
 												connectionId={tab().connectionId}
+												onOpenHistory={() => setHistoryOpen(true)}
 											/>
 											<SqlEditor
 												tabId={tab().id}
@@ -120,6 +123,11 @@ export default function AppShell() {
 				open={dialogOpen()}
 				connection={connectionToEdit()}
 				onClose={() => setDialogOpen(false)}
+			/>
+
+			<QueryHistory
+				open={historyOpen()}
+				onClose={() => setHistoryOpen(false)}
 			/>
 		</div>
 	);
