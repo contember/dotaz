@@ -1,8 +1,7 @@
-// Frontend RPC client — typed wrapper around Electrobun Electroview RPC
+// Frontend RPC client — typed wrapper around transport layer
 // Provides namespace access: rpc.connections.list(), rpc.schema.getTables(), etc.
 
-import { Electroview } from "electrobun/view";
-import type { DotazRPC } from "../../shared/types/rpc";
+import { transport } from "./transport";
 import type {
 	ConnectionConfig,
 	ConnectionInfo,
@@ -37,18 +36,6 @@ import type {
 	ViewListParams,
 } from "../../shared/types/rpc";
 
-// ── Electroview RPC setup ────────────────────────────────
-
-const electroviewRpc = Electroview.defineRPC<DotazRPC>({
-	handlers: {
-		requests: {},
-		messages: {},
-	},
-});
-
-// Instantiate Electroview to set up the RPC transport
-new Electroview({ rpc: electroviewRpc });
-
 // ── Error handling ───────────────────────────────────────
 
 export { RpcError, friendlyErrorMessage } from "./rpc-errors";
@@ -56,8 +43,7 @@ import { RpcError } from "./rpc-errors";
 
 async function call<T>(method: string, params: unknown): Promise<T> {
 	try {
-		const result = await (electroviewRpc.request as any)[method](params);
-		return result as T;
+		return await transport.call<T>(method, params);
 	} catch (err) {
 		throw new RpcError(method, err);
 	}
@@ -178,17 +164,11 @@ export const messages = {
 	onConnectionStatusChanged: (
 		handler: (event: { connectionId: string; state: ConnectionState; error?: string }) => void,
 	) => {
-		electroviewRpc.addMessageListener("connections.statusChanged" as any, handler as any);
-		return () => {
-			electroviewRpc.removeMessageListener("connections.statusChanged" as any, handler as any);
-		};
+		return transport.addMessageListener("connections.statusChanged", handler);
 	},
 	onMenuAction: (
 		handler: (event: { action: string }) => void,
 	) => {
-		electroviewRpc.addMessageListener("menu.action" as any, handler as any);
-		return () => {
-			electroviewRpc.removeMessageListener("menu.action" as any, handler as any);
-		};
+		return transport.addMessageListener("menu.action", handler);
 	},
 };

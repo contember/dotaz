@@ -12,7 +12,10 @@
 		"test": "bun test",
 		"test:sqlite": "bun test tests/sqlite-smoke.test.ts",
 		"test:pg": "bun test tests/pg-smoke.test.ts",
-		"typecheck": "bunx tsc --noEmit"
+		"typecheck": "bunx tsc --noEmit",
+		"dev:web": "concurrently \"bun --watch src/bun/server.ts\" \"vite --mode web\"",
+		"build:web": "vite build --mode web",
+		"start:web": "bun src/bun/server.ts"
 	},
 	"dependencies": {
 		"@codemirror/lang-sql": "^6.8.0",
