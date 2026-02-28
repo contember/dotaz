@@ -32,6 +32,11 @@ export default function AppShell() {
 		setDialogOpen(true);
 	}
 
+	function openEditConnectionDialog(conn: ConnectionInfo) {
+		setConnectionToEdit(conn);
+		setDialogOpen(true);
+	}
+
 	return (
 		<div class="app-shell">
 			<div class="app-shell__body">
@@ -45,7 +50,7 @@ export default function AppShell() {
 					onToggleCollapse={toggleCollapse}
 					onAdd={openAddConnectionDialog}
 				>
-					<ConnectionTree onAddConnection={openAddConnectionDialog} />
+					<ConnectionTree onAddConnection={openAddConnectionDialog} onEditConnection={openEditConnectionDialog} />
 				</Sidebar>
 
 				<Show when={!sidebarCollapsed()}>

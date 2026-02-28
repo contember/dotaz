@@ -14,6 +14,7 @@ interface ConnectionTreeItemProps {
 	loading?: boolean;
 	onClick?: () => void;
 	onToggle?: () => void;
+	onContextMenu?: (e: MouseEvent) => void;
 }
 
 export default function ConnectionTreeItem(props: ConnectionTreeItemProps) {
@@ -32,6 +33,7 @@ export default function ConnectionTreeItem(props: ConnectionTreeItemProps) {
 			class="tree-item"
 			style={{ "padding-left": `${props.level * 16 + 4}px` }}
 			onClick={handleClick}
+			onContextMenu={props.onContextMenu}
 		>
 			<Show when={props.hasChildren} fallback={<span class="tree-item__arrow-spacer" />}>
 				<button class="tree-item__arrow" onClick={handleToggle}>

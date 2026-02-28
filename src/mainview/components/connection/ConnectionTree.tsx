@@ -3,11 +3,13 @@ import type { ConnectionInfo, ConnectionState } from "../../../shared/types/conn
 import type { SchemaInfo, TableInfo } from "../../../shared/types/database";
 import { connectionsStore } from "../../stores/connections";
 import { tabsStore } from "../../stores/tabs";
+import ContextMenu, { type ContextMenuEntry } from "../common/ContextMenu";
 import ConnectionTreeItem from "./ConnectionTreeItem";
 import "./ConnectionTree.css";
 
 interface ConnectionTreeProps {
 	onAddConnection: () => void;
+	onEditConnection: (conn: ConnectionInfo) => void;
 }
 
 const STATUS_COLORS: Record<ConnectionState, string | undefined> = {
@@ -21,9 +23,16 @@ function getConnectionIcon(type: string): string {
 	return type === "postgresql" ? "\uD83D\uDC18" : "\uD83D\uDDC4";
 }
 
+interface ContextMenuState {
+	x: number;
+	y: number;
+	items: ContextMenuEntry[];
+}
+
 export default function ConnectionTree(props: ConnectionTreeProps) {
 	const [expandedConnections, setExpandedConnections] = createSignal<Set<string>>(new Set());
 	const [expandedSchemas, setExpandedSchemas] = createSignal<Set<string>>(new Set());
+	const [contextMenu, setContextMenu] = createSignal<ContextMenuState | null>(null);
 
 	function isConnectionExpanded(id: string): boolean {
 		return expandedConnections().has(id);
@@ -87,6 +96,107 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 			(conn.state === "connected" && !connectionsStore.getSchemaTree(conn.id));
 	}
 
+	// ── Context menu builders ────────────────────────────
+
+	function showContextMenu(e: MouseEvent, items: ContextMenuEntry[]) {
+		e.preventDefault();
+		e.stopPropagation();
+		setContextMenu({ x: e.clientX, y: e.clientY, items });
+	}
+
+	function connectionMenuItems(conn: ConnectionInfo): ContextMenuEntry[] {
+		const isConnected = conn.state === "connected";
+		const isDisconnected = conn.state === "disconnected" || conn.state === "error";
+
+		return [
+			{
+				label: "Connect",
+				action: () => connectionsStore.connectTo(conn.id),
+				disabled: !isDisconnected,
+			},
+			{
+				label: "Disconnect",
+				action: () => connectionsStore.disconnectFrom(conn.id),
+				disabled: !isConnected,
+			},
+			"separator",
+			{
+				label: "Edit",
+				action: () => props.onEditConnection(conn),
+			},
+			{
+				label: "Duplicate",
+				action: () => {
+					connectionsStore.createConnection(
+						`${conn.name} (copy)`,
+						conn.config,
+					);
+				},
+			},
+			"separator",
+			{
+				label: "Delete",
+				action: () => {
+					const confirmed = window.confirm(
+						`Delete connection "${conn.name}"? This cannot be undone.`,
+					);
+					if (confirmed) {
+						connectionsStore.deleteConnection(conn.id);
+					}
+				},
+			},
+		];
+	}
+
+	function schemaMenuItems(connectionId: string, schemaName: string): ContextMenuEntry[] {
+		return [
+			{
+				label: "New SQL Console",
+				action: () => {
+					tabsStore.openTab({
+						type: "sql-console",
+						title: `SQL — ${schemaName}`,
+						connectionId,
+						schema: schemaName,
+					});
+				},
+			},
+		];
+	}
+
+	function tableMenuItems(connectionId: string, schemaName: string, tableName: string): ContextMenuEntry[] {
+		return [
+			{
+				label: "Open Data",
+				action: () => handleTableClick(connectionId, schemaName, tableName),
+			},
+			{
+				label: "New SQL Console",
+				action: () => {
+					tabsStore.openTab({
+						type: "sql-console",
+						title: `SQL — ${tableName}`,
+						connectionId,
+						schema: schemaName,
+						table: tableName,
+					});
+				},
+			},
+			{
+				label: "View Schema",
+				action: () => {
+					tabsStore.openTab({
+						type: "schema-viewer",
+						title: `Schema — ${tableName}`,
+						connectionId,
+						schema: schemaName,
+						table: tableName,
+					});
+				},
+			},
+		];
+	}
+
 	return (
 		<div class="connection-tree">
 			<Show
@@ -121,6 +231,7 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 									loading={loading()}
 									onClick={() => toggleConnection(conn)}
 									onToggle={() => toggleConnection(conn)}
+									onContextMenu={(e) => showContextMenu(e, connectionMenuItems(conn))}
 								/>
 
 								<Show when={expanded() && !loading() && hasSchemas()}>
@@ -145,6 +256,7 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 																	type="table"
 																	icon={table.type === "view" ? "\u{1F441}" : "\u{1F4CB}"}
 																	onClick={() => handleTableClick(conn.id, schema.name, table.name)}
+																	onContextMenu={(e) => showContextMenu(e, tableMenuItems(conn.id, schema.name, table.name))}
 																/>
 															)}
 														</For>
@@ -159,6 +271,7 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 														hasChildren={tables().length > 0}
 														onToggle={() => toggleSchema(sKey())}
 														onClick={() => toggleSchema(sKey())}
+														onContextMenu={(e) => showContextMenu(e, schemaMenuItems(conn.id, schema.name))}
 													/>
 
 													<Show when={sExpanded()}>
@@ -170,6 +283,7 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 																	type="table"
 																	icon={table.type === "view" ? "\u{1F441}" : "\u{1F4CB}"}
 																	onClick={() => handleTableClick(conn.id, schema.name, table.name)}
+																	onContextMenu={(e) => showContextMenu(e, tableMenuItems(conn.id, schema.name, table.name))}
 																/>
 															)}
 														</For>
@@ -183,6 +297,17 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 						);
 					}}
 				</For>
+			</Show>
+
+			<Show when={contextMenu()}>
+				{(menu) => (
+					<ContextMenu
+						x={menu().x}
+						y={menu().y}
+						items={menu().items}
+						onClose={() => setContextMenu(null)}
+					/>
+				)}
 			</Show>
 		</div>
 	);
