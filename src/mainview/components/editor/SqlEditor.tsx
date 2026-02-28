@@ -1,10 +1,11 @@
 import { onMount, onCleanup, createSignal, createEffect } from "solid-js";
 import { EditorView, keymap, placeholder } from "@codemirror/view";
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState } from "@codemirror/state";
 import { sql, PostgreSQL, SQLite } from "@codemirror/lang-sql";
 import { basicSetup } from "codemirror";
 import { editorStore } from "../../stores/editor";
 import { connectionsStore } from "../../stores/connections";
+import { rpc } from "../../lib/rpc";
 import "./SqlEditor.css";
 
 interface SqlEditorProps {
@@ -114,9 +115,54 @@ function getDialect(connectionId: string) {
 	return PostgreSQL;
 }
 
+function isSqliteConnection(connectionId: string): boolean {
+	const conn = connectionsStore.connections.find(
+		(c) => c.id === connectionId,
+	);
+	return conn?.config.type === "sqlite";
+}
+
+async function buildSchemaSpec(
+	connectionId: string,
+): Promise<Record<string, readonly string[]>> {
+	const tree = connectionsStore.getSchemaTree(connectionId);
+	if (!tree) return {};
+
+	const sqlite = isSqliteConnection(connectionId);
+	const spec: Record<string, string[]> = {};
+
+	const fetchPromises: Promise<void>[] = [];
+
+	for (const schema of tree.schemas) {
+		const tables = tree.tables[schema.name] || [];
+		for (const table of tables) {
+			fetchPromises.push(
+				rpc.schema
+					.getColumns(connectionId, schema.name, table.name)
+					.then((columns) => {
+						const key = sqlite
+							? table.name
+							: `${schema.name}.${table.name}`;
+						spec[key] = columns.map((c) => c.name);
+					})
+					.catch(() => {
+						const key = sqlite
+							? table.name
+							: `${schema.name}.${table.name}`;
+						spec[key] = [];
+					}),
+			);
+		}
+	}
+
+	await Promise.all(fetchPromises);
+	return spec;
+}
+
 export default function SqlEditor(props: SqlEditorProps) {
 	let containerRef: HTMLDivElement | undefined;
 	let editorView: EditorView | undefined;
+	const sqlCompartment = new Compartment();
 	const [editorHeight, setEditorHeight] = createSignal(DEFAULT_EDITOR_HEIGHT);
 
 	onMount(() => {
@@ -170,7 +216,7 @@ export default function SqlEditor(props: SqlEditorProps) {
 			doc: initialContent,
 			extensions: [
 				basicSetup,
-				sql({ dialect }),
+				sqlCompartment.of(sql({ dialect })),
 				createDarkTheme(),
 				executeKeymap,
 				updateListener,
@@ -200,6 +246,33 @@ export default function SqlEditor(props: SqlEditorProps) {
 				},
 			});
 		}
+	});
+
+	// Reconfigure SQL extension with schema-aware completions
+	let schemaVersion = 0;
+	createEffect(() => {
+		// Access schema tree reactively — triggers when it changes
+		const tree = connectionsStore.getSchemaTree(props.connectionId);
+		if (!tree || !editorView) return;
+
+		const version = ++schemaVersion;
+		const dialect = getDialect(props.connectionId);
+		const sqlite = isSqliteConnection(props.connectionId);
+
+		buildSchemaSpec(props.connectionId).then((schema) => {
+			// Guard against stale results from earlier schema tree versions
+			if (version !== schemaVersion || !editorView) return;
+
+			editorView.dispatch({
+				effects: sqlCompartment.reconfigure(
+					sql({
+						dialect,
+						schema,
+						defaultSchema: sqlite ? undefined : "public",
+					}),
+				),
+			});
+		});
 	});
 
 	onCleanup(() => {

@@ -13,7 +13,7 @@
 | 1     | Foundation            | DOTAZ-004 – 011 | done        |       |
 | 2     | Connection Management | DOTAZ-012 – 016 | done        |       |
 | 3     | Data Grid             | DOTAZ-017 – 024 | done        |       |
-| 4     | SQL Editor            | DOTAZ-025 – 031 | in progress |       |
+| 4     | SQL Editor            | DOTAZ-025 – 031 | done        |       |
 | 5     | Data Editing          | DOTAZ-032 – 035 | not started |       |
 | 6     | Advanced Features     | DOTAZ-036 – 043 | not started |       |
 | 7     | Polish                | DOTAZ-044 – 053 | not started |       |
@@ -73,7 +73,7 @@
 | DOTAZ-028 | SqlEditor with CodeMirror 6 | done | `basicSetup` from codemirror meta-package; dark theme via CSS variables; vertical resize handle between editor and results |
 | DOTAZ-029 | QueryToolbar (run/cancel/tx controls) | done | Run/Cancel toggle; Run Selected; Format; Auto/Manual tx mode with Begin/Commit/Rollback; connection name; duration display |
 | DOTAZ-030 | SqlResultPanel (query results) | done | Reuses GridHeader, VirtualScroller, GridCell for result grid; multi-result tabs; DML/error display; metadata bar; minimize toggle |
-| DOTAZ-031 | SQL autocomplete (schema-aware) | not started | |
+| DOTAZ-031 | SQL autocomplete (schema-aware) | done | `sql()` schema param via Compartment; columns fetched via RPC; defaultSchema for PG |
 
 ### Phase 5 — Data Editing
 | Issue | Title | Status | Notes |
@@ -188,6 +188,9 @@
 | 2026-02-28 | DOTAZ-030 | Reuse GridHeader, VirtualScroller, GridCell for result display | Existing grid components accept simplified props (empty sort, pinStyles, selectedRows); avoids duplicating grid rendering logic |
 | 2026-02-28 | DOTAZ-030 | Column resize via signal-based `columnWidths` in ResultGrid | `createSignal<Record<string, number>>` converted to `ColumnConfig` for GridHeader/VirtualScroller; simpler than store for local component state |
 | 2026-02-28 | DOTAZ-030 | Metadata in header bar (not separate footer) | Rows, columns, duration displayed in header-right alongside minimize toggle; compact layout |
+| 2026-02-28 | DOTAZ-031 | Use `@codemirror/lang-sql` `schema` param for completions | Built-in `sql()` config handles table/column/schema completions context-dependently; no custom completion source needed |
+| 2026-02-28 | DOTAZ-031 | `Compartment` for dynamic SQL language reconfiguration | Allows updating schema completions at runtime when schema tree changes without recreating the editor |
+| 2026-02-28 | DOTAZ-031 | Parallel column fetching with version guard | All table columns fetched via `Promise.all` for speed; version counter prevents stale results from overwriting newer ones |
 
 ---
 
@@ -245,4 +248,4 @@
 
 ---
 
-*Last updated: 2026-02-28 (DOTAZ-030)*
+*Last updated: 2026-02-28 (DOTAZ-031)*
