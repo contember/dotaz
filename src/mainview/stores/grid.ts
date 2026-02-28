@@ -81,6 +81,7 @@ export interface TabGridState {
 	columnConfig: Record<string, ColumnConfig>;
 	columnOrder: string[];
 	loading: boolean;
+	lastLoadedAt: number | null;
 	activeViewId: string | null;
 	activeViewName: string | null;
 	fkNavigationHistory: FkNavigationEntry[];
@@ -117,6 +118,7 @@ function createDefaultTabState(
 		columnConfig: {},
 		columnOrder: [],
 		loading: false,
+		lastLoadedAt: null,
 		activeViewId: null,
 		activeViewName: null,
 		fkNavigationHistory: [],
@@ -166,6 +168,7 @@ async function fetchData(tabId: string) {
 			totalCount: response.totalRows,
 			currentPage: response.page,
 			loading: false,
+			lastLoadedAt: Date.now(),
 		});
 	} catch (err) {
 		setState("tabs", tabId, "loading", false);
@@ -184,6 +187,11 @@ async function loadTableData(
 	if (!getTab(tabId)) {
 		setState("tabs", tabId, createDefaultTabState(connectionId, schema, table));
 	}
+	await fetchData(tabId);
+}
+
+async function refreshData(tabId: string) {
+	ensureTab(tabId);
 	await fetchData(tabId);
 }
 
@@ -933,6 +941,7 @@ export const gridStore = {
 	getTab,
 
 	loadTableData,
+	refreshData,
 	setPage,
 	setPageSize,
 	toggleSort,

@@ -106,7 +106,7 @@
 | DOTAZ-049 | Application menu with all actions | done | ApplicationMenu via Electrobun; Edit items use native roles; custom actions forwarded to frontend via `menu.action` RPC message → commandRegistry.execute; new commands: new-connection, reconnect, zoom-in/out/reset, about, settings |
 | DOTAZ-050 | Reconnect logic + connection resilience | done | Health check (SELECT 1 every 30s); auto-reconnect with exponential backoff (1s–30s, max 5 attempts); "reconnecting" state; graceful disconnect (rollback tx, cancel queries); configurable intervals via ConnectionManagerOptions |
 | DOTAZ-051 | Settings storage + preferences | done | DEFAULT_SETTINGS constants in app-db.ts; getAllSettings merges stored over defaults; settings.get falls back to default then null; frontend rpc.settings.getAll added |
-| DOTAZ-052 | Data refresh (F5) + stale indication | not started | |
+| DOTAZ-052 | Data refresh (F5) + stale indication | done | `lastLoadedAt` timestamp in grid store; stale indicator after 5min; refresh button in toolbar; F5 via KeyboardManager; auto-refresh after apply changes |
 | DOTAZ-053 | Visual polish + responsive layout | not started | |
 
 ---
@@ -261,6 +261,8 @@
 | 2026-02-28 | DOTAZ-051 | `DEFAULT_SETTINGS` constant in `app-db.ts`, not in handler layer | Keeps defaults close to the storage layer; exported for handlers to merge with stored values |
 | 2026-02-28 | DOTAZ-051 | `settings.get` falls back to default, then null | Three-tier lookup: stored value → default → null; consistent with issue requirement for default values |
 | 2026-02-28 | DOTAZ-051 | `settings.getAll` merges stored over defaults via spread | `{ ...DEFAULT_SETTINGS, ...stored }` — stored values override defaults; custom keys preserved |
+| 2026-02-28 | DOTAZ-052 | `lastLoadedAt` timestamp in `TabGridState`, 30s interval to update stale label | Set on each successful `fetchData`; stale indicator shows after 5 min; `createMemo` computes "Xm ago" / "Xh ago" |
+| 2026-02-28 | DOTAZ-052 | `refreshData` as separate action from `loadTableData` | `refreshData` requires existing tab (uses `ensureTab`); `loadTableData` initialises tab if missing |
 
 ---
 
@@ -318,4 +320,4 @@
 
 ---
 
-*Last updated: 2026-02-28 (DOTAZ-051)*
+*Last updated: 2026-02-28 (DOTAZ-052)*

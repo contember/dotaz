@@ -325,8 +325,8 @@ export default function AppShell() {
 			category: "Grid",
 			handler: () => {
 				const tab = tabsStore.activeTab;
-				if (tab?.type === "data-grid" && tab.schema && tab.table) {
-					gridStore.loadTableData(tab.id, tab.connectionId, tab.schema, tab.table);
+				if (tab?.type === "data-grid") {
+					gridStore.refreshData(tab.id);
 				}
 			},
 		});

@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, onMount, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onMount, onCleanup, Show } from "solid-js";
 import type { ColumnFilter } from "../../../shared/types/grid";
 import type { ForeignKeyInfo } from "../../../shared/types/database";
 import type { FkTarget } from "../../stores/grid";
@@ -65,15 +65,39 @@ export default function DataGrid(props: DataGridProps) {
 		y: number;
 		column: string;
 	} | null>(null);
+	const [now, setNow] = createSignal(Date.now());
 	let scrollRef: HTMLDivElement | undefined;
 	let gridRef: HTMLDivElement | undefined;
 	let anchorRow = -1;
+	let staleTimer: ReturnType<typeof setInterval> | undefined;
 
 	const tab = () => gridStore.getTab(props.tabId);
 
 	// Current schema/table from tab state (changes on FK navigation)
 	const currentSchema = () => tab()?.schema ?? props.schema;
 	const currentTable = () => tab()?.table ?? props.table;
+
+	const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+
+	/** Returns a human-readable "ago" string if data is stale (>5 min), otherwise null. */
+	const staleLabel = createMemo(() => {
+		const t = tab();
+		if (!t?.lastLoadedAt) return null;
+		const elapsed = now() - t.lastLoadedAt;
+		if (elapsed < STALE_THRESHOLD_MS) return null;
+		const minutes = Math.floor(elapsed / 60_000);
+		if (minutes < 60) return `Data loaded ${minutes}m ago`;
+		const hours = Math.floor(minutes / 60);
+		return `Data loaded ${hours}h ago`;
+	});
+
+	// Tick `now` every 30s so stale label updates
+	onMount(() => {
+		staleTimer = setInterval(() => setNow(Date.now()), 30_000);
+	});
+	onCleanup(() => {
+		if (staleTimer) clearInterval(staleTimer);
+	});
 
 	// Sync tab dirty flag with pending changes state
 	createEffect(() => {
@@ -133,6 +157,10 @@ export default function DataGrid(props: DataGridProps) {
 			setFkColumns(new Set<string>());
 			setFkMap(new Map<string, FkTarget>());
 		}
+	}
+
+	function handleRefresh() {
+		gridStore.refreshData(props.tabId);
 	}
 
 	function handleToggleSort(column: string, multi: boolean) {
@@ -284,7 +312,7 @@ export default function DataGrid(props: DataGridProps) {
 
 	function handleChangesApplied() {
 		// Reload data from server after successful apply
-		gridStore.loadTableData(props.tabId, props.connectionId, currentSchema(), currentTable());
+		gridStore.refreshData(props.tabId);
 	}
 
 	// ── Saved views ────────────────────────────────────────
@@ -762,6 +790,14 @@ export default function DataGrid(props: DataGridProps) {
 							>
 								Schema
 							</button>
+							<button
+								class="data-grid__toolbar-btn"
+								onClick={handleRefresh}
+								disabled={tabState().loading}
+								title="Refresh data (F5)"
+							>
+								&#8635; Refresh
+							</button>
 						</>
 					)}
 				</Show>
@@ -833,6 +869,11 @@ export default function DataGrid(props: DataGridProps) {
 								onPageChange={(page) => gridStore.setPage(props.tabId, page)}
 								onPageSizeChange={(size) => gridStore.setPageSize(props.tabId, size)}
 							/>
+							<Show when={staleLabel()}>
+								{(label) => (
+									<span class="data-grid__stale-indicator" title="Press F5 to refresh">{label()}</span>
+								)}
+							</Show>
 							<Show when={gridStore.hasPendingChanges(props.tabId)}>
 								<button
 									class="data-grid__pending-badge"
