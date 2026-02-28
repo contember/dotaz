@@ -10,7 +10,7 @@
 | Phase | Name                  | Issues          | Status      | Notes |
 |-------|-----------------------|-----------------|-------------|-------|
 | 0     | Project Setup         | DOTAZ-001 – 003 | done        |       |
-| 1     | Foundation            | DOTAZ-004 – 011 | not started |       |
+| 1     | Foundation            | DOTAZ-004 – 011 | in progress |       |
 | 2     | Connection Management | DOTAZ-012 – 016 | not started |       |
 | 3     | Data Grid             | DOTAZ-017 – 024 | not started |       |
 | 4     | SQL Editor            | DOTAZ-025 – 031 | not started |       |
@@ -34,7 +34,7 @@
 ### Phase 1 — Foundation
 | Issue | Title | Status | Notes |
 |-------|-------|--------|-------|
-| DOTAZ-004 | Local app SQLite database with migrations | not started | |
+| DOTAZ-004 | Local app SQLite database with migrations | done | |
 | DOTAZ-005 | DatabaseDriver interface + SQLite driver | not started | |
 | DOTAZ-006 | PostgreSQL driver | not started | |
 | DOTAZ-007 | ConnectionManager service | not started | |
@@ -130,6 +130,8 @@
 |------|-------|----------|-----------|
 | 2026-02-28 | DOTAZ-002 | Use dot-notation method names in RPC schema (e.g. `connections.list`) | Matches ARCHITECTURE.md naming, keeps schema organized by domain |
 | 2026-02-28 | DOTAZ-002 | Import `RPCSchema` from `electrobun/bun` in shared types | Consistent with Electrobun template patterns; type is available from both `electrobun/bun` and `electrobun/browser` |
+| 2026-02-28 | DOTAZ-004 | Use `bun:sqlite` Database directly for app storage (not `Bun.SQL`) | App storage uses synchronous `bun:sqlite` API for simplicity; `Bun.SQL` reserved for user database drivers |
+| 2026-02-28 | DOTAZ-004 | Lazy import of `electrobun/bun` Utils in `getDefaultDbPath()` | Avoids Electrobun dependency in tests; tests pass custom `:memory:` path |
 
 ---
 
