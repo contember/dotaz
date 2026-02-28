@@ -18,6 +18,7 @@ import SaveViewDialog from "../views/SaveViewDialog";
 import ExportDialog from "../export/ExportDialog";
 import ContextMenu from "../common/ContextMenu";
 import type { ContextMenuEntry } from "../common/ContextMenu";
+import Icon from "../common/Icon";
 import "./DataGrid.css";
 
 interface DataGridProps {
@@ -719,7 +720,7 @@ export default function DataGrid(props: DataGridProps) {
 								onClick={handleFkBack}
 								title="Go back"
 							>
-								&#8592;
+								<Icon name="arrow-left" size={12} />
 							</button>
 							<For each={tabState().fkNavigationHistory}>
 								{(entry) => (
@@ -773,7 +774,7 @@ export default function DataGrid(props: DataGridProps) {
 								onClick={() => setExportOpen(true)}
 								title="Export data"
 							>
-								Export
+								<Icon name="export" size={12} /> Export
 							</button>
 							<button
 								class="data-grid__toolbar-btn"
@@ -788,7 +789,7 @@ export default function DataGrid(props: DataGridProps) {
 								}}
 								title="View table schema"
 							>
-								Schema
+								<Icon name="schema" size={12} /> Schema
 							</button>
 							<button
 								class="data-grid__toolbar-btn"
@@ -796,7 +797,7 @@ export default function DataGrid(props: DataGridProps) {
 								disabled={tabState().loading}
 								title="Refresh data (F5)"
 							>
-								&#8635; Refresh
+								<Icon name={tabState().loading ? "spinner" : "refresh"} size={12} /> Refresh
 							</button>
 						</>
 					)}
@@ -806,10 +807,24 @@ export default function DataGrid(props: DataGridProps) {
 			<Show when={tab()}>
 				{(tabState) => (
 					<>
-						<Show when={tabState().loading}>
-							<div class="data-grid__loading">
-								<div class="data-grid__spinner" />
-								Loading...
+						<Show when={tabState().loading && tabState().rows.length === 0}>
+							<div class="data-grid__skeleton">
+								<div class="data-grid__skeleton-header">
+									<div class="skeleton" style={{ width: "80px", height: "14px" }} />
+									<div class="skeleton" style={{ width: "120px", height: "14px" }} />
+									<div class="skeleton" style={{ width: "100px", height: "14px" }} />
+									<div class="skeleton" style={{ width: "90px", height: "14px" }} />
+									<div class="skeleton" style={{ width: "110px", height: "14px" }} />
+								</div>
+								{Array.from({ length: 8 }).map(() => (
+									<div class="data-grid__skeleton-row">
+										<div class="skeleton" style={{ width: "70px", height: "12px" }} />
+										<div class="skeleton" style={{ width: "110px", height: "12px" }} />
+										<div class="skeleton" style={{ width: "90px", height: "12px" }} />
+										<div class="skeleton" style={{ width: "80px", height: "12px" }} />
+										<div class="skeleton" style={{ width: "100px", height: "12px" }} />
+									</div>
+								))}
 							</div>
 						</Show>
 
@@ -850,6 +865,18 @@ export default function DataGrid(props: DataGridProps) {
 								onCellMoveDown={handleCellMoveDown}
 								onFkClick={handleFkClick}
 							/>
+
+							<Show when={!tabState().loading && tabState().rows.length === 0}>
+								<div class="empty-state" style={{ "padding-top": "48px" }}>
+									<Icon name="table" size={32} class="empty-state__icon" />
+									<div class="empty-state__title">No data</div>
+									<div class="empty-state__subtitle">
+										{tabState().filters.length > 0
+											? "No rows match the current filters."
+											: "This table is empty."}
+									</div>
+								</div>
+							</Show>
 						</div>
 
 						<Show when={showPendingPanel() && gridStore.hasPendingChanges(props.tabId)}>

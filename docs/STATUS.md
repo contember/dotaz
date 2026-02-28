@@ -16,7 +16,7 @@
 | 4     | SQL Editor            | DOTAZ-025 – 031 | done        |       |
 | 5     | Data Editing          | DOTAZ-032 – 035 | done        |       |
 | 6     | Advanced Features     | DOTAZ-036 – 043 | done        |       |
-| 7     | Polish                | DOTAZ-044 – 053 | not started |       |
+| 7     | Polish                | DOTAZ-044 – 053 | done        |       |
 
 **Legend**: `not started` · `in progress` · `done` · `blocked`
 
@@ -107,7 +107,7 @@
 | DOTAZ-050 | Reconnect logic + connection resilience | done | Health check (SELECT 1 every 30s); auto-reconnect with exponential backoff (1s–30s, max 5 attempts); "reconnecting" state; graceful disconnect (rollback tx, cancel queries); configurable intervals via ConnectionManagerOptions |
 | DOTAZ-051 | Settings storage + preferences | done | DEFAULT_SETTINGS constants in app-db.ts; getAllSettings merges stored over defaults; settings.get falls back to default then null; frontend rpc.settings.getAll added |
 | DOTAZ-052 | Data refresh (F5) + stale indication | done | `lastLoadedAt` timestamp in grid store; stale indicator after 5min; refresh button in toolbar; F5 via KeyboardManager; auto-refresh after apply changes |
-| DOTAZ-053 | Visual polish + responsive layout | not started | |
+| DOTAZ-053 | Visual polish + responsive layout | done | Icon.tsx SVG icon system; skeleton loaders; dialog focus trap + animation; sidebar transition + responsive auto-collapse; empty states for grid/editor/history |
 
 ---
 
@@ -263,6 +263,12 @@
 | 2026-02-28 | DOTAZ-051 | `settings.getAll` merges stored over defaults via spread | `{ ...DEFAULT_SETTINGS, ...stored }` — stored values override defaults; custom keys preserved |
 | 2026-02-28 | DOTAZ-052 | `lastLoadedAt` timestamp in `TabGridState`, 30s interval to update stale label | Set on each successful `fetchData`; stale indicator shows after 5 min; `createMemo` computes "Xm ago" / "Xh ago" |
 | 2026-02-28 | DOTAZ-052 | `refreshData` as separate action from `loadTableData` | `refreshData` requires existing tab (uses `ensureTab`); `loadTableData` initialises tab if missing |
+| 2026-02-28 | DOTAZ-053 | SVG icon system via `Icon.tsx` with 16x16 viewBox paths | Single component renders all icons consistently; stroke-based rendering for line icons (plus, close, arrows), fill-based for others |
+| 2026-02-28 | DOTAZ-053 | Skeleton loader via CSS `@keyframes` shimmer animation | No JS needed; `.skeleton` class in global.css with linear-gradient animation; used in DataGrid initial load |
+| 2026-02-28 | DOTAZ-053 | Dialog focus trap with Tab/Shift+Tab cycling | Queries all focusable elements on each Tab press; wraps focus from last→first and first→last |
+| 2026-02-28 | DOTAZ-053 | Focus return to `previouslyFocused` element on dialog close | Stored in `onMount`, restored in `onCleanup`; ensures keyboard focus returns to trigger element |
+| 2026-02-28 | DOTAZ-053 | Responsive sidebar via `matchMedia("(max-width: 600px)")` | Listener in AppShell auto-collapses sidebar; CSS makes collapsed sidebar overlay on small screens |
+| 2026-02-28 | DOTAZ-053 | Font size base changed from 13px to 14px, lg to 16px | Issue requires 14px base, 12px small/meta, 16px headings; adjusted `--font-size-base` and `--font-size-lg` |
 
 ---
 
@@ -320,4 +326,4 @@
 
 ---
 
-*Last updated: 2026-02-28 (DOTAZ-052)*
+*Last updated: 2026-02-28 (DOTAZ-053)*

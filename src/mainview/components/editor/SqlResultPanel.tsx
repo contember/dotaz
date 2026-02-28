@@ -5,6 +5,7 @@ import type { ColumnConfig } from "../../stores/grid";
 import { editorStore } from "../../stores/editor";
 import GridHeader from "../grid/GridHeader";
 import VirtualScroller from "../grid/VirtualScroller";
+import Icon from "../common/Icon";
 import "./SqlResultPanel.css";
 
 interface SqlResultPanelProps {
@@ -125,20 +126,25 @@ export default function SqlResultPanel(props: SqlResultPanelProps) {
 				<div class="sql-result-panel__content">
 					<Switch>
 						<Match when={!hasContent() && !isRunning()}>
-							<div class="sql-result-panel__empty">
-								Run a query to see results
+							<div class="empty-state">
+								<Icon name="sql-console" size={28} class="empty-state__icon" />
+								<div class="empty-state__title">No results yet</div>
+								<div class="empty-state__subtitle">Run a query to see results</div>
 							</div>
 						</Match>
 
 						<Match when={isRunning()}>
 							<div class="sql-result-panel__loading">
-								Running query\u2026
+								<Icon name="spinner" size={14} />
+								Running query...
 							</div>
 						</Match>
 
 						<Match when={error()}>
 							<div class="sql-result-panel__error">
-								<div class="sql-result-panel__error-title">Error</div>
+								<div class="sql-result-panel__error-title">
+									<Icon name="error" size={14} /> Error
+								</div>
 								<div class="sql-result-panel__error-message">{error()}</div>
 							</div>
 						</Match>

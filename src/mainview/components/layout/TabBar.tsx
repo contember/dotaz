@@ -2,6 +2,7 @@ import { createSignal, For, Show } from "solid-js";
 import type { TabInfo, TabType } from "../../../shared/types/tab";
 import ContextMenu from "../common/ContextMenu";
 import type { ContextMenuEntry } from "../common/ContextMenu";
+import Icon, { type IconName } from "../common/Icon";
 import "./TabBar.css";
 
 interface TabBarProps {
@@ -15,16 +16,11 @@ interface TabBarProps {
 	onRenameTab?: (id: string, title: string) => void;
 }
 
-function tabIcon(type: TabType): string {
-	switch (type) {
-		case "data-grid":
-			return "\u229E"; // ⊞ grid icon
-		case "sql-console":
-			return "\u276F"; // ❯ terminal-like
-		case "schema-viewer":
-			return "\u2630"; // ☰ list icon
-	}
-}
+const TAB_ICONS: Record<TabType, IconName> = {
+	"data-grid": "grid",
+	"sql-console": "sql-console",
+	"schema-viewer": "schema",
+};
 
 export default function TabBar(props: TabBarProps) {
 	const [contextMenu, setContextMenu] = createSignal<{
@@ -128,7 +124,7 @@ export default function TabBar(props: TabBarProps) {
 							onContextMenu={(e) => handleContextMenu(e, tab.id)}
 							onDblClick={() => handleDoubleClick(tab)}
 						>
-							<span class="tab-bar__tab-icon">{tabIcon(tab.type)}</span>
+							<Icon name={TAB_ICONS[tab.type]} size={14} class="tab-bar__tab-icon" />
 							<Show
 								when={editingTabId() === tab.id}
 								fallback={
@@ -156,7 +152,7 @@ export default function TabBar(props: TabBarProps) {
 								}}
 								title="Close tab"
 							>
-								&times;
+								<Icon name="close" size={10} />
 							</button>
 						</div>
 					)}

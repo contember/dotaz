@@ -33,12 +33,18 @@
 	height: 100%;
 	color: var(--text-muted);
 	user-select: none;
+	gap: var(--spacing-sm);
+}
+
+.welcome-screen__icon {
+	opacity: 0.3;
+	margin-bottom: var(--spacing-sm);
 }
 
 .welcome-screen__title {
 	font-size: 24px;
 	font-weight: 300;
-	margin: 0 0 var(--spacing-sm);
+	margin: 0;
 	color: var(--text-secondary);
 }
 

@@ -1,6 +1,7 @@
 import { Show } from "solid-js";
 import { editorStore, type TxMode } from "../../stores/editor";
 import { connectionsStore } from "../../stores/connections";
+import Icon from "../common/Icon";
 import "./QueryToolbar.css";
 
 interface QueryToolbarProps {
@@ -72,7 +73,7 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 						onClick={handleCancel}
 						title="Cancel query (Esc)"
 					>
-						Cancel
+						<Icon name="stop" size={12} /> Cancel
 					</button>
 				}
 			>
@@ -82,7 +83,7 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 					disabled={!hasContent()}
 					title="Run All (Ctrl+Enter)"
 				>
-					Run
+					<Icon name="play" size={12} /> Run
 				</button>
 			</Show>
 
@@ -113,7 +114,7 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 					onClick={props.onOpenHistory}
 					title="Query History"
 				>
-					History
+					<Icon name="history" size={12} /> History
 				</button>
 			</Show>
 

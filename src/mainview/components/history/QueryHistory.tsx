@@ -5,6 +5,7 @@ import { connectionsStore } from "../../stores/connections";
 import { tabsStore } from "../../stores/tabs";
 import { editorStore } from "../../stores/editor";
 import Dialog from "../common/Dialog";
+import Icon from "../common/Icon";
 import "./QueryHistory.css";
 
 interface QueryHistoryProps {
@@ -238,10 +239,18 @@ export default function QueryHistory(props: QueryHistoryProps) {
 					onScroll={handleScroll}
 				>
 					<Show when={entries().length === 0 && !loading()}>
-						<div class="query-history__empty">
-							{search() || connectionFilter()
-								? "No matching queries found."
-								: "No query history yet."}
+						<div class="empty-state">
+							<Icon name="history" size={28} class="empty-state__icon" />
+							<div class="empty-state__title">
+								{search() || connectionFilter()
+									? "No matching queries"
+									: "No history yet"}
+							</div>
+							<div class="empty-state__subtitle">
+								{search() || connectionFilter()
+									? "Try different search terms or filters."
+									: "Queries you run will appear here."}
+							</div>
 						</div>
 					</Show>
 
@@ -266,7 +275,7 @@ export default function QueryHistory(props: QueryHistoryProps) {
 											}}
 											title={entry.status === "error" ? entry.errorMessage : "Success"}
 										>
-											{entry.status === "success" ? "\u2713" : "\u2717"}
+											<Icon name={entry.status === "success" ? "check" : "error"} size={12} />
 										</span>
 										<span class="query-history__sql-preview">
 											{truncateSql(entry.sql)}
@@ -334,7 +343,7 @@ export default function QueryHistory(props: QueryHistoryProps) {
 
 					<Show when={loading()}>
 						<div class="query-history__loading">
-							<div class="query-history__spinner" />
+							<Icon name="spinner" size={14} />
 							Loading...
 						</div>
 					</Show>

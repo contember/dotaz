@@ -2,6 +2,7 @@ import { createSignal, onMount, Show } from "solid-js";
 import type { ColumnInfo, IndexInfo, ForeignKeyInfo } from "../../../shared/types/database";
 import { rpc } from "../../lib/rpc";
 import { tabsStore } from "../../stores/tabs";
+import Icon from "../common/Icon";
 import ColumnList from "./ColumnList";
 import IndexList from "./IndexList";
 import "./SchemaViewer.css";
@@ -71,16 +72,21 @@ export default function SchemaViewer(props: SchemaViewerProps) {
 					onClick={handleOpenData}
 					title="Open data grid for this table"
 				>
-					Open Data
+					<Icon name="grid" size={12} /> Open Data
 				</button>
 			</div>
 
 			<Show when={loading()}>
-				<div class="schema-viewer__loading">Loading schema...</div>
+				<div class="schema-viewer__loading">
+					<Icon name="spinner" size={14} />
+					Loading schema...
+				</div>
 			</Show>
 
 			<Show when={error()}>
-				<div class="schema-viewer__error">{error()}</div>
+				<div class="schema-viewer__error">
+					<Icon name="error" size={14} /> {error()}
+				</div>
 			</Show>
 
 			<Show when={!loading() && !error()}>

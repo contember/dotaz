@@ -1,4 +1,5 @@
 import { type JSX, Show } from "solid-js";
+import Icon from "../common/Icon";
 import "./Sidebar.css";
 
 interface SidebarProps {
@@ -26,7 +27,7 @@ export default function Sidebar(props: SidebarProps) {
 								onClick={props.onAdd}
 								title="Add connection"
 							>
-								&#x2B;
+								<Icon name="plus" size={14} />
 							</button>
 						</Show>
 						<button
@@ -34,7 +35,7 @@ export default function Sidebar(props: SidebarProps) {
 							onClick={props.onToggleCollapse}
 							title="Collapse sidebar"
 						>
-							&#x276E;
+							<Icon name="chevron-left" size={14} />
 						</button>
 					</div>
 				</div>
@@ -53,7 +54,7 @@ export function SidebarExpandButton(props: { onClick: () => void }) {
 			onClick={props.onClick}
 			title="Expand sidebar"
 		>
-			&#x276F;
+			<Icon name="chevron-right" size={14} />
 		</button>
 	);
 }

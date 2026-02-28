@@ -3,6 +3,7 @@ import Sidebar, { SidebarExpandButton } from "./Sidebar";
 import Resizer from "./Resizer";
 import TabBar from "./TabBar";
 import StatusBar from "./StatusBar";
+import Icon from "../common/Icon";
 import ConnectionTree from "../connection/ConnectionTree";
 import ConnectionDialog from "../connection/ConnectionDialog";
 import QueryHistory from "../history/QueryHistory";
@@ -56,6 +57,7 @@ export default function AppShell() {
 	}
 
 	let removeMenuListener: (() => void) | undefined;
+	let removeResizeListener: (() => void) | undefined;
 
 	function handleDuplicateTab(tabId: string) {
 		const sourceTab = tabsStore.openTabs.find((t) => t.id === tabId);
@@ -122,6 +124,17 @@ export default function AppShell() {
 		window.addEventListener("error", handleUnhandledError);
 		window.addEventListener("unhandledrejection", handleUnhandledRejection);
 
+		// Responsive: auto-collapse sidebar under 600px
+		const mediaQuery = window.matchMedia("(max-width: 600px)");
+		function handleMediaChange(e: MediaQueryListEvent | MediaQueryList) {
+			if (e.matches && !sidebarCollapsed()) {
+				setSidebarCollapsed(true);
+			}
+		}
+		handleMediaChange(mediaQuery);
+		mediaQuery.addEventListener("change", handleMediaChange);
+		removeResizeListener = () => mediaQuery.removeEventListener("change", handleMediaChange);
+
 		// Transaction warning on tab close
 		tabsStore.setBeforeCloseHook((tab) => {
 			if (tab.type === "sql-console") {
@@ -162,6 +175,7 @@ export default function AppShell() {
 	onCleanup(() => {
 		keyboardManager.destroy();
 		removeMenuListener?.();
+		removeResizeListener?.();
 		tabsStore.setBeforeCloseHook(null);
 		connectionsStore.setBeforeDisconnectHook(null);
 		window.removeEventListener("error", handleUnhandledError);
@@ -519,6 +533,7 @@ export default function AppShell() {
 					<main class="main-content">
 						<Show when={tabsStore.openTabs.length === 0}>
 							<div class="welcome-screen">
+								<Icon name="database" size={40} class="welcome-screen__icon" />
 								<h2 class="welcome-screen__title">Dotaz</h2>
 								<p class="welcome-screen__subtitle">
 									Open a connection and select a table to get started.

@@ -89,11 +89,11 @@
 }
 
 /* States */
-.sql-result-panel__empty,
 .sql-result-panel__loading {
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	gap: var(--spacing-sm);
 	height: 100%;
 	color: var(--text-muted);
 	font-size: var(--font-size-sm);
@@ -109,6 +109,9 @@
 }
 
 .sql-result-panel__error-title {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-xs);
 	font-weight: 600;
 	color: var(--color-error);
 	margin-bottom: var(--spacing-xs);

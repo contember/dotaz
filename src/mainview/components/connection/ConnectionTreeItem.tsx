@@ -1,4 +1,5 @@
 import { Show } from "solid-js";
+import Icon from "../common/Icon";
 import "./ConnectionTree.css";
 
 export type TreeItemType = "connection" | "schema" | "table";
@@ -41,13 +42,13 @@ export default function ConnectionTreeItem(props: ConnectionTreeItemProps) {
 						class="tree-item__arrow-icon"
 						classList={{ "tree-item__arrow-icon--expanded": props.expanded }}
 					>
-						&#x25B6;
+						<Icon name="chevron-right" size={10} />
 					</span>
 				</button>
 			</Show>
 
 			<Show when={props.loading}>
-				<span class="tree-item__spinner" />
+				<Icon name="spinner" size={12} />
 			</Show>
 
 			<Show when={!props.loading && props.icon}>

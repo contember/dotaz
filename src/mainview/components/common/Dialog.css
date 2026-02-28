@@ -6,12 +6,13 @@
 	align-items: center;
 	justify-content: center;
 	z-index: 1000;
+	animation: dialog-fade-in 0.15s ease-out;
 }
 
 .dialog {
 	background: var(--bg-panel);
 	border: 1px solid var(--border-color);
-	border-radius: 6px;
+	border-radius: var(--radius-lg);
 	box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
 	min-width: 420px;
 	max-width: 560px;
@@ -19,6 +20,7 @@
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
+	animation: dialog-scale-in 0.2s ease-out;
 }
 
 .dialog__header {
@@ -36,14 +38,16 @@
 }
 
 .dialog__close {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
 	background: none;
 	border: none;
 	color: var(--text-muted);
 	cursor: pointer;
-	font-size: 18px;
-	padding: 0 var(--spacing-xs);
-	border-radius: 3px;
-	line-height: 1;
+	border-radius: var(--radius-sm);
 }
 
 .dialog__close:hover {
