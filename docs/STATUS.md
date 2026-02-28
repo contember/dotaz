@@ -15,7 +15,7 @@
 | 3     | Data Grid             | DOTAZ-017 – 024 | done        |       |
 | 4     | SQL Editor            | DOTAZ-025 – 031 | done        |       |
 | 5     | Data Editing          | DOTAZ-032 – 035 | done        |       |
-| 6     | Advanced Features     | DOTAZ-036 – 043 | in progress |       |
+| 6     | Advanced Features     | DOTAZ-036 – 043 | done        |       |
 | 7     | Polish                | DOTAZ-044 – 053 | not started |       |
 
 **Legend**: `not started` · `in progress` · `done` · `blocked`
@@ -93,7 +93,7 @@
 | DOTAZ-040 | ExportDialog | done | Format selection (CSV/JSON/SQL); scope (all/view/selected); format-specific options; preview; progress bar; native save dialog |
 | DOTAZ-041 | Query history backend + RPC | done | Auto-logging in QueryExecutor; search via LIKE; RPC handlers delegate to AppDatabase |
 | DOTAZ-042 | QueryHistory component | done | Dialog with search, connection filter, expand/collapse entries, Run Again/Copy to Clipboard/Copy to Console actions, infinite scroll, Clear History |
-| DOTAZ-043 | SchemaViewer | not started | |
+| DOTAZ-043 | SchemaViewer | done | FK links open target table schema in new tab; "Open Data" button opens data grid; Schema button in DataGrid toolbar |
 
 ### Phase 7 — Polish
 | Issue | Title | Status | Notes |
@@ -228,6 +228,9 @@
 | 2026-02-28 | DOTAZ-042 | Run Again opens new SQL console tab via tabsStore + editorStore | Creates tab, inits editor state, sets content; closes dialog for clean UX |
 | 2026-02-28 | DOTAZ-042 | Copy to Console targets active SQL console tab, falls back to Run Again | If active tab is SQL console, inserts SQL via `editorStore.setContent`; otherwise opens new tab |
 | 2026-02-28 | DOTAZ-042 | Infinite scroll via scroll position detection (not virtual scroll) | Detects near-bottom scroll position, loads next PAGE_SIZE entries; simpler than virtualization for a dialog list |
+| 2026-02-28 | DOTAZ-043 | FK links open target table schema in new tab (not same tab navigation) | Schema viewing is read-only; opening new tabs preserves browsing history and allows comparing schemas side by side |
+| 2026-02-28 | DOTAZ-043 | Schema button in DataGrid toolbar alongside Export | Consistent with existing toolbar pattern; quick access from data view to schema view |
+| 2026-02-28 | DOTAZ-043 | Parallel fetch of columns, indexes, and FKs via Promise.all | Independent RPC calls; faster than sequential; single loading state |
 
 ---
 
@@ -285,4 +288,4 @@
 
 ---
 
-*Last updated: 2026-02-28 (DOTAZ-042)*
+*Last updated: 2026-02-28 (DOTAZ-043)*

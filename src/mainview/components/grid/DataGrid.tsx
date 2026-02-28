@@ -569,6 +569,21 @@ export default function DataGrid(props: DataGridProps) {
 							>
 								Export
 							</button>
+							<button
+								class="data-grid__toolbar-btn"
+								onClick={() => {
+									tabsStore.openTab({
+										type: "schema-viewer",
+										title: `Schema — ${currentTable()}`,
+										connectionId: props.connectionId,
+										schema: currentSchema(),
+										table: currentTable(),
+									});
+								}}
+								title="View table schema"
+							>
+								Schema
+							</button>
 						</>
 					)}
 				</Show>

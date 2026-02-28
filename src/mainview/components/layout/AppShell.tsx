@@ -10,6 +10,7 @@ import DataGrid from "../grid/DataGrid";
 import SqlEditor from "../editor/SqlEditor";
 import QueryToolbar from "../editor/QueryToolbar";
 import SqlResultPanel from "../editor/SqlResultPanel";
+import SchemaViewer from "../schema/SchemaViewer";
 import type { ConnectionInfo } from "../../../shared/types/connection";
 import { tabsStore } from "../../stores/tabs";
 import "./AppShell.css";
@@ -109,6 +110,14 @@ export default function AppShell() {
 												connectionId={tab().connectionId}
 											/>
 										</div>
+									</Match>
+									<Match when={tab().type === "schema-viewer"}>
+										<SchemaViewer
+											tabId={tab().id}
+											connectionId={tab().connectionId}
+											schema={tab().schema!}
+											table={tab().table!}
+										/>
 									</Match>
 								</Switch>
 							)}
