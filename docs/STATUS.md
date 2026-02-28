@@ -39,7 +39,7 @@
 | DOTAZ-006 | PostgreSQL driver | done | |
 | DOTAZ-007 | ConnectionManager service | done | |
 | DOTAZ-008 | Complete RPC schema + wiring | done | |
-| DOTAZ-009 | Frontend RPC client (Electroview) | not started | |
+| DOTAZ-009 | Frontend RPC client (Electroview) | done | |
 | DOTAZ-010 | AppShell layout components (sidebar, tabs, status bar) | not started | |
 | DOTAZ-011 | Tab management store + TabBar | not started | |
 
@@ -141,6 +141,8 @@
 | 2026-02-28 | DOTAZ-007 | ConnectionManager takes AppDatabase via constructor injection | Enables testing with in-memory AppDatabase without singletons |
 | 2026-02-28 | DOTAZ-008 | Lazy import of `electrobun/bun` in `createRPC()` | Avoids Electrobun dependency in tests; `createHandlers()` is exported separately for direct testing |
 | 2026-02-28 | DOTAZ-008 | Extracted `createHandlers()` from `createRPC()` | Allows testing handler logic directly without Electrobun runtime; handlers are thin delegation wrappers |
+| 2026-02-28 | DOTAZ-009 | Namespace wrapper over flat RPC methods | `rpc.connections.list()` instead of `rpc.request["connections.list"]({})` — ergonomic API for stores/components |
+| 2026-02-28 | DOTAZ-009 | Use `as any` for message listener registration | Electrobun's `addMessageListener` typing uses `RemoteSchema["messages"]` which maps to the webview side's messages (empty); bun-sent messages require cast |
 
 ---
 
@@ -151,6 +153,9 @@
 
 ### Electrobun / Bun
 <!-- Runtime quirks, RPC patterns, build issues, etc. -->
+- Webview RPC: `Electroview.defineRPC<Schema>()` returns an rpc object; must call `new Electroview({ rpc })` to set up the transport
+- `rpc.request["method.name"](params)` is properly typed for bun-side requests from the webview
+- `rpc.addMessageListener` on webview side types against `Schema["webview"]["messages"]` (not bun messages) — use `as any` for bun-sent messages like `connections.statusChanged`
 
 ### Solid.js / Frontend
 <!-- Reactivity pitfalls, store patterns, component patterns, etc. -->
@@ -195,4 +200,4 @@
 
 ---
 
-*Last updated: 2026-02-28 (DOTAZ-008)*
+*Last updated: 2026-02-28 (DOTAZ-009)*
