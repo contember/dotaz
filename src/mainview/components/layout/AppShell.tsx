@@ -7,6 +7,7 @@ import ConnectionTree from "../connection/ConnectionTree";
 import ConnectionDialog from "../connection/ConnectionDialog";
 import QueryHistory from "../history/QueryHistory";
 import CommandPalette from "../common/CommandPalette";
+import ToastContainer from "../common/Toast";
 import DataGrid from "../grid/DataGrid";
 import SqlEditor from "../editor/SqlEditor";
 import QueryToolbar from "../editor/QueryToolbar";
@@ -17,6 +18,8 @@ import { tabsStore } from "../../stores/tabs";
 import { connectionsStore } from "../../stores/connections";
 import { editorStore } from "../../stores/editor";
 import { gridStore } from "../../stores/grid";
+import { uiStore } from "../../stores/ui";
+import { friendlyErrorMessage } from "../../lib/rpc";
 import { commandRegistry } from "../../lib/commands";
 import { keyboardManager } from "../../lib/keyboard";
 import type { ShortcutContext } from "../../lib/keyboard";
@@ -86,6 +89,17 @@ export default function AppShell() {
 		}
 	}
 
+	// ── Global error handlers ─────────────────────────────
+	function handleUnhandledError(event: ErrorEvent) {
+		event.preventDefault();
+		uiStore.addToast("error", friendlyErrorMessage(event.error ?? event.message));
+	}
+
+	function handleUnhandledRejection(event: PromiseRejectionEvent) {
+		event.preventDefault();
+		uiStore.addToast("error", friendlyErrorMessage(event.reason));
+	}
+
 	onMount(() => {
 		registerCommands();
 		registerShortcuts();
@@ -96,6 +110,10 @@ export default function AppShell() {
 			return "global";
 		});
 		keyboardManager.init();
+
+		// Global error catching — prevents app crash on unhandled errors
+		window.addEventListener("error", handleUnhandledError);
+		window.addEventListener("unhandledrejection", handleUnhandledRejection);
 
 		// Transaction warning on tab close
 		tabsStore.setBeforeCloseHook((tab) => {
@@ -138,6 +156,8 @@ export default function AppShell() {
 		keyboardManager.destroy();
 		tabsStore.setBeforeCloseHook(null);
 		connectionsStore.setBeforeDisconnectHook(null);
+		window.removeEventListener("error", handleUnhandledError);
+		window.removeEventListener("unhandledrejection", handleUnhandledRejection);
 	});
 
 	// ── Command registration ──────────────────────────────
@@ -510,6 +530,8 @@ export default function AppShell() {
 				open={paletteOpen()}
 				onClose={() => setPaletteOpen(false)}
 			/>
+
+			<ToastContainer />
 		</div>
 	);
 }

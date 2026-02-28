@@ -5,7 +5,8 @@ import type {
 	ConnectionState,
 } from "../../shared/types/connection";
 import type { SchemaInfo, TableInfo } from "../../shared/types/database";
-import { rpc, messages } from "../lib/rpc";
+import { rpc, messages, friendlyErrorMessage } from "../lib/rpc";
+import { uiStore } from "./ui";
 
 export interface SchemaTree {
 	schemas: SchemaInfo[];
@@ -120,6 +121,11 @@ messages.onConnectionStatusChanged((event) => {
 	updateConnectionState(event.connectionId, event.state, event.error);
 	if (event.state === "connected") {
 		loadSchemaTree(event.connectionId);
+	}
+	if (event.state === "error" && event.error) {
+		const conn = state.connections.find((c) => c.id === event.connectionId);
+		const name = conn?.name ?? "Connection";
+		uiStore.addToast("error", `${name}: ${friendlyErrorMessage(event.error)}`);
 	}
 });
 

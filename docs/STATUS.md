@@ -102,7 +102,7 @@
 | DOTAZ-045 | Keyboard shortcut system | done | KeyboardManager singleton in keyboard.ts; 16 shortcuts registered; context-aware (global/data-grid/sql-console); stopPropagation for grid-local shortcuts |
 | DOTAZ-046 | Context menus (grid, editor, tabs) | done | Grid cell/row/header, SQL editor, and tab context menus via reusable ContextMenu component |
 | DOTAZ-047 | Transaction management UI | done | TransactionManager service; tx RPC handlers; StatusBar "IN TRANSACTION" badge; tab/disconnect warnings; manual tx mode in grid skips auto-commit |
-| DOTAZ-048 | Error handling + toast notifications | not started | |
+| DOTAZ-048 | Error handling + toast notifications | done | UI store with toast management; ToastContainer in AppShell; friendlyErrorMessage in rpc-errors.ts; global error/rejection handlers; connection error toasts |
 | DOTAZ-049 | Application menu with all actions | not started | |
 | DOTAZ-050 | Reconnect logic + connection resilience | not started | |
 | DOTAZ-051 | Settings storage + preferences | not started | |
@@ -247,6 +247,10 @@
 | 2026-02-28 | DOTAZ-047 | `data.applyChanges` skips auto-commit if transaction already active | Checks `driver.inTransaction()` before wrapping in begin/commit; allows manual tx mode from SQL console to control grid commits |
 | 2026-02-28 | DOTAZ-047 | `beforeCloseHook` and `beforeDisconnectHook` for transaction warnings | Configurable hooks in tabs/connections stores; AppShell registers hooks to check for active transactions and show confirm dialogs |
 | 2026-02-28 | DOTAZ-047 | StatusBar `inTransaction` derived from editor store across all tabs | Checks all SQL console tabs on the active tab's connection for `inTransaction` state; connection-level visibility |
+| 2026-02-28 | DOTAZ-048 | `friendlyErrorMessage` in `rpc-errors.ts` (not `rpc.ts`) | Avoids Electrobun dependency in tests; re-exported from `rpc.ts` for app code |
+| 2026-02-28 | DOTAZ-048 | Error toasts are persistent (duration 0), non-errors auto-dismiss at 5s | Errors need manual dismiss; success/info/warning auto-clear |
+| 2026-02-28 | DOTAZ-048 | Global `window.onerror` + `unhandledrejection` handlers in AppShell | Prevents app crash on unhandled errors; shows error toast with user-friendly message |
+| 2026-02-28 | DOTAZ-048 | Connection status error events trigger toast in connections store | `onConnectionStatusChanged` with `state === "error"` shows toast with connection name prefix |
 
 ---
 
@@ -304,4 +308,4 @@
 
 ---
 
-*Last updated: 2026-02-28 (DOTAZ-047)*
+*Last updated: 2026-02-28 (DOTAZ-048)*

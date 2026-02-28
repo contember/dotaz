@@ -51,16 +51,8 @@ new Electroview({ rpc: electroviewRpc });
 
 // ── Error handling ───────────────────────────────────────
 
-export class RpcError extends Error {
-	constructor(
-		public readonly method: string,
-		public readonly cause: unknown,
-	) {
-		const message = cause instanceof Error ? cause.message : String(cause);
-		super(`${method}: ${message}`);
-		this.name = "RpcError";
-	}
-}
+export { RpcError, friendlyErrorMessage } from "./rpc-errors";
+import { RpcError } from "./rpc-errors";
 
 async function call<T>(method: string, params: unknown): Promise<T> {
 	try {
