@@ -100,7 +100,7 @@
 |-------|-------|--------|-------|
 | DOTAZ-044 | CommandPalette | done | Command registry in lib/commands.ts; fuzzy search with recent-first ordering; 12 commands registered in AppShell |
 | DOTAZ-045 | Keyboard shortcut system | done | KeyboardManager singleton in keyboard.ts; 16 shortcuts registered; context-aware (global/data-grid/sql-console); stopPropagation for grid-local shortcuts |
-| DOTAZ-046 | Context menus (grid, editor, tabs) | not started | |
+| DOTAZ-046 | Context menus (grid, editor, tabs) | done | Grid cell/row/header, SQL editor, and tab context menus via reusable ContextMenu component |
 | DOTAZ-047 | Transaction management UI | not started | |
 | DOTAZ-048 | Error handling + toast notifications | not started | |
 | DOTAZ-049 | Application menu with all actions | not started | |
@@ -238,6 +238,11 @@
 | 2026-02-28 | DOTAZ-045 | Context-aware shortcuts via `ShortcutContext` type | "global" shortcuts always fire; "data-grid" and "sql-console" only fire when active tab matches; context provided by callback set in AppShell |
 | 2026-02-28 | DOTAZ-045 | `stopPropagation` for overlapping DataGrid local shortcuts | F2, Delete, Ctrl+S in DataGrid's local `createKeyHandler` call `e.stopPropagation()` to prevent the document-level KeyboardManager from double-firing |
 | 2026-02-28 | DOTAZ-045 | Custom event `dotaz:save-view` for command→component bridge | Save view command dispatches CustomEvent on window; DataGrid listens for it to open save dialog — avoids coupling command handler to component state |
+| 2026-02-28 | DOTAZ-046 | Unified grid context menu replaces FK-only context menu | Single `cellContextMenu` signal handles all cell actions including FK navigation; separate `headerContextMenu` for column header actions |
+| 2026-02-28 | DOTAZ-046 | Tab context menu uses reusable ContextMenu component | Replaced inline `tab-bar__context-menu` div with ContextMenu component; added Duplicate Tab and Rename (SQL console only) actions |
+| 2026-02-28 | DOTAZ-046 | Editor context menu captures selection at right-click time | `ctxSelection` snapshot taken in contextmenu handler before editor loses focus; used by Cut/Copy/Paste/Run Selected actions |
+| 2026-02-28 | DOTAZ-046 | Copy as INSERT generates statements from query results | Builds INSERT SQL from `editorStore.getTab().results[0]`; uses `table_name` placeholder; SQL values properly escaped |
+| 2026-02-28 | DOTAZ-046 | Duplicate Tab handled in AppShell with per-type logic | SQL console copies content; data-grid and schema-viewer open fresh tabs with same connection/schema/table |
 
 ---
 
@@ -295,4 +300,4 @@
 
 ---
 
-*Last updated: 2026-02-28 (DOTAZ-045)*
+*Last updated: 2026-02-28 (DOTAZ-046)*

@@ -85,30 +85,3 @@
 	outline: none;
 	border-radius: 2px;
 }
-
-.tab-bar__context-menu {
-	position: fixed;
-	background: var(--bg-panel);
-	border: 1px solid var(--border-color);
-	border-radius: 4px;
-	padding: var(--spacing-xs) 0;
-	min-width: 140px;
-	z-index: 1000;
-	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-}
-
-.tab-bar__context-menu-item {
-	display: block;
-	width: 100%;
-	background: none;
-	border: none;
-	color: var(--text-primary);
-	font-size: var(--font-size-sm);
-	padding: var(--spacing-xs) var(--spacing-md);
-	text-align: left;
-	cursor: pointer;
-}
-
-.tab-bar__context-menu-item:hover {
-	background: var(--bg-selection);
-}

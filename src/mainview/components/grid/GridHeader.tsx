@@ -11,6 +11,7 @@ interface GridHeaderProps {
 	fkColumns: Set<string>;
 	onToggleSort: (column: string, multi: boolean) => void;
 	onResizeColumn: (column: string, width: number) => void;
+	onHeaderContextMenu?: (e: MouseEvent, column: string) => void;
 }
 
 const DEFAULT_COLUMN_WIDTH = 150;
@@ -100,6 +101,7 @@ export default function GridHeader(props: GridHeaderProps) {
 								...props.pinStyles.get(col.name),
 							}}
 							onClick={(e) => handleHeaderClick(e, col.name)}
+						onContextMenu={(e) => props.onHeaderContextMenu?.(e, col.name)}
 						>
 							<span class="grid-header__type-badge">
 								{getDataTypeLabel(col.dataType)}

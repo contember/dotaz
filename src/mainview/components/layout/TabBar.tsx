@@ -1,5 +1,7 @@
 import { createSignal, For, Show } from "solid-js";
 import type { TabInfo, TabType } from "../../../shared/types/tab";
+import ContextMenu from "../common/ContextMenu";
+import type { ContextMenuEntry } from "../common/ContextMenu";
 import "./TabBar.css";
 
 interface TabBarProps {
@@ -9,6 +11,7 @@ interface TabBarProps {
 	onCloseTab: (id: string) => void;
 	onCloseOtherTabs?: (id: string) => void;
 	onCloseAllTabs?: () => void;
+	onDuplicateTab?: (id: string) => void;
 	onRenameTab?: (id: string, title: string) => void;
 }
 
@@ -68,8 +71,50 @@ export default function TabBar(props: TabBarProps) {
 		setEditingTabId(null);
 	}
 
+	function startRename(tabId: string) {
+		setEditingTabId(tabId);
+	}
+
+	const contextMenuItems = (): ContextMenuEntry[] => {
+		const menu = contextMenu();
+		if (!menu) return [];
+		const tab = props.tabs.find((t) => t.id === menu.tabId);
+		if (!tab) return [];
+
+		const items: ContextMenuEntry[] = [
+			{
+				label: "Close",
+				action: () => props.onCloseTab(menu.tabId),
+			},
+			{
+				label: "Close Others",
+				action: () => props.onCloseOtherTabs?.(menu.tabId),
+				disabled: props.tabs.length <= 1,
+			},
+			{
+				label: "Close All",
+				action: () => props.onCloseAllTabs?.(),
+			},
+			"separator",
+			{
+				label: "Duplicate Tab",
+				action: () => props.onDuplicateTab?.(menu.tabId),
+				disabled: !props.onDuplicateTab,
+			},
+		];
+
+		if (tab.type === "sql-console" && props.onRenameTab) {
+			items.push({
+				label: "Rename",
+				action: () => startRename(menu.tabId),
+			});
+		}
+
+		return items;
+	};
+
 	return (
-		<div class="tab-bar" onClick={closeContextMenu}>
+		<div class="tab-bar">
 			<div class="tab-bar__tabs">
 				<For each={props.tabs}>
 					{(tab) => (
@@ -120,45 +165,12 @@ export default function TabBar(props: TabBarProps) {
 
 			<Show when={contextMenu()}>
 				{(menu) => (
-					<div
-						class="tab-bar__context-menu"
-						style={{
-							left: `${menu().x}px`,
-							top: `${menu().y}px`,
-						}}
-					>
-						<button
-							class="tab-bar__context-menu-item"
-							onClick={() => {
-								props.onCloseTab(menu().tabId);
-								closeContextMenu();
-							}}
-						>
-							Close
-						</button>
-						<Show when={props.onCloseOtherTabs}>
-							<button
-								class="tab-bar__context-menu-item"
-								onClick={() => {
-									props.onCloseOtherTabs!(menu().tabId);
-									closeContextMenu();
-								}}
-							>
-								Close Others
-							</button>
-						</Show>
-						<Show when={props.onCloseAllTabs}>
-							<button
-								class="tab-bar__context-menu-item"
-								onClick={() => {
-									props.onCloseAllTabs!();
-									closeContextMenu();
-								}}
-							>
-								Close All
-							</button>
-						</Show>
-					</div>
+					<ContextMenu
+						x={menu().x}
+						y={menu().y}
+						items={contextMenuItems()}
+						onClose={closeContextMenu}
+					/>
 				)}
 			</Show>
 		</div>

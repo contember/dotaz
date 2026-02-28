@@ -1,4 +1,4 @@
-import { onMount, onCleanup, createSignal, createEffect } from "solid-js";
+import { onMount, onCleanup, createSignal, createEffect, Show } from "solid-js";
 import { EditorView, keymap, placeholder } from "@codemirror/view";
 import { Compartment, EditorState } from "@codemirror/state";
 import { sql, PostgreSQL, SQLite } from "@codemirror/lang-sql";
@@ -6,6 +6,8 @@ import { basicSetup } from "codemirror";
 import { editorStore } from "../../stores/editor";
 import { connectionsStore } from "../../stores/connections";
 import { rpc } from "../../lib/rpc";
+import ContextMenu from "../common/ContextMenu";
+import type { ContextMenuEntry } from "../common/ContextMenu";
 import "./SqlEditor.css";
 
 interface SqlEditorProps {
@@ -164,6 +166,9 @@ export default function SqlEditor(props: SqlEditorProps) {
 	let editorView: EditorView | undefined;
 	const sqlCompartment = new Compartment();
 	const [editorHeight, setEditorHeight] = createSignal(DEFAULT_EDITOR_HEIGHT);
+	const [ctxMenu, setCtxMenu] = createSignal<{ x: number; y: number } | null>(null);
+	// Snapshot editor selection at right-click time (editor loses focus when menu opens)
+	let ctxSelection = { from: 0, to: 0 };
 
 	onMount(() => {
 		if (!containerRef) return;
@@ -279,6 +284,123 @@ export default function SqlEditor(props: SqlEditorProps) {
 		editorView?.destroy();
 	});
 
+	function handleContextMenu(e: MouseEvent) {
+		e.preventDefault();
+		if (editorView) {
+			const sel = editorView.state.selection.main;
+			ctxSelection = { from: sel.from, to: sel.to };
+		}
+		setCtxMenu({ x: e.clientX, y: e.clientY });
+	}
+
+	function getSelectedText(): string {
+		if (ctxSelection.from === ctxSelection.to) return "";
+		return editorView?.state.sliceDoc(ctxSelection.from, ctxSelection.to) ?? "";
+	}
+
+	function formatSqlValue(value: unknown): string {
+		if (value === null || value === undefined) return "NULL";
+		if (typeof value === "number") return String(value);
+		if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
+		if (typeof value === "object") return `'${JSON.stringify(value).replace(/'/g, "''")}'`;
+		return `'${String(value).replace(/'/g, "''")}'`;
+	}
+
+	function buildInsertStatements(): string {
+		const tab = editorStore.getTab(props.tabId);
+		if (!tab || tab.results.length === 0) return "";
+		const result = tab.results[0];
+		if (!result.columns || result.columns.length === 0 || result.rows.length === 0) return "";
+		const colNames = result.columns.map((c) => `"${c.name}"`).join(", ");
+		return result.rows
+			.map((row) => {
+				const vals = result.columns.map((c) => formatSqlValue(row[c.name])).join(", ");
+				return `INSERT INTO table_name (${colNames}) VALUES (${vals});`;
+			})
+			.join("\n");
+	}
+
+	const contextMenuItems = (): ContextMenuEntry[] => {
+		const hasSelection = ctxSelection.from !== ctxSelection.to;
+		const tab = editorStore.getTab(props.tabId);
+		const hasResults = (tab?.results.length ?? 0) > 0 && (tab?.results[0]?.rows.length ?? 0) > 0;
+
+		return [
+			{
+				label: "Cut",
+				action: async () => {
+					const text = getSelectedText();
+					if (text && editorView) {
+						await navigator.clipboard.writeText(text);
+						editorView.dispatch({
+							changes: { from: ctxSelection.from, to: ctxSelection.to, insert: "" },
+						});
+						editorView.focus();
+					}
+				},
+				disabled: !hasSelection,
+			},
+			{
+				label: "Copy",
+				action: async () => {
+					const text = getSelectedText();
+					if (text) {
+						await navigator.clipboard.writeText(text);
+					}
+				},
+				disabled: !hasSelection,
+			},
+			{
+				label: "Paste",
+				action: async () => {
+					if (!editorView) return;
+					const text = await navigator.clipboard.readText();
+					editorView.dispatch({
+						changes: { from: ctxSelection.from, to: ctxSelection.to, insert: text },
+					});
+					editorView.focus();
+				},
+			},
+			{
+				label: "Select All",
+				action: () => {
+					if (!editorView) return;
+					editorView.dispatch({
+						selection: { anchor: 0, head: editorView.state.doc.length },
+					});
+					editorView.focus();
+				},
+			},
+			"separator",
+			{
+				label: "Run Selected",
+				action: () => {
+					const text = getSelectedText();
+					if (text) {
+						editorStore.executeSelected(props.tabId, text);
+					} else {
+						editorStore.executeQuery(props.tabId);
+					}
+				},
+			},
+			{
+				label: "Format SQL",
+				action: () => editorStore.formatSql(props.tabId),
+			},
+			"separator",
+			{
+				label: "Copy as INSERT",
+				action: async () => {
+					const sql = buildInsertStatements();
+					if (sql) {
+						await navigator.clipboard.writeText(sql);
+					}
+				},
+				disabled: !hasResults,
+			},
+		];
+	};
+
 	function handleResizeMouseDown(e: MouseEvent) {
 		e.preventDefault();
 		let lastY = e.clientY;
@@ -307,6 +429,7 @@ export default function SqlEditor(props: SqlEditorProps) {
 			<div
 				class="sql-editor"
 				style={{ height: `${editorHeight()}px` }}
+				onContextMenu={handleContextMenu}
 			>
 				<div ref={containerRef} class="sql-editor__codemirror" />
 			</div>
@@ -314,6 +437,17 @@ export default function SqlEditor(props: SqlEditorProps) {
 				class="sql-editor__resize-handle"
 				onMouseDown={handleResizeMouseDown}
 			/>
+
+			<Show when={ctxMenu()}>
+				{(menu) => (
+					<ContextMenu
+						x={menu().x}
+						y={menu().y}
+						items={contextMenuItems()}
+						onClose={() => setCtxMenu(null)}
+					/>
+				)}
+			</Show>
 		</>
 	);
 }

@@ -54,13 +54,16 @@ export default function DataGrid(props: DataGridProps) {
 	const [showPendingPanel, setShowPendingPanel] = createSignal(false);
 	const [saveViewOpen, setSaveViewOpen] = createSignal(false);
 	const [exportOpen, setExportOpen] = createSignal(false);
-	const [fkContextMenu, setFkContextMenu] = createSignal<{
+	const [cellContextMenu, setCellContextMenu] = createSignal<{
 		x: number;
 		y: number;
 		rowIndex: number;
 		column: string;
-		target: FkTarget;
-		value: unknown;
+	} | null>(null);
+	const [headerContextMenu, setHeaderContextMenu] = createSignal<{
+		x: number;
+		y: number;
+		column: string;
 	} | null>(null);
 	let scrollRef: HTMLDivElement | undefined;
 	let gridRef: HTMLDivElement | undefined;
@@ -336,24 +339,19 @@ export default function DataGrid(props: DataGridProps) {
 		tabsStore.renameTab(props.tabId, prev.table);
 	}
 
-	function handleFkContextGoTo() {
-		const ctx = fkContextMenu();
-		if (!ctx) return;
-		handleFkClick(ctx.rowIndex, ctx.column);
-		setFkContextMenu(null);
-	}
-
-	function handleFkContextOpenTable() {
-		const ctx = fkContextMenu();
-		if (!ctx) return;
-		tabsStore.openTab({
-			type: "data-grid",
-			title: ctx.target.table,
-			connectionId: props.connectionId,
-			schema: ctx.target.schema,
-			table: ctx.target.table,
-		});
-		setFkContextMenu(null);
+	function handleDuplicateRow(rowIndex: number) {
+		const t = tab();
+		if (!t) return;
+		const sourceRow = t.rows[rowIndex];
+		if (!sourceRow) return;
+		const newIndex = gridStore.addNewRow(props.tabId);
+		for (const col of t.columns) {
+			if (col.isPrimaryKey) continue;
+			const value = sourceRow[col.name];
+			if (value !== null && value !== undefined) {
+				gridStore.setCellValue(props.tabId, newIndex, col.name, value);
+			}
+		}
 	}
 
 	// ── Clipboard ──────────────────────────────────────────
@@ -374,7 +372,7 @@ export default function DataGrid(props: DataGridProps) {
 		}
 	}
 
-	// ── Context menu on right-click for FK cells ──────────
+	// ── Context menus ────────────────────────────────────────
 
 	function handleGridContextMenu(e: MouseEvent) {
 		const target = e.target as HTMLElement;
@@ -383,32 +381,35 @@ export default function DataGrid(props: DataGridProps) {
 		const columnName = cellEl.dataset.column;
 		if (!columnName) return;
 
-		const fkTarget = fkMap().get(columnName);
-		if (!fkTarget) return;
-
-		// Find the row index from the grid row element
-		const rowEl = cellEl.closest<HTMLElement>(".grid-row");
-		if (!rowEl) return;
-		// Get row index from the virtual scroller: find the row's position among visible rows
 		const t = tab();
 		if (!t) return;
 
-		// Determine row index by checking the selected/focused state
 		const focusedCell = t.focusedCell;
 		if (!focusedCell) return;
 
-		const value = t.rows[focusedCell.row]?.[columnName];
-		if (value === null || value === undefined) return;
-
 		e.preventDefault();
-		setFkContextMenu({
+		setHeaderContextMenu(null);
+		setCellContextMenu({
 			x: e.clientX,
 			y: e.clientY,
 			rowIndex: focusedCell.row,
 			column: columnName,
-			target: fkTarget,
-			value,
 		});
+	}
+
+	function handleHeaderContextMenu(e: MouseEvent, column: string) {
+		e.preventDefault();
+		setCellContextMenu(null);
+		setHeaderContextMenu({
+			x: e.clientX,
+			y: e.clientY,
+			column,
+		});
+	}
+
+	function closeContextMenus() {
+		setCellContextMenu(null);
+		setHeaderContextMenu(null);
 	}
 
 	// Listen for save-view events dispatched by the command registry
@@ -496,17 +497,179 @@ export default function DataGrid(props: DataGridProps) {
 		},
 	]);
 
-	const fkContextMenuItems = (): ContextMenuEntry[] => {
-		const ctx = fkContextMenu();
+	const cellContextMenuItems = (): ContextMenuEntry[] => {
+		const ctx = cellContextMenu();
 		if (!ctx) return [];
-		return [
+		const t = tab();
+		if (!t) return [];
+		const { rowIndex, column } = ctx;
+		const row = t.rows[rowIndex];
+		const value = row?.[column];
+		const isDeleted = gridStore.isRowDeleted(props.tabId, rowIndex);
+
+		const items: ContextMenuEntry[] = [
 			{
-				label: `Go to referenced row`,
-				action: handleFkContextGoTo,
+				label: "Copy Value",
+				action: async () => {
+					await navigator.clipboard.writeText(
+						gridStore.formatCellForClipboard(value),
+					);
+				},
 			},
 			{
-				label: `Open ${ctx.target.table}`,
-				action: handleFkContextOpenTable,
+				label: "Copy Row",
+				action: async () => {
+					const cols = visibleColumns();
+					const header = cols.map((c) => c.name).join("\t");
+					const rowText = cols
+						.map((c) => gridStore.formatCellForClipboard(row[c.name]))
+						.join("\t");
+					await navigator.clipboard.writeText(`${header}\n${rowText}`);
+				},
+			},
+			"separator",
+			{
+				label: "Edit Cell",
+				action: () => gridStore.startEditing(props.tabId, rowIndex, column),
+				disabled: isDeleted,
+			},
+			{
+				label: "Set NULL",
+				action: () => gridStore.setCellValue(props.tabId, rowIndex, column, null),
+				disabled: isDeleted,
+			},
+			"separator",
+			{
+				label: "Filter by This Value",
+				action: () => {
+					const filterValue = value === null ? "" : String(value);
+					const operator = value === null ? "isNull" as const : "eq" as const;
+					gridStore.setFilter(props.tabId, {
+						column,
+						operator,
+						value: filterValue,
+					});
+				},
+			},
+			{
+				label: "Sort Ascending",
+				action: () => gridStore.toggleSort(props.tabId, column, false),
+			},
+			{
+				label: "Sort Descending",
+				action: () => {
+					// Toggle twice: first to asc, then to desc
+					const t = tab();
+					const existing = t?.sort.find((s) => s.column === column);
+					if (!existing || existing.direction === "desc") {
+						gridStore.toggleSort(props.tabId, column, false); // → asc
+					}
+					gridStore.toggleSort(props.tabId, column, false); // → desc
+				},
+			},
+			"separator",
+			{
+				label: "Row Detail",
+				action: () => {
+					gridStore.selectRow(props.tabId, rowIndex);
+					setRowDetailIndex(rowIndex);
+				},
+			},
+			{
+				label: "Delete Row",
+				action: () => {
+					gridStore.selectRow(props.tabId, rowIndex);
+					gridStore.deleteSelectedRows(props.tabId);
+				},
+				disabled: isDeleted,
+			},
+			{
+				label: "Duplicate Row",
+				action: () => handleDuplicateRow(rowIndex),
+			},
+		];
+
+		// FK-specific items
+		const fkTarget = fkMap().get(column);
+		if (fkTarget && value !== null && value !== undefined) {
+			items.push("separator");
+			items.push({
+				label: "Go to referenced row",
+				action: () => handleFkClick(rowIndex, column),
+			});
+			items.push({
+				label: `Open ${fkTarget.table}`,
+				action: () => {
+					tabsStore.openTab({
+						type: "data-grid",
+						title: fkTarget.table,
+						connectionId: props.connectionId,
+						schema: fkTarget.schema,
+						table: fkTarget.table,
+					});
+				},
+			});
+		}
+
+		return items;
+	};
+
+	const headerContextMenuItems = (): ContextMenuEntry[] => {
+		const ctx = headerContextMenu();
+		if (!ctx) return [];
+		const { column } = ctx;
+		const t = tab();
+		const pinned = t?.columnConfig[column]?.pinned;
+
+		return [
+			{
+				label: "Sort Ascending",
+				action: () => gridStore.toggleSort(props.tabId, column, false),
+			},
+			{
+				label: "Sort Descending",
+				action: () => {
+					const existing = t?.sort.find((s) => s.column === column);
+					if (!existing || existing.direction === "desc") {
+						gridStore.toggleSort(props.tabId, column, false);
+					}
+					gridStore.toggleSort(props.tabId, column, false);
+				},
+			},
+			"separator",
+			{
+				label: "Hide Column",
+				action: () => gridStore.setColumnVisibility(props.tabId, column, false),
+			},
+			"separator",
+			{
+				label: "Pin Left",
+				action: () => gridStore.setColumnPinned(props.tabId, column, "left"),
+				disabled: pinned === "left",
+			},
+			{
+				label: "Pin Right",
+				action: () => gridStore.setColumnPinned(props.tabId, column, "right"),
+				disabled: pinned === "right",
+			},
+			...(pinned
+				? [
+						{
+							label: "Unpin",
+							action: () => gridStore.setColumnPinned(props.tabId, column, undefined),
+						} as ContextMenuEntry,
+					]
+				: []),
+			"separator",
+			{
+				label: "Filter by Column",
+				action: () => {
+					gridStore.setFilter(props.tabId, {
+						column,
+						operator: "isNotNull",
+						value: "",
+					});
+				},
 			},
 		];
 	};
@@ -627,6 +790,7 @@ export default function DataGrid(props: DataGridProps) {
 								fkColumns={fkColumns()}
 								onToggleSort={handleToggleSort}
 								onResizeColumn={handleResizeColumn}
+								onHeaderContextMenu={handleHeaderContextMenu}
 							/>
 
 							<VirtualScroller
@@ -728,13 +892,24 @@ export default function DataGrid(props: DataGridProps) {
 				onClose={() => setExportOpen(false)}
 			/>
 
-			<Show when={fkContextMenu()}>
+			<Show when={cellContextMenu()}>
 				{(ctx) => (
 					<ContextMenu
 						x={ctx().x}
 						y={ctx().y}
-						items={fkContextMenuItems()}
-						onClose={() => setFkContextMenu(null)}
+						items={cellContextMenuItems()}
+						onClose={closeContextMenus}
+					/>
+				)}
+			</Show>
+
+			<Show when={headerContextMenu()}>
+				{(ctx) => (
+					<ContextMenu
+						x={ctx().x}
+						y={ctx().y}
+						items={headerContextMenuItems()}
+						onClose={closeContextMenus}
 					/>
 				)}
 			</Show>
