@@ -8,6 +8,7 @@ import { buildSelectQuery, buildCountQuery, QueryExecutor, generateChangeSql, ge
 import { TransactionManager } from "./services/transaction-manager";
 import { exportToFile, exportPreview } from "./services/export-service";
 import { formatSql } from "./services/sql-formatter";
+import { DEFAULT_SETTINGS } from "./storage/app-db";
 
 function notImplemented(method: string): never {
 	throw new Error(`Not implemented yet: ${method}`);
@@ -294,11 +295,20 @@ export function createHandlers(cm: ConnectionManager, qe?: QueryExecutor, appDb?
 			const path = defaultName ? `${dir}/${defaultName}` : dir;
 			return { path, cancelled: false };
 		},
-		"settings.get": () => {
-			notImplemented("settings.get");
+		"settings.get": ({ key }: { key: string }) => {
+			if (!appDb) throw new Error("AppDatabase not available");
+			const stored = appDb.getSetting(key);
+			const value = stored ?? DEFAULT_SETTINGS[key] ?? null;
+			return { value };
 		},
-		"settings.set": () => {
-			notImplemented("settings.set");
+		"settings.set": ({ key, value }: { key: string; value: string }) => {
+			if (!appDb) throw new Error("AppDatabase not available");
+			appDb.setSetting(key, value);
+		},
+		"settings.getAll": () => {
+			if (!appDb) throw new Error("AppDatabase not available");
+			const stored = appDb.getAllSettings();
+			return { ...DEFAULT_SETTINGS, ...stored };
 		},
 	} as const;
 }

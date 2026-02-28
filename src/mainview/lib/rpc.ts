@@ -166,6 +166,8 @@ export const rpc = {
 			call<{ value: string | null }>("settings.get", { key }),
 		set: (key: string, value: string) =>
 			call<void>("settings.set", { key, value }),
+		getAll: () =>
+			call<Record<string, string>>("settings.getAll", {}),
 	},
 } as const;
 

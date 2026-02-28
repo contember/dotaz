@@ -336,6 +336,10 @@ export type DotazRPC = {
 				params: SettingsSetParams;
 				response: void;
 			};
+			"settings.getAll": {
+				params: {};
+				response: Record<string, string>;
+			};
 		};
 		messages: {
 			// Backend → Frontend notifications

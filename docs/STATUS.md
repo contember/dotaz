@@ -105,7 +105,7 @@
 | DOTAZ-048 | Error handling + toast notifications | done | UI store with toast management; ToastContainer in AppShell; friendlyErrorMessage in rpc-errors.ts; global error/rejection handlers; connection error toasts |
 | DOTAZ-049 | Application menu with all actions | done | ApplicationMenu via Electrobun; Edit items use native roles; custom actions forwarded to frontend via `menu.action` RPC message → commandRegistry.execute; new commands: new-connection, reconnect, zoom-in/out/reset, about, settings |
 | DOTAZ-050 | Reconnect logic + connection resilience | done | Health check (SELECT 1 every 30s); auto-reconnect with exponential backoff (1s–30s, max 5 attempts); "reconnecting" state; graceful disconnect (rollback tx, cancel queries); configurable intervals via ConnectionManagerOptions |
-| DOTAZ-051 | Settings storage + preferences | not started | |
+| DOTAZ-051 | Settings storage + preferences | done | DEFAULT_SETTINGS constants in app-db.ts; getAllSettings merges stored over defaults; settings.get falls back to default then null; frontend rpc.settings.getAll added |
 | DOTAZ-052 | Data refresh (F5) + stale indication | not started | |
 | DOTAZ-053 | Visual polish + responsive layout | not started | |
 
@@ -258,6 +258,9 @@
 | 2026-02-28 | DOTAZ-050 | Configurable intervals via `ConnectionManagerOptions` | Allows tests to use fast timers (50ms base) instead of production values (30s health check, 1s reconnect base); avoids flaky timing-dependent tests |
 | 2026-02-28 | DOTAZ-050 | `disconnectAll` cleans up reconnect states and health timers | Auto-reconnect creates orphaned timers (driver removed from map but timer pending); `disconnectAll` must iterate `reconnectStates` and `healthTimers` independently of `drivers` |
 | 2026-02-28 | DOTAZ-050 | Graceful disconnect: rollback tx → cancel query → disconnect | Best-effort rollback and cancel before closing driver; errors during cleanup are swallowed to ensure disconnect completes |
+| 2026-02-28 | DOTAZ-051 | `DEFAULT_SETTINGS` constant in `app-db.ts`, not in handler layer | Keeps defaults close to the storage layer; exported for handlers to merge with stored values |
+| 2026-02-28 | DOTAZ-051 | `settings.get` falls back to default, then null | Three-tier lookup: stored value → default → null; consistent with issue requirement for default values |
+| 2026-02-28 | DOTAZ-051 | `settings.getAll` merges stored over defaults via spread | `{ ...DEFAULT_SETTINGS, ...stored }` — stored values override defaults; custom keys preserved |
 
 ---
 
@@ -315,4 +318,4 @@
 
 ---
 
-*Last updated: 2026-02-28 (DOTAZ-050)*
+*Last updated: 2026-02-28 (DOTAZ-051)*

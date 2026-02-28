@@ -793,8 +793,6 @@ describe("RPC Handlers", () => {
 	describe("stub handlers", () => {
 		const stubs = [
 			"data.getColumnStats",
-			"settings.get",
-			"settings.set",
 		] as const;
 
 		for (const method of stubs) {
@@ -804,6 +802,77 @@ describe("RPC Handlers", () => {
 				).toThrow(`Not implemented yet: ${method}`);
 			});
 		}
+	});
+
+	// ── settings.* ──────────────────────────────────────
+
+	describe("settings.*", () => {
+		test("settings.get returns default value for unset key", () => {
+			const result = handlers["settings.get"]({ key: "defaultPageSize" });
+			expect(result).toEqual({ value: "100" });
+		});
+
+		test("settings.get returns null for unknown key with no default", () => {
+			const result = handlers["settings.get"]({ key: "nonexistentKey" });
+			expect(result).toEqual({ value: null });
+		});
+
+		test("settings.set saves and settings.get retrieves value", () => {
+			handlers["settings.set"]({ key: "theme", value: "light" });
+			const result = handlers["settings.get"]({ key: "theme" });
+			expect(result).toEqual({ value: "light" });
+		});
+
+		test("settings.set updates existing key", () => {
+			handlers["settings.set"]({ key: "defaultPageSize", value: "50" });
+			handlers["settings.set"]({ key: "defaultPageSize", value: "200" });
+			const result = handlers["settings.get"]({ key: "defaultPageSize" });
+			expect(result).toEqual({ value: "200" });
+		});
+
+		test("settings.set overrides default value", () => {
+			// Default is "100"
+			handlers["settings.set"]({ key: "defaultPageSize", value: "25" });
+			const result = handlers["settings.get"]({ key: "defaultPageSize" });
+			expect(result).toEqual({ value: "25" });
+		});
+
+		test("settings.getAll returns all defaults when nothing is set", () => {
+			const result = handlers["settings.getAll"]();
+			expect(result.defaultPageSize).toBe("100");
+			expect(result.defaultTxMode).toBe("auto-commit");
+			expect(result.theme).toBe("dark");
+			expect(result.queryTimeout).toBe("30000");
+			expect(result.maxHistoryEntries).toBe("1000");
+			expect(result.clipboardIncludeHeaders).toBe("true");
+			expect(result.exportDefaultFormat).toBe("csv");
+		});
+
+		test("settings.getAll merges stored values over defaults", () => {
+			handlers["settings.set"]({ key: "theme", value: "light" });
+			handlers["settings.set"]({ key: "defaultPageSize", value: "50" });
+			const result = handlers["settings.getAll"]();
+			expect(result.theme).toBe("light");
+			expect(result.defaultPageSize).toBe("50");
+			// Defaults still present for unset keys
+			expect(result.defaultTxMode).toBe("auto-commit");
+			expect(result.queryTimeout).toBe("30000");
+		});
+
+		test("settings.getAll includes custom keys not in defaults", () => {
+			handlers["settings.set"]({ key: "customKey", value: "customValue" });
+			const result = handlers["settings.getAll"]();
+			expect(result.customKey).toBe("customValue");
+		});
+
+		test("settings values are persisted in app DB", () => {
+			handlers["settings.set"]({ key: "theme", value: "light" });
+			// Re-create handlers with the same appDb to verify persistence
+			const appDb = AppDatabase.getInstance(":memory:");
+			const freshHandlers = createHandlers(cm, undefined, appDb);
+			const result = freshHandlers["settings.get"]({ key: "theme" });
+			expect(result).toEqual({ value: "light" });
+		});
 	});
 
 	// ── tx.* ─────────────────────────────────────────────

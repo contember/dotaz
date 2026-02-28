@@ -155,6 +155,29 @@ describe("AppDatabase", () => {
 			expect(appDb.getSetting("a")).toBe("1");
 			expect(appDb.getSetting("b")).toBe("2");
 		});
+
+		test("getAllSettings returns empty object when no settings", () => {
+			expect(appDb.getAllSettings()).toEqual({});
+		});
+
+		test("getAllSettings returns all stored settings", () => {
+			appDb.setSetting("theme", "dark");
+			appDb.setSetting("pageSize", "50");
+			appDb.setSetting("timeout", "5000");
+			const all = appDb.getAllSettings();
+			expect(all).toEqual({
+				theme: "dark",
+				pageSize: "50",
+				timeout: "5000",
+			});
+		});
+
+		test("getAllSettings reflects updates", () => {
+			appDb.setSetting("theme", "dark");
+			appDb.setSetting("theme", "light");
+			const all = appDb.getAllSettings();
+			expect(all.theme).toBe("light");
+		});
 	});
 
 	// ── Saved Views CRUD ─────────────────────────────────────

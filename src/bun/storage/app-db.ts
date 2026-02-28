@@ -10,6 +10,17 @@ import type {
 	HistoryListParams,
 } from "../../shared/types/rpc";
 
+/** Default settings values — returned when a key has not been explicitly set. */
+export const DEFAULT_SETTINGS: Record<string, string> = {
+	defaultPageSize: "100",
+	defaultTxMode: "auto-commit",
+	theme: "dark",
+	queryTimeout: "30000",
+	maxHistoryEntries: "1000",
+	clipboardIncludeHeaders: "true",
+	exportDefaultFormat: "csv",
+};
+
 let instance: AppDatabase | null = null;
 
 export class AppDatabase {
@@ -91,6 +102,15 @@ export class AppDatabase {
 		this.db.prepare(
 			"INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
 		).run(key, value);
+	}
+
+	getAllSettings(): Record<string, string> {
+		const rows = this.db.prepare("SELECT key, value FROM settings").all() as { key: string; value: string }[];
+		const result: Record<string, string> = {};
+		for (const row of rows) {
+			result[row.key] = row.value;
+		}
+		return result;
 	}
 
 	// ── Saved Views ──────────────────────────────────────────
