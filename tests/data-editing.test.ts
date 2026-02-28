@@ -78,23 +78,27 @@ describe("SQL Generation", () => {
 			expect(result.params).toEqual(["Bob", null]);
 		});
 
-		test("throws if no values provided", () => {
+		test("generates DEFAULT VALUES if no values provided", () => {
 			const change: DataChange = {
 				type: "insert",
 				schema: "main",
 				table: "users",
 			};
-			expect(() => generateInsert(change, driver)).toThrow("INSERT change requires values");
+			const result = generateInsert(change, driver);
+			expect(result.sql).toBe('INSERT INTO "users" DEFAULT VALUES');
+			expect(result.params).toEqual([]);
 		});
 
-		test("throws if values is empty", () => {
+		test("generates DEFAULT VALUES if values is empty", () => {
 			const change: DataChange = {
 				type: "insert",
 				schema: "main",
 				table: "users",
 				values: {},
 			};
-			expect(() => generateInsert(change, driver)).toThrow("INSERT change requires values");
+			const result = generateInsert(change, driver);
+			expect(result.sql).toBe('INSERT INTO "users" DEFAULT VALUES');
+			expect(result.params).toEqual([]);
 		});
 	});
 

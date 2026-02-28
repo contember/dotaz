@@ -204,34 +204,120 @@ export function buildCountQuery(
 
 /**
  * Split a SQL string into individual statements by semicolons.
- * Respects quoted strings (single and double quotes) so semicolons
- * inside string literals are not treated as delimiters.
+ * Respects single-quoted strings (with '' escaping), double-quoted identifiers,
+ * dollar-quoted strings ($$...$$), line comments (--), and block comments.
  */
 export function splitStatements(sql: string): string[] {
 	const statements: string[] = [];
 	let current = "";
-	let inSingle = false;
-	let inDouble = false;
+	let i = 0;
 
-	for (let i = 0; i < sql.length; i++) {
+	while (i < sql.length) {
 		const ch = sql[i];
-		const prev = i > 0 ? sql[i - 1] : "";
+		const next = i + 1 < sql.length ? sql[i + 1] : "";
 
-		if (ch === "'" && !inDouble && prev !== "\\") {
-			inSingle = !inSingle;
-		} else if (ch === '"' && !inSingle && prev !== "\\") {
-			inDouble = !inDouble;
+		// Line comment: -- until end of line
+		if (ch === "-" && next === "-") {
+			const lineEnd = sql.indexOf("\n", i);
+			if (lineEnd === -1) {
+				current += sql.slice(i);
+				i = sql.length;
+			} else {
+				current += sql.slice(i, lineEnd + 1);
+				i = lineEnd + 1;
+			}
+			continue;
 		}
 
-		if (ch === ";" && !inSingle && !inDouble) {
+		// Block comment: /* ... */
+		if (ch === "/" && next === "*") {
+			const endIdx = sql.indexOf("*/", i + 2);
+			if (endIdx === -1) {
+				current += sql.slice(i);
+				i = sql.length;
+			} else {
+				current += sql.slice(i, endIdx + 2);
+				i = endIdx + 2;
+			}
+			continue;
+		}
+
+		// Dollar-quoted string: $$...$$ or $tag$...$tag$
+		if (ch === "$") {
+			const tagMatch = sql.slice(i).match(/^(\$[a-zA-Z0-9_]*\$)/);
+			if (tagMatch) {
+				const tag = tagMatch[1];
+				const endIdx = sql.indexOf(tag, i + tag.length);
+				if (endIdx === -1) {
+					current += sql.slice(i);
+					i = sql.length;
+				} else {
+					current += sql.slice(i, endIdx + tag.length);
+					i = endIdx + tag.length;
+				}
+				continue;
+			}
+		}
+
+		// Single-quoted string (SQL escaping: '' for literal quote)
+		if (ch === "'") {
+			current += ch;
+			i++;
+			while (i < sql.length) {
+				if (sql[i] === "'") {
+					current += sql[i];
+					i++;
+					// Escaped quote ''
+					if (i < sql.length && sql[i] === "'") {
+						current += sql[i];
+						i++;
+					} else {
+						break;
+					}
+				} else {
+					current += sql[i];
+					i++;
+				}
+			}
+			continue;
+		}
+
+		// Double-quoted identifier
+		if (ch === '"') {
+			current += ch;
+			i++;
+			while (i < sql.length) {
+				if (sql[i] === '"') {
+					current += sql[i];
+					i++;
+					// Escaped quote ""
+					if (i < sql.length && sql[i] === '"') {
+						current += sql[i];
+						i++;
+					} else {
+						break;
+					}
+				} else {
+					current += sql[i];
+					i++;
+				}
+			}
+			continue;
+		}
+
+		// Statement delimiter
+		if (ch === ";") {
 			const trimmed = current.trim();
 			if (trimmed.length > 0) {
 				statements.push(trimmed);
 			}
 			current = "";
-		} else {
-			current += ch;
+			i++;
+			continue;
 		}
+
+		current += ch;
+		i++;
 	}
 
 	const trimmed = current.trim();
@@ -254,11 +340,15 @@ export interface GeneratedStatement {
  */
 export function generateInsert(change: DataChange, driver: DatabaseDriver): GeneratedStatement {
 	const values = change.values;
+	const table = qualifyTable(change.schema, change.table, driver);
+
 	if (!values || Object.keys(values).length === 0) {
-		throw new Error("INSERT change requires values");
+		return {
+			sql: `INSERT INTO ${table} DEFAULT VALUES`,
+			params: [],
+		};
 	}
 
-	const table = qualifyTable(change.schema, change.table, driver);
 	const columns = Object.keys(values);
 	const quotedCols = columns.map((c) => driver.quoteIdentifier(c));
 	const placeholders = columns.map((_, i) => `$${i + 1}`);
@@ -372,7 +462,10 @@ export function generateChangePreview(change: DataChange, driver: DatabaseDriver
 
 	switch (change.type) {
 		case "insert": {
-			const values = change.values!;
+			const values = change.values;
+			if (!values || Object.keys(values).length === 0) {
+				return `INSERT INTO ${table} DEFAULT VALUES;`;
+			}
 			const columns = Object.keys(values);
 			const quotedCols = columns.map((c) => driver.quoteIdentifier(c));
 			const formattedVals = columns.map((c) => formatValueForPreview(values[c]));
@@ -521,11 +614,12 @@ export class QueryExecutor {
 		entry: RunningQuery,
 	): Promise<QueryResult> {
 		const start = performance.now();
+		const { promise: timeoutPromise, cancel: cancelTimeout } = this.createTimeout(timeoutMs);
 
 		try {
 			const result = await Promise.race([
 				driver.execute(sql, params),
-				this.createTimeout(timeoutMs),
+				timeoutPromise,
 			]);
 
 			if (entry.cancelled) {
@@ -550,13 +644,17 @@ export class QueryExecutor {
 				durationMs,
 				error: err instanceof Error ? err.message : String(err),
 			};
+		} finally {
+			cancelTimeout();
 		}
 	}
 
-	private createTimeout(ms: number): Promise<never> {
-		return new Promise((_, reject) => {
-			setTimeout(() => reject(new Error(`Query timed out after ${ms}ms`)), ms);
+	private createTimeout(ms: number): { promise: Promise<never>; cancel: () => void } {
+		let timer: ReturnType<typeof setTimeout>;
+		const promise = new Promise<never>((_, reject) => {
+			timer = setTimeout(() => reject(new Error(`Query timed out after ${ms}ms`)), ms);
 		});
+		return { promise, cancel: () => clearTimeout(timer!) };
 	}
 
 	private logHistory(connectionId: string, sql: string, results: QueryResult[]): void {
@@ -564,7 +662,7 @@ export class QueryExecutor {
 
 		const hasError = results.some((r) => r.error);
 		const totalDuration = results.reduce((sum, r) => sum + (r.durationMs ?? 0), 0);
-		const totalRows = results.reduce((sum, r) => sum + r.rowCount, 0);
+		const totalRows = results.reduce((sum, r) => sum + (r.affectedRows ?? r.rowCount), 0);
 		const errorMessage = results.find((r) => r.error)?.error;
 
 		try {
