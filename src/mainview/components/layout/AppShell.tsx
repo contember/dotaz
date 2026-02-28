@@ -1,56 +1,72 @@
-import { createSignal, type JSX } from "solid-js";
+import { createSignal, Show } from "solid-js";
+import Sidebar, { SidebarExpandButton } from "./Sidebar";
+import Resizer from "./Resizer";
+import TabBar from "./TabBar";
+import StatusBar from "./StatusBar";
+import type { TabInfo } from "../../../shared/types/tab";
 import "./AppShell.css";
 
+const MIN_WIDTH = 150;
+const MAX_WIDTH = 500;
+const DEFAULT_WIDTH = 250;
+
 export default function AppShell() {
-	const [sidebarWidth, setSidebarWidth] = createSignal(
-		parseInt(getComputedStyle(document.documentElement).getPropertyValue("--sidebar-width")) || 250,
-	);
-	const [isResizing, setIsResizing] = createSignal(false);
+	const [sidebarWidth, setSidebarWidth] = createSignal(DEFAULT_WIDTH);
+	const [sidebarCollapsed, setSidebarCollapsed] = createSignal(false);
 
-	const minWidth = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--sidebar-min-width")) || 150;
-	const maxWidth = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--sidebar-max-width")) || 500;
+	// Placeholder tab state — will be replaced by tab store (DOTAZ-011)
+	const [tabs, setTabs] = createSignal<TabInfo[]>([]);
+	const [activeTabId, setActiveTabId] = createSignal<string | null>(null);
 
-	function onResizerMouseDown(e: MouseEvent) {
-		e.preventDefault();
-		setIsResizing(true);
-
-		const onMouseMove = (e: MouseEvent) => {
-			const newWidth = Math.min(maxWidth, Math.max(minWidth, e.clientX));
-			setSidebarWidth(newWidth);
-		};
-
-		const onMouseUp = () => {
-			setIsResizing(false);
-			document.removeEventListener("mousemove", onMouseMove);
-			document.removeEventListener("mouseup", onMouseUp);
-		};
-
-		document.addEventListener("mousemove", onMouseMove);
-		document.addEventListener("mouseup", onMouseUp);
+	function handleResize(deltaX: number) {
+		setSidebarWidth((w) => Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, w + deltaX)));
 	}
 
-	const shellStyle = (): JSX.CSSProperties => ({
-		"grid-template-columns": `${sidebarWidth()}px var(--resizer-width) 1fr`,
-	});
+	function toggleCollapse() {
+		setSidebarCollapsed((c) => !c);
+	}
+
+	function selectTab(id: string) {
+		setActiveTabId(id);
+	}
+
+	function closeTab(id: string) {
+		setTabs((prev) => prev.filter((t) => t.id !== id));
+		if (activeTabId() === id) {
+			const remaining = tabs();
+			setActiveTabId(remaining.length > 0 ? remaining[0].id : null);
+		}
+	}
 
 	return (
-		<div
-			class="app-shell"
-			style={shellStyle()}
-			classList={{ "is-resizing": isResizing() }}
-		>
-			<aside class="sidebar">
-				<div class="sidebar-header">Connections</div>
-				<div class="sidebar-content" />
-			</aside>
+		<div class="app-shell">
+			<div class="app-shell__body">
+				<Show when={sidebarCollapsed()}>
+					<SidebarExpandButton onClick={toggleCollapse} />
+				</Show>
 
-			<div class="resizer" onMouseDown={onResizerMouseDown} />
+				<Sidebar
+					width={sidebarWidth()}
+					collapsed={sidebarCollapsed()}
+					onToggleCollapse={toggleCollapse}
+				/>
 
-			<main class="main-content" />
+				<Show when={!sidebarCollapsed()}>
+					<Resizer onResize={handleResize} />
+				</Show>
 
-			<footer class="status-bar">
-				<span class="status-bar-item">Dotaz</span>
-			</footer>
+				<div class="app-shell__main">
+					<TabBar
+						tabs={tabs()}
+						activeTabId={activeTabId()}
+						onSelectTab={selectTab}
+						onCloseTab={closeTab}
+					/>
+					<main class="main-content" />
+				</div>
+			</div>
+
+			<StatusBar />
 		</div>
 	);
 }

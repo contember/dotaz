@@ -1,0 +1,76 @@
+.tab-bar {
+	background: var(--bg-panel);
+	border-bottom: 1px solid var(--border-color);
+	flex-shrink: 0;
+	overflow: hidden;
+}
+
+.tab-bar__tabs {
+	display: flex;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.tab-bar__tabs::-webkit-scrollbar {
+	display: none;
+}
+
+.tab-bar__tab {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-xs);
+	padding: 0 var(--spacing-md);
+	height: 35px;
+	cursor: pointer;
+	border-right: 1px solid var(--border-color);
+	color: var(--text-secondary);
+	font-size: var(--font-size-sm);
+	white-space: nowrap;
+	flex-shrink: 0;
+	max-width: 200px;
+}
+
+.tab-bar__tab:hover {
+	background: var(--bg-hover);
+}
+
+.tab-bar__tab--active {
+	background: var(--bg-app);
+	color: var(--text-primary);
+	border-bottom: 2px solid var(--accent);
+}
+
+.tab-bar__tab-icon {
+	font-size: var(--font-size-base);
+	flex-shrink: 0;
+}
+
+.tab-bar__tab-title {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.tab-bar__tab-dirty {
+	color: var(--color-warning);
+	font-size: var(--font-size-lg);
+	line-height: 1;
+	flex-shrink: 0;
+}
+
+.tab-bar__tab-close {
+	background: none;
+	border: none;
+	color: var(--text-muted);
+	cursor: pointer;
+	font-size: var(--font-size-lg);
+	padding: 0 2px;
+	border-radius: 3px;
+	line-height: 1;
+	flex-shrink: 0;
+	margin-left: auto;
+}
+
+.tab-bar__tab-close:hover {
+	background: var(--bg-active);
+	color: var(--text-primary);
+}

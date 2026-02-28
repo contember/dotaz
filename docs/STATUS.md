@@ -40,7 +40,7 @@
 | DOTAZ-007 | ConnectionManager service | done | |
 | DOTAZ-008 | Complete RPC schema + wiring | done | |
 | DOTAZ-009 | Frontend RPC client (Electroview) | done | |
-| DOTAZ-010 | AppShell layout components (sidebar, tabs, status bar) | not started | |
+| DOTAZ-010 | AppShell layout components (sidebar, tabs, status bar) | done | |
 | DOTAZ-011 | Tab management store + TabBar | not started | |
 
 ### Phase 2 — Connection Management
@@ -200,4 +200,4 @@
 
 ---
 
-*Last updated: 2026-02-28 (DOTAZ-009)*
+*Last updated: 2026-02-28 (DOTAZ-010)*

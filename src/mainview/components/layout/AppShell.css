@@ -1,77 +1,26 @@
 .app-shell {
-	display: grid;
-	grid-template-columns: var(--sidebar-width) var(--resizer-width) 1fr;
-	grid-template-rows: 1fr var(--statusbar-height);
-	grid-template-areas:
-		"sidebar resizer content"
-		"statusbar statusbar statusbar";
+	display: flex;
+	flex-direction: column;
 	height: 100%;
 	overflow: hidden;
 }
 
-.app-shell.is-resizing {
-	cursor: col-resize;
-	user-select: none;
+.app-shell__body {
+	flex: 1;
+	display: flex;
+	overflow: hidden;
+	position: relative;
 }
 
-/* Sidebar */
-.sidebar {
-	grid-area: sidebar;
-	background: var(--bg-panel);
-	border-right: 1px solid var(--border-color);
+.app-shell__main {
+	flex: 1;
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
-}
-
-.sidebar-header {
-	padding: var(--spacing-sm) var(--spacing-md);
-	font-size: var(--font-size-sm);
-	font-weight: 600;
-	text-transform: uppercase;
-	letter-spacing: 0.5px;
-	color: var(--text-secondary);
-	border-bottom: 1px solid var(--border-color);
-	flex-shrink: 0;
-}
-
-.sidebar-content {
-	flex: 1;
-	overflow-y: auto;
-}
-
-/* Resizer */
-.resizer {
-	grid-area: resizer;
-	background: transparent;
-	cursor: col-resize;
-	transition: background 0.15s;
-}
-
-.resizer:hover,
-.app-shell.is-resizing .resizer {
-	background: var(--accent);
-}
-
-/* Main content */
-.main-content {
-	grid-area: content;
 	background: var(--bg-app);
-	overflow: hidden;
 }
 
-/* Status bar */
-.status-bar {
-	grid-area: statusbar;
-	background: var(--accent);
-	color: var(--accent-fg);
-	display: flex;
-	align-items: center;
-	padding: 0 var(--spacing-md);
-	font-size: var(--font-size-xs);
+.main-content {
+	flex: 1;
 	overflow: hidden;
-}
-
-.status-bar-item {
-	white-space: nowrap;
 }
