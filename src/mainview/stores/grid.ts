@@ -125,22 +125,31 @@ async function setPage(tabId: string, page: number) {
 	await fetchData(tabId);
 }
 
-async function toggleSort(tabId: string, column: string) {
+async function toggleSort(tabId: string, column: string, multi = false) {
 	const tab = ensureTab(tabId);
 	const existing = tab.sort.find((s) => s.column === column);
 	let newSort: SortColumn[];
 
-	if (!existing) {
-		// Add ascending sort
-		newSort = [...tab.sort, { column, direction: "asc" }];
-	} else if (existing.direction === "asc") {
-		// Toggle to descending
-		newSort = tab.sort.map((s) =>
-			s.column === column ? { column, direction: "desc" as const } : s,
-		);
+	if (!multi) {
+		// Single sort: replace entire sort list with this column
+		if (!existing) {
+			newSort = [{ column, direction: "asc" }];
+		} else if (existing.direction === "asc") {
+			newSort = [{ column, direction: "desc" }];
+		} else {
+			newSort = [];
+		}
 	} else {
-		// Remove sort
-		newSort = tab.sort.filter((s) => s.column !== column);
+		// Multi-sort: add/toggle/remove within existing list
+		if (!existing) {
+			newSort = [...tab.sort, { column, direction: "asc" }];
+		} else if (existing.direction === "asc") {
+			newSort = tab.sort.map((s) =>
+				s.column === column ? { column, direction: "desc" as const } : s,
+			);
+		} else {
+			newSort = tab.sort.filter((s) => s.column !== column);
+		}
 	}
 
 	setState("tabs", tabId, "sort", newSort);
@@ -208,6 +217,19 @@ function getSelectedData(tabId: string): Record<string, unknown>[] {
 	return [...tab.selectedRows].sort((a, b) => a - b).map((i) => tab.rows[i]);
 }
 
+function setColumnWidth(tabId: string, column: string, width: number) {
+	const tab = ensureTab(tabId);
+	const existing = tab.columnConfig[column];
+	setState("tabs", tabId, "columnConfig", {
+		...tab.columnConfig,
+		[column]: {
+			visible: existing?.visible ?? true,
+			width: Math.max(50, width),
+			pinned: existing?.pinned,
+		},
+	});
+}
+
 function removeTab(tabId: string) {
 	setState("tabs", tabId, undefined!);
 }
@@ -226,5 +248,6 @@ export const gridStore = {
 	selectRange,
 	selectAll,
 	getSelectedData,
+	setColumnWidth,
 	removeTab,
 };

@@ -57,7 +57,7 @@
 |-------|-------|--------|-------|
 | DOTAZ-017 | getTableData RPC with pagination, sort, filter | done | |
 | DOTAZ-018 | Grid store (data grid state) | done | |
-| DOTAZ-019 | DataGrid container + GridHeader | not started | |
+| DOTAZ-019 | DataGrid container + GridHeader | done | FK columns loaded via `schema.getForeignKeys` RPC on mount |
 | DOTAZ-020 | Virtual scrolling + GridRow + GridCell | not started | |
 | DOTAZ-021 | Pagination + total count | not started | |
 | DOTAZ-022 | FilterBar (column filtering) | not started | |
@@ -157,6 +157,9 @@
 | 2026-02-28 | DOTAZ-017 | Extended `data.getRowCount` RPC params with optional `filters` | Acceptance criteria requires count with applied filters; `TableParams` alone is insufficient |
 | 2026-02-28 | DOTAZ-017 | SQLite "main" schema skips qualification in generated SQL | `SELECT * FROM "users"` instead of `SELECT * FROM "main"."users"` — matches SQLite conventions |
 | 2026-02-28 | DOTAZ-017 | `$N` positional parameters for dynamic SQL | Works with both Bun.SQL PostgreSQL and SQLite via `db.unsafe(sql, params)` |
+| 2026-02-28 | DOTAZ-019 | `toggleSort` with `multi` param for single vs multi-column sort | Click = replace sort list (single-sort); Shift+click = add/toggle/remove (multi-sort) |
+| 2026-02-28 | DOTAZ-019 | FK columns fetched separately via `schema.getForeignKeys` | `GridColumnDef` doesn't carry FK info; DataGrid loads FKs on mount for header icon display |
+| 2026-02-28 | DOTAZ-019 | Div-based grid layout (not `<table>`) | Better suited for upcoming virtual scrolling (DOTAZ-020); column widths via inline styles |
 
 ---
 
@@ -214,4 +217,4 @@
 
 ---
 
-*Last updated: 2026-02-28 (DOTAZ-018)*
+*Last updated: 2026-02-28 (DOTAZ-019)*

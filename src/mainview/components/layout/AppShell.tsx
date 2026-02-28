@@ -1,10 +1,11 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, Show, Switch, Match } from "solid-js";
 import Sidebar, { SidebarExpandButton } from "./Sidebar";
 import Resizer from "./Resizer";
 import TabBar from "./TabBar";
 import StatusBar from "./StatusBar";
 import ConnectionTree from "../connection/ConnectionTree";
 import ConnectionDialog from "../connection/ConnectionDialog";
+import DataGrid from "../grid/DataGrid";
 import type { ConnectionInfo } from "../../../shared/types/connection";
 import { tabsStore } from "../../stores/tabs";
 import "./AppShell.css";
@@ -75,6 +76,20 @@ export default function AppShell() {
 									Open a connection and select a table to get started.
 								</p>
 							</div>
+						</Show>
+						<Show when={tabsStore.activeTab}>
+							{(tab) => (
+								<Switch>
+									<Match when={tab().type === "data-grid"}>
+										<DataGrid
+											tabId={tab().id}
+											connectionId={tab().connectionId}
+											schema={tab().schema!}
+											table={tab().table!}
+										/>
+									</Match>
+								</Switch>
+							)}
 						</Show>
 					</main>
 				</div>
