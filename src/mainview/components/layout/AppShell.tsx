@@ -26,6 +26,12 @@ import { keyboardManager } from "../../lib/keyboard";
 import type { ShortcutContext } from "../../lib/keyboard";
 import "./AppShell.css";
 
+// Clean up grid/editor state when tabs are closed to prevent memory leaks
+tabsStore.onTabClosed((tabId) => {
+	gridStore.removeTab(tabId);
+	editorStore.removeTab(tabId);
+});
+
 const MIN_WIDTH = 150;
 const MAX_WIDTH = 500;
 const DEFAULT_WIDTH = 250;

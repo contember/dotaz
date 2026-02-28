@@ -101,6 +101,10 @@ export function buildWhereClause(
 		}
 	}
 
+	if (conditions.length === 0) {
+		return { sql: "", params: [] };
+	}
+
 	return {
 		sql: `WHERE ${conditions.join(" AND ")}`,
 		params,

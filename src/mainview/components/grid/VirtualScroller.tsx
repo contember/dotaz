@@ -61,9 +61,12 @@ export default function VirtualScroller(props: VirtualScrollerProps) {
 			</Show>
 
 			<For each={virtualizer.getVirtualItems()}>
-				{(virtualRow) => (
+				{(virtualRow) => {
+					const row = props.rows[virtualRow.index];
+					if (!row) return null;
+					return (
 					<GridRow
-						row={props.rows[virtualRow.index]}
+						row={row}
 						index={virtualRow.index}
 						columns={props.columns}
 						columnConfig={props.columnConfig}
@@ -89,7 +92,8 @@ export default function VirtualScroller(props: VirtualScrollerProps) {
 							height: `${virtualRow.size}px`,
 						}}
 					/>
-				)}
+					);
+				}}
 			</For>
 		</div>
 	);

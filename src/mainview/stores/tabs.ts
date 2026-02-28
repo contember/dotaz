@@ -25,8 +25,15 @@ const [state, setState] = createStore<TabState>({
  */
 let beforeCloseHook: ((tab: TabInfo) => boolean) | null = null;
 
+/** Callbacks invoked after a tab is closed, for state cleanup. */
+const afterCloseCallbacks: ((tabId: string) => void)[] = [];
+
 function setBeforeCloseHook(hook: ((tab: TabInfo) => boolean) | null) {
 	beforeCloseHook = hook;
+}
+
+function onTabClosed(callback: (tabId: string) => void) {
+	afterCloseCallbacks.push(callback);
 }
 
 function openTab(config: OpenTabConfig): string {
@@ -77,6 +84,8 @@ function closeTab(id: string) {
 		const nextTab = remaining[idx] ?? remaining[idx - 1] ?? null;
 		setState("activeTabId", nextTab?.id ?? null);
 	}
+
+	for (const cb of afterCloseCallbacks) cb(id);
 }
 
 function closeOtherTabs(id: string) {
@@ -90,10 +99,14 @@ function closeOtherTabs(id: string) {
 		if (!confirmed) return;
 	}
 
+	const closedIds = state.openTabs.filter((t) => t.id !== id).map((t) => t.id);
 	const kept = state.openTabs.find((t) => t.id === id);
 	if (kept) {
 		setState("openTabs", [kept]);
 		setState("activeTabId", id);
+	}
+	for (const closedId of closedIds) {
+		for (const cb of afterCloseCallbacks) cb(closedId);
 	}
 }
 
@@ -106,8 +119,12 @@ function closeAllTabs() {
 		if (!confirmed) return;
 	}
 
+	const closedIds = state.openTabs.map((t) => t.id);
 	setState("openTabs", []);
 	setState("activeTabId", null);
+	for (const id of closedIds) {
+		for (const cb of afterCloseCallbacks) cb(id);
+	}
 }
 
 function reorderTabs(fromIndex: number, toIndex: number) {
@@ -172,4 +189,5 @@ export const tabsStore = {
 	activateNextTab,
 	activatePrevTab,
 	setBeforeCloseHook,
+	onTabClosed,
 };

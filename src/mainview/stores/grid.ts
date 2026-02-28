@@ -137,6 +137,10 @@ const [state, setState] = createStore<GridStoreState>({
 
 // ── Internal helpers ─────────────────────────────────────
 
+/** Tracks the latest fetch request ID per tab to prevent stale responses. */
+const latestFetchId = new Map<string, number>();
+let fetchSequence = 0;
+
 function getTab(tabId: string): TabGridState | undefined {
 	return state.tabs[tabId];
 }
@@ -151,6 +155,9 @@ function ensureTab(tabId: string): TabGridState {
 
 async function fetchData(tabId: string) {
 	const tab = ensureTab(tabId);
+	const requestId = ++fetchSequence;
+	latestFetchId.set(tabId, requestId);
+
 	setState("tabs", tabId, "loading", true);
 	try {
 		const response = await rpc.data.getTableData({
@@ -162,6 +169,10 @@ async function fetchData(tabId: string) {
 			sort: tab.sort.length > 0 ? tab.sort : undefined,
 			filters: tab.filters.length > 0 ? tab.filters : undefined,
 		});
+
+		// Ignore stale responses — a newer request has been issued
+		if (latestFetchId.get(tabId) !== requestId) return;
+
 		setState("tabs", tabId, {
 			columns: response.columns,
 			rows: response.rows,
@@ -169,9 +180,16 @@ async function fetchData(tabId: string) {
 			currentPage: response.page,
 			loading: false,
 			lastLoadedAt: Date.now(),
+			selectedRows: new Set<number>(),
+			focusedCell: null,
+			editingCell: null,
 		});
 	} catch (err) {
+		// Ignore errors from stale requests
+		if (latestFetchId.get(tabId) !== requestId) return;
+
 		setState("tabs", tabId, "loading", false);
+		// Re-throw so the global unhandled rejection handler in AppShell shows a toast
 		throw err;
 	}
 }
@@ -363,10 +381,12 @@ function buildClipboardTsv(
 	const colNames = visibleColumns.map((c) => c.name);
 	const header = colNames.join("\t");
 	const sortedIndices = [...selected].sort((a, b) => a - b);
-	const rows = sortedIndices.map((i) => {
-		const row = tab.rows[i];
-		return colNames.map((col) => formatCellForClipboard(row[col])).join("\t");
-	});
+	const rows = sortedIndices
+		.filter((i) => tab.rows[i] != null)
+		.map((i) => {
+			const row = tab.rows[i];
+			return colNames.map((col) => formatCellForClipboard(row[col])).join("\t");
+		});
 
 	return { text: [header, ...rows].join("\n"), rowCount: sortedIndices.length };
 }
@@ -549,23 +569,43 @@ function deleteSelectedRows(tabId: string) {
 	const tab = ensureTab(tabId);
 	if (tab.selectedRows.size === 0) return;
 	const next = new Set(tab.pendingChanges.deletedRows);
+
+	// Collect new-row indices to remove from the rows array
+	const newRowIndicesToRemove: number[] = [];
+
 	for (const idx of tab.selectedRows) {
-		// New rows that haven't been saved: remove them entirely
 		if (tab.pendingChanges.newRows.has(idx)) {
-			// Remove from newRows instead
-			const nextNew = new Set(tab.pendingChanges.newRows);
-			nextNew.delete(idx);
-			setState("tabs", tabId, "pendingChanges", "newRows", nextNew);
-			// Remove any cell edits for this row
+			newRowIndicesToRemove.push(idx);
+		} else {
+			next.add(idx);
+		}
+	}
+
+	// Remove new rows from rows array (process in reverse to preserve indices)
+	if (newRowIndicesToRemove.length > 0) {
+		newRowIndicesToRemove.sort((a, b) => b - a);
+		for (const idx of newRowIndicesToRemove) {
+			// Remove cell edits for this row
 			const edits = { ...tab.pendingChanges.cellEdits };
 			for (const key of Object.keys(edits)) {
 				if (key.startsWith(`${idx}:`)) delete edits[key];
 			}
 			setState("tabs", tabId, "pendingChanges", "cellEdits", edits);
-		} else {
-			next.add(idx);
+
+			// Remove from newRows
+			const nextNew = new Set(tab.pendingChanges.newRows);
+			nextNew.delete(idx);
+			setState("tabs", tabId, "pendingChanges", "newRows", nextNew);
+
+			// Remove row from array
+			const filteredRows = tab.rows.filter((_, i) => i !== idx);
+			setState("tabs", tabId, "rows", filteredRows);
+
+			// Adjust indices for remaining pending changes
+			adjustIndicesAfterRemoval(tabId, idx);
 		}
 	}
+
 	setState("tabs", tabId, "pendingChanges", "deletedRows", next);
 	setState("tabs", tabId, "selectedRows", new Set());
 }
@@ -889,7 +929,7 @@ async function navigateToFkTarget(
 	setState("tabs", tabId, "schema", targetSchema);
 	setState("tabs", tabId, "table", targetTable);
 	setState("tabs", tabId, "filters", [
-		{ column: targetColumn, operator: "=" as FilterOperator, value: String(value) },
+		{ column: targetColumn, operator: "eq", value: String(value) },
 	]);
 	setState("tabs", tabId, "sort", []);
 	setState("tabs", tabId, "columnConfig", {});
@@ -932,6 +972,7 @@ async function navigateBack(tabId: string) {
 }
 
 function removeTab(tabId: string) {
+	latestFetchId.delete(tabId);
 	setState("tabs", tabId, undefined!);
 }
 
