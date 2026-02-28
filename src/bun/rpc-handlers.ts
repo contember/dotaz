@@ -1,6 +1,7 @@
 import type { BrowserWindow } from "electrobun/bun";
-import type { DotazRPC, ExecuteQueryParams, ApplyChangesParams, GenerateSqlParams, OpenDialogParams, SaveDialogParams } from "../shared/types/rpc";
+import type { DotazRPC, ExecuteQueryParams, ApplyChangesParams, GenerateSqlParams, OpenDialogParams, SaveDialogParams, ViewListParams, SaveViewParams, UpdateViewParams } from "../shared/types/rpc";
 import type { ConnectionManager } from "./services/connection-manager";
+import type { AppDatabase } from "./storage/app-db";
 import type { GridDataRequest } from "../shared/types/grid";
 import { buildSelectQuery, buildCountQuery, QueryExecutor, generateChangeSql, generateChangesPreview } from "./services/query-executor";
 import { formatSql } from "./services/sql-formatter";
@@ -9,7 +10,7 @@ function notImplemented(method: string): never {
 	throw new Error(`Not implemented yet: ${method}`);
 }
 
-export function createHandlers(cm: ConnectionManager, qe?: QueryExecutor) {
+export function createHandlers(cm: ConnectionManager, qe?: QueryExecutor, appDb?: AppDatabase) {
 	const queryExecutor = qe ?? new QueryExecutor(cm);
 	return {
 		// ── Connection Management ─────────────────────────
@@ -162,18 +163,57 @@ export function createHandlers(cm: ConnectionManager, qe?: QueryExecutor) {
 			notImplemented("history.clear");
 		},
 
-		// ── Saved Views (stub) ────────────────────────────
-		"views.list": () => {
-			notImplemented("views.list");
+		// ── Saved Views ──────────────────────────────────
+		"views.list": ({ connectionId, schemaName, tableName }: ViewListParams) => {
+			if (!appDb) throw new Error("AppDatabase not available");
+			return appDb.listSavedViews(connectionId, schemaName, tableName);
 		},
-		"views.save": () => {
-			notImplemented("views.save");
+		"views.save": ({ connectionId, schemaName, tableName, name, config }: SaveViewParams) => {
+			if (!appDb) throw new Error("AppDatabase not available");
+			if (!name || !name.trim()) {
+				throw new Error("View name is required");
+			}
+			if (!connectionId) {
+				throw new Error("connectionId is required");
+			}
+			if (!tableName) {
+				throw new Error("tableName is required");
+			}
+			// Check name uniqueness within the table
+			const existing = appDb.listSavedViews(connectionId, schemaName, tableName);
+			if (existing.some((v) => v.name === name.trim())) {
+				throw new Error(`A view named "${name.trim()}" already exists for this table`);
+			}
+			return appDb.createSavedView({
+				connectionId,
+				schemaName,
+				tableName,
+				name: name.trim(),
+				config,
+			});
 		},
-		"views.update": () => {
-			notImplemented("views.update");
+		"views.update": ({ id, name, config }: UpdateViewParams) => {
+			if (!appDb) throw new Error("AppDatabase not available");
+			if (!id) {
+				throw new Error("View id is required");
+			}
+			if (!name || !name.trim()) {
+				throw new Error("View name is required");
+			}
+			// Check name uniqueness within the table (excluding this view)
+			const current = appDb.getSavedViewById(id);
+			if (!current) {
+				throw new Error(`Saved view not found: ${id}`);
+			}
+			const existing = appDb.listSavedViews(current.connectionId, current.schemaName, current.tableName);
+			if (existing.some((v) => v.id !== id && v.name === name.trim())) {
+				throw new Error(`A view named "${name.trim()}" already exists for this table`);
+			}
+			return appDb.updateSavedView({ id, name: name.trim(), config });
 		},
-		"views.delete": () => {
-			notImplemented("views.delete");
+		"views.delete": ({ id }: { id: string }) => {
+			if (!appDb) throw new Error("AppDatabase not available");
+			appDb.deleteSavedView(id);
 		},
 
 		// ── System ────────────────────────────────────────
@@ -226,13 +266,13 @@ export function createHandlers(cm: ConnectionManager, qe?: QueryExecutor) {
 	} as const;
 }
 
-export function createRPC(cm: ConnectionManager) {
+export function createRPC(cm: ConnectionManager, appDb?: AppDatabase) {
 	// Lazy import to avoid Electrobun dependency in tests
 	const { BrowserView } = require("electrobun/bun") as typeof import("electrobun/bun");
 	return BrowserView.defineRPC<DotazRPC>({
 		maxRequestTime: 30000,
 		handlers: {
-			requests: createHandlers(cm),
+			requests: createHandlers(cm, undefined, appDb),
 			messages: {},
 		},
 	});

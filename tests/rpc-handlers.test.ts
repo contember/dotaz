@@ -15,7 +15,7 @@ function setup() {
 	AppDatabase.resetInstance();
 	const appDb = AppDatabase.getInstance(":memory:");
 	const cm = new ConnectionManager(appDb);
-	const handlers = createHandlers(cm);
+	const handlers = createHandlers(cm, undefined, appDb);
 	return { appDb, cm, handlers };
 }
 
@@ -401,6 +401,262 @@ describe("RPC Handlers", () => {
 		});
 	});
 
+	// ── views.* ─────────────────────────────────────────
+
+	describe("views.*", () => {
+		let connectionId: string;
+
+		beforeEach(() => {
+			const conn = handlers["connections.create"]({
+				name: "SQLite Views Test",
+				config: sqliteConfig,
+			});
+			connectionId = conn.id;
+		});
+
+		test("views.list returns empty array initially", () => {
+			const result = handlers["views.list"]({
+				connectionId,
+				schemaName: "main",
+				tableName: "users",
+			});
+			expect(result).toEqual([]);
+		});
+
+		test("views.save creates and returns a saved view", () => {
+			const view = handlers["views.save"]({
+				connectionId,
+				schemaName: "main",
+				tableName: "users",
+				name: "Active Users",
+				config: {
+					columns: ["id", "name"],
+					sort: [{ column: "name", direction: "asc" }],
+				},
+			});
+			expect(view.id).toBeTruthy();
+			expect(view.name).toBe("Active Users");
+			expect(view.connectionId).toBe(connectionId);
+			expect(view.schemaName).toBe("main");
+			expect(view.tableName).toBe("users");
+			expect(view.config.columns).toEqual(["id", "name"]);
+			expect(view.config.sort).toEqual([{ column: "name", direction: "asc" }]);
+			expect(view.createdAt).toBeTruthy();
+			expect(view.updatedAt).toBeTruthy();
+		});
+
+		test("views.list returns views for a specific table", () => {
+			handlers["views.save"]({
+				connectionId,
+				schemaName: "main",
+				tableName: "users",
+				name: "View A",
+				config: {},
+			});
+			handlers["views.save"]({
+				connectionId,
+				schemaName: "main",
+				tableName: "posts",
+				name: "View B",
+				config: {},
+			});
+
+			const userViews = handlers["views.list"]({
+				connectionId,
+				schemaName: "main",
+				tableName: "users",
+			});
+			expect(userViews).toHaveLength(1);
+			expect(userViews[0].name).toBe("View A");
+
+			const postViews = handlers["views.list"]({
+				connectionId,
+				schemaName: "main",
+				tableName: "posts",
+			});
+			expect(postViews).toHaveLength(1);
+			expect(postViews[0].name).toBe("View B");
+		});
+
+		test("views.update modifies name and config", () => {
+			const view = handlers["views.save"]({
+				connectionId,
+				schemaName: "main",
+				tableName: "users",
+				name: "Original",
+				config: {},
+			});
+
+			const updated = handlers["views.update"]({
+				id: view.id,
+				name: "Renamed",
+				config: { columns: ["email"], columnWidths: { email: 200 } },
+			});
+			expect(updated.name).toBe("Renamed");
+			expect(updated.config.columns).toEqual(["email"]);
+			expect(updated.config.columnWidths).toEqual({ email: 200 });
+		});
+
+		test("views.delete removes a view", () => {
+			const view = handlers["views.save"]({
+				connectionId,
+				schemaName: "main",
+				tableName: "users",
+				name: "ToDelete",
+				config: {},
+			});
+			handlers["views.delete"]({ id: view.id });
+
+			const views = handlers["views.list"]({
+				connectionId,
+				schemaName: "main",
+				tableName: "users",
+			});
+			expect(views).toHaveLength(0);
+		});
+
+		test("views.save validates name uniqueness within table", () => {
+			handlers["views.save"]({
+				connectionId,
+				schemaName: "main",
+				tableName: "users",
+				name: "My View",
+				config: {},
+			});
+
+			expect(() =>
+				handlers["views.save"]({
+					connectionId,
+					schemaName: "main",
+					tableName: "users",
+					name: "My View",
+					config: {},
+				}),
+			).toThrow('A view named "My View" already exists for this table');
+		});
+
+		test("views.save allows same name on different tables", () => {
+			handlers["views.save"]({
+				connectionId,
+				schemaName: "main",
+				tableName: "users",
+				name: "Default",
+				config: {},
+			});
+
+			// Should not throw for different table
+			const view = handlers["views.save"]({
+				connectionId,
+				schemaName: "main",
+				tableName: "posts",
+				name: "Default",
+				config: {},
+			});
+			expect(view.name).toBe("Default");
+		});
+
+		test("views.update validates name uniqueness excluding self", () => {
+			const view1 = handlers["views.save"]({
+				connectionId,
+				schemaName: "main",
+				tableName: "users",
+				name: "View 1",
+				config: {},
+			});
+			handlers["views.save"]({
+				connectionId,
+				schemaName: "main",
+				tableName: "users",
+				name: "View 2",
+				config: {},
+			});
+
+			// Renaming to the other view's name should fail
+			expect(() =>
+				handlers["views.update"]({
+					id: view1.id,
+					name: "View 2",
+					config: {},
+				}),
+			).toThrow('A view named "View 2" already exists for this table');
+
+			// Keeping own name should succeed
+			const updated = handlers["views.update"]({
+				id: view1.id,
+				name: "View 1",
+				config: { columns: ["id"] },
+			});
+			expect(updated.config.columns).toEqual(["id"]);
+		});
+
+		test("views.save validates required fields", () => {
+			expect(() =>
+				handlers["views.save"]({
+					connectionId,
+					schemaName: "main",
+					tableName: "users",
+					name: "",
+					config: {},
+				}),
+			).toThrow("View name is required");
+
+			expect(() =>
+				handlers["views.save"]({
+					connectionId,
+					schemaName: "main",
+					tableName: "users",
+					name: "   ",
+					config: {},
+				}),
+			).toThrow("View name is required");
+		});
+
+		test("views.update validates required fields", () => {
+			expect(() =>
+				handlers["views.update"]({
+					id: "some-id",
+					name: "",
+					config: {},
+				}),
+			).toThrow("View name is required");
+		});
+
+		test("views.save trims whitespace from name", () => {
+			const view = handlers["views.save"]({
+				connectionId,
+				schemaName: "main",
+				tableName: "users",
+				name: "  Trimmed  ",
+				config: {},
+			});
+			expect(view.name).toBe("Trimmed");
+		});
+
+		test("views.save serializes and deserializes config JSON", () => {
+			const config = {
+				columns: ["id", "name", "email"],
+				sort: [{ column: "name", direction: "asc" as const }],
+				filters: [{ column: "active", operator: "eq", value: true }],
+				columnWidths: { id: 60, name: 200, email: 300 },
+			};
+			const view = handlers["views.save"]({
+				connectionId,
+				schemaName: "main",
+				tableName: "users",
+				name: "Full Config",
+				config,
+			});
+
+			// Retrieve via list to verify deserialization
+			const views = handlers["views.list"]({
+				connectionId,
+				schemaName: "main",
+				tableName: "users",
+			});
+			expect(views[0].config).toEqual(config);
+		});
+	});
+
 	// ── Stub handlers ────────────────────────────────────
 
 	describe("stub handlers", () => {
@@ -414,10 +670,6 @@ describe("RPC Handlers", () => {
 			"export.preview",
 			"history.list",
 			"history.clear",
-			"views.list",
-			"views.save",
-			"views.update",
-			"views.delete",
 			"settings.get",
 			"settings.set",
 		] as const;

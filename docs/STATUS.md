@@ -86,7 +86,7 @@
 ### Phase 6 — Advanced Features
 | Issue | Title | Status | Notes |
 |-------|-------|--------|-------|
-| DOTAZ-036 | Saved views backend (CRUD) | not started | |
+| DOTAZ-036 | Saved views backend (CRUD) | done | AppDatabase.getSavedViewById made public for uniqueness check on update |
 | DOTAZ-037 | SavedViewPicker + SaveViewDialog | not started | |
 | DOTAZ-038 | FK navigation (follow foreign keys) | not started | |
 | DOTAZ-039 | Export service (CSV, JSON, SQL INSERT) | not started | |
@@ -202,6 +202,9 @@
 | 2026-02-28 | DOTAZ-035 | `createEffect` syncs `hasPendingChanges` → `setTabDirty` | Reuses existing tab dirty/close-warning infrastructure; auto-hides panel when changes are cleared |
 | 2026-02-28 | DOTAZ-035 | Individual revert adjusts row indices after removal | Removing a new row shifts all higher indices down; `adjustIndicesAfterRemoval` updates cellEdits, newRows, deletedRows consistently |
 | 2026-02-28 | DOTAZ-035 | `pendingChangesCount` groups cell edits by row | Multiple cell edits on the same row count as one UPDATE change; matches `buildDataChanges` grouping logic |
+| 2026-02-28 | DOTAZ-036 | `createHandlers` accepts optional `AppDatabase` param | Views handlers need direct app-db access; passed through from `createRPC` and `index.ts` |
+| 2026-02-28 | DOTAZ-036 | Name uniqueness validated at handler level, not DB constraint | Provides clear error messages; checks on both save and update (excluding self on update) |
+| 2026-02-28 | DOTAZ-036 | `getSavedViewById` made public on `AppDatabase` | Needed by views.update handler to look up existing view's connection/schema/table for uniqueness check |
 
 ---
 
@@ -259,4 +262,4 @@
 
 ---
 
-*Last updated: 2026-02-28 (DOTAZ-035)*
+*Last updated: 2026-02-28 (DOTAZ-036)*

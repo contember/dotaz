@@ -28,7 +28,7 @@ const appDb = AppDatabase.getInstance();
 const connectionManager = new ConnectionManager(appDb);
 
 // Create RPC handlers
-const rpc = createRPC(connectionManager);
+const rpc = createRPC(connectionManager, appDb);
 
 const url = await getMainViewUrl();
 

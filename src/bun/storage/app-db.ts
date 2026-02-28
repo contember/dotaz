@@ -125,7 +125,7 @@ export class AppDatabase {
 		this.db.prepare("DELETE FROM saved_views WHERE id = ?").run(id);
 	}
 
-	private getSavedViewById(id: string): SavedView | null {
+	getSavedViewById(id: string): SavedView | null {
 		const row = this.db.prepare("SELECT * FROM saved_views WHERE id = ?").get(id) as SavedViewRow | null;
 		return row ? rowToSavedView(row) : null;
 	}
