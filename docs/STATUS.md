@@ -103,7 +103,7 @@
 | DOTAZ-046 | Context menus (grid, editor, tabs) | done | Grid cell/row/header, SQL editor, and tab context menus via reusable ContextMenu component |
 | DOTAZ-047 | Transaction management UI | done | TransactionManager service; tx RPC handlers; StatusBar "IN TRANSACTION" badge; tab/disconnect warnings; manual tx mode in grid skips auto-commit |
 | DOTAZ-048 | Error handling + toast notifications | done | UI store with toast management; ToastContainer in AppShell; friendlyErrorMessage in rpc-errors.ts; global error/rejection handlers; connection error toasts |
-| DOTAZ-049 | Application menu with all actions | not started | |
+| DOTAZ-049 | Application menu with all actions | in progress | |
 | DOTAZ-050 | Reconnect logic + connection resilience | not started | |
 | DOTAZ-051 | Settings storage + preferences | not started | |
 | DOTAZ-052 | Data refresh (F5) + stale indication | not started | |
@@ -115,9 +115,9 @@
 
 <!-- Update this section when starting work on a new issue -->
 
-**Active issue**: —
-**Branch**: —
-**Started**: —
+**Active issue**: DOTAZ-049 — Application menu with all actions
+**Branch**: main
+**Started**: 2026-02-28
 
 ---
 

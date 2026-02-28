@@ -19,7 +19,7 @@ import { connectionsStore } from "../../stores/connections";
 import { editorStore } from "../../stores/editor";
 import { gridStore } from "../../stores/grid";
 import { uiStore } from "../../stores/ui";
-import { friendlyErrorMessage } from "../../lib/rpc";
+import { friendlyErrorMessage, messages } from "../../lib/rpc";
 import { commandRegistry } from "../../lib/commands";
 import { keyboardManager } from "../../lib/keyboard";
 import type { ShortcutContext } from "../../lib/keyboard";
@@ -54,6 +54,8 @@ export default function AppShell() {
 		setConnectionToEdit(conn);
 		setDialogOpen(true);
 	}
+
+	let removeMenuListener: (() => void) | undefined;
 
 	function handleDuplicateTab(tabId: string) {
 		const sourceTab = tabsStore.openTabs.find((t) => t.id === tabId);
@@ -111,6 +113,11 @@ export default function AppShell() {
 		});
 		keyboardManager.init();
 
+		// Listen for menu actions from backend
+		removeMenuListener = messages.onMenuAction(({ action }) => {
+			commandRegistry.execute(action);
+		});
+
 		// Global error catching — prevents app crash on unhandled errors
 		window.addEventListener("error", handleUnhandledError);
 		window.addEventListener("unhandledrejection", handleUnhandledRejection);
@@ -154,6 +161,7 @@ export default function AppShell() {
 
 	onCleanup(() => {
 		keyboardManager.destroy();
+		removeMenuListener?.();
 		tabsStore.setBeforeCloseHook(null);
 		connectionsStore.setBeforeDisconnectHook(null);
 		window.removeEventListener("error", handleUnhandledError);
@@ -379,6 +387,77 @@ export default function AppShell() {
 			category: "Grid",
 			handler: () => {
 				// Export is managed by the ExportDialog within DataGrid
+			},
+		});
+
+		commandRegistry.register({
+			id: "new-connection",
+			label: "New Connection",
+			category: "Connection",
+			handler: () => openAddConnectionDialog(),
+		});
+
+		commandRegistry.register({
+			id: "reconnect",
+			label: "Reconnect",
+			category: "Connection",
+			handler: async () => {
+				const conn = connectionsStore.activeConnection;
+				if (!conn) return;
+				if (conn.state === "connected") {
+					await connectionsStore.disconnectFrom(conn.id);
+				}
+				connectionsStore.connectTo(conn.id);
+			},
+		});
+
+		commandRegistry.register({
+			id: "zoom-in",
+			label: "Zoom In",
+			category: "View",
+			shortcut: "Ctrl+=",
+			handler: () => {
+				const current = parseFloat(document.documentElement.style.zoom || "1");
+				document.documentElement.style.zoom = String(Math.min(current + 0.1, 2));
+			},
+		});
+
+		commandRegistry.register({
+			id: "zoom-out",
+			label: "Zoom Out",
+			category: "View",
+			shortcut: "Ctrl+-",
+			handler: () => {
+				const current = parseFloat(document.documentElement.style.zoom || "1");
+				document.documentElement.style.zoom = String(Math.max(current - 0.1, 0.5));
+			},
+		});
+
+		commandRegistry.register({
+			id: "zoom-reset",
+			label: "Reset Zoom",
+			category: "View",
+			shortcut: "Ctrl+0",
+			handler: () => {
+				document.documentElement.style.zoom = "1";
+			},
+		});
+
+		commandRegistry.register({
+			id: "about",
+			label: "About Dotaz",
+			category: "Help",
+			handler: () => {
+				uiStore.addToast("info", "Dotaz — Desktop Database Client");
+			},
+		});
+
+		commandRegistry.register({
+			id: "settings",
+			label: "Settings",
+			category: "Navigation",
+			handler: () => {
+				uiStore.addToast("info", "Settings will be available in a future update.");
 			},
 		});
 	}

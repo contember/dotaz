@@ -344,6 +344,9 @@ export type DotazRPC = {
 				state: ConnectionState;
 				error?: string;
 			};
+			"menu.action": {
+				action: string;
+			};
 		};
 	}>;
 	webview: RPCSchema<{

@@ -1,6 +1,6 @@
 /** Singleton command registry for the command palette. */
 
-export type CommandCategory = "Connection" | "Query" | "Grid" | "Navigation" | "View";
+export type CommandCategory = "Connection" | "Query" | "Grid" | "Navigation" | "View" | "Help";
 
 export interface Command {
 	id: string;

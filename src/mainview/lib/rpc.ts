@@ -181,4 +181,12 @@ export const messages = {
 			electroviewRpc.removeMessageListener("connections.statusChanged" as any, handler as any);
 		};
 	},
+	onMenuAction: (
+		handler: (event: { action: string }) => void,
+	) => {
+		electroviewRpc.addMessageListener("menu.action" as any, handler as any);
+		return () => {
+			electroviewRpc.removeMessageListener("menu.action" as any, handler as any);
+		};
+	},
 };
