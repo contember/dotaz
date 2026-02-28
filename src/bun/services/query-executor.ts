@@ -130,7 +130,7 @@ export function buildOrderByClause(
 /**
  * Qualify a table name with its schema. For SQLite "main" schema, skip qualification.
  */
-function qualifyTable(schema: string, table: string, driver: DatabaseDriver): string {
+export function qualifyTable(schema: string, table: string, driver: DatabaseDriver): string {
 	if (driver.getDriverType() === "sqlite" && schema === "main") {
 		return driver.quoteIdentifier(table);
 	}

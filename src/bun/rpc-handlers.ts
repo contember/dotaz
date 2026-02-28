@@ -3,7 +3,9 @@ import type { DotazRPC, ExecuteQueryParams, ApplyChangesParams, GenerateSqlParam
 import type { ConnectionManager } from "./services/connection-manager";
 import type { AppDatabase } from "./storage/app-db";
 import type { GridDataRequest } from "../shared/types/grid";
+import type { ExportOptions, ExportPreviewRequest } from "../shared/types/export";
 import { buildSelectQuery, buildCountQuery, QueryExecutor, generateChangeSql, generateChangesPreview } from "./services/query-executor";
+import { exportToFile, exportPreview } from "./services/export-service";
 import { formatSql } from "./services/sql-formatter";
 
 function notImplemented(method: string): never {
@@ -147,12 +149,36 @@ export function createHandlers(cm: ConnectionManager, qe?: QueryExecutor, appDb?
 			notImplemented("tx.status");
 		},
 
-		// ── Export (stub) ─────────────────────────────────
-		"export.exportData": () => {
-			notImplemented("export.exportData");
+		// ── Export ────────────────────────────────────────
+		"export.exportData": async (opts: ExportOptions) => {
+			const driver = cm.getDriver(opts.connectionId);
+			const result = await exportToFile(driver, {
+				schema: opts.schema,
+				table: opts.table,
+				format: opts.format,
+				columns: opts.columns,
+				includeHeaders: opts.includeHeaders,
+				delimiter: opts.delimiter,
+				batchSize: opts.batchSize,
+				filters: opts.filters,
+				sort: opts.sort,
+				limit: opts.limit,
+			}, opts.filePath);
+			return { ...result, filePath: opts.filePath };
 		},
-		"export.preview": () => {
-			notImplemented("export.preview");
+		"export.preview": async (req: ExportPreviewRequest) => {
+			const driver = cm.getDriver(req.connectionId);
+			const content = await exportPreview(driver, {
+				schema: req.schema,
+				table: req.table,
+				format: req.format,
+				columns: req.columns,
+				delimiter: req.delimiter,
+				filters: req.filters,
+				sort: req.sort,
+				limit: req.limit,
+			});
+			return { content };
 		},
 
 		// ── History (stub) ────────────────────────────────

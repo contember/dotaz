@@ -666,8 +666,6 @@ describe("RPC Handlers", () => {
 			"tx.commit",
 			"tx.rollback",
 			"tx.status",
-			"export.exportData",
-			"export.preview",
 			"history.list",
 			"history.clear",
 			"settings.get",

@@ -89,7 +89,7 @@
 | DOTAZ-036 | Saved views backend (CRUD) | done | AppDatabase.getSavedViewById made public for uniqueness check on update |
 | DOTAZ-037 | SavedViewPicker + SaveViewDialog | done | Active view tracking in grid store; Ctrl+S quick save; dropdown with Default + saved views |
 | DOTAZ-038 | FK navigation (follow foreign keys) | done | FK cells underlined with accent color; click navigates within tab; breadcrumb + back; context menu with "Go to referenced row" / "Open target table" |
-| DOTAZ-039 | Export service (CSV, JSON, SQL INSERT) | not started | |
+| DOTAZ-039 | Export service (CSV, JSON, SQL INSERT) | done | Streaming batched export (1000 rows/batch); CSV with configurable delimiter; JSON pretty-printed array; SQL INSERT with batch size; `qualifyTable` exported from query-executor |
 | DOTAZ-040 | ExportDialog | not started | |
 | DOTAZ-041 | Query history backend + RPC | not started | |
 | DOTAZ-042 | QueryHistory component | not started | |
@@ -214,6 +214,10 @@
 | 2026-02-28 | DOTAZ-038 | FK click via `stopPropagation` on inner `<span>` | FK link span inside GridCell stops propagation to prevent row selection; clicking cell padding still selects |
 | 2026-02-28 | DOTAZ-038 | `createEffect` for reactive FK loading on table change | FKs reload when `tab().schema/table` changes (FK navigation); initial load in `onMount` |
 | 2026-02-28 | DOTAZ-038 | Context menu uses `focusedCell` for row index | Right-click sets focused cell first (via existing click handler); context menu reads row from focused cell |
+| 2026-02-28 | DOTAZ-039 | Batched streaming export via LIMIT/OFFSET (1000 rows/batch) | DatabaseDriver.execute() returns all rows; paging with LIMIT/OFFSET avoids OOM without modifying driver interface |
+| 2026-02-28 | DOTAZ-039 | Formatter interface with preamble/formatBatch/epilogue | Clean separation: CSV/JSON/SQL formatters handle their own header/body/footer; streaming-friendly |
+| 2026-02-28 | DOTAZ-039 | Extended ExportOptions with delimiter, columns, filters, sort, batchSize | Issue requires configurable delimiter, column selection, filter/sort; added to shared types |
+| 2026-02-28 | DOTAZ-039 | Exported `qualifyTable` from query-executor | ExportService needs schema-qualified table names; reuse existing logic rather than duplicate |
 
 ---
 
@@ -271,4 +275,4 @@
 
 ---
 
-*Last updated: 2026-02-28 (DOTAZ-038)*
+*Last updated: 2026-02-28 (DOTAZ-039)*
