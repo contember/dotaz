@@ -20,6 +20,11 @@
 	background: var(--bg-panel);
 }
 
+.data-grid__toolbar > .saved-view-picker {
+	flex-shrink: 0;
+	padding-left: var(--spacing-md);
+}
+
 .data-grid__toolbar > .filter-bar {
 	flex: 1;
 	border-bottom: none;

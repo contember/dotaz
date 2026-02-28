@@ -87,7 +87,7 @@
 | Issue | Title | Status | Notes |
 |-------|-------|--------|-------|
 | DOTAZ-036 | Saved views backend (CRUD) | done | AppDatabase.getSavedViewById made public for uniqueness check on update |
-| DOTAZ-037 | SavedViewPicker + SaveViewDialog | not started | |
+| DOTAZ-037 | SavedViewPicker + SaveViewDialog | done | Active view tracking in grid store; Ctrl+S quick save; dropdown with Default + saved views |
 | DOTAZ-038 | FK navigation (follow foreign keys) | not started | |
 | DOTAZ-039 | Export service (CSV, JSON, SQL INSERT) | not started | |
 | DOTAZ-040 | ExportDialog | not started | |
@@ -205,6 +205,9 @@
 | 2026-02-28 | DOTAZ-036 | `createHandlers` accepts optional `AppDatabase` param | Views handlers need direct app-db access; passed through from `createRPC` and `index.ts` |
 | 2026-02-28 | DOTAZ-036 | Name uniqueness validated at handler level, not DB constraint | Provides clear error messages; checks on both save and update (excluding self on update) |
 | 2026-02-28 | DOTAZ-036 | `getSavedViewById` made public on `AppDatabase` | Needed by views.update handler to look up existing view's connection/schema/table for uniqueness check |
+| 2026-02-28 | DOTAZ-037 | Active view state (`activeViewId`/`activeViewName`) in grid store | Needed by both SavedViewPicker (display) and DataGrid Ctrl+S handler (quick save vs open dialog) |
+| 2026-02-28 | DOTAZ-037 | `applyViewConfig` preserves existing pin state | `SavedViewConfig` doesn't include pinned column info; pinning is orthogonal to view configuration |
+| 2026-02-28 | DOTAZ-037 | Ctrl+S quick save updates in-place if view active, opens dialog otherwise | Matches common "save" UX: known target = silent save, unknown = Save As dialog |
 
 ---
 
@@ -262,4 +265,4 @@
 
 ---
 
-*Last updated: 2026-02-28 (DOTAZ-036)*
+*Last updated: 2026-02-28 (DOTAZ-037)*

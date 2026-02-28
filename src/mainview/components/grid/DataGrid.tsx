@@ -12,6 +12,8 @@ import ColumnManager from "./ColumnManager";
 import Pagination from "./Pagination";
 import RowDetailDialog from "../edit/RowDetailDialog";
 import PendingChanges from "../edit/PendingChanges";
+import SavedViewPicker from "../views/SavedViewPicker";
+import SaveViewDialog from "../views/SaveViewDialog";
 import "./DataGrid.css";
 
 interface DataGridProps {
@@ -30,6 +32,7 @@ export default function DataGrid(props: DataGridProps) {
 	const [copyFeedback, setCopyFeedback] = createSignal<string | null>(null);
 	const [rowDetailIndex, setRowDetailIndex] = createSignal<number | null>(null);
 	const [showPendingPanel, setShowPendingPanel] = createSignal(false);
+	const [saveViewOpen, setSaveViewOpen] = createSignal(false);
 	let scrollRef: HTMLDivElement | undefined;
 	let gridRef: HTMLDivElement | undefined;
 	let anchorRow = -1;
@@ -232,6 +235,27 @@ export default function DataGrid(props: DataGridProps) {
 		gridStore.loadTableData(props.tabId, props.connectionId, props.schema, props.table);
 	}
 
+	// ── Saved views ────────────────────────────────────────
+
+	async function handleQuickSave() {
+		const t = tab();
+		if (!t?.activeViewId) {
+			setSaveViewOpen(true);
+			return;
+		}
+		try {
+			const config = gridStore.captureViewConfig(props.tabId);
+			await rpc.views.update({
+				id: t.activeViewId,
+				name: t.activeViewName!,
+				config,
+			});
+		} catch {
+			// Fall back to dialog on error
+			setSaveViewOpen(true);
+		}
+	}
+
 	// ── Clipboard ──────────────────────────────────────────
 
 	async function handleCopy() {
@@ -301,6 +325,14 @@ export default function DataGrid(props: DataGridProps) {
 			},
 		},
 		{
+			key: "s",
+			ctrl: true,
+			handler(e) {
+				e.preventDefault();
+				handleQuickSave();
+			},
+		},
+		{
 			key: "Escape",
 			handler(e) {
 				const t = tab();
@@ -323,6 +355,13 @@ export default function DataGrid(props: DataGridProps) {
 				<Show when={tab()}>
 					{(tabState) => (
 						<>
+							<SavedViewPicker
+								tabId={props.tabId}
+								connectionId={props.connectionId}
+								schema={props.schema}
+								table={props.table}
+								onSaveView={() => setSaveViewOpen(true)}
+							/>
 							<FilterBar
 								columns={tabState().columns}
 								filters={tabState().filters}
@@ -450,6 +489,18 @@ export default function DataGrid(props: DataGridProps) {
 					);
 				}}
 			</Show>
+
+			<SaveViewDialog
+				open={saveViewOpen()}
+				tabId={props.tabId}
+				connectionId={props.connectionId}
+				schema={props.schema}
+				table={props.table}
+				onClose={() => setSaveViewOpen(false)}
+				onSaved={() => {
+					// Dialog closes itself; picker will reload on next open
+				}}
+			/>
 		</div>
 	);
 }

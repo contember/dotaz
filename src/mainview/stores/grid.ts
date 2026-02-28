@@ -1,10 +1,11 @@
 import { createStore } from "solid-js/store";
 import type {
 	ColumnFilter,
+	FilterOperator,
 	GridColumnDef,
 	SortColumn,
 } from "../../shared/types/grid";
-import type { DataChange } from "../../shared/types/rpc";
+import type { DataChange, SavedViewConfig } from "../../shared/types/rpc";
 import { rpc } from "../lib/rpc";
 
 // ── Column config (visibility, order, widths, pinned) ────
@@ -63,6 +64,8 @@ export interface TabGridState {
 	columnConfig: Record<string, ColumnConfig>;
 	columnOrder: string[];
 	loading: boolean;
+	activeViewId: string | null;
+	activeViewName: string | null;
 }
 
 function createDefaultPendingChanges(): PendingChanges {
@@ -96,6 +99,8 @@ function createDefaultTabState(
 		columnConfig: {},
 		columnOrder: [],
 		loading: false,
+		activeViewId: null,
+		activeViewName: null,
 	};
 }
 
@@ -759,6 +764,78 @@ function revertChanges(tabId: string) {
 	setState("tabs", tabId, "editingCell", null);
 }
 
+// ── Saved view actions ────────────────────────────────────
+
+function setActiveView(tabId: string, viewId: string | null, viewName: string | null) {
+	ensureTab(tabId);
+	setState("tabs", tabId, "activeViewId", viewId);
+	setState("tabs", tabId, "activeViewName", viewName);
+}
+
+async function applyViewConfig(tabId: string, config: SavedViewConfig) {
+	const tab = ensureTab(tabId);
+
+	setState("tabs", tabId, "sort", config.sort?.map(s => ({
+		column: s.column,
+		direction: s.direction,
+	})) ?? []);
+
+	setState("tabs", tabId, "filters", config.filters?.map(f => ({
+		column: f.column,
+		operator: f.operator as FilterOperator,
+		value: f.value,
+	})) ?? []);
+
+	if (config.columns) {
+		const visibleSet = new Set(config.columns);
+		const newConfig: Record<string, ColumnConfig> = {};
+		for (const col of tab.columns) {
+			newConfig[col.name] = {
+				visible: visibleSet.has(col.name),
+				width: config.columnWidths?.[col.name],
+				pinned: tab.columnConfig[col.name]?.pinned,
+			};
+		}
+		setState("tabs", tabId, "columnConfig", newConfig);
+		setState("tabs", tabId, "columnOrder", config.columns);
+	}
+
+	setState("tabs", tabId, "currentPage", 1);
+	setState("tabs", tabId, "selectedRows", new Set());
+	await fetchData(tabId);
+}
+
+async function resetToDefault(tabId: string) {
+	ensureTab(tabId);
+	setState("tabs", tabId, "sort", []);
+	setState("tabs", tabId, "filters", []);
+	setState("tabs", tabId, "columnConfig", {});
+	setState("tabs", tabId, "columnOrder", []);
+	setState("tabs", tabId, "activeViewId", null);
+	setState("tabs", tabId, "activeViewName", null);
+	setState("tabs", tabId, "currentPage", 1);
+	setState("tabs", tabId, "selectedRows", new Set());
+	await fetchData(tabId);
+}
+
+function captureViewConfig(tabId: string): SavedViewConfig {
+	const tab = ensureTab(tabId);
+	const visible = getVisibleColumns(tab);
+	const columnWidths: Record<string, number> = {};
+	for (const col of tab.columns) {
+		if (tab.columnConfig[col.name]?.width) {
+			columnWidths[col.name] = tab.columnConfig[col.name].width!;
+		}
+	}
+
+	return {
+		columns: visible.map(c => c.name),
+		sort: tab.sort.map(s => ({ column: s.column, direction: s.direction })),
+		filters: tab.filters.map(f => ({ column: f.column, operator: f.operator, value: f.value })),
+		columnWidths: Object.keys(columnWidths).length > 0 ? columnWidths : undefined,
+	};
+}
+
 function removeTab(tabId: string) {
 	setState("tabs", tabId, undefined!);
 }
@@ -792,6 +869,12 @@ export const gridStore = {
 	getVisibleColumns,
 	computePinStyles,
 	removeTab,
+
+	// Saved views
+	setActiveView,
+	applyViewConfig,
+	resetToDefault,
+	captureViewConfig,
 
 	// Editing
 	startEditing,
