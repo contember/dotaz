@@ -12,6 +12,7 @@ import type {
 } from "./database";
 import type { ExportOptions, ExportPreviewRequest, ExportResult } from "./export";
 import type {
+	ColumnFilter,
 	GridDataRequest,
 	GridDataResponse,
 } from "./grid";
@@ -228,7 +229,7 @@ export type DotazRPC = {
 				response: GridDataResponse;
 			};
 			"data.getRowCount": {
-				params: TableParams;
+				params: TableParams & { filters?: ColumnFilter[] };
 				response: { count: number };
 			};
 			"data.getColumnStats": {

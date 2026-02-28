@@ -1,6 +1,8 @@
 import type { BrowserWindow } from "electrobun/bun";
 import type { DotazRPC, OpenDialogParams, SaveDialogParams } from "../shared/types/rpc";
 import type { ConnectionManager } from "./services/connection-manager";
+import type { GridDataRequest } from "../shared/types/grid";
+import { buildSelectQuery, buildCountQuery } from "./services/query-executor";
 
 function notImplemented(method: string): never {
 	throw new Error(`Not implemented yet: ${method}`);
@@ -53,12 +55,42 @@ export function createHandlers(cm: ConnectionManager) {
 			return driver.getForeignKeys(schema, table);
 		},
 
-		// ── Data Grid (stub) ─────────────────────────────
-		"data.getTableData": () => {
-			notImplemented("data.getTableData");
+		// ── Data Grid ────────────────────────────────────
+		"data.getTableData": async (req: GridDataRequest) => {
+			const driver = cm.getDriver(req.connectionId);
+			const { sql, params } = buildSelectQuery(
+				req.schema, req.table, req.page, req.pageSize,
+				req.sort, req.filters, driver,
+			);
+			const result = await driver.execute(sql, params);
+
+			// Get column metadata
+			const columns = await driver.getColumns(req.schema, req.table);
+			const gridColumns = columns.map((c) => ({
+				name: c.name,
+				dataType: c.dataType,
+				nullable: c.nullable,
+				isPrimaryKey: c.isPrimaryKey,
+			}));
+
+			// Get total count with same filters
+			const countQuery = buildCountQuery(req.schema, req.table, req.filters, driver);
+			const countResult = await driver.execute(countQuery.sql, countQuery.params);
+			const totalRows = Number(countResult.rows[0]?.count ?? 0);
+
+			return {
+				columns: gridColumns,
+				rows: result.rows,
+				totalRows,
+				page: req.page,
+				pageSize: req.pageSize,
+			};
 		},
-		"data.getRowCount": () => {
-			notImplemented("data.getRowCount");
+		"data.getRowCount": async ({ connectionId, schema, table, filters }: { connectionId: string; schema: string; table: string; filters?: import("../shared/types/grid").ColumnFilter[] }) => {
+			const driver = cm.getDriver(connectionId);
+			const { sql, params } = buildCountQuery(schema, table, filters, driver);
+			const result = await driver.execute(sql, params);
+			return { count: Number(result.rows[0]?.count ?? 0) };
 		},
 		"data.getColumnStats": () => {
 			notImplemented("data.getColumnStats");

@@ -12,7 +12,7 @@
 | 0     | Project Setup         | DOTAZ-001 – 003 | done        |       |
 | 1     | Foundation            | DOTAZ-004 – 011 | done        |       |
 | 2     | Connection Management | DOTAZ-012 – 016 | done        |       |
-| 3     | Data Grid             | DOTAZ-017 – 024 | not started |       |
+| 3     | Data Grid             | DOTAZ-017 – 024 | in progress |       |
 | 4     | SQL Editor            | DOTAZ-025 – 031 | not started |       |
 | 5     | Data Editing          | DOTAZ-032 – 035 | not started |       |
 | 6     | Advanced Features     | DOTAZ-036 – 043 | not started |       |
@@ -55,7 +55,7 @@
 ### Phase 3 — Data Grid
 | Issue | Title | Status | Notes |
 |-------|-------|--------|-------|
-| DOTAZ-017 | getTableData RPC with pagination, sort, filter | not started | |
+| DOTAZ-017 | getTableData RPC with pagination, sort, filter | done | |
 | DOTAZ-018 | Grid store (data grid state) | not started | |
 | DOTAZ-019 | DataGrid container + GridHeader | not started | |
 | DOTAZ-020 | Virtual scrolling + GridRow + GridCell | not started | |
@@ -154,6 +154,9 @@
 | 2026-02-28 | DOTAZ-015 | ConnectionDialog managed in AppShell, triggered from sidebar "+" and empty state CTA | Centralizes dialog state; both the sidebar header button and empty state CTA use the same callback |
 | 2026-02-28 | DOTAZ-016 | Generic ContextMenu component with viewport clamping | Reusable for future context menus (grid, editor, tabs in DOTAZ-046); positioned at click coords with edge detection |
 | 2026-02-28 | DOTAZ-016 | Edit connection via context menu delegates to AppShell dialog | `onEditConnection` prop passes through to AppShell's existing ConnectionDialog; keeps dialog state centralized |
+| 2026-02-28 | DOTAZ-017 | Extended `data.getRowCount` RPC params with optional `filters` | Acceptance criteria requires count with applied filters; `TableParams` alone is insufficient |
+| 2026-02-28 | DOTAZ-017 | SQLite "main" schema skips qualification in generated SQL | `SELECT * FROM "users"` instead of `SELECT * FROM "main"."users"` — matches SQLite conventions |
+| 2026-02-28 | DOTAZ-017 | `$N` positional parameters for dynamic SQL | Works with both Bun.SQL PostgreSQL and SQLite via `db.unsafe(sql, params)` |
 
 ---
 
@@ -211,4 +214,4 @@
 
 ---
 
-*Last updated: 2026-02-28 (DOTAZ-016)*
+*Last updated: 2026-02-28 (DOTAZ-017)*

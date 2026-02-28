@@ -209,12 +209,132 @@ describe("RPC Handlers", () => {
 		});
 	});
 
+	// ── data.* ───────────────────────────────────────────
+
+	describe("data.*", () => {
+		let connectionId: string;
+
+		beforeEach(async () => {
+			const conn = handlers["connections.create"]({
+				name: "SQLite Data Test",
+				config: sqliteConfig,
+			});
+			connectionId = conn.id;
+			await handlers["connections.connect"]({ connectionId });
+
+			const driver = cm.getDriver(connectionId);
+			await driver.execute(
+				"CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)",
+			);
+			await driver.execute("INSERT INTO users (name, age) VALUES ('Alice', 30)");
+			await driver.execute("INSERT INTO users (name, age) VALUES ('Bob', 25)");
+			await driver.execute("INSERT INTO users (name, age) VALUES ('Charlie', NULL)");
+		});
+
+		test("data.getTableData returns paginated data", async () => {
+			const result = await handlers["data.getTableData"]({
+				connectionId,
+				schema: "main",
+				table: "users",
+				page: 1,
+				pageSize: 2,
+			});
+			expect(result.rows).toHaveLength(2);
+			expect(result.totalRows).toBe(3);
+			expect(result.page).toBe(1);
+			expect(result.pageSize).toBe(2);
+			expect(result.columns.length).toBeGreaterThan(0);
+		});
+
+		test("data.getTableData page 2", async () => {
+			const result = await handlers["data.getTableData"]({
+				connectionId,
+				schema: "main",
+				table: "users",
+				page: 2,
+				pageSize: 2,
+			});
+			expect(result.rows).toHaveLength(1);
+			expect(result.totalRows).toBe(3);
+		});
+
+		test("data.getTableData with sort", async () => {
+			const result = await handlers["data.getTableData"]({
+				connectionId,
+				schema: "main",
+				table: "users",
+				page: 1,
+				pageSize: 10,
+				sort: [{ column: "name", direction: "desc" }],
+			});
+			expect(result.rows[0].name).toBe("Charlie");
+			expect(result.rows[2].name).toBe("Alice");
+		});
+
+		test("data.getTableData with filter", async () => {
+			const result = await handlers["data.getTableData"]({
+				connectionId,
+				schema: "main",
+				table: "users",
+				page: 1,
+				pageSize: 10,
+				filters: [{ column: "age", operator: "gt", value: 26 }],
+			});
+			expect(result.rows).toHaveLength(1);
+			expect(result.rows[0].name).toBe("Alice");
+			expect(result.totalRows).toBe(1);
+		});
+
+		test("data.getTableData with isNull filter", async () => {
+			const result = await handlers["data.getTableData"]({
+				connectionId,
+				schema: "main",
+				table: "users",
+				page: 1,
+				pageSize: 10,
+				filters: [{ column: "age", operator: "isNull", value: null }],
+			});
+			expect(result.rows).toHaveLength(1);
+			expect(result.rows[0].name).toBe("Charlie");
+		});
+
+		test("data.getTableData columns include metadata", async () => {
+			const result = await handlers["data.getTableData"]({
+				connectionId,
+				schema: "main",
+				table: "users",
+				page: 1,
+				pageSize: 10,
+			});
+			const idCol = result.columns.find((c) => c.name === "id");
+			expect(idCol).toBeTruthy();
+			expect(idCol!.isPrimaryKey).toBe(true);
+		});
+
+		test("data.getRowCount returns total count", async () => {
+			const result = await handlers["data.getRowCount"]({
+				connectionId,
+				schema: "main",
+				table: "users",
+			});
+			expect(result.count).toBe(3);
+		});
+
+		test("data.getRowCount with filters", async () => {
+			const result = await handlers["data.getRowCount"]({
+				connectionId,
+				schema: "main",
+				table: "users",
+				filters: [{ column: "age", operator: "isNotNull", value: null }],
+			});
+			expect(result.count).toBe(2);
+		});
+	});
+
 	// ── Stub handlers ────────────────────────────────────
 
 	describe("stub handlers", () => {
 		const stubs = [
-			"data.getTableData",
-			"data.getRowCount",
 			"data.getColumnStats",
 			"data.applyChanges",
 			"data.generateSql",
