@@ -1,5 +1,6 @@
 import { createSignal, onMount, Show } from "solid-js";
 import type { ColumnFilter } from "../../../shared/types/grid";
+import type { ForeignKeyInfo } from "../../../shared/types/database";
 import { gridStore } from "../../stores/grid";
 import { rpc } from "../../lib/rpc";
 import { createKeyHandler } from "../../lib/keyboard";
@@ -8,6 +9,7 @@ import VirtualScroller from "./VirtualScroller";
 import FilterBar from "./FilterBar";
 import ColumnManager from "./ColumnManager";
 import Pagination from "./Pagination";
+import RowDetailDialog from "../edit/RowDetailDialog";
 import "./DataGrid.css";
 
 interface DataGridProps {
@@ -22,7 +24,9 @@ const COPY_FLASH_DURATION = 400;
 
 export default function DataGrid(props: DataGridProps) {
 	const [fkColumns, setFkColumns] = createSignal<Set<string>>(new Set());
+	const [foreignKeys, setForeignKeys] = createSignal<ForeignKeyInfo[]>([]);
 	const [copyFeedback, setCopyFeedback] = createSignal<string | null>(null);
+	const [rowDetailIndex, setRowDetailIndex] = createSignal<number | null>(null);
 	let scrollRef: HTMLDivElement | undefined;
 	let gridRef: HTMLDivElement | undefined;
 	let anchorRow = -1;
@@ -52,6 +56,7 @@ export default function DataGrid(props: DataGridProps) {
 				props.schema,
 				props.table,
 			);
+			setForeignKeys(fks);
 			const fkCols = new Set<string>();
 			for (const fk of fks) {
 				for (const col of fk.columns) {
@@ -182,6 +187,33 @@ export default function DataGrid(props: DataGridProps) {
 		return changed;
 	}
 
+	// ── Row Detail Dialog ────────────────────────────────────
+
+	function openRowDetail() {
+		const t = tab();
+		if (!t) return;
+		// Use first selected row
+		const selected = [...t.selectedRows].sort((a, b) => a - b);
+		if (selected.length === 0) return;
+		setRowDetailIndex(selected[0]);
+	}
+
+	function handleRowDetailSave(rowIndex: number, changes: Record<string, unknown>) {
+		for (const [column, value] of Object.entries(changes)) {
+			gridStore.setCellValue(props.tabId, rowIndex, column, value);
+		}
+	}
+
+	function handleRowDetailClose() {
+		setRowDetailIndex(null);
+	}
+
+	function handleRowDetailNavigate(rowIndex: number) {
+		setRowDetailIndex(rowIndex);
+		// Also update selection in the grid
+		gridStore.selectRow(props.tabId, rowIndex);
+	}
+
 	// ── Clipboard ──────────────────────────────────────────
 
 	async function handleCopy() {
@@ -237,6 +269,17 @@ export default function DataGrid(props: DataGridProps) {
 			handler(e) {
 				e.preventDefault();
 				handleDeleteSelected();
+			},
+		},
+		{
+			key: "Enter",
+			handler(e) {
+				const t = tab();
+				if (t?.editingCell) return; // Don't open detail while inline editing
+				if (t && t.selectedRows.size > 0) {
+					e.preventDefault();
+					openRowDetail();
+				}
 			},
 		},
 		{
@@ -356,6 +399,26 @@ export default function DataGrid(props: DataGridProps) {
 
 			<Show when={copyFeedback()}>
 				<div class="data-grid__copy-toast">{copyFeedback()}</div>
+			</Show>
+
+			<Show when={rowDetailIndex() !== null}>
+				{(_) => {
+					const t = tab()!;
+					return (
+						<RowDetailDialog
+							open={true}
+							tabId={props.tabId}
+							columns={t.columns}
+							rows={t.rows}
+							rowIndex={rowDetailIndex()!}
+							foreignKeys={foreignKeys()}
+							pendingCellEdits={t.pendingChanges.cellEdits}
+							onSave={handleRowDetailSave}
+							onClose={handleRowDetailClose}
+							onNavigate={handleRowDetailNavigate}
+						/>
+					);
+				}}
 			</Show>
 		</div>
 	);

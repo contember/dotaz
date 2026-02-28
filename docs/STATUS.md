@@ -80,7 +80,7 @@
 |-------|-------|--------|-------|
 | DOTAZ-032 | Data editing backend (INSERT/UPDATE/DELETE generation) | done | |
 | DOTAZ-033 | InlineEditor (cell editing in grid) | done | Editing state in grid store; type-aware InlineEditor; dblclick/F2/Tab/Enter/Escape; Ctrl+Insert new row; Delete selected rows |
-| DOTAZ-034 | RowDetailDialog (form view of row detail) | not started | |
+| DOTAZ-034 | RowDetailDialog (form view of row detail) | done | Enter on selected row opens; Ctrl+Up/Down for navigation; type-aware inputs; FK display |
 | DOTAZ-035 | PendingChanges panel + apply/revert workflow | not started | |
 
 ### Phase 6 — Advanced Features
@@ -196,6 +196,9 @@
 | 2026-02-28 | DOTAZ-033 | PendingChanges in grid store with cellEdits/newRows/deletedRows | Separate tracking enables per-cell change indicators, new row highlighting, and row deletion strikethrough; `buildDataChanges()` converts to `DataChange[]` for backend |
 | 2026-02-28 | DOTAZ-033 | InlineEditor as separate component rendered by GridCell | Keeps GridCell simple; InlineEditor handles type-aware inputs (text/textarea/number/checkbox/date); mounted inside the cell position for seamless UX |
 | 2026-02-28 | DOTAZ-033 | Editing props flow through VirtualScroller → GridRow → GridCell | Each layer passes editing state down; avoids store access in leaf components; consistent with existing prop-drilling pattern |
+| 2026-02-28 | DOTAZ-034 | Local form state in RowDetailDialog, saved to pendingChanges on Save | Local `Record<string, unknown>` tracks edits per session; only writes to grid store on Save; Cancel discards without side effects |
+| 2026-02-28 | DOTAZ-034 | Navigation auto-saves current edits before moving | Previous/Next buttons save local edits to pendingChanges before switching rows; prevents accidental data loss |
+| 2026-02-28 | DOTAZ-034 | Ctrl+Up/Down for row navigation in dialog | Alt or Ctrl + arrow keys for navigation; avoids conflict with normal text input arrow key behavior |
 
 ---
 
@@ -253,4 +256,4 @@
 
 ---
 
-*Last updated: 2026-02-28 (DOTAZ-033)*
+*Last updated: 2026-02-28 (DOTAZ-034)*
