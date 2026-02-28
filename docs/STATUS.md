@@ -13,7 +13,7 @@
 | 1     | Foundation            | DOTAZ-004 – 011 | done        |       |
 | 2     | Connection Management | DOTAZ-012 – 016 | done        |       |
 | 3     | Data Grid             | DOTAZ-017 – 024 | done        |       |
-| 4     | SQL Editor            | DOTAZ-025 – 031 | not started |       |
+| 4     | SQL Editor            | DOTAZ-025 – 031 | in progress |       |
 | 5     | Data Editing          | DOTAZ-032 – 035 | not started |       |
 | 6     | Advanced Features     | DOTAZ-036 – 043 | not started |       |
 | 7     | Polish                | DOTAZ-044 – 053 | not started |       |
@@ -67,7 +67,7 @@
 ### Phase 4 — SQL Editor
 | Issue | Title | Status | Notes |
 |-------|-------|--------|-------|
-| DOTAZ-025 | QueryExecutor service with cancellation | not started | |
+| DOTAZ-025 | QueryExecutor service with cancellation | done | |
 | DOTAZ-026 | SQL console RPC handlers (execute, cancel, format) | not started | |
 | DOTAZ-027 | Editor store (SQL console state) | not started | |
 | DOTAZ-028 | SqlEditor with CodeMirror 6 | not started | |
@@ -169,6 +169,10 @@
 | 2026-02-28 | DOTAZ-024 | Event delegation for cell focus via `data-column` attribute | Instead of adding `onCellClick` prop through VirtualScroller→GridRow→GridCell, use `data-column` on GridCell and detect via `closest("[data-column]")` in DataGrid row click handler |
 | 2026-02-28 | DOTAZ-024 | `focusedCell` in grid store for single-cell copy | Single row + focused cell → copy cell value; multi-row or no focused cell → copy all visible columns with TSV headers |
 | 2026-02-28 | DOTAZ-024 | `createKeyHandler` utility with modifier matching | Reusable key binding dispatcher; treats Ctrl and Meta (Cmd) as equivalent for cross-platform support |
+| 2026-02-28 | DOTAZ-025 | `splitStatements` with quote-aware semicolon splitting | Simple char-by-char parser respects single/double quotes; avoids regex pitfalls with quoted semicolons |
+| 2026-02-28 | DOTAZ-025 | `QueryExecutor` uses `crypto.randomUUID()` for queryIds | Consistent with tab ID pattern (DOTAZ-011); unique across concurrent queries |
+| 2026-02-28 | DOTAZ-025 | Params only passed for single-statement queries | Multi-statement SQL is split and executed without params; params only make sense for a single parameterized statement |
+| 2026-02-28 | DOTAZ-025 | `Promise.race` for timeout implementation | Clean timeout via race between driver.execute and setTimeout rejection; no AbortController needed at executor level |
 
 ---
 
@@ -226,4 +230,4 @@
 
 ---
 
-*Last updated: 2026-02-28 (DOTAZ-024)*
+*Last updated: 2026-02-28 (DOTAZ-025)*

@@ -1,5 +1,7 @@
 import type { DatabaseDriver } from "../db/driver";
 import type { ColumnFilter, SortColumn } from "../../shared/types/grid";
+import type { QueryResult } from "../../shared/types/query";
+import type { ConnectionManager } from "./connection-manager";
 
 export interface WhereClauseResult {
 	sql: string;
@@ -189,5 +191,203 @@ export function buildCountQuery(
 	return {
 		sql: parts.join(" "),
 		params: where.params,
+	};
+}
+
+// ── Statement splitting ────────────────────────────────────
+
+/**
+ * Split a SQL string into individual statements by semicolons.
+ * Respects quoted strings (single and double quotes) so semicolons
+ * inside string literals are not treated as delimiters.
+ */
+export function splitStatements(sql: string): string[] {
+	const statements: string[] = [];
+	let current = "";
+	let inSingle = false;
+	let inDouble = false;
+
+	for (let i = 0; i < sql.length; i++) {
+		const ch = sql[i];
+		const prev = i > 0 ? sql[i - 1] : "";
+
+		if (ch === "'" && !inDouble && prev !== "\\") {
+			inSingle = !inSingle;
+		} else if (ch === '"' && !inSingle && prev !== "\\") {
+			inDouble = !inDouble;
+		}
+
+		if (ch === ";" && !inSingle && !inDouble) {
+			const trimmed = current.trim();
+			if (trimmed.length > 0) {
+				statements.push(trimmed);
+			}
+			current = "";
+		} else {
+			current += ch;
+		}
+	}
+
+	const trimmed = current.trim();
+	if (trimmed.length > 0) {
+		statements.push(trimmed);
+	}
+
+	return statements;
+}
+
+// ── QueryExecutor ──────────────────────────────────────────
+
+interface RunningQuery {
+	queryId: string;
+	connectionId: string;
+	cancelled: boolean;
+}
+
+export class QueryExecutor {
+	private connectionManager: ConnectionManager;
+	private runningQueries = new Map<string, RunningQuery>();
+	private defaultTimeoutMs: number;
+
+	constructor(connectionManager: ConnectionManager, defaultTimeoutMs = 30_000) {
+		this.connectionManager = connectionManager;
+		this.defaultTimeoutMs = defaultTimeoutMs;
+	}
+
+	/**
+	 * Execute one or more SQL statements against a connection.
+	 * Multi-statement SQL is split by semicolons and executed sequentially.
+	 * Returns an array of results (one per statement).
+	 */
+	async executeQuery(
+		connectionId: string,
+		sql: string,
+		params?: unknown[],
+		timeoutMs?: number,
+	): Promise<QueryResult[]> {
+		const driver = this.connectionManager.getDriver(connectionId);
+		const statements = splitStatements(sql);
+
+		if (statements.length === 0) {
+			return [];
+		}
+
+		const queryId = crypto.randomUUID();
+		const entry: RunningQuery = { queryId, connectionId, cancelled: false };
+		this.runningQueries.set(queryId, entry);
+
+		const timeout = timeoutMs ?? this.defaultTimeoutMs;
+		const results: QueryResult[] = [];
+
+		try {
+			for (const stmt of statements) {
+				if (entry.cancelled) {
+					results.push(makeCancelledResult());
+					break;
+				}
+
+				const result = await this.executeSingle(
+					driver,
+					stmt,
+					// Only pass params for the first (or only) statement
+					statements.length === 1 ? params : undefined,
+					timeout,
+					entry,
+				);
+				results.push(result);
+
+				if (result.error) {
+					break;
+				}
+			}
+		} finally {
+			this.runningQueries.delete(queryId);
+		}
+
+		return results;
+	}
+
+	/**
+	 * Cancel a running query by its queryId.
+	 */
+	async cancelQuery(queryId: string): Promise<boolean> {
+		const entry = this.runningQueries.get(queryId);
+		if (!entry) {
+			return false;
+		}
+
+		entry.cancelled = true;
+
+		try {
+			const driver = this.connectionManager.getDriver(entry.connectionId);
+			await driver.cancel();
+		} catch {
+			// Driver may already have completed; ignore cancel errors
+		}
+
+		return true;
+	}
+
+	/**
+	 * Get the list of currently running query IDs.
+	 */
+	getRunningQueryIds(): string[] {
+		return [...this.runningQueries.keys()];
+	}
+
+	private async executeSingle(
+		driver: DatabaseDriver,
+		sql: string,
+		params: unknown[] | undefined,
+		timeoutMs: number,
+		entry: RunningQuery,
+	): Promise<QueryResult> {
+		const start = performance.now();
+
+		try {
+			const result = await Promise.race([
+				driver.execute(sql, params),
+				this.createTimeout(timeoutMs),
+			]);
+
+			if (entry.cancelled) {
+				return makeCancelledResult(performance.now() - start);
+			}
+
+			return {
+				...result,
+				durationMs: Math.round(performance.now() - start),
+			};
+		} catch (err) {
+			const durationMs = Math.round(performance.now() - start);
+
+			if (entry.cancelled) {
+				return makeCancelledResult(durationMs);
+			}
+
+			return {
+				columns: [],
+				rows: [],
+				rowCount: 0,
+				durationMs,
+				error: err instanceof Error ? err.message : String(err),
+			};
+		}
+	}
+
+	private createTimeout(ms: number): Promise<never> {
+		return new Promise((_, reject) => {
+			setTimeout(() => reject(new Error(`Query timed out after ${ms}ms`)), ms);
+		});
+	}
+}
+
+function makeCancelledResult(durationMs = 0): QueryResult {
+	return {
+		columns: [],
+		rows: [],
+		rowCount: 0,
+		durationMs: Math.round(durationMs),
+		error: "Query was cancelled",
 	};
 }

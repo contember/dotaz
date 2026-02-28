@@ -1,12 +1,16 @@
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, mock } from "bun:test";
 import {
 	buildWhereClause,
 	buildOrderByClause,
 	buildSelectQuery,
 	buildCountQuery,
+	splitStatements,
+	QueryExecutor,
 } from "../src/bun/services/query-executor";
 import type { DatabaseDriver } from "../src/bun/db/driver";
 import type { ColumnFilter, SortColumn } from "../src/shared/types/grid";
+import type { QueryResult } from "../src/shared/types/query";
+import type { ConnectionManager } from "../src/bun/services/connection-manager";
 
 // Minimal mock driver for quoteIdentifier and getDriverType
 function mockDriver(type: "postgresql" | "sqlite" = "postgresql"): DatabaseDriver {
@@ -255,5 +259,325 @@ describe("buildCountQuery", () => {
 		const driver = mockDriver("sqlite");
 		const result = buildCountQuery("main", "users", undefined, driver);
 		expect(result.sql).toBe('SELECT COUNT(*) AS count FROM "users"');
+	});
+});
+
+// ── splitStatements ────────────────────────────────────────
+
+describe("splitStatements", () => {
+	test("single statement without semicolon", () => {
+		expect(splitStatements("SELECT 1")).toEqual(["SELECT 1"]);
+	});
+
+	test("single statement with trailing semicolon", () => {
+		expect(splitStatements("SELECT 1;")).toEqual(["SELECT 1"]);
+	});
+
+	test("multiple statements", () => {
+		expect(splitStatements("SELECT 1; SELECT 2; SELECT 3")).toEqual([
+			"SELECT 1",
+			"SELECT 2",
+			"SELECT 3",
+		]);
+	});
+
+	test("ignores semicolons inside single-quoted strings", () => {
+		expect(splitStatements("SELECT 'a;b'; SELECT 2")).toEqual([
+			"SELECT 'a;b'",
+			"SELECT 2",
+		]);
+	});
+
+	test("ignores semicolons inside double-quoted strings", () => {
+		expect(splitStatements('SELECT "a;b"; SELECT 2')).toEqual([
+			'SELECT "a;b"',
+			"SELECT 2",
+		]);
+	});
+
+	test("empty input returns empty array", () => {
+		expect(splitStatements("")).toEqual([]);
+	});
+
+	test("whitespace-only input returns empty array", () => {
+		expect(splitStatements("   ")).toEqual([]);
+	});
+
+	test("trims whitespace from statements", () => {
+		expect(splitStatements("  SELECT 1 ;  SELECT 2  ")).toEqual([
+			"SELECT 1",
+			"SELECT 2",
+		]);
+	});
+
+	test("skips empty statements between semicolons", () => {
+		expect(splitStatements("SELECT 1;;; SELECT 2")).toEqual([
+			"SELECT 1",
+			"SELECT 2",
+		]);
+	});
+});
+
+// ── QueryExecutor ──────────────────────────────────────────
+
+function makeSuccessResult(rows: Record<string, unknown>[] = [], durationMs = 0): QueryResult {
+	const columns = rows.length > 0
+		? Object.keys(rows[0]).map((name) => ({ name, dataType: "unknown" }))
+		: [];
+	return { columns, rows, rowCount: rows.length, durationMs };
+}
+
+function makeMockDriver(overrides?: Partial<DatabaseDriver>): DatabaseDriver {
+	return {
+		execute: mock(async () => makeSuccessResult([{ id: 1 }])),
+		cancel: mock(async () => {}),
+		quoteIdentifier: (name: string) => `"${name}"`,
+		getDriverType: () => "sqlite" as const,
+		...overrides,
+	} as unknown as DatabaseDriver;
+}
+
+function makeMockConnectionManager(driver: DatabaseDriver): ConnectionManager {
+	return {
+		getDriver: () => driver,
+	} as unknown as ConnectionManager;
+}
+
+describe("QueryExecutor", () => {
+	test("executes a single SELECT and returns results", async () => {
+		const rows = [{ id: 1, name: "Alice" }];
+		const driver = makeMockDriver({
+			execute: mock(async () => makeSuccessResult(rows)),
+		});
+		const cm = makeMockConnectionManager(driver);
+		const executor = new QueryExecutor(cm);
+
+		const results = await executor.executeQuery("conn-1", "SELECT * FROM users");
+
+		expect(results).toHaveLength(1);
+		expect(results[0].rows).toEqual(rows);
+		expect(results[0].columns).toEqual([
+			{ name: "id", dataType: "unknown" },
+			{ name: "name", dataType: "unknown" },
+		]);
+		expect(results[0].error).toBeUndefined();
+		expect(results[0].durationMs).toBeGreaterThanOrEqual(0);
+		expect(driver.execute).toHaveBeenCalledTimes(1);
+	});
+
+	test("passes params for single-statement query", async () => {
+		const driver = makeMockDriver();
+		const cm = makeMockConnectionManager(driver);
+		const executor = new QueryExecutor(cm);
+
+		await executor.executeQuery("conn-1", "SELECT * FROM users WHERE id = $1", [42]);
+
+		expect(driver.execute).toHaveBeenCalledWith(
+			"SELECT * FROM users WHERE id = $1",
+			[42],
+		);
+	});
+
+	test("multi-statement execution returns multiple results", async () => {
+		let callCount = 0;
+		const driver = makeMockDriver({
+			execute: mock(async () => {
+				callCount++;
+				return makeSuccessResult([{ n: callCount }]);
+			}),
+		});
+		const cm = makeMockConnectionManager(driver);
+		const executor = new QueryExecutor(cm);
+
+		const results = await executor.executeQuery(
+			"conn-1",
+			"SELECT 1; SELECT 2; SELECT 3",
+		);
+
+		expect(results).toHaveLength(3);
+		expect(results[0].rows).toEqual([{ n: 1 }]);
+		expect(results[1].rows).toEqual([{ n: 2 }]);
+		expect(results[2].rows).toEqual([{ n: 3 }]);
+		expect(driver.execute).toHaveBeenCalledTimes(3);
+	});
+
+	test("multi-statement does not pass params to individual statements", async () => {
+		const driver = makeMockDriver();
+		const cm = makeMockConnectionManager(driver);
+		const executor = new QueryExecutor(cm);
+
+		await executor.executeQuery("conn-1", "SELECT 1; SELECT 2", [42]);
+
+		expect(driver.execute).toHaveBeenCalledWith("SELECT 1", undefined);
+	});
+
+	test("DML query returns affected rows", async () => {
+		const driver = makeMockDriver({
+			execute: mock(async () => ({
+				columns: [],
+				rows: [],
+				rowCount: 0,
+				affectedRows: 5,
+				durationMs: 10,
+			})),
+		});
+		const cm = makeMockConnectionManager(driver);
+		const executor = new QueryExecutor(cm);
+
+		const results = await executor.executeQuery("conn-1", "DELETE FROM users WHERE age < 18");
+
+		expect(results).toHaveLength(1);
+		expect(results[0].affectedRows).toBe(5);
+		expect(results[0].rows).toEqual([]);
+	});
+
+	test("measures duration", async () => {
+		const driver = makeMockDriver({
+			execute: mock(async () => {
+				await new Promise((r) => setTimeout(r, 20));
+				return makeSuccessResult();
+			}),
+		});
+		const cm = makeMockConnectionManager(driver);
+		const executor = new QueryExecutor(cm);
+
+		const results = await executor.executeQuery("conn-1", "SELECT pg_sleep(0.02)");
+
+		expect(results[0].durationMs).toBeGreaterThanOrEqual(15);
+	});
+
+	test("catches errors and returns them in result", async () => {
+		const driver = makeMockDriver({
+			execute: mock(async () => {
+				throw new Error("relation \"nope\" does not exist");
+			}),
+		});
+		const cm = makeMockConnectionManager(driver);
+		const executor = new QueryExecutor(cm);
+
+		const results = await executor.executeQuery("conn-1", "SELECT * FROM nope");
+
+		expect(results).toHaveLength(1);
+		expect(results[0].error).toBe('relation "nope" does not exist');
+		expect(results[0].rows).toEqual([]);
+		expect(results[0].columns).toEqual([]);
+		expect(results[0].durationMs).toBeGreaterThanOrEqual(0);
+	});
+
+	test("stops multi-statement execution on error", async () => {
+		let callCount = 0;
+		const driver = makeMockDriver({
+			execute: mock(async (sql: string) => {
+				callCount++;
+				if (callCount === 2) throw new Error("syntax error");
+				return makeSuccessResult([{ n: callCount }]);
+			}),
+		});
+		const cm = makeMockConnectionManager(driver);
+		const executor = new QueryExecutor(cm);
+
+		const results = await executor.executeQuery(
+			"conn-1",
+			"SELECT 1; BAD SQL; SELECT 3",
+		);
+
+		expect(results).toHaveLength(2);
+		expect(results[0].error).toBeUndefined();
+		expect(results[1].error).toBe("syntax error");
+		expect(driver.execute).toHaveBeenCalledTimes(2);
+	});
+
+	test("timeout rejects long-running queries", async () => {
+		const driver = makeMockDriver({
+			execute: mock(async () => {
+				await new Promise((r) => setTimeout(r, 200));
+				return makeSuccessResult();
+			}),
+		});
+		const cm = makeMockConnectionManager(driver);
+		const executor = new QueryExecutor(cm, 50); // 50ms timeout
+
+		const results = await executor.executeQuery("conn-1", "SELECT pg_sleep(1)");
+
+		expect(results).toHaveLength(1);
+		expect(results[0].error).toContain("timed out");
+	});
+
+	test("custom timeout overrides default", async () => {
+		const driver = makeMockDriver({
+			execute: mock(async () => {
+				await new Promise((r) => setTimeout(r, 200));
+				return makeSuccessResult();
+			}),
+		});
+		const cm = makeMockConnectionManager(driver);
+		const executor = new QueryExecutor(cm, 10_000); // high default
+
+		const results = await executor.executeQuery("conn-1", "SELECT pg_sleep(1)", undefined, 50);
+
+		expect(results).toHaveLength(1);
+		expect(results[0].error).toContain("timed out");
+	});
+
+	test("cancelQuery cancels a running query", async () => {
+		let resolveExecute: () => void;
+		const executePromise = new Promise<void>((r) => { resolveExecute = r; });
+
+		const driver = makeMockDriver({
+			execute: mock(async () => {
+				await executePromise;
+				return makeSuccessResult();
+			}),
+			cancel: mock(async () => {
+				resolveExecute!();
+			}),
+		});
+		const cm = makeMockConnectionManager(driver);
+		const executor = new QueryExecutor(cm, 5000);
+
+		const resultPromise = executor.executeQuery("conn-1", "SELECT pg_sleep(10)");
+
+		// Wait for query to start
+		await new Promise((r) => setTimeout(r, 10));
+
+		const queryIds = executor.getRunningQueryIds();
+		expect(queryIds).toHaveLength(1);
+
+		const cancelled = await executor.cancelQuery(queryIds[0]);
+		expect(cancelled).toBe(true);
+
+		const results = await resultPromise;
+		expect(results).toHaveLength(1);
+		expect(results[0].error).toBe("Query was cancelled");
+		expect(driver.cancel).toHaveBeenCalled();
+	});
+
+	test("cancelQuery returns false for unknown queryId", async () => {
+		const driver = makeMockDriver();
+		const cm = makeMockConnectionManager(driver);
+		const executor = new QueryExecutor(cm);
+
+		const cancelled = await executor.cancelQuery("nonexistent");
+		expect(cancelled).toBe(false);
+	});
+
+	test("running queries are cleaned up after execution", async () => {
+		const driver = makeMockDriver();
+		const cm = makeMockConnectionManager(driver);
+		const executor = new QueryExecutor(cm);
+
+		expect(executor.getRunningQueryIds()).toHaveLength(0);
+		await executor.executeQuery("conn-1", "SELECT 1");
+		expect(executor.getRunningQueryIds()).toHaveLength(0);
+	});
+
+	test("empty SQL returns empty results", async () => {
+		const driver = makeMockDriver();
+		const cm = makeMockConnectionManager(driver);
+		const executor = new QueryExecutor(cm);
+
+		const results = await executor.executeQuery("conn-1", "");
+		expect(results).toEqual([]);
+		expect(driver.execute).not.toHaveBeenCalled();
 	});
 });
