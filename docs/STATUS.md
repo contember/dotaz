@@ -103,7 +103,7 @@
 | DOTAZ-046 | Context menus (grid, editor, tabs) | done | Grid cell/row/header, SQL editor, and tab context menus via reusable ContextMenu component |
 | DOTAZ-047 | Transaction management UI | done | TransactionManager service; tx RPC handlers; StatusBar "IN TRANSACTION" badge; tab/disconnect warnings; manual tx mode in grid skips auto-commit |
 | DOTAZ-048 | Error handling + toast notifications | done | UI store with toast management; ToastContainer in AppShell; friendlyErrorMessage in rpc-errors.ts; global error/rejection handlers; connection error toasts |
-| DOTAZ-049 | Application menu with all actions | in progress | |
+| DOTAZ-049 | Application menu with all actions | done | ApplicationMenu via Electrobun; Edit items use native roles; custom actions forwarded to frontend via `menu.action` RPC message → commandRegistry.execute; new commands: new-connection, reconnect, zoom-in/out/reset, about, settings |
 | DOTAZ-050 | Reconnect logic + connection resilience | not started | |
 | DOTAZ-051 | Settings storage + preferences | not started | |
 | DOTAZ-052 | Data refresh (F5) + stale indication | not started | |
@@ -115,9 +115,9 @@
 
 <!-- Update this section when starting work on a new issue -->
 
-**Active issue**: DOTAZ-049 — Application menu with all actions
-**Branch**: main
-**Started**: 2026-02-28
+**Active issue**: —
+**Branch**: —
+**Started**: —
 
 ---
 
@@ -251,6 +251,10 @@
 | 2026-02-28 | DOTAZ-048 | Error toasts are persistent (duration 0), non-errors auto-dismiss at 5s | Errors need manual dismiss; success/info/warning auto-clear |
 | 2026-02-28 | DOTAZ-048 | Global `window.onerror` + `unhandledrejection` handlers in AppShell | Prevents app crash on unhandled errors; shows error toast with user-friendly message |
 | 2026-02-28 | DOTAZ-048 | Connection status error events trigger toast in connections store | `onConnectionStatusChanged` with `state === "error"` shows toast with connection name prefix |
+| 2026-02-28 | DOTAZ-049 | Edit menu items use Electrobun `role` (undo, redo, cut, copy, paste, selectAll) | Roles are handled natively by the webview — no RPC round-trip needed for text editing operations |
+| 2026-02-28 | DOTAZ-049 | Custom menu actions forwarded via `menu.action` RPC message | Backend listens for `application-menu-clicked`, extracts `action` string, sends to frontend; frontend dispatches to `commandRegistry.execute` |
+| 2026-02-28 | DOTAZ-049 | Zoom via `document.documentElement.style.zoom` | Simple CSS zoom approach; range 0.5–2.0 with 0.1 increments |
+| 2026-02-28 | DOTAZ-049 | Settings command shows placeholder toast | DOTAZ-051 will implement full settings; menu item wired up and ready |
 
 ---
 
@@ -308,4 +312,4 @@
 
 ---
 
-*Last updated: 2026-02-28 (DOTAZ-048)*
+*Last updated: 2026-02-28 (DOTAZ-049)*
