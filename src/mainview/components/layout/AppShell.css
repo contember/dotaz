@@ -24,3 +24,25 @@
 	flex: 1;
 	overflow: hidden;
 }
+
+.welcome-screen {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	height: 100%;
+	color: var(--text-muted);
+	user-select: none;
+}
+
+.welcome-screen__title {
+	font-size: 24px;
+	font-weight: 300;
+	margin: 0 0 var(--spacing-sm);
+	color: var(--text-secondary);
+}
+
+.welcome-screen__subtitle {
+	font-size: var(--font-size-base);
+	margin: 0;
+}

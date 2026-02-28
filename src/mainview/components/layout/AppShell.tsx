@@ -3,7 +3,7 @@ import Sidebar, { SidebarExpandButton } from "./Sidebar";
 import Resizer from "./Resizer";
 import TabBar from "./TabBar";
 import StatusBar from "./StatusBar";
-import type { TabInfo } from "../../../shared/types/tab";
+import { tabsStore } from "../../stores/tabs";
 import "./AppShell.css";
 
 const MIN_WIDTH = 150;
@@ -14,28 +14,12 @@ export default function AppShell() {
 	const [sidebarWidth, setSidebarWidth] = createSignal(DEFAULT_WIDTH);
 	const [sidebarCollapsed, setSidebarCollapsed] = createSignal(false);
 
-	// Placeholder tab state — will be replaced by tab store (DOTAZ-011)
-	const [tabs, setTabs] = createSignal<TabInfo[]>([]);
-	const [activeTabId, setActiveTabId] = createSignal<string | null>(null);
-
 	function handleResize(deltaX: number) {
 		setSidebarWidth((w) => Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, w + deltaX)));
 	}
 
 	function toggleCollapse() {
 		setSidebarCollapsed((c) => !c);
-	}
-
-	function selectTab(id: string) {
-		setActiveTabId(id);
-	}
-
-	function closeTab(id: string) {
-		setTabs((prev) => prev.filter((t) => t.id !== id));
-		if (activeTabId() === id) {
-			const remaining = tabs();
-			setActiveTabId(remaining.length > 0 ? remaining[0].id : null);
-		}
 	}
 
 	return (
@@ -57,12 +41,24 @@ export default function AppShell() {
 
 				<div class="app-shell__main">
 					<TabBar
-						tabs={tabs()}
-						activeTabId={activeTabId()}
-						onSelectTab={selectTab}
-						onCloseTab={closeTab}
+						tabs={tabsStore.openTabs}
+						activeTabId={tabsStore.activeTabId}
+						onSelectTab={tabsStore.setActiveTab}
+						onCloseTab={tabsStore.closeTab}
+						onCloseOtherTabs={tabsStore.closeOtherTabs}
+						onCloseAllTabs={tabsStore.closeAllTabs}
+						onRenameTab={tabsStore.renameTab}
 					/>
-					<main class="main-content" />
+					<main class="main-content">
+						<Show when={tabsStore.openTabs.length === 0}>
+							<div class="welcome-screen">
+								<h2 class="welcome-screen__title">Dotaz</h2>
+								<p class="welcome-screen__subtitle">
+									Open a connection and select a table to get started.
+								</p>
+							</div>
+						</Show>
+					</main>
 				</div>
 			</div>
 
