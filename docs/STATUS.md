@@ -46,7 +46,7 @@
 ### Phase 2 — Connection Management
 | Issue | Title | Status | Notes |
 |-------|-------|--------|-------|
-| DOTAZ-012 | Connection store (frontend state) | not started | |
+| DOTAZ-012 | Connection store (frontend state) | done | |
 | DOTAZ-013 | ConnectionDialog (add/edit form) | not started | |
 | DOTAZ-014 | File dialog + save dialog RPC handlers | not started | |
 | DOTAZ-015 | ConnectionTree (sidebar tree) | not started | |
@@ -145,6 +145,7 @@
 | 2026-02-28 | DOTAZ-009 | Use `as any` for message listener registration | Electrobun's `addMessageListener` typing uses `RemoteSchema["messages"]` which maps to the webview side's messages (empty); bun-sent messages require cast |
 | 2026-02-28 | DOTAZ-011 | Use `crypto.randomUUID()` for tab IDs instead of nanoid | No external dependency needed; UUID is available in both browser and Bun runtimes |
 | 2026-02-28 | DOTAZ-011 | Module-level singleton store pattern | Export `tabsStore` object with getters + actions from module scope; Solid.js `createStore` at module level provides app-wide singleton |
+| 2026-02-28 | DOTAZ-012 | Schema tree stored per-connection in connections store | `schemaTrees` keyed by connection ID; auto-loaded on `connected` status event from backend |
 
 ---
 
@@ -202,4 +203,4 @@
 
 ---
 
-*Last updated: 2026-02-28 (DOTAZ-011)*
+*Last updated: 2026-02-28 (DOTAZ-012)*
