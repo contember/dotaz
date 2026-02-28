@@ -12,10 +12,13 @@ interface GridCellProps {
 	changed?: boolean;
 	deleted?: boolean;
 	newRow?: boolean;
+	/** FK target info for this column (if it's a single-column FK). */
+	fkTarget?: { schema: string; table: string; column: string };
 	onSave?: (value: unknown) => void;
 	onCancel?: () => void;
 	onMoveNext?: () => void;
 	onMoveDown?: () => void;
+	onFkClick?: () => void;
 }
 
 function isNumericType(dataType: string): boolean {
@@ -80,7 +83,12 @@ export default function GridCell(props: GridCellProps) {
 		return String(props.value);
 	};
 
+	const isFk = () => !!props.fkTarget && !isNull();
+
 	const tooltipValue = (): string | undefined => {
+		if (props.fkTarget && !isNull()) {
+			return `\u2192 ${props.fkTarget.table}.${props.fkTarget.column}`;
+		}
 		if (isNull()) return undefined;
 		if (isJson() && typeof props.value === "object")
 			return JSON.stringify(props.value, null, 2);
@@ -121,6 +129,11 @@ export default function GridCell(props: GridCellProps) {
 		);
 	}
 
+	function handleFkClick(e: MouseEvent) {
+		e.stopPropagation();
+		props.onFkClick?.();
+	}
+
 	return (
 		<div
 			class="grid-cell"
@@ -130,6 +143,7 @@ export default function GridCell(props: GridCellProps) {
 				"grid-cell--boolean": isBool() && !isNull(),
 				"grid-cell--json": isJson() && !isNull(),
 				"grid-cell--timestamp": isTs() && !isNull(),
+				"grid-cell--fk": isFk(),
 				"grid-cell--changed": !!props.changed,
 				"grid-cell--deleted": !!props.deleted,
 				"grid-cell--new-row": !!props.newRow,
@@ -139,7 +153,11 @@ export default function GridCell(props: GridCellProps) {
 			data-column={props.column.name}
 			onClick={isJson() && !isNull() ? handleJsonClick : undefined}
 		>
-			{displayValue()}
+			<Show when={isFk()} fallback={displayValue()}>
+				<span class="grid-cell__fk-link" onClick={handleFkClick}>
+					{displayValue()}
+				</span>
+			</Show>
 
 			<Show when={jsonExpanded()}>
 				<div class="grid-cell__json-popup" onClick={(e) => e.stopPropagation()}>

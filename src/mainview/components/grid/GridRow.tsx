@@ -1,6 +1,6 @@
 import { For } from "solid-js";
 import type { GridColumnDef } from "../../../shared/types/grid";
-import type { ColumnConfig, EditingCell } from "../../stores/grid";
+import type { ColumnConfig, EditingCell, FkTarget } from "../../stores/grid";
 import GridCell from "./GridCell";
 import "./GridRow.css";
 
@@ -18,10 +18,12 @@ interface GridRowProps {
 	changedCells?: Set<string>;
 	isDeleted?: boolean;
 	isNewRow?: boolean;
+	fkMap?: Map<string, FkTarget>;
 	onCellSave?: (column: string, value: unknown) => void;
 	onCellCancel?: () => void;
 	onCellMoveNext?: (column: string) => void;
 	onCellMoveDown?: (column: string) => void;
+	onFkClick?: (column: string) => void;
 }
 
 const DEFAULT_COLUMN_WIDTH = 150;
@@ -70,10 +72,12 @@ export default function GridRow(props: GridRowProps) {
 							changed={isChanged()}
 							deleted={props.isDeleted}
 							newRow={props.isNewRow}
+							fkTarget={props.fkMap?.get(col.name)}
 							onSave={(value) => props.onCellSave?.(col.name, value)}
 							onCancel={() => props.onCellCancel?.()}
 							onMoveNext={() => props.onCellMoveNext?.(col.name)}
 							onMoveDown={() => props.onCellMoveDown?.(col.name)}
+							onFkClick={props.fkMap?.has(col.name) ? () => props.onFkClick?.(col.name) : undefined}
 						/>
 					);
 				}}

@@ -33,6 +33,17 @@
 	color: var(--text-primary);
 }
 
+.grid-cell--fk .grid-cell__fk-link {
+	color: var(--accent);
+	text-decoration: underline;
+	text-decoration-style: dotted;
+	cursor: pointer;
+}
+
+.grid-cell--fk .grid-cell__fk-link:hover {
+	text-decoration-style: solid;
+}
+
 .grid-cell--changed {
 	background: rgba(204, 167, 0, 0.15);
 	border-left: 2px solid var(--color-warning);

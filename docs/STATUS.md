@@ -15,7 +15,7 @@
 | 3     | Data Grid             | DOTAZ-017 – 024 | done        |       |
 | 4     | SQL Editor            | DOTAZ-025 – 031 | done        |       |
 | 5     | Data Editing          | DOTAZ-032 – 035 | done        |       |
-| 6     | Advanced Features     | DOTAZ-036 – 043 | not started |       |
+| 6     | Advanced Features     | DOTAZ-036 – 043 | in progress |       |
 | 7     | Polish                | DOTAZ-044 – 053 | not started |       |
 
 **Legend**: `not started` · `in progress` · `done` · `blocked`
@@ -88,7 +88,7 @@
 |-------|-------|--------|-------|
 | DOTAZ-036 | Saved views backend (CRUD) | done | AppDatabase.getSavedViewById made public for uniqueness check on update |
 | DOTAZ-037 | SavedViewPicker + SaveViewDialog | done | Active view tracking in grid store; Ctrl+S quick save; dropdown with Default + saved views |
-| DOTAZ-038 | FK navigation (follow foreign keys) | not started | |
+| DOTAZ-038 | FK navigation (follow foreign keys) | done | FK cells underlined with accent color; click navigates within tab; breadcrumb + back; context menu with "Go to referenced row" / "Open target table" |
 | DOTAZ-039 | Export service (CSV, JSON, SQL INSERT) | not started | |
 | DOTAZ-040 | ExportDialog | not started | |
 | DOTAZ-041 | Query history backend + RPC | not started | |
@@ -208,6 +208,12 @@
 | 2026-02-28 | DOTAZ-037 | Active view state (`activeViewId`/`activeViewName`) in grid store | Needed by both SavedViewPicker (display) and DataGrid Ctrl+S handler (quick save vs open dialog) |
 | 2026-02-28 | DOTAZ-037 | `applyViewConfig` preserves existing pin state | `SavedViewConfig` doesn't include pinned column info; pinning is orthogonal to view configuration |
 | 2026-02-28 | DOTAZ-037 | Ctrl+S quick save updates in-place if view active, opens dialog otherwise | Matches common "save" UX: known target = silent save, unknown = Save As dialog |
+| 2026-02-28 | DOTAZ-038 | FK navigation within same tab, not new tab | Breadcrumb/history requires within-tab navigation; "Open target table" context menu opens new tab |
+| 2026-02-28 | DOTAZ-038 | `fkNavigationHistory` stack in `TabGridState` | Stores schema, table, filters, sort, columnConfig, columnOrder for each navigation step; back pops and restores |
+| 2026-02-28 | DOTAZ-038 | `buildFkMap` filters to single-column FKs only | Composite FKs can't be meaningfully navigated by clicking a single cell value |
+| 2026-02-28 | DOTAZ-038 | FK click via `stopPropagation` on inner `<span>` | FK link span inside GridCell stops propagation to prevent row selection; clicking cell padding still selects |
+| 2026-02-28 | DOTAZ-038 | `createEffect` for reactive FK loading on table change | FKs reload when `tab().schema/table` changes (FK navigation); initial load in `onMount` |
+| 2026-02-28 | DOTAZ-038 | Context menu uses `focusedCell` for row index | Right-click sets focused cell first (via existing click handler); context menu reads row from focused cell |
 
 ---
 
@@ -265,4 +271,4 @@
 
 ---
 
-*Last updated: 2026-02-28 (DOTAZ-037)*
+*Last updated: 2026-02-28 (DOTAZ-038)*

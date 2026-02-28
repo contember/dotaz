@@ -1,6 +1,7 @@
-import { createEffect, createSignal, onMount, Show } from "solid-js";
+import { createEffect, createSignal, For, onMount, Show } from "solid-js";
 import type { ColumnFilter } from "../../../shared/types/grid";
 import type { ForeignKeyInfo } from "../../../shared/types/database";
+import type { FkTarget } from "../../stores/grid";
 import { gridStore } from "../../stores/grid";
 import { tabsStore } from "../../stores/tabs";
 import { rpc } from "../../lib/rpc";
@@ -14,6 +15,8 @@ import RowDetailDialog from "../edit/RowDetailDialog";
 import PendingChanges from "../edit/PendingChanges";
 import SavedViewPicker from "../views/SavedViewPicker";
 import SaveViewDialog from "../views/SaveViewDialog";
+import ContextMenu from "../common/ContextMenu";
+import type { ContextMenuEntry } from "../common/ContextMenu";
 import "./DataGrid.css";
 
 interface DataGridProps {
@@ -26,18 +29,46 @@ interface DataGridProps {
 const HEADER_HEIGHT = 34; // 32px height + 2px border
 const COPY_FLASH_DURATION = 400;
 
+/** Build a map from source column → FK target for single-column FKs. */
+function buildFkMap(foreignKeys: ForeignKeyInfo[]): Map<string, FkTarget> {
+	const map = new Map<string, FkTarget>();
+	for (const fk of foreignKeys) {
+		if (fk.columns.length === 1) {
+			map.set(fk.columns[0], {
+				schema: fk.referencedSchema,
+				table: fk.referencedTable,
+				column: fk.referencedColumns[0],
+			});
+		}
+	}
+	return map;
+}
+
 export default function DataGrid(props: DataGridProps) {
 	const [fkColumns, setFkColumns] = createSignal<Set<string>>(new Set());
 	const [foreignKeys, setForeignKeys] = createSignal<ForeignKeyInfo[]>([]);
+	const [fkMap, setFkMap] = createSignal<Map<string, FkTarget>>(new Map());
 	const [copyFeedback, setCopyFeedback] = createSignal<string | null>(null);
 	const [rowDetailIndex, setRowDetailIndex] = createSignal<number | null>(null);
 	const [showPendingPanel, setShowPendingPanel] = createSignal(false);
 	const [saveViewOpen, setSaveViewOpen] = createSignal(false);
+	const [fkContextMenu, setFkContextMenu] = createSignal<{
+		x: number;
+		y: number;
+		rowIndex: number;
+		column: string;
+		target: FkTarget;
+		value: unknown;
+	} | null>(null);
 	let scrollRef: HTMLDivElement | undefined;
 	let gridRef: HTMLDivElement | undefined;
 	let anchorRow = -1;
 
 	const tab = () => gridStore.getTab(props.tabId);
+
+	// Current schema/table from tab state (changes on FK navigation)
+	const currentSchema = () => tab()?.schema ?? props.schema;
+	const currentTable = () => tab()?.table ?? props.table;
 
 	// Sync tab dirty flag with pending changes state
 	createEffect(() => {
@@ -64,11 +95,24 @@ export default function DataGrid(props: DataGridProps) {
 			gridStore.loadTableData(props.tabId, props.connectionId, props.schema, props.table);
 		}
 
+		await loadForeignKeys(props.schema, props.table);
+	});
+
+	// Reload FK info when the table changes (e.g. after FK navigation)
+	createEffect(() => {
+		const schema = currentSchema();
+		const table = currentTable();
+		// Skip initial load (handled by onMount)
+		if (schema === props.schema && table === props.table) return;
+		loadForeignKeys(schema, table);
+	});
+
+	async function loadForeignKeys(schema: string, table: string) {
 		try {
 			const fks = await rpc.schema.getForeignKeys(
 				props.connectionId,
-				props.schema,
-				props.table,
+				schema,
+				table,
 			);
 			setForeignKeys(fks);
 			const fkCols = new Set<string>();
@@ -78,10 +122,13 @@ export default function DataGrid(props: DataGridProps) {
 				}
 			}
 			setFkColumns(fkCols);
+			setFkMap(buildFkMap(fks));
 		} catch {
-			// FK info is non-critical
+			setForeignKeys([]);
+			setFkColumns(new Set<string>());
+			setFkMap(new Map<string, FkTarget>());
 		}
-	});
+	}
 
 	function handleToggleSort(column: string, multi: boolean) {
 		gridStore.toggleSort(props.tabId, column, multi);
@@ -232,7 +279,7 @@ export default function DataGrid(props: DataGridProps) {
 
 	function handleChangesApplied() {
 		// Reload data from server after successful apply
-		gridStore.loadTableData(props.tabId, props.connectionId, props.schema, props.table);
+		gridStore.loadTableData(props.tabId, props.connectionId, currentSchema(), currentTable());
 	}
 
 	// ── Saved views ────────────────────────────────────────
@@ -256,6 +303,57 @@ export default function DataGrid(props: DataGridProps) {
 		}
 	}
 
+	// ── FK navigation ─────────────────────────────────────
+
+	function handleFkClick(rowIndex: number, column: string) {
+		const t = tab();
+		if (!t) return;
+		const target = fkMap().get(column);
+		if (!target) return;
+		const value = t.rows[rowIndex]?.[column];
+		if (value === null || value === undefined) return;
+
+		gridStore.navigateToFkTarget(
+			props.tabId,
+			target.schema,
+			target.table,
+			target.column,
+			value,
+		);
+		// Update tab title to reflect the current table
+		tabsStore.renameTab(props.tabId, target.table);
+	}
+
+	function handleFkBack() {
+		const t = tab();
+		if (!t || t.fkNavigationHistory.length === 0) return;
+
+		const prev = t.fkNavigationHistory[t.fkNavigationHistory.length - 1];
+		gridStore.navigateBack(props.tabId);
+		// Restore tab title
+		tabsStore.renameTab(props.tabId, prev.table);
+	}
+
+	function handleFkContextGoTo() {
+		const ctx = fkContextMenu();
+		if (!ctx) return;
+		handleFkClick(ctx.rowIndex, ctx.column);
+		setFkContextMenu(null);
+	}
+
+	function handleFkContextOpenTable() {
+		const ctx = fkContextMenu();
+		if (!ctx) return;
+		tabsStore.openTab({
+			type: "data-grid",
+			title: ctx.target.table,
+			connectionId: props.connectionId,
+			schema: ctx.target.schema,
+			table: ctx.target.table,
+		});
+		setFkContextMenu(null);
+	}
+
 	// ── Clipboard ──────────────────────────────────────────
 
 	async function handleCopy() {
@@ -272,6 +370,43 @@ export default function DataGrid(props: DataGridProps) {
 		} catch {
 			// Clipboard API may fail in some contexts
 		}
+	}
+
+	// ── Context menu on right-click for FK cells ──────────
+
+	function handleGridContextMenu(e: MouseEvent) {
+		const target = e.target as HTMLElement;
+		const cellEl = target.closest<HTMLElement>("[data-column]");
+		if (!cellEl) return;
+		const columnName = cellEl.dataset.column;
+		if (!columnName) return;
+
+		const fkTarget = fkMap().get(columnName);
+		if (!fkTarget) return;
+
+		// Find the row index from the grid row element
+		const rowEl = cellEl.closest<HTMLElement>(".grid-row");
+		if (!rowEl) return;
+		// Get row index from the virtual scroller: find the row's position among visible rows
+		const t = tab();
+		if (!t) return;
+
+		// Determine row index by checking the selected/focused state
+		const focusedCell = t.focusedCell;
+		if (!focusedCell) return;
+
+		const value = t.rows[focusedCell.row]?.[columnName];
+		if (value === null || value === undefined) return;
+
+		e.preventDefault();
+		setFkContextMenu({
+			x: e.clientX,
+			y: e.clientY,
+			rowIndex: focusedCell.row,
+			column: columnName,
+			target: fkTarget,
+			value,
+		});
 	}
 
 	const handleKeyDown = createKeyHandler([
@@ -344,13 +479,54 @@ export default function DataGrid(props: DataGridProps) {
 		},
 	]);
 
+	const fkContextMenuItems = (): ContextMenuEntry[] => {
+		const ctx = fkContextMenu();
+		if (!ctx) return [];
+		return [
+			{
+				label: `Go to referenced row`,
+				action: handleFkContextGoTo,
+			},
+			{
+				label: `Open ${ctx.target.table}`,
+				action: handleFkContextOpenTable,
+			},
+		];
+	};
+
 	return (
 		<div
 			ref={gridRef}
 			class="data-grid"
 			tabIndex={0}
 			onKeyDown={handleKeyDown}
+			onContextMenu={handleGridContextMenu}
 		>
+			<Show when={tab()}>
+				{(tabState) => (
+					<Show when={tabState().fkNavigationHistory.length > 0}>
+						<div class="data-grid__breadcrumb">
+							<button
+								class="data-grid__breadcrumb-back"
+								onClick={handleFkBack}
+								title="Go back"
+							>
+								&#8592;
+							</button>
+							<For each={tabState().fkNavigationHistory}>
+								{(entry) => (
+									<>
+										<span class="data-grid__breadcrumb-item">{entry.table}</span>
+										<span class="data-grid__breadcrumb-sep">&#8250;</span>
+									</>
+								)}
+							</For>
+							<span class="data-grid__breadcrumb-current">{currentTable()}</span>
+						</div>
+					</Show>
+				)}
+			</Show>
+
 			<div class="data-grid__toolbar">
 				<Show when={tab()}>
 					{(tabState) => (
@@ -358,8 +534,8 @@ export default function DataGrid(props: DataGridProps) {
 							<SavedViewPicker
 								tabId={props.tabId}
 								connectionId={props.connectionId}
-								schema={props.schema}
-								table={props.table}
+								schema={currentSchema()}
+								table={currentTable()}
 								onSaveView={() => setSaveViewOpen(true)}
 							/>
 							<FilterBar
@@ -428,10 +604,12 @@ export default function DataGrid(props: DataGridProps) {
 								getChangedCells={getChangedCells}
 								isRowDeleted={(idx) => gridStore.isRowDeleted(props.tabId, idx)}
 								isRowNew={(idx) => gridStore.isRowNew(props.tabId, idx)}
+								fkMap={fkMap()}
 								onCellSave={handleCellSave}
 								onCellCancel={handleCellCancel}
 								onCellMoveNext={handleCellMoveNext}
 								onCellMoveDown={handleCellMoveDown}
+								onFkClick={handleFkClick}
 							/>
 						</div>
 
@@ -494,13 +672,24 @@ export default function DataGrid(props: DataGridProps) {
 				open={saveViewOpen()}
 				tabId={props.tabId}
 				connectionId={props.connectionId}
-				schema={props.schema}
-				table={props.table}
+				schema={currentSchema()}
+				table={currentTable()}
 				onClose={() => setSaveViewOpen(false)}
 				onSaved={() => {
 					// Dialog closes itself; picker will reload on next open
 				}}
 			/>
+
+			<Show when={fkContextMenu()}>
+				{(ctx) => (
+					<ContextMenu
+						x={ctx().x}
+						y={ctx().y}
+						items={fkContextMenuItems()}
+						onClose={() => setFkContextMenu(null)}
+					/>
+				)}
+			</Show>
 		</div>
 	);
 }

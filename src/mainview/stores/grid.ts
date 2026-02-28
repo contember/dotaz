@@ -46,6 +46,23 @@ export interface PendingChanges {
 	deletedRows: Set<number>;
 }
 
+/** A snapshot of the table state for FK back-navigation. */
+export interface FkNavigationEntry {
+	schema: string;
+	table: string;
+	filters: ColumnFilter[];
+	sort: SortColumn[];
+	columnConfig: Record<string, ColumnConfig>;
+	columnOrder: string[];
+}
+
+/** FK target info for a single-column foreign key. */
+export interface FkTarget {
+	schema: string;
+	table: string;
+	column: string;
+}
+
 export interface TabGridState {
 	connectionId: string;
 	schema: string;
@@ -66,6 +83,7 @@ export interface TabGridState {
 	loading: boolean;
 	activeViewId: string | null;
 	activeViewName: string | null;
+	fkNavigationHistory: FkNavigationEntry[];
 }
 
 function createDefaultPendingChanges(): PendingChanges {
@@ -101,6 +119,7 @@ function createDefaultTabState(
 		loading: false,
 		activeViewId: null,
 		activeViewName: null,
+		fkNavigationHistory: [],
 	};
 }
 
@@ -836,6 +855,74 @@ function captureViewConfig(tabId: string): SavedViewConfig {
 	};
 }
 
+// ── FK navigation actions ─────────────────────────────────
+
+async function navigateToFkTarget(
+	tabId: string,
+	targetSchema: string,
+	targetTable: string,
+	targetColumn: string,
+	value: unknown,
+) {
+	const tab = ensureTab(tabId);
+
+	// Push current state to navigation history
+	const entry: FkNavigationEntry = {
+		schema: tab.schema,
+		table: tab.table,
+		filters: [...tab.filters],
+		sort: [...tab.sort],
+		columnConfig: { ...tab.columnConfig },
+		columnOrder: [...tab.columnOrder],
+	};
+	setState("tabs", tabId, "fkNavigationHistory", [...tab.fkNavigationHistory, entry]);
+
+	// Navigate to target table with filter
+	setState("tabs", tabId, "schema", targetSchema);
+	setState("tabs", tabId, "table", targetTable);
+	setState("tabs", tabId, "filters", [
+		{ column: targetColumn, operator: "=" as FilterOperator, value: String(value) },
+	]);
+	setState("tabs", tabId, "sort", []);
+	setState("tabs", tabId, "columnConfig", {});
+	setState("tabs", tabId, "columnOrder", []);
+	setState("tabs", tabId, "currentPage", 1);
+	setState("tabs", tabId, "selectedRows", new Set());
+	setState("tabs", tabId, "focusedCell", null);
+	setState("tabs", tabId, "editingCell", null);
+	setState("tabs", tabId, "pendingChanges", createDefaultPendingChanges());
+	setState("tabs", tabId, "activeViewId", null);
+	setState("tabs", tabId, "activeViewName", null);
+
+	await fetchData(tabId);
+}
+
+async function navigateBack(tabId: string) {
+	const tab = ensureTab(tabId);
+	if (tab.fkNavigationHistory.length === 0) return;
+
+	const history = [...tab.fkNavigationHistory];
+	const entry = history.pop()!;
+	setState("tabs", tabId, "fkNavigationHistory", history);
+
+	// Restore previous state
+	setState("tabs", tabId, "schema", entry.schema);
+	setState("tabs", tabId, "table", entry.table);
+	setState("tabs", tabId, "filters", entry.filters);
+	setState("tabs", tabId, "sort", entry.sort);
+	setState("tabs", tabId, "columnConfig", entry.columnConfig);
+	setState("tabs", tabId, "columnOrder", entry.columnOrder);
+	setState("tabs", tabId, "currentPage", 1);
+	setState("tabs", tabId, "selectedRows", new Set());
+	setState("tabs", tabId, "focusedCell", null);
+	setState("tabs", tabId, "editingCell", null);
+	setState("tabs", tabId, "pendingChanges", createDefaultPendingChanges());
+	setState("tabs", tabId, "activeViewId", null);
+	setState("tabs", tabId, "activeViewName", null);
+
+	await fetchData(tabId);
+}
+
 function removeTab(tabId: string) {
 	setState("tabs", tabId, undefined!);
 }
@@ -869,6 +956,10 @@ export const gridStore = {
 	getVisibleColumns,
 	computePinStyles,
 	removeTab,
+
+	// FK navigation
+	navigateToFkTarget,
+	navigateBack,
 
 	// Saved views
 	setActiveView,
