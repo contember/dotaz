@@ -1,5 +1,5 @@
 import type { BrowserWindow } from "electrobun/bun";
-import type { DotazRPC } from "../shared/types/rpc";
+import type { DotazRPC } from "../backend-types";
 import type { ConnectionManager } from "../backend-shared/services/connection-manager";
 import type { AppDatabase } from "../backend-shared/storage/app-db";
 import type { EncryptionService } from "../backend-shared/services/encryption";

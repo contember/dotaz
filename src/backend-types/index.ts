@@ -1,4 +1,8 @@
-import type { createHandlers } from "../../backend-shared/rpc/handlers";
+import type { RPCSchema } from "electrobun/bun";
+import type { createHandlers } from "../backend-shared/rpc/handlers";
+import type { ConnectionState } from "../shared/types/connection";
+
+// ── Handler type inference ──────────────────────────────
 
 /** The full handler map returned by createHandlers(). */
 export type HandlerMap = ReturnType<typeof createHandlers>;
@@ -45,4 +49,33 @@ export type NamespacedRpcClient = {
 	[NS in Namespaces]: {
 		[M in MethodsOf<NS> as MethodName<M & string>]: ClientMethod<M>;
 	};
+};
+
+// ── Electrobun RPC schema ───────────────────────────────
+
+type DotazRequests = {
+	[M in RpcMethod]: {
+		params: HandlerParams<M> extends void ? {} : HandlerParams<M>;
+		response: HandlerReturn<M>;
+	};
+};
+
+export type DotazRPC = {
+	bun: RPCSchema<{
+		requests: DotazRequests;
+		messages: {
+			"connections.statusChanged": {
+				connectionId: string;
+				state: ConnectionState;
+				error?: string;
+			};
+			"menu.action": {
+				action: string;
+			};
+		};
+	}>;
+	webview: RPCSchema<{
+		requests: {};
+		messages: {};
+	}>;
 };

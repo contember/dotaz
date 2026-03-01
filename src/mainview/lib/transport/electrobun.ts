@@ -1,5 +1,5 @@
 import { Electroview } from "electrobun/view";
-import type { DotazRPC } from "../../../shared/types/rpc";
+import type { DotazRPC } from "../../../backend-types";
 import type { RpcTransport } from "./types";
 
 const electroviewRpc = Electroview.defineRPC<DotazRPC>({

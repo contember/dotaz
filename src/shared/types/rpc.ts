@@ -1,7 +1,3 @@
-import type { RPCSchema } from "electrobun/bun";
-import type { ConnectionState } from "./connection";
-import type { RpcMethod, HandlerParams, HandlerReturn } from "../rpc/types";
-
 // ---- Domain types used by handlers and adapters ----
 
 export interface DataChange {
@@ -50,32 +46,3 @@ export interface SaveDialogParams {
 	defaultName?: string;
 	filters?: { name: string; extensions: string[] }[];
 }
-
-// ---- Main RPC schema (derived from handler map) ----
-
-type DotazRequests = {
-	[M in RpcMethod]: {
-		params: HandlerParams<M> extends void ? {} : HandlerParams<M>;
-		response: HandlerReturn<M>;
-	};
-};
-
-export type DotazRPC = {
-	bun: RPCSchema<{
-		requests: DotazRequests;
-		messages: {
-			"connections.statusChanged": {
-				connectionId: string;
-				state: ConnectionState;
-				error?: string;
-			};
-			"menu.action": {
-				action: string;
-			};
-		};
-	}>;
-	webview: RPCSchema<{
-		requests: {};
-		messages: {};
-	}>;
-};

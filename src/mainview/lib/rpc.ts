@@ -2,7 +2,7 @@
 // Types inferred from createHandlers() via NamespacedRpcClient.
 
 import { transport } from "./transport";
-import type { NamespacedRpcClient } from "../../shared/rpc/types";
+import type { NamespacedRpcClient } from "../../backend-types";
 import type { ConnectionState } from "../../shared/types/connection";
 
 export { RpcError, friendlyErrorMessage } from "./rpc-errors";
