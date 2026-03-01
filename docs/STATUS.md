@@ -50,7 +50,7 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 
 | Issue | Title | Status | Notes |
 |-------|-------|--------|-------|
-| DOTAZ-062 | Aggregate view for cell selection | not started | SUM, COUNT, AVG, MIN, MAX over selected cells |
+| DOTAZ-062 | Aggregate view for cell selection | done | SUM, COUNT, AVG, MIN, MAX over selected cells; panel shows when 2+ rows selected |
 | DOTAZ-063 | Quick value shortcuts during cell editing | not started | n→NULL, t→true, f→false, d→DEFAULT |
 | DOTAZ-064 | Warning for DELETE/UPDATE without WHERE clause | not started | Confirmation dialog for destructive SQL |
 | DOTAZ-065 | Read-only mode per connection | not started | Disable editing, warn on DML |
@@ -101,5 +101,5 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 
 ---
 
-*Last updated: 2026-03-01 — DOTAZ-086 done*
+*Last updated: 2026-03-01 — DOTAZ-062 done*
 

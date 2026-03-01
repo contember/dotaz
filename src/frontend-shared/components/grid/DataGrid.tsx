@@ -15,6 +15,7 @@ import FilterBar from "./FilterBar";
 import ColumnManager from "./ColumnManager";
 import Pagination from "./Pagination";
 import RowDetailDialog from "../edit/RowDetailDialog";
+import AggregatePanel from "./AggregatePanel";
 import PendingChanges from "../edit/PendingChanges";
 import SaveViewDialog from "../views/SaveViewDialog";
 import ExportDialog from "../export/ExportDialog";
@@ -1023,6 +1024,23 @@ export default function DataGrid(props: DataGridProps) {
 								</div>
 							</Show>
 						</div>
+
+						<Show when={tabState().selectedRows.size >= 2}>
+							{(_) => {
+								const cellData = () => gridStore.getSelectedCellData(props.tabId);
+								return (
+									<Show when={cellData()}>
+										{(data) => (
+											<AggregatePanel
+												rows={data().rows}
+												columns={data().columns}
+												visibleColumns={visibleColumns()}
+											/>
+										)}
+									</Show>
+								);
+							}}
+						</Show>
 
 						<Show when={showPendingPanel() && gridStore.hasPendingChanges(props.tabId)}>
 							<PendingChanges

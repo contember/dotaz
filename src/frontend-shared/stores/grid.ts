@@ -1102,6 +1102,17 @@ function removeTab(tabId: string) {
 	setState("tabs", tabId, undefined!);
 }
 
+// ── Aggregate selection data ──────────────────────────────
+
+/** Return selected rows data and columns for aggregate computation. */
+function getSelectedCellData(tabId: string): { rows: Record<string, unknown>[]; columns: GridColumnDef[] } | null {
+	const tab = getTab(tabId);
+	if (!tab || tab.selectedRows.size < 2) return null;
+	const sorted = [...tab.selectedRows].sort((a, b) => a - b);
+	const rows = sorted.filter((i) => tab.rows[i] != null).map((i) => tab.rows[i]);
+	return { rows, columns: tab.columns };
+}
+
 // ── Export ────────────────────────────────────────────────
 
 export const gridStore = {
@@ -1145,6 +1156,9 @@ export const gridStore = {
 	resetToDefault,
 	captureViewConfig,
 	isViewModified,
+
+	// Aggregation
+	getSelectedCellData,
 
 	// Editing
 	startEditing,
