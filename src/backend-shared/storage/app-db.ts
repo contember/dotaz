@@ -1,12 +1,14 @@
 import Database from "bun:sqlite";
 import { runMigrations } from "./migrations";
 import type { ConnectionConfig, ConnectionInfo } from "../../shared/types/connection";
+import { isServerConfig } from "../../shared/types/connection";
 import type { QueryHistoryEntry, QueryHistoryStatus } from "../../shared/types/query";
 import type {
 	SavedView,
 	SavedViewConfig,
 	HistoryListParams,
 } from "../../shared/types/rpc";
+import { encryptLocalPassword, decryptLocalPassword, isEncryptedPassword } from "../services/encryption";
 
 /** Default settings values — returned when a key has not been explicitly set. */
 export const DEFAULT_SETTINGS: Record<string, string> = {
@@ -23,6 +25,7 @@ let instance: AppDatabase | null = null;
 
 export class AppDatabase {
 	readonly db: Database;
+	private localKey: Uint8Array | null = null;
 
 	private constructor(dbPath: string) {
 		this.db = new Database(dbPath, { create: true });
@@ -69,16 +72,68 @@ export class AppDatabase {
 		}
 	}
 
+	/**
+	 * Set the local encryption key and migrate any existing plaintext passwords.
+	 */
+	setLocalKey(key: Uint8Array): void {
+		this.localKey = key;
+		this.migratePasswords();
+	}
+
+	private encryptConfigJson(config: ConnectionConfig): string {
+		if (this.localKey && isServerConfig(config)) {
+			const encrypted = { ...config, password: encryptLocalPassword(config.password, this.localKey) };
+			return JSON.stringify(encrypted);
+		}
+		return JSON.stringify(config);
+	}
+
+	private decryptConfig(config: ConnectionConfig): ConnectionConfig {
+		if (this.localKey && isServerConfig(config) && isEncryptedPassword(config.password)) {
+			return { ...config, password: decryptLocalPassword(config.password, this.localKey) };
+		}
+		return config;
+	}
+
+	private migratePasswords(): void {
+		if (!this.localKey) return;
+		const rows = this.db.prepare("SELECT id, config FROM connections").all() as ConnectionRow[];
+		const update = this.db.prepare("UPDATE connections SET config = ? WHERE id = ?");
+		for (const row of rows) {
+			try {
+				const config = JSON.parse(row.config) as ConnectionConfig;
+				if (isServerConfig(config) && !isEncryptedPassword(config.password)) {
+					const encrypted = { ...config, password: encryptLocalPassword(config.password, this.localKey!) };
+					update.run(JSON.stringify(encrypted), row.id);
+				}
+			} catch {
+				// Skip corrupted configs
+			}
+		}
+	}
+
+	private toConnectionInfo(row: ConnectionRow): ConnectionInfo {
+		const config = safeJsonParse<ConnectionConfig>(row.config, `connection "${row.name}"`);
+		return {
+			id: row.id,
+			name: row.name,
+			config: this.decryptConfig(config),
+			state: "disconnected",
+			createdAt: row.created_at,
+			updatedAt: row.updated_at,
+		};
+	}
+
 	// ── Connections ──────────────────────────────────────────
 
 	listConnections(): ConnectionInfo[] {
 		const rows = this.db.prepare("SELECT * FROM connections ORDER BY name").all() as ConnectionRow[];
-		return rows.map(rowToConnectionInfo);
+		return rows.map(row => this.toConnectionInfo(row));
 	}
 
 	getConnectionById(id: string): ConnectionInfo | null {
 		const row = this.db.prepare("SELECT * FROM connections WHERE id = ?").get(id) as ConnectionRow | null;
-		return row ? rowToConnectionInfo(row) : null;
+		return row ? this.toConnectionInfo(row) : null;
 	}
 
 	createConnection(params: { name: string; config: ConnectionConfig }): ConnectionInfo {
@@ -90,7 +145,7 @@ export class AppDatabase {
 		const now = new Date().toISOString();
 		this.db.prepare(
 			"INSERT INTO connections (id, name, type, config, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-		).run(id, params.name, params.config.type, JSON.stringify(params.config), now, now);
+		).run(id, params.name, params.config.type, this.encryptConfigJson(params.config), now, now);
 		return this.getConnectionById(id)!;
 	}
 
@@ -98,7 +153,7 @@ export class AppDatabase {
 		const now = new Date().toISOString();
 		this.db.prepare(
 			"UPDATE connections SET name = ?, type = ?, config = ?, updated_at = ? WHERE id = ?",
-		).run(params.name, params.config.type, JSON.stringify(params.config), now, params.id);
+		).run(params.name, params.config.type, this.encryptConfigJson(params.config), now, params.id);
 		const result = this.getConnectionById(params.id);
 		if (!result) throw new Error(`Connection not found: ${params.id}`);
 		return result;
@@ -285,17 +340,6 @@ function safeJsonParse<T>(json: string, context: string): T {
 	} catch {
 		throw new Error(`Corrupted JSON in ${context}: ${json.slice(0, 100)}`);
 	}
-}
-
-function rowToConnectionInfo(row: ConnectionRow): ConnectionInfo {
-	return {
-		id: row.id,
-		name: row.name,
-		config: safeJsonParse<ConnectionConfig>(row.config, `connection "${row.name}"`),
-		state: "disconnected",
-		createdAt: row.created_at,
-		updatedAt: row.updated_at,
-	};
 }
 
 function rowToSavedView(row: SavedViewRow): SavedView {

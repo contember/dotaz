@@ -5,6 +5,7 @@ import { ApplicationMenu, BrowserView, BrowserWindow, Updater, Utils } from "ele
 import type { DotazRPC } from "../backend-types";
 import { AppDatabase, setDefaultDbPath } from "../backend-shared/storage/app-db";
 import { ConnectionManager } from "../backend-shared/services/connection-manager";
+import { createLocalKey } from "../backend-shared/services/encryption";
 import { createHandlers } from "../backend-shared/rpc/rpc-handlers";
 
 const DEV_SERVER_PORT = 5173;
@@ -38,6 +39,10 @@ setDefaultDbPath(() => {
 
 // Initialize backend services
 const appDb = AppDatabase.getInstance();
+const localKey = createLocalKey();
+if (localKey) {
+	appDb.setLocalKey(localKey);
+}
 const connectionManager = new ConnectionManager(appDb);
 
 // Create RPC handlers

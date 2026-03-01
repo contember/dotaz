@@ -2,6 +2,8 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { AppDatabase } from "../src/backend-shared/storage/app-db";
 import { getSchemaVersion } from "../src/backend-shared/storage/migrations";
 import type { PostgresConnectionConfig, SqliteConnectionConfig } from "../src/shared/types/connection";
+import { hkdfSync } from "crypto";
+import { isEncryptedPassword } from "../src/backend-shared/services/encryption";
 
 describe("AppDatabase", () => {
 	let appDb: AppDatabase;
@@ -530,6 +532,110 @@ describe("AppDatabase", () => {
 			expect(results).toHaveLength(1);
 			expect(results[0].sql).toBe("SELECT * FROM users");
 			expect(results[0].connectionId).toBe(connectionId);
+		});
+	});
+
+	// ── Password encryption ──────────────────────────────────
+
+	describe("password encryption", () => {
+		const testKey = new Uint8Array(
+			hkdfSync("sha256", "test-machine-data", "dotaz-local-salt", "dotaz-local-key", 32),
+		);
+
+		const pgConfig: PostgresConnectionConfig = {
+			type: "postgresql",
+			host: "localhost",
+			port: 5432,
+			database: "mydb",
+			user: "admin",
+			password: "secret-password",
+		};
+
+		test("password is encrypted in raw DB when localKey is set", () => {
+			appDb.setLocalKey(testKey);
+			const conn = appDb.createConnection({ name: "Encrypted", config: pgConfig });
+
+			// Read raw config from SQLite
+			const row = appDb.db.prepare("SELECT config FROM connections WHERE id = ?").get(conn.id) as { config: string };
+			const rawConfig = JSON.parse(row.config);
+			expect(rawConfig.password).not.toBe("secret-password");
+			expect(isEncryptedPassword(rawConfig.password)).toBe(true);
+		});
+
+		test("password is decrypted when reading via API", () => {
+			appDb.setLocalKey(testKey);
+			const conn = appDb.createConnection({ name: "Encrypted", config: pgConfig });
+
+			const found = appDb.getConnectionById(conn.id)!;
+			expect(found.config).toEqual(pgConfig);
+			expect((found.config as PostgresConnectionConfig).password).toBe("secret-password");
+		});
+
+		test("listConnections returns decrypted passwords", () => {
+			appDb.setLocalKey(testKey);
+			appDb.createConnection({ name: "PG1", config: pgConfig });
+
+			const list = appDb.listConnections();
+			expect(list).toHaveLength(1);
+			expect((list[0].config as PostgresConnectionConfig).password).toBe("secret-password");
+		});
+
+		test("updateConnection encrypts the new password", () => {
+			appDb.setLocalKey(testKey);
+			const conn = appDb.createConnection({ name: "Original", config: pgConfig });
+
+			const newConfig = { ...pgConfig, password: "new-secret" };
+			appDb.updateConnection({ id: conn.id, name: "Updated", config: newConfig });
+
+			// Raw DB should have encrypted password
+			const row = appDb.db.prepare("SELECT config FROM connections WHERE id = ?").get(conn.id) as { config: string };
+			const rawConfig = JSON.parse(row.config);
+			expect(isEncryptedPassword(rawConfig.password)).toBe(true);
+
+			// API should return decrypted
+			const found = appDb.getConnectionById(conn.id)!;
+			expect((found.config as PostgresConnectionConfig).password).toBe("new-secret");
+		});
+
+		test("SQLite connections are not affected by encryption", () => {
+			appDb.setLocalKey(testKey);
+			const sqliteConfig: SqliteConnectionConfig = { type: "sqlite", path: "/tmp/test.db" };
+			const conn = appDb.createConnection({ name: "SQLite", config: sqliteConfig });
+
+			const found = appDb.getConnectionById(conn.id)!;
+			expect(found.config).toEqual(sqliteConfig);
+		});
+
+		test("transparent migration encrypts existing plaintext passwords", () => {
+			// Insert a connection WITHOUT encryption (no localKey yet)
+			const conn = appDb.createConnection({ name: "Plaintext", config: pgConfig });
+
+			// Verify it's stored as plaintext
+			const rowBefore = appDb.db.prepare("SELECT config FROM connections WHERE id = ?").get(conn.id) as { config: string };
+			expect(JSON.parse(rowBefore.config).password).toBe("secret-password");
+
+			// Now set the local key — should migrate existing passwords
+			appDb.setLocalKey(testKey);
+
+			// Raw DB should now have encrypted password
+			const rowAfter = appDb.db.prepare("SELECT config FROM connections WHERE id = ?").get(conn.id) as { config: string };
+			const rawConfig = JSON.parse(rowAfter.config);
+			expect(isEncryptedPassword(rawConfig.password)).toBe(true);
+
+			// API should still return decrypted password
+			const found = appDb.getConnectionById(conn.id)!;
+			expect((found.config as PostgresConnectionConfig).password).toBe("secret-password");
+		});
+
+		test("without localKey, passwords are stored as plaintext", () => {
+			// Don't set localKey
+			const conn = appDb.createConnection({ name: "NoKey", config: pgConfig });
+
+			const row = appDb.db.prepare("SELECT config FROM connections WHERE id = ?").get(conn.id) as { config: string };
+			expect(JSON.parse(row.config).password).toBe("secret-password");
+
+			const found = appDb.getConnectionById(conn.id)!;
+			expect((found.config as PostgresConnectionConfig).password).toBe("secret-password");
 		});
 	});
 });

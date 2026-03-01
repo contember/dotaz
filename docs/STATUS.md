@@ -28,7 +28,7 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 | DOTAZ-058 | Reverse FK — display referencing records in row detail | done | ReferencingForeignKeyInfo type, driver implementations (PG/SQLite/MySQL/WASM), RPC endpoint, Referenced By section in RowDetailDialog with counts and navigation |
 | DOTAZ-059 | CSV export encoding configuration | done | CsvEncoding type, encoding dropdown + BOM toggle in ExportDialog, backend encoder for UTF-8/ISO-8859-1/Windows-1252 |
 | DOTAZ-060 | Query history time range filtering | done | Date range inputs (from/to), preset quick filters (Today/7d/30d), AND with existing filters |
-| DOTAZ-061 | Encrypt connection passwords in local storage | not started | NFR-04: plaintext in local SQLite |
+| DOTAZ-061 | Encrypt connection passwords in local storage | in progress | NFR-04: plaintext in local SQLite |
 
 ---
 
