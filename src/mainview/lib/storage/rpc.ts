@@ -4,7 +4,7 @@ import type { QueryHistoryEntry } from "../../../shared/types/query";
 import type { SavedView, SavedViewConfig, HistoryListParams } from "../../../shared/types/rpc";
 import { rpc } from "../rpc";
 
-class RpcAppStateStorage implements AppStateStorage {
+export class RpcAppStateStorage implements AppStateStorage {
 	readonly passConfigOnConnect = false;
 
 	async listConnections(): Promise<ConnectionInfo[]> {
@@ -59,5 +59,3 @@ class RpcAppStateStorage implements AppStateStorage {
 		return true;
 	}
 }
-
-export const storage = new RpcAppStateStorage();

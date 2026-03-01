@@ -247,22 +247,24 @@ function updateConnectionState(connectionId: string, connState: ConnectionState,
 
 // ── Backend event listener ───────────────────────────────
 
-messages.onConnectionStatusChanged((event) => {
-	updateConnectionState(event.connectionId, event.state, event.error);
-	if (event.state === "connected") {
-		const conn = state.connections.find((c) => c.id === event.connectionId);
-		if (conn) {
-			loadSchemaTreesForConnection(conn);
-		} else {
-			loadSchemaTree(event.connectionId);
+export function initConnectionsListener(): () => void {
+	return messages.onConnectionStatusChanged((event) => {
+		updateConnectionState(event.connectionId, event.state, event.error);
+		if (event.state === "connected") {
+			const conn = state.connections.find((c) => c.id === event.connectionId);
+			if (conn) {
+				loadSchemaTreesForConnection(conn);
+			} else {
+				loadSchemaTree(event.connectionId);
+			}
 		}
-	}
-	if (event.state === "error" && event.error) {
-		const conn = state.connections.find((c) => c.id === event.connectionId);
-		const name = conn?.name ?? "Connection";
-		uiStore.addToast("error", `${name}: ${friendlyErrorMessage(event.error)}`);
-	}
-});
+		if (event.state === "error" && event.error) {
+			const conn = state.connections.find((c) => c.id === event.connectionId);
+			const name = conn?.name ?? "Connection";
+			uiStore.addToast("error", `${name}: ${friendlyErrorMessage(event.error)}`);
+		}
+	});
+}
 
 // ── Export ────────────────────────────────────────────────
 

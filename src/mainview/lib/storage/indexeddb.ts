@@ -78,7 +78,7 @@ function stripPassword(config: ConnectionConfig): ConnectionConfig {
 
 // ── IndexedDbAppStateStorage ─────────────────────────────
 
-class IndexedDbAppStateStorage implements AppStateStorage {
+export class IndexedDbAppStateStorage implements AppStateStorage {
 	readonly passConfigOnConnect = true;
 
 	// ── Connections ──────────────────────────────────────
@@ -320,4 +320,3 @@ class IndexedDbAppStateStorage implements AppStateStorage {
 	}
 }
 
-export const storage = new IndexedDbAppStateStorage();

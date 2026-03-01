@@ -1,61 +1,22 @@
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig } from "vite";
 import { resolve } from "path";
 import solid from "vite-plugin-solid";
-
-function transportSwapPlugin(target: "websocket" | "inline"): Plugin {
-	const electrobunPath = resolve(__dirname, "src/mainview/lib/transport/electrobun.ts");
-	const targetPath = resolve(__dirname, `src/mainview/lib/transport/${target}.ts`);
-	return {
-		name: "dotaz-transport-swap",
-		enforce: "pre",
-		resolveId(source, importer) {
-			if (!importer) return null;
-			// When resolving ./electrobun from within the transport directory, redirect to target
-			if (source.endsWith("/electrobun") || source === "./electrobun") {
-				const importerDir = importer.substring(0, importer.lastIndexOf("/"));
-				const resolved = resolve(importerDir, source + ".ts");
-				if (resolved === electrobunPath) {
-					return targetPath;
-				}
-			}
-			return null;
-		},
-	};
-}
-
-function storageSwapPlugin(): Plugin {
-	const rpcPath = resolve(__dirname, "src/mainview/lib/storage/rpc.ts");
-	const targetPath = resolve(__dirname, "src/mainview/lib/storage/indexeddb.ts");
-	return {
-		name: "dotaz-storage-swap",
-		enforce: "pre",
-		resolveId(source, importer) {
-			if (!importer) return null;
-			if (source.endsWith("/rpc") || source === "./rpc") {
-				const importerDir = importer.substring(0, importer.lastIndexOf("/"));
-				const resolved = resolve(importerDir, source + ".ts");
-				if (resolved === rpcPath) {
-					return targetPath;
-				}
-			}
-			return null;
-		},
-	};
-}
 
 export default defineConfig(({ mode }) => {
 	const isWeb = mode === "web";
 	const isDemo = mode === "demo";
 
+	const root = isDemo
+		? "src/frontend-demo"
+		: isWeb
+			? "src/frontend-web"
+			: "src/frontend-desktop";
+
 	return {
-		plugins: [
-			...(isWeb ? [transportSwapPlugin("websocket"), storageSwapPlugin()] : []),
-			...(isDemo ? [transportSwapPlugin("inline")] : []),
-			solid(),
-		],
-		root: "src/mainview",
+		plugins: [solid()],
+		root,
 		build: {
-			outDir: "../../dist",
+			outDir: resolve(__dirname, "dist"),
 			emptyOutDir: true,
 		},
 		server: {
