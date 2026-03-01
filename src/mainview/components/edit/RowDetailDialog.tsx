@@ -221,7 +221,7 @@ export default function RowDetailDialog(props: RowDetailDialogProps) {
 						disabled={readOnly}
 						onChange={(e) => setFieldValue(col.name, e.target.checked)}
 					/>
-					<span style={{ "font-size": "var(--font-size-sm)", color: "var(--text-secondary)" }}>
+					<span style={{ "font-size": "var(--font-size-sm)", color: "var(--ink-secondary)" }}>
 						{isNull ? "NULL" : value ? "true" : "false"}
 					</span>
 					<Show when={col.nullable && !readOnly}>

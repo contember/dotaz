@@ -13,7 +13,7 @@
 	justify-content: center;
 	gap: var(--spacing-md);
 	padding: var(--spacing-xl);
-	color: var(--text-muted);
+	color: var(--ink-muted);
 	font-size: var(--font-size-sm);
 	text-align: center;
 }
@@ -47,7 +47,7 @@
 }
 
 .tree-item:hover {
-	background: var(--bg-hover);
+	background: var(--surface-hover);
 }
 
 .tree-item__arrow {
@@ -59,7 +59,7 @@
 	flex-shrink: 0;
 	background: none;
 	border: none;
-	color: var(--text-secondary);
+	color: var(--ink-secondary);
 	cursor: pointer;
 	padding: 0;
 	font-size: 8px;
@@ -67,7 +67,7 @@
 }
 
 .tree-item__arrow:hover {
-	color: var(--text-primary);
+	color: var(--ink);
 }
 
 .tree-item__arrow-icon {
@@ -99,7 +99,7 @@
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	font-size: var(--font-size-sm);
-	color: var(--text-primary);
+	color: var(--ink);
 }
 
 .tree-item__status {
@@ -112,11 +112,11 @@
 /* ── View items (smaller/muted) ──────────────────────── */
 
 .tree-item--view .tree-item__label {
-	color: var(--text-secondary);
+	color: var(--ink-secondary);
 	font-size: var(--font-size-xs);
 }
 
 .tree-item--view .tree-item__icon {
-	color: var(--text-muted);
+	color: var(--ink-muted);
 }
 

@@ -498,7 +498,7 @@ function computePinStyles(
 				position: "sticky",
 				left: `${leftOffset}px`,
 				"z-index": "3",
-				background: "var(--bg-panel)",
+				background: "var(--surface-raised)",
 			});
 			leftOffset += columnConfig[col.name]?.width ?? DEFAULT_COLUMN_WIDTH;
 		}
@@ -512,7 +512,7 @@ function computePinStyles(
 				position: "sticky",
 				right: `${rightOffset}px`,
 				"z-index": "3",
-				background: "var(--bg-panel)",
+				background: "var(--surface-raised)",
 			});
 			rightOffset += columnConfig[col.name]?.width ?? DEFAULT_COLUMN_WIDTH;
 		}

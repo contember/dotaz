@@ -1,11 +1,13 @@
 .status-bar {
-	background: var(--accent);
-	color: var(--accent-fg);
+	background: var(--surface-raised);
+	border-top: 1px solid var(--edge);
+	color: var(--ink-secondary);
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	padding: 0 var(--spacing-md);
 	font-size: var(--font-size-xs);
+	font-family: var(--font-mono);
 	height: var(--statusbar-height);
 	overflow: hidden;
 	flex-shrink: 0;
@@ -27,8 +29,8 @@
 
 .status-bar__item--tx {
 	font-weight: 700;
-	background: var(--color-warning);
-	color: var(--text-inverse);
+	background: var(--warning);
+	color: var(--ink-inverse);
 	padding: 1px 6px;
 	border-radius: 3px;
 }
@@ -44,6 +46,6 @@
 .status-bar__separator {
 	width: 1px;
 	height: 12px;
-	background: rgba(255, 255, 255, 0.3);
+	background: var(--edge);
 	flex-shrink: 0;
 }

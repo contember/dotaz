@@ -8,7 +8,7 @@
 .conn-dialog__type-switcher {
 	display: flex;
 	gap: 1px;
-	background: var(--border-color);
+	background: var(--edge);
 	border-radius: 4px;
 	overflow: hidden;
 }
@@ -16,15 +16,15 @@
 .conn-dialog__type-btn {
 	flex: 1;
 	padding: var(--spacing-sm) var(--spacing-md);
-	background: var(--bg-input);
+	background: var(--surface-inset);
 	border: none;
-	color: var(--text-secondary);
+	color: var(--ink-secondary);
 	font-size: var(--font-size-sm);
 	cursor: pointer;
 }
 
 .conn-dialog__type-btn:hover:not(:disabled) {
-	background: var(--bg-hover);
+	background: var(--surface-hover);
 }
 
 .conn-dialog__type-btn--active {
@@ -51,34 +51,34 @@
 
 .conn-dialog__label {
 	font-size: var(--font-size-sm);
-	color: var(--text-secondary);
+	color: var(--ink-secondary);
 }
 
 .conn-dialog__label--checkbox {
 	display: flex;
 	align-items: center;
 	gap: var(--spacing-sm);
-	color: var(--text-primary);
+	color: var(--ink);
 	cursor: pointer;
 	user-select: none;
 }
 
 .conn-dialog__input {
-	background: var(--bg-input);
-	border: 1px solid var(--border-color);
+	background: var(--surface-inset);
+	border: 1px solid var(--edge);
 	border-radius: 3px;
-	color: var(--text-primary);
+	color: var(--ink);
 	font-size: var(--font-size-base);
 	padding: var(--spacing-sm) var(--spacing-md);
 	outline: none;
 }
 
 .conn-dialog__input:focus {
-	border-color: var(--border-focus);
+	border-color: var(--edge-focus);
 }
 
 .conn-dialog__input--error {
-	border-color: var(--color-error);
+	border-color: var(--error);
 }
 
 .conn-dialog__url-input {
@@ -88,7 +88,7 @@
 
 .conn-dialog__error {
 	font-size: var(--font-size-xs);
-	color: var(--color-error);
+	color: var(--error);
 }
 
 /* Browse row */
@@ -102,10 +102,10 @@
 }
 
 .conn-dialog__browse-btn {
-	background: var(--bg-input);
-	border: 1px solid var(--border-color);
+	background: var(--surface-inset);
+	border: 1px solid var(--edge);
 	border-radius: 3px;
-	color: var(--text-primary);
+	color: var(--ink);
 	font-size: var(--font-size-sm);
 	padding: var(--spacing-sm) var(--spacing-md);
 	cursor: pointer;
@@ -113,7 +113,7 @@
 }
 
 .conn-dialog__browse-btn:hover {
-	background: var(--bg-hover);
+	background: var(--surface-hover);
 }
 
 /* Test result */
@@ -124,15 +124,15 @@
 }
 
 .conn-dialog__test-result--success {
-	background: rgba(78, 201, 176, 0.15);
-	color: var(--color-success);
-	border: 1px solid rgba(78, 201, 176, 0.3);
+	background: rgba(74, 222, 128, 0.15);
+	color: var(--success);
+	border: 1px solid rgba(74, 222, 128, 0.3);
 }
 
 .conn-dialog__test-result--error {
-	background: rgba(244, 71, 71, 0.15);
-	color: var(--color-error);
-	border: 1px solid rgba(244, 71, 71, 0.3);
+	background: rgba(239, 68, 68, 0.15);
+	color: var(--error);
+	border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
 /* Actions */

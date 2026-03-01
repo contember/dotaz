@@ -17,10 +17,10 @@
 	padding: 0 var(--spacing-sm);
 	height: 28px;
 	flex-shrink: 0;
-	background: var(--bg-panel);
-	border-bottom: 1px solid var(--border-color);
+	background: var(--surface-raised);
+	border-bottom: 1px solid var(--edge);
 	font-size: var(--font-size-xs);
-	color: var(--text-secondary);
+	color: var(--ink-secondary);
 }
 
 .sql-result-panel__header-left {
@@ -40,7 +40,7 @@
 	padding: 2px 8px;
 	border: none;
 	background: transparent;
-	color: var(--text-secondary);
+	color: var(--ink-secondary);
 	font-size: var(--font-size-xs);
 	font-family: var(--font-ui);
 	cursor: pointer;
@@ -48,21 +48,21 @@
 }
 
 .sql-result-panel__tab:hover {
-	background: var(--bg-hover);
+	background: var(--surface-hover);
 }
 
 .sql-result-panel__tab--active {
-	background: var(--bg-active);
-	color: var(--text-primary);
+	background: var(--surface-active);
+	color: var(--ink);
 }
 
 /* Metadata */
 .sql-result-panel__meta {
-	color: var(--text-muted);
+	color: var(--ink-muted);
 }
 
 .sql-result-panel__meta-sep {
-	color: var(--text-muted);
+	color: var(--ink-muted);
 }
 
 /* Toggle button */
@@ -70,14 +70,14 @@
 	padding: 0 4px;
 	border: none;
 	background: transparent;
-	color: var(--text-muted);
+	color: var(--ink-muted);
 	font-size: 10px;
 	cursor: pointer;
 	line-height: 1;
 }
 
 .sql-result-panel__toggle:hover {
-	color: var(--text-primary);
+	color: var(--ink);
 }
 
 /* Content */
@@ -95,15 +95,15 @@
 	justify-content: center;
 	gap: var(--spacing-sm);
 	height: 100%;
-	color: var(--text-muted);
+	color: var(--ink-muted);
 	font-size: var(--font-size-sm);
 	user-select: none;
 }
 
 .sql-result-panel__error {
 	padding: var(--spacing-md);
-	background: rgba(244, 71, 71, 0.1);
-	border-left: 3px solid var(--color-error);
+	background: rgba(239, 68, 68, 0.1);
+	border-left: 3px solid var(--error);
 	margin: var(--spacing-sm);
 	border-radius: 4px;
 }
@@ -113,13 +113,13 @@
 	align-items: center;
 	gap: var(--spacing-xs);
 	font-weight: 600;
-	color: var(--color-error);
+	color: var(--error);
 	margin-bottom: var(--spacing-xs);
 	font-size: var(--font-size-sm);
 }
 
 .sql-result-panel__error-message {
-	color: var(--text-primary);
+	color: var(--ink);
 	font-family: var(--font-mono);
 	font-size: var(--font-size-sm);
 	white-space: pre-wrap;
@@ -131,13 +131,13 @@
 	align-items: center;
 	justify-content: center;
 	height: 100%;
-	color: var(--text-secondary);
+	color: var(--ink-secondary);
 	font-size: var(--font-size-base);
 }
 
 .sql-result-panel__dml-count {
 	font-weight: 600;
-	color: var(--text-primary);
+	color: var(--ink);
 	margin-right: 4px;
 }
 

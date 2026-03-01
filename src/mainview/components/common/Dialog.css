@@ -10,10 +10,10 @@
 }
 
 .dialog {
-	background: var(--bg-panel);
-	border: 1px solid var(--border-color);
+	background: var(--surface-overlay);
+	border: 1px solid var(--edge-strong);
 	border-radius: var(--radius-lg);
-	box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+	box-shadow: var(--shadow-overlay);
 	min-width: 420px;
 	max-width: 560px;
 	max-height: 90vh;
@@ -28,13 +28,13 @@
 	align-items: center;
 	justify-content: space-between;
 	padding: var(--spacing-md) var(--spacing-lg);
-	border-bottom: 1px solid var(--border-color);
+	border-bottom: 1px solid var(--edge);
 }
 
 .dialog__title {
 	font-size: var(--font-size-lg);
 	font-weight: 600;
-	color: var(--text-primary);
+	color: var(--ink);
 }
 
 .dialog__close {
@@ -45,14 +45,14 @@
 	height: 24px;
 	background: none;
 	border: none;
-	color: var(--text-muted);
+	color: var(--ink-muted);
 	cursor: pointer;
 	border-radius: var(--radius-sm);
 }
 
 .dialog__close:hover {
-	background: var(--bg-active);
-	color: var(--text-primary);
+	background: var(--surface-active);
+	color: var(--ink);
 }
 
 .dialog__body {

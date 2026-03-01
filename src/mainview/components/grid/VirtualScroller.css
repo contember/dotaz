@@ -8,6 +8,6 @@
 	align-items: center;
 	justify-content: center;
 	padding: var(--spacing-xl);
-	color: var(--text-muted);
+	color: var(--ink-muted);
 	font-size: var(--font-size-sm);
 }

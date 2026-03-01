@@ -23,10 +23,10 @@ interface ConnectionTreeProps {
 }
 
 const STATUS_COLORS: Record<ConnectionState, string | undefined> = {
-	connected: "var(--color-success)",
-	connecting: "var(--color-warning)",
-	reconnecting: "var(--color-warning)",
-	error: "var(--color-error)",
+	connected: "var(--success)",
+	connecting: "var(--warning)",
+	reconnecting: "var(--warning)",
+	error: "var(--error)",
 	disconnected: undefined,
 };
 

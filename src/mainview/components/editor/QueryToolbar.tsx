@@ -179,7 +179,7 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 				<span class="query-toolbar__connection-name">
 					{connection()?.name ?? "—"}
 					<Show when={props.database}>
-						<span style={{ color: "var(--text-muted)" }}> / {props.database}</span>
+						<span style={{ color: "var(--ink-muted)" }}> / {props.database}</span>
 					</Show>
 				</span>
 			</div>

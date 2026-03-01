@@ -10,18 +10,18 @@
 	align-items: center;
 	justify-content: space-between;
 	padding: var(--spacing-sm) var(--spacing-md);
-	border-bottom: 1px solid var(--border-color);
+	border-bottom: 1px solid var(--edge);
 	flex-shrink: 0;
 }
 
 .schema-viewer__title {
 	font-size: var(--font-size-sm);
 	font-weight: 600;
-	color: var(--text-primary);
+	color: var(--ink);
 }
 
 .schema-viewer__schema-name {
-	color: var(--text-muted);
+	color: var(--ink-muted);
 	font-weight: 400;
 }
 
@@ -29,10 +29,10 @@
 	display: flex;
 	align-items: center;
 	gap: var(--spacing-xs);
-	border: 1px solid var(--border-color);
+	border: 1px solid var(--edge);
 	border-radius: var(--radius-sm);
 	background: transparent;
-	color: var(--text-secondary);
+	color: var(--ink-secondary);
 	font-size: var(--font-size-xs);
 	cursor: pointer;
 	padding: 2px var(--spacing-sm);
@@ -40,8 +40,8 @@
 }
 
 .schema-viewer__open-data-btn:hover {
-	color: var(--text-primary);
-	background: var(--bg-hover);
+	color: var(--ink);
+	background: var(--surface-hover);
 }
 
 .schema-viewer__loading {
@@ -50,7 +50,7 @@
 	justify-content: center;
 	gap: var(--spacing-sm);
 	padding: var(--spacing-lg);
-	color: var(--text-muted);
+	color: var(--ink-muted);
 	font-size: var(--font-size-sm);
 }
 
@@ -59,7 +59,7 @@
 	align-items: center;
 	gap: var(--spacing-sm);
 	padding: var(--spacing-lg);
-	color: var(--color-error);
+	color: var(--error);
 	font-size: var(--font-size-sm);
 }
 
@@ -76,14 +76,14 @@
 .schema-viewer__section-title {
 	font-size: var(--font-size-sm);
 	font-weight: 600;
-	color: var(--text-secondary);
+	color: var(--ink-secondary);
 	margin: 0 0 var(--spacing-sm) 0;
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
 }
 
 .schema-viewer__empty {
-	color: var(--text-muted);
+	color: var(--ink-muted);
 	font-size: var(--font-size-sm);
 	margin: 0;
 }
@@ -97,8 +97,8 @@
 .schema-viewer__th {
 	text-align: left;
 	padding: var(--spacing-xs) var(--spacing-sm);
-	border-bottom: 1px solid var(--border-color);
-	color: var(--text-muted);
+	border-bottom: 1px solid var(--edge);
+	color: var(--ink-muted);
 	font-weight: 500;
 	font-size: var(--font-size-xs);
 	white-space: nowrap;
@@ -113,13 +113,13 @@
 }
 
 .schema-viewer__row:hover {
-	background: var(--bg-hover);
+	background: var(--surface-hover);
 }
 
 .schema-viewer__td {
 	padding: var(--spacing-xs) var(--spacing-sm);
-	border-bottom: 1px solid var(--border-color);
-	color: var(--text-primary);
+	border-bottom: 1px solid var(--edge);
+	color: var(--ink);
 	vertical-align: middle;
 }
 
@@ -134,7 +134,7 @@
 
 .schema-viewer__td--type {
 	font-family: var(--font-mono);
-	color: var(--text-secondary);
+	color: var(--ink-secondary);
 }
 
 .schema-viewer__td--center {
@@ -147,7 +147,7 @@
 
 .schema-viewer__pk-icon {
 	display: inline-flex;
-	color: var(--color-success);
+	color: var(--success);
 }
 
 .schema-viewer__fk-icon {
@@ -158,30 +158,30 @@
 .schema-viewer__auto-increment {
 	margin-left: var(--spacing-xs);
 	font-size: var(--font-size-xs);
-	color: var(--text-muted);
+	color: var(--ink-muted);
 	font-family: var(--font-mono);
 }
 
 .schema-viewer__max-length {
-	color: var(--text-muted);
+	color: var(--ink-muted);
 	margin-left: 2px;
 }
 
 .schema-viewer__code {
 	font-family: var(--font-mono);
 	font-size: var(--font-size-xs);
-	color: var(--text-secondary);
-	background: var(--bg-input);
+	color: var(--ink-secondary);
+	background: var(--surface-inset);
 	padding: 1px 4px;
 	border-radius: 2px;
 }
 
 .schema-viewer__nullable {
-	color: var(--text-muted);
+	color: var(--ink-muted);
 }
 
 .schema-viewer__not-null {
-	color: var(--color-warning);
+	color: var(--warning);
 	font-size: var(--font-size-xs);
 }
 
@@ -198,7 +198,7 @@
 }
 
 .schema-viewer__fk-link:hover {
-	color: var(--text-primary);
+	color: var(--ink);
 }
 
 .schema-viewer__badge {
@@ -206,16 +206,16 @@
 	font-size: var(--font-size-xs);
 	padding: 1px 6px;
 	border-radius: 3px;
-	background: var(--bg-input);
-	color: var(--text-muted);
+	background: var(--surface-inset);
+	color: var(--ink-muted);
 }
 
 .schema-viewer__badge--primary {
 	background: var(--accent);
-	color: var(--bg-panel);
+	color: var(--accent-fg);
 }
 
 .schema-viewer__badge--unique {
-	background: var(--color-warning);
-	color: var(--bg-panel);
+	background: var(--warning);
+	color: var(--ink-inverse);
 }

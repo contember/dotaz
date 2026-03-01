@@ -25,31 +25,31 @@ function createDarkTheme() {
 	return EditorView.theme(
 		{
 			"&": {
-				backgroundColor: "var(--bg-panel)",
-				color: "var(--text-primary)",
+				backgroundColor: "var(--surface-raised)",
+				color: "var(--ink)",
 				fontSize: "var(--font-size-base)",
 				fontFamily: "var(--font-mono)",
 			},
 			".cm-content": {
-				caretColor: "var(--text-primary)",
+				caretColor: "var(--ink)",
 				fontFamily: "var(--font-mono)",
 			},
 			".cm-cursor, .cm-dropCursor": {
-				borderLeftColor: "var(--text-primary)",
+				borderLeftColor: "var(--ink)",
 			},
 			"&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
 				{
-					backgroundColor: "var(--bg-selection)",
+					backgroundColor: "var(--surface-selected)",
 				},
 			".cm-panels": {
-				backgroundColor: "var(--bg-panel)",
-				color: "var(--text-primary)",
+				backgroundColor: "var(--surface-raised)",
+				color: "var(--ink)",
 			},
 			".cm-panels.cm-panels-top": {
-				borderBottom: "1px solid var(--border-color)",
+				borderBottom: "1px solid var(--edge)",
 			},
 			".cm-panels.cm-panels-bottom": {
-				borderTop: "1px solid var(--border-color)",
+				borderTop: "1px solid var(--edge)",
 			},
 			".cm-searchMatch": {
 				backgroundColor: "rgba(255, 213, 0, 0.2)",
@@ -59,7 +59,7 @@ function createDarkTheme() {
 				backgroundColor: "rgba(255, 213, 0, 0.4)",
 			},
 			".cm-activeLine": {
-				backgroundColor: "var(--bg-hover)",
+				backgroundColor: "var(--surface-hover)",
 			},
 			".cm-selectionMatch": {
 				backgroundColor: "rgba(255, 255, 255, 0.1)",
@@ -70,41 +70,41 @@ function createDarkTheme() {
 					outline: "1px solid rgba(255, 255, 255, 0.3)",
 				},
 			".cm-gutters": {
-				backgroundColor: "var(--bg-panel)",
-				color: "var(--text-muted)",
+				backgroundColor: "var(--surface-raised)",
+				color: "var(--ink-muted)",
 				border: "none",
-				borderRight: "1px solid var(--border-color)",
+				borderRight: "1px solid var(--edge)",
 			},
 			".cm-activeLineGutter": {
-				backgroundColor: "var(--bg-hover)",
-				color: "var(--text-secondary)",
+				backgroundColor: "var(--surface-hover)",
+				color: "var(--ink-secondary)",
 			},
 			".cm-foldPlaceholder": {
 				backgroundColor: "transparent",
 				border: "none",
-				color: "var(--text-muted)",
+				color: "var(--ink-muted)",
 			},
 			".cm-tooltip": {
-				backgroundColor: "var(--bg-panel)",
-				border: "1px solid var(--border-color)",
-				color: "var(--text-primary)",
+				backgroundColor: "var(--surface-overlay)",
+				border: "1px solid var(--edge-strong)",
+				color: "var(--ink)",
 			},
 			".cm-tooltip .cm-tooltip-arrow:before": {
 				borderTopColor: "transparent",
 				borderBottomColor: "transparent",
 			},
 			".cm-tooltip .cm-tooltip-arrow:after": {
-				borderTopColor: "var(--bg-panel)",
-				borderBottomColor: "var(--bg-panel)",
+				borderTopColor: "var(--surface-overlay)",
+				borderBottomColor: "var(--surface-overlay)",
 			},
 			".cm-tooltip-autocomplete": {
 				"& > ul > li[aria-selected]": {
-					backgroundColor: "var(--bg-selection)",
-					color: "var(--text-primary)",
+					backgroundColor: "var(--surface-selected)",
+					color: "var(--ink)",
 				},
 			},
 			".cm-placeholder": {
-				color: "var(--text-muted)",
+				color: "var(--ink-muted)",
 				fontStyle: "italic",
 			},
 		},

@@ -1,6 +1,6 @@
 .grid-row {
 	display: flex;
-	border-bottom: 1px solid var(--border-color);
+	border-bottom: 1px solid var(--edge);
 	cursor: default;
 	width: max-content;
 	min-width: 100%;
@@ -15,15 +15,15 @@
 }
 
 .grid-row:hover {
-	background: var(--bg-hover);
+	background: var(--surface-hover);
 }
 
 .grid-row--selected {
-	background: var(--bg-selection);
+	background: var(--surface-selected);
 }
 
 .grid-row--selected:hover {
-	background: var(--bg-selection);
+	background: var(--surface-selected);
 }
 
 .grid-row--deleted {
@@ -32,5 +32,5 @@
 }
 
 .grid-row--new {
-	border-left: 2px solid var(--color-success);
+	border-left: 2px solid var(--success);
 }

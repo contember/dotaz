@@ -14,13 +14,13 @@ interface StatusBarProps {
 function statusColor(status: ConnectionStatus): string {
 	switch (status) {
 		case "connected":
-			return "var(--color-success)";
+			return "var(--success)";
 		case "connecting":
-			return "var(--color-warning)";
+			return "var(--warning)";
 		case "error":
-			return "var(--color-error)";
+			return "var(--error)";
 		case "disconnected":
-			return "var(--text-muted)";
+			return "var(--ink-muted)";
 	}
 }
 

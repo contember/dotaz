@@ -3,8 +3,8 @@
 	position: sticky;
 	top: 0;
 	z-index: 2;
-	background: var(--bg-panel);
-	border-bottom: 2px solid var(--border-color);
+	background: var(--surface-raised);
+	border-bottom: 2px solid var(--edge-strong);
 }
 
 .grid-header__cell {
@@ -13,7 +13,7 @@
 	gap: var(--spacing-xs);
 	padding: 0 var(--spacing-sm);
 	height: 32px;
-	border-right: 1px solid var(--border-color);
+	border-right: 1px solid var(--edge);
 	cursor: pointer;
 	user-select: none;
 	position: relative;
@@ -22,17 +22,17 @@
 }
 
 .grid-header__cell--pinned {
-	border-right: 1px solid var(--border-focus);
+	border-right: 1px solid var(--edge-focus);
 }
 
 .grid-header__cell:hover {
-	background: var(--bg-hover);
+	background: var(--surface-hover);
 }
 
 .grid-header__type-badge {
 	font-size: 9px;
-	color: var(--text-muted);
-	background: var(--bg-input);
+	color: var(--ink-muted);
+	background: var(--surface-inset);
 	padding: 0 3px;
 	border-radius: 2px;
 	font-family: var(--font-mono);
@@ -44,7 +44,8 @@
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	font-weight: 500;
-	color: var(--text-primary);
+	font-family: var(--font-mono);
+	color: var(--ink);
 }
 
 .grid-header__sort-indicator {
@@ -70,19 +71,19 @@
 
 .grid-header__icon-pk {
 	font-size: 9px;
-	color: var(--color-warning);
+	color: var(--warning);
 	font-weight: 600;
 }
 
 .grid-header__icon-fk {
 	font-size: 9px;
-	color: var(--color-info);
+	color: var(--info);
 	font-weight: 600;
 }
 
 .grid-header__icon-nullable {
 	font-size: 10px;
-	color: var(--text-muted);
+	color: var(--ink-muted);
 }
 
 .grid-header__resize-handle {

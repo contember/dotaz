@@ -10,10 +10,10 @@
 }
 
 .command-palette {
-	background: var(--bg-panel);
-	border: 1px solid var(--border-color);
+	background: var(--surface-overlay);
+	border: 1px solid var(--edge-strong);
 	border-radius: 6px;
-	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+	box-shadow: var(--shadow-overlay);
 	width: 480px;
 	max-height: 400px;
 	display: flex;
@@ -23,15 +23,15 @@
 
 .command-palette__input-wrap {
 	padding: var(--spacing-sm) var(--spacing-md);
-	border-bottom: 1px solid var(--border-color);
+	border-bottom: 1px solid var(--edge);
 }
 
 .command-palette__input {
 	width: 100%;
-	background: var(--bg-input);
-	border: 1px solid var(--border-color);
+	background: var(--surface-inset);
+	border: 1px solid var(--edge);
 	border-radius: 4px;
-	color: var(--text-primary);
+	color: var(--ink);
 	font-family: var(--font-ui);
 	font-size: var(--font-size-base);
 	padding: var(--spacing-sm) var(--spacing-md);
@@ -39,7 +39,7 @@
 }
 
 .command-palette__input:focus {
-	border-color: var(--border-focus);
+	border-color: var(--edge-focus);
 }
 
 .command-palette__list {
@@ -57,12 +57,12 @@
 }
 
 .command-palette__item:hover {
-	background: var(--bg-hover);
+	background: var(--surface-hover);
 }
 
 .command-palette__item--selected {
-	background: var(--bg-selection);
-	color: var(--text-primary);
+	background: var(--surface-selected);
+	color: var(--ink);
 }
 
 .command-palette__item-left {
@@ -73,7 +73,7 @@
 }
 
 .command-palette__label {
-	color: var(--text-primary);
+	color: var(--ink);
 	font-size: var(--font-size-base);
 	white-space: nowrap;
 	overflow: hidden;
@@ -81,27 +81,27 @@
 }
 
 .command-palette__category {
-	color: var(--text-muted);
+	color: var(--ink-muted);
 	font-size: var(--font-size-xs);
 	white-space: nowrap;
 	flex-shrink: 0;
 }
 
 .command-palette__shortcut {
-	color: var(--text-secondary);
+	color: var(--ink-secondary);
 	font-family: var(--font-mono);
 	font-size: var(--font-size-xs);
 	white-space: nowrap;
 	flex-shrink: 0;
-	background: var(--bg-input);
+	background: var(--surface-inset);
 	padding: 2px var(--spacing-xs);
 	border-radius: 3px;
-	border: 1px solid var(--border-color);
+	border: 1px solid var(--edge);
 }
 
 .command-palette__empty {
 	padding: var(--spacing-lg);
 	text-align: center;
-	color: var(--text-muted);
+	color: var(--ink-muted);
 	font-size: var(--font-size-sm);
 }

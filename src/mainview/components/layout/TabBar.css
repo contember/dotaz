@@ -1,6 +1,6 @@
 .tab-bar {
-	background: var(--bg-panel);
-	border-bottom: 1px solid var(--border-color);
+	background: var(--surface-raised);
+	border-bottom: 1px solid var(--edge);
 	flex-shrink: 0;
 	overflow: hidden;
 }
@@ -22,8 +22,8 @@
 	padding: 0 var(--spacing-md);
 	height: 35px;
 	cursor: pointer;
-	border-right: 1px solid var(--border-color);
-	color: var(--text-secondary);
+	border-right: 1px solid var(--edge);
+	color: var(--ink-secondary);
 	font-size: var(--font-size-sm);
 	white-space: nowrap;
 	flex-shrink: 0;
@@ -32,12 +32,12 @@
 }
 
 .tab-bar__tab:hover {
-	background: var(--bg-hover);
+	background: var(--surface-hover);
 }
 
 .tab-bar__tab--active {
-	background: var(--bg-app);
-	color: var(--text-primary);
+	background: var(--surface);
+	color: var(--ink);
 	border-bottom: 2px solid var(--accent);
 }
 
@@ -64,7 +64,7 @@
 
 .tab-bar__tab-title-table {
 	font-size: 9px;
-	color: var(--text-muted);
+	color: var(--ink-muted);
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -72,7 +72,7 @@
 
 .tab-bar__tab-title-view {
 	font-size: var(--font-size-xs);
-	color: var(--text-primary);
+	color: var(--ink);
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
@@ -86,7 +86,7 @@
 }
 
 .tab-bar__tab-dirty {
-	color: var(--color-warning);
+	color: var(--warning);
 	font-size: var(--font-size-lg);
 	line-height: 1;
 	flex-shrink: 0;
@@ -100,7 +100,7 @@
 	height: 18px;
 	background: none;
 	border: none;
-	color: var(--text-muted);
+	color: var(--ink-muted);
 	cursor: pointer;
 	border-radius: var(--radius-sm);
 	flex-shrink: 0;
@@ -115,14 +115,14 @@
 }
 
 .tab-bar__tab-close:hover {
-	background: var(--bg-active);
-	color: var(--text-primary);
+	background: var(--surface-active);
+	color: var(--ink);
 }
 
 .tab-bar__tab-rename {
-	background: var(--bg-input);
+	background: var(--surface-inset);
 	border: 1px solid var(--accent);
-	color: var(--text-primary);
+	color: var(--ink);
 	font-size: var(--font-size-sm);
 	padding: 0 var(--spacing-xs);
 	width: 100px;

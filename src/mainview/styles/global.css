@@ -1,40 +1,46 @@
 :root {
-	/* Background colors */
-	--bg-app: #1e1e1e;
-	--bg-panel: #252526;
-	--bg-input: #3c3c3c;
-	--bg-hover: #2a2d2e;
-	--bg-active: #37373d;
-	--bg-selection: #264f78;
-	--bg-skeleton: #2a2d2e;
-	--bg-skeleton-shine: #37373d;
+	/* ── Surfaces — cool-steel tinted charcoal ──────────── */
+	--surface: #1a1c20;
+	--surface-raised: #22252a;
+	--surface-overlay: #2a2e34;
+	--surface-inset: #14161a;
+	--surface-hover: rgba(255, 255, 255, 0.04);
+	--surface-active: rgba(255, 255, 255, 0.07);
+	--surface-selected: rgba(52, 209, 180, 0.12);
 
-	/* Border colors */
-	--border-color: #3c3c3c;
-	--border-focus: #007acc;
+	/* ── Ink — text hierarchy ───────────────────────────── */
+	--ink: #d1d5db;
+	--ink-secondary: #8b8f96;
+	--ink-muted: #525660;
+	--ink-inverse: #1a1c20;
 
-	/* Text colors */
-	--text-primary: #cccccc;
-	--text-secondary: #969696;
-	--text-muted: #6a6a6a;
-	--text-inverse: #1e1e1e;
+	/* ── Accent — terminal glow ─────────────────────────── */
+	--accent: #34d1b4;
+	--accent-hover: #5eddc6;
+	--accent-fg: #1a1c20;
+	--accent-wash: rgba(52, 209, 180, 0.10);
+	--accent-wash-hover: rgba(52, 209, 180, 0.18);
 
-	/* Accent colors */
-	--accent: #007acc;
-	--accent-hover: #1a8ad4;
-	--accent-fg: #ffffff;
+	/* ── Semantic ───────────────────────────────────────── */
+	--success: #4ade80;
+	--warning: #f59e0b;
+	--error: #ef4444;
+	--info: #60a5fa;
 
-	/* Status colors */
-	--color-success: #4ec9b0;
-	--color-warning: #cca700;
-	--color-error: #f44747;
-	--color-info: #3794ff;
+	/* ── Shadows — depth for floating surfaces ──────────── */
+	--shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.4);
+	--shadow-popup: 0 4px 16px rgba(0, 0, 0, 0.4);
+	--shadow-float: 0 2px 8px rgba(0, 0, 0, 0.3);
 
-	/* Fonts */
-	--font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
-		Ubuntu, Cantarell, sans-serif;
-	--font-mono: "Cascadia Code", "Fira Code", "JetBrains Mono", "SF Mono",
-		Monaco, Menlo, "Courier New", monospace;
+	/* ── Edges — borders ────────────────────────────────── */
+	--edge: rgba(255, 255, 255, 0.08);
+	--edge-strong: rgba(255, 255, 255, 0.13);
+	--edge-focus: var(--accent);
+
+	/* ── Fonts ──────────────────────────────────────────── */
+	--font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+	--font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", "SF Mono",
+		monospace;
 
 	/* Font sizes — 14px base, 12px small/meta, 16px headings */
 	--font-size-xs: 11px;
@@ -42,32 +48,32 @@
 	--font-size-base: 14px;
 	--font-size-lg: 16px;
 
-	/* Spacing */
+	/* ── Spacing ────────────────────────────────────────── */
 	--spacing-xs: 4px;
 	--spacing-sm: 8px;
 	--spacing-md: 12px;
 	--spacing-lg: 16px;
 	--spacing-xl: 24px;
 
-	/* Border radius */
+	/* ── Border radius ──────────────────────────────────── */
 	--radius-sm: 3px;
-	--radius-md: 4px;
+	--radius-md: 6px;
 	--radius-lg: 6px;
 
-	/* Layout */
+	/* ── Layout ─────────────────────────────────────────── */
 	--sidebar-width: 250px;
 	--sidebar-min-width: 150px;
 	--sidebar-max-width: 500px;
 	--statusbar-height: 24px;
 	--resizer-width: 4px;
 
-	/* Scrollbar */
+	/* ── Scrollbar ──────────────────────────────────────── */
 	--scrollbar-width: 8px;
 	--scrollbar-track: transparent;
-	--scrollbar-thumb: #424242;
-	--scrollbar-thumb-hover: #555555;
+	--scrollbar-thumb: rgba(255, 255, 255, 0.12);
+	--scrollbar-thumb-hover: rgba(255, 255, 255, 0.18);
 
-	/* Transitions */
+	/* ── Transitions ────────────────────────────────────── */
 	--transition-fast: 0.1s ease;
 	--transition-normal: 0.15s ease;
 	--transition-slow: 0.25s ease;
@@ -85,8 +91,8 @@ html,
 body {
 	height: 100%;
 	overflow: hidden;
-	background: var(--bg-app);
-	color: var(--text-primary);
+	background: var(--surface);
+	color: var(--ink);
 	font-family: var(--font-ui);
 	font-size: var(--font-size-base);
 	line-height: 1.4;
@@ -125,13 +131,13 @@ body {
 
 /* Selection */
 ::selection {
-	background: var(--bg-selection);
-	color: var(--text-primary);
+	background: var(--surface-selected);
+	color: var(--ink);
 }
 
 /* Focus */
 :focus-visible {
-	outline: 1px solid var(--border-focus);
+	outline: 1px solid var(--edge-focus);
 	outline-offset: -1px;
 }
 
@@ -161,7 +167,7 @@ input:focus,
 select:focus,
 textarea:focus {
 	outline: none;
-	border-color: var(--border-focus);
+	border-color: var(--edge-focus);
 }
 
 /* ── Skeleton loader animation ──────────────────────────── */
@@ -178,9 +184,9 @@ textarea:focus {
 .skeleton {
 	background: linear-gradient(
 		90deg,
-		var(--bg-skeleton) 25%,
-		var(--bg-skeleton-shine) 50%,
-		var(--bg-skeleton) 75%
+		var(--surface-raised) 25%,
+		var(--surface-active) 50%,
+		var(--surface-raised) 75%
 	);
 	background-size: 200% 100%;
 	animation: skeleton-shimmer 1.5s ease-in-out infinite;
@@ -198,7 +204,7 @@ textarea:focus {
 .spinner {
 	width: 14px;
 	height: 14px;
-	border: 2px solid var(--text-muted);
+	border: 2px solid var(--ink-muted);
 	border-top-color: var(--accent);
 	border-radius: 50%;
 	animation: spin 0.6s linear infinite;
@@ -237,13 +243,13 @@ textarea:focus {
 
 .btn--secondary {
 	background: transparent;
-	color: var(--text-secondary);
-	border: 1px solid var(--border-color);
+	color: var(--ink-secondary);
+	border: 1px solid var(--edge);
 }
 
 .btn--secondary:hover:not(:disabled) {
-	background: var(--bg-hover);
-	color: var(--text-primary);
+	background: var(--surface-hover);
+	color: var(--ink);
 }
 
 /* ── Dialog animation ───────────────────────────────────── */
@@ -276,7 +282,7 @@ textarea:focus {
 	align-items: center;
 	justify-content: center;
 	padding: var(--spacing-xl);
-	color: var(--text-muted);
+	color: var(--ink-muted);
 	font-size: var(--font-size-sm);
 	text-align: center;
 	gap: var(--spacing-sm);
@@ -290,12 +296,12 @@ textarea:focus {
 
 .empty-state__title {
 	font-size: var(--font-size-base);
-	color: var(--text-secondary);
+	color: var(--ink-secondary);
 }
 
 .empty-state__subtitle {
 	font-size: var(--font-size-sm);
-	color: var(--text-muted);
+	color: var(--ink-muted);
 }
 
 /* ── Responsive: auto-collapse sidebar under 600px ──────── */

@@ -101,7 +101,7 @@ export default function DatabasePicker(props: DatabasePickerProps) {
 										<Show when={db.isDefault}>
 											<span style={{
 												"font-size": "0.75em",
-												color: "var(--text-muted)",
+												color: "var(--ink-muted)",
 												"margin-left": "auto",
 											}}>
 												default
@@ -114,7 +114,7 @@ export default function DatabasePicker(props: DatabasePickerProps) {
 					</div>
 
 					<Show when={filtered().length === 0}>
-						<div style={{ color: "var(--text-muted)", "text-align": "center", padding: "16px 0" }}>
+						<div style={{ color: "var(--ink-muted)", "text-align": "center", padding: "16px 0" }}>
 							No databases found
 						</div>
 					</Show>
