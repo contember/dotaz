@@ -7,7 +7,8 @@ import { tabsStore } from "../../stores/tabs";
 import { viewsStore } from "../../stores/views";
 import { gridStore } from "../../stores/grid";
 import { rpc } from "../../lib/rpc";
-import { Database, Eye, Table, Bookmark, FolderOpen } from "lucide-solid";
+import { siPostgresql, siSqlite } from "simple-icons";
+import { Eye, Table, Bookmark, FolderOpen } from "lucide-solid";
 import ContextMenu, { type ContextMenuEntry } from "../common/ContextMenu";
 import ConnectionTreeItem from "./ConnectionTreeItem";
 import "./ConnectionTree.css";
@@ -25,8 +26,19 @@ const STATUS_COLORS: Record<ConnectionState, string | undefined> = {
 	disconnected: undefined,
 };
 
+function SimpleIcon(props: { icon: typeof siPostgresql; size?: number }) {
+	const s = () => props.size ?? 14;
+	return (
+		<svg width={s()} height={s()} viewBox="0 0 24 24" fill={`#${props.icon.hex}`} aria-hidden="true">
+			<path d={props.icon.path} />
+		</svg>
+	);
+}
+
 function getConnectionIcon(type: string): JSX.Element {
-	return <Database size={14} class={type === "postgresql" ? "tree-icon--postgresql" : "tree-icon--sqlite"} />;
+	return type === "postgresql"
+		? <SimpleIcon icon={siPostgresql} />
+		: <SimpleIcon icon={siSqlite} />;
 }
 
 interface ContextMenuState {

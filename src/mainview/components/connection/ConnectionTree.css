@@ -93,13 +93,6 @@
 	justify-content: center;
 }
 
-.tree-icon--postgresql {
-	color: var(--color-info);
-}
-
-.tree-icon--sqlite {
-	color: var(--text-secondary);
-}
 
 .tree-item__label {
 	overflow: hidden;
