@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, mock } from "bun:test";
-import { friendlyErrorMessage, RpcError } from "../src/mainview/lib/rpc-errors";
+import { friendlyErrorMessage, RpcError } from "../src/frontend-shared/lib/rpc-errors";
 
 // ── Mock solid-js/store ──────────────────────────────────
 
@@ -24,7 +24,7 @@ mock.module("solid-js/store", () => ({
 }));
 
 // Must import after mock
-const { uiStore } = await import("../src/mainview/stores/ui");
+const { uiStore } = await import("../src/frontend-shared/stores/ui");
 
 // ── UI Store: toast management ──────────────────────────
 

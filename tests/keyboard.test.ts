@@ -1,6 +1,6 @@
 import { describe, expect, test, mock, beforeEach, afterEach } from "bun:test";
-import { createKeyHandler, normalizeCombo, comboFromEvent, keyboardManager } from "../src/mainview/lib/keyboard";
-import { commandRegistry } from "../src/mainview/lib/commands";
+import { createKeyHandler, normalizeCombo, comboFromEvent, keyboardManager } from "../src/frontend-shared/lib/keyboard";
+import { commandRegistry } from "../src/frontend-shared/lib/commands";
 
 function makeKeyEvent(overrides: Partial<KeyboardEvent> = {}): KeyboardEvent {
 	return {

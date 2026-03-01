@@ -4,7 +4,7 @@ import Electrobun from "electrobun/bun";
 import { ApplicationMenu, BrowserView, BrowserWindow, Updater, Utils } from "electrobun/bun";
 import { AppDatabase, setDefaultDbPath } from "../backend-shared/storage/app-db";
 import { ConnectionManager } from "../backend-shared/services/connection-manager";
-import { createRPC, setupStatusNotifications } from "./rpc-handlers";
+import { createRPC, setupStatusNotifications } from "../backend-shared/rpc/rpc-handlers";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;

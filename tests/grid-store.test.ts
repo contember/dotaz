@@ -81,7 +81,7 @@ function defaultQueryExecuteImpl(params: { connectionId: string; sql: string; qu
 	return Promise.resolve(makeQueryResult(defaultRows.map((r) => ({ ...r }))));
 }
 
-mock.module("../src/mainview/lib/rpc", () => {
+mock.module("../src/frontend-shared/lib/rpc", () => {
 	mockQueryExecute = mock(defaultQueryExecuteImpl);
 
 	return {
@@ -99,7 +99,7 @@ mock.module("../src/mainview/lib/rpc", () => {
 });
 
 // ── Mock connections store (needed by grid store) ────────
-mock.module("../src/mainview/stores/connections", () => ({
+mock.module("../src/frontend-shared/stores/connections", () => ({
 	connectionsStore: {
 		connections: [],
 		getDialect: () => ({
@@ -116,7 +116,7 @@ mock.module("../src/mainview/stores/connections", () => ({
 
 // ── Import after mocks ───────────────────────────────────
 
-const { gridStore } = await import("../src/mainview/stores/grid");
+const { gridStore } = await import("../src/frontend-shared/stores/grid");
 
 // ── Test helpers ─────────────────────────────────────────
 

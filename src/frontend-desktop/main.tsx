@@ -1,10 +1,10 @@
-import { setTransport } from "../mainview/lib/transport";
-import { setStorage } from "../mainview/lib/storage";
-import { createElectrobunTransport } from "../mainview/lib/transport/electrobun";
-import { RpcAppStateStorage } from "../mainview/lib/storage/rpc";
-import "../mainview/styles/global.css";
+import { setTransport } from "../frontend-shared/lib/transport";
+import { setStorage } from "../frontend-shared/lib/storage";
+import { createElectrobunTransport } from "../frontend-shared/lib/transport/electrobun";
+import { RpcAppStateStorage } from "../frontend-shared/lib/storage/rpc";
+import "../frontend-shared/styles/global.css";
 import { render } from "solid-js/web";
-import App from "../mainview/App";
+import App from "../frontend-shared/App";
 
 setTransport(createElectrobunTransport());
 setStorage(new RpcAppStateStorage());

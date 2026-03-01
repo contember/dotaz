@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach } from "bun:test";
-import { commandRegistry } from "../src/mainview/lib/commands";
-import type { Command } from "../src/mainview/lib/commands";
+import { commandRegistry } from "../src/frontend-shared/lib/commands";
+import type { Command } from "../src/frontend-shared/lib/commands";
 
 function makeCommand(overrides: Partial<Command> & { id: string; label: string }): Command {
 	return {

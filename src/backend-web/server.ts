@@ -6,7 +6,7 @@ import { resolve } from "path";
 import { AppDatabase } from "../backend-shared/storage/app-db";
 import { ConnectionManager } from "../backend-shared/services/connection-manager";
 import { EncryptionService } from "../backend-shared/services/encryption";
-import { createHandlers } from "./rpc-handlers";
+import { createHandlers } from "../backend-shared/rpc/rpc-handlers";
 
 const PORT = Number(process.env.DOTAZ_PORT) || 4200;
 const DIST_DIR = resolve(import.meta.dir, "../../dist");

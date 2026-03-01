@@ -15,7 +15,7 @@ export function createInlineTransport(): RpcTransport {
 
 	function getHandlers() {
 		if (!handlersPromise) {
-			handlersPromise = import("../../../browser/init").then((m) => m.initDemo(emitMessage));
+			handlersPromise = import("../../../frontend-demo/init").then((m) => m.initDemo(emitMessage));
 		}
 		return handlersPromise;
 	}

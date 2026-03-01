@@ -28,7 +28,7 @@ mock.module("solid-js/store", () => ({
 }));
 
 // Must import after mock
-const { tabsStore } = await import("../src/mainview/stores/tabs");
+const { tabsStore } = await import("../src/frontend-shared/stores/tabs");
 
 // Mock window.confirm
 const originalConfirm = globalThis.window?.confirm;

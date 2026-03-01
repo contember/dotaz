@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { AppDatabase } from "../src/backend-shared/storage/app-db";
 import { ConnectionManager } from "../src/backend-shared/services/connection-manager";
-import { createHandlers } from "../src/bun/rpc-handlers";
+import { createHandlers } from "../src/backend-shared/rpc/rpc-handlers";
 import type { SqliteConnectionConfig } from "../src/shared/types/connection";
 
 // ── Helpers ──────────────────────────────────────────────────

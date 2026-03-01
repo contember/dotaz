@@ -1,10 +1,10 @@
-import { setTransport } from "../mainview/lib/transport";
-import { setStorage } from "../mainview/lib/storage";
-import { createWebSocketTransport } from "../mainview/lib/transport/websocket";
-import { IndexedDbAppStateStorage } from "../mainview/lib/storage/indexeddb";
-import "../mainview/styles/global.css";
+import { setTransport } from "../frontend-shared/lib/transport";
+import { setStorage } from "../frontend-shared/lib/storage";
+import { createWebSocketTransport } from "../frontend-shared/lib/transport/websocket";
+import { IndexedDbAppStateStorage } from "../frontend-shared/lib/storage/indexeddb";
+import "../frontend-shared/styles/global.css";
 import { render } from "solid-js/web";
-import App from "../mainview/App";
+import App from "../frontend-shared/App";
 
 setTransport(createWebSocketTransport());
 setStorage(new IndexedDbAppStateStorage());

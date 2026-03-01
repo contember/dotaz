@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { getStatementAtCursor } from "../src/mainview/lib/sql-utils";
+import { getStatementAtCursor } from "../src/frontend-shared/lib/sql-utils";
 
 describe("getStatementAtCursor", () => {
 	test("single statement, cursor at start", () => {

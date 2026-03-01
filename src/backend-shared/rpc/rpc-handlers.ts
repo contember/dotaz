@@ -1,11 +1,11 @@
 import type { BrowserWindow } from "electrobun/bun";
-import type { DotazRPC } from "../backend-types";
-import type { ConnectionManager } from "../backend-shared/services/connection-manager";
-import type { AppDatabase } from "../backend-shared/storage/app-db";
-import type { EncryptionService } from "../backend-shared/services/encryption";
-import { QueryExecutor } from "../backend-shared/services/query-executor";
-import { BackendAdapter } from "../backend-shared/rpc/backend-adapter";
-import { createHandlers as createSharedHandlers } from "../backend-shared/rpc/handlers";
+import type { DotazRPC } from "../../backend-types";
+import type { ConnectionManager } from "../services/connection-manager";
+import type { AppDatabase } from "../storage/app-db";
+import type { EncryptionService } from "../services/encryption";
+import { QueryExecutor } from "../services/query-executor";
+import { BackendAdapter } from "./backend-adapter";
+import { createHandlers as createSharedHandlers } from "./handlers";
 
 export interface HandlerOptions {
 	encryption?: EncryptionService;
