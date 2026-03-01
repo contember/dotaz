@@ -3,9 +3,9 @@ import { createVirtualizer } from "@tanstack/solid-virtual";
 import type { GridColumnDef } from "../../../shared/types/grid";
 import type { ColumnConfig, EditingCell, FkTarget } from "../../stores/grid";
 import GridRow from "./GridRow";
+import { ROW_HEIGHT } from "../../lib/layout-constants";
 import "./VirtualScroller.css";
 
-const ROW_HEIGHT = 32;
 const OVERSCAN = 5;
 
 interface VirtualScrollerProps {

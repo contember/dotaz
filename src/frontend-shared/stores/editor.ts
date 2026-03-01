@@ -4,6 +4,7 @@ import { rpc, friendlyErrorMessage } from "../lib/rpc";
 import { storage } from "../lib/storage";
 import { createTabHelpers } from "../lib/tab-store-helpers";
 import { getStatementAtCursor } from "../lib/sql-utils";
+import { uiStore } from "./ui";
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -96,7 +97,10 @@ function recordHistory(connectionId: string, sql: string, results: QueryResult[]
 		rowCount: totalRows,
 		errorMessage: results.find((r) => r.error)?.error,
 		executedAt: new Date().toISOString(),
-	}).catch((e) => console.warn("Failed to record history:", e));
+	}).catch((e) => {
+		console.debug("Failed to record history:", e);
+		uiStore.addToast("warning", "Failed to save query history. Changes may not persist.");
+	});
 }
 
 async function runQuery(tabId: string, sql: string, baseOffset = 0) {

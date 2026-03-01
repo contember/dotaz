@@ -4,6 +4,7 @@ import type { ColumnConfig } from "../../stores/grid";
 import ChevronUp from "lucide-solid/icons/chevron-up";
 import ChevronDown from "lucide-solid/icons/chevron-down";
 import { getDataTypeLabel } from "../../lib/column-types";
+import { DEFAULT_COLUMN_WIDTH, MIN_COLUMN_WIDTH } from "../../lib/layout-constants";
 import "./GridHeader.css";
 
 interface GridHeaderProps {
@@ -16,9 +17,6 @@ interface GridHeaderProps {
 	onResizeColumn: (column: string, width: number) => void;
 	onHeaderContextMenu?: (e: MouseEvent, column: string) => void;
 }
-
-const DEFAULT_COLUMN_WIDTH = 150;
-const MIN_COLUMN_WIDTH = 50;
 
 function getSortDirection(sort: SortColumn[], column: string): "asc" | "desc" | null {
 	const s = sort.find((s) => s.column === column);

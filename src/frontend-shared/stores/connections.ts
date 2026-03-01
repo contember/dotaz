@@ -146,19 +146,34 @@ async function loadSchemaTreesForConnection(conn: ConnectionInfo) {
 }
 
 async function createConnection(name: string, config: ConnectionConfig, rememberPassword = true): Promise<ConnectionInfo> {
-	const conn = await storage.createConnection(name, config, rememberPassword);
-	setState("connections", (prev) => [...prev, conn]);
-	return conn;
+	try {
+		const conn = await storage.createConnection(name, config, rememberPassword);
+		setState("connections", (prev) => [...prev, conn]);
+		return conn;
+	} catch (err) {
+		uiStore.addToast("warning", "Failed to save connection. Changes may not persist.");
+		throw err;
+	}
 }
 
 async function updateConnection(id: string, name: string, config: ConnectionConfig, rememberPassword?: boolean): Promise<ConnectionInfo> {
-	const conn = await storage.updateConnection(id, name, config, rememberPassword);
-	setState("connections", (c) => c.id === id, conn);
-	return conn;
+	try {
+		const conn = await storage.updateConnection(id, name, config, rememberPassword);
+		setState("connections", (c) => c.id === id, conn);
+		return conn;
+	} catch (err) {
+		uiStore.addToast("warning", "Failed to update connection. Changes may not persist.");
+		throw err;
+	}
 }
 
 async function deleteConnection(id: string) {
-	await storage.deleteConnection(id);
+	try {
+		await storage.deleteConnection(id);
+	} catch (err) {
+		uiStore.addToast("warning", "Failed to delete connection from storage.");
+		throw err;
+	}
 	setState("connections", (prev) => prev.filter((c) => c.id !== id));
 	// Clean up schema trees, schema data cache, and available databases
 	setState("schemaTrees", id, undefined!);

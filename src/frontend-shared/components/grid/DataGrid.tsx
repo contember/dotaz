@@ -24,6 +24,7 @@ import Icon from "../common/Icon";
 import RotateCcw from "lucide-solid/icons/rotate-ccw";
 import Save from "lucide-solid/icons/save";
 import Pencil from "lucide-solid/icons/pencil";
+import { HEADER_HEIGHT } from "../../lib/layout-constants";
 import "./DataGrid.css";
 
 interface DataGridProps {
@@ -33,8 +34,6 @@ interface DataGridProps {
 	table: string;
 	database?: string;
 }
-
-const HEADER_HEIGHT = 34; // 32px height + 2px border
 const COPY_FLASH_DURATION = 400;
 
 /** Build a map from source column → FK target for single-column FKs. */

@@ -4,6 +4,7 @@ import type {
 	GridColumnDef,
 	SortColumn,
 } from "../../shared/types/grid";
+import { DEFAULT_COLUMN_WIDTH } from "../lib/layout-constants";
 import type { DataChange, SavedViewConfig } from "../../shared/types/rpc";
 import {
 	buildSelectQuery,
@@ -520,8 +521,6 @@ function getVisibleColumns(tab: TabGridState): GridColumnDef[] {
 
 	return [...left, ...normal, ...right];
 }
-
-const DEFAULT_COLUMN_WIDTH = 150;
 
 /** Computes sticky position styles for pinned columns. */
 function computePinStyles(

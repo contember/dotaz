@@ -11,6 +11,7 @@ import { editorStore } from "../../stores/editor";
 import { connectionsStore } from "../../stores/connections";
 import ContextMenu from "../common/ContextMenu";
 import type { ContextMenuEntry } from "../common/ContextMenu";
+import { MIN_EDITOR_HEIGHT } from "../../lib/layout-constants";
 import "./SqlEditor.css";
 
 interface SqlEditorProps {
@@ -19,7 +20,6 @@ interface SqlEditorProps {
 	database?: string;
 }
 
-const MIN_EDITOR_HEIGHT = 60;
 const DEFAULT_EDITOR_HEIGHT = 200;
 
 function createDarkTheme() {

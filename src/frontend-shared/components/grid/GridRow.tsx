@@ -2,6 +2,7 @@ import { For } from "solid-js";
 import type { GridColumnDef } from "../../../shared/types/grid";
 import type { ColumnConfig, EditingCell, FkTarget } from "../../stores/grid";
 import GridCell from "./GridCell";
+import { DEFAULT_COLUMN_WIDTH } from "../../lib/layout-constants";
 import "./GridRow.css";
 
 interface GridRowProps {
@@ -25,8 +26,6 @@ interface GridRowProps {
 	onCellMoveDown?: (column: string) => void;
 	onFkClick?: (column: string) => void;
 }
-
-const DEFAULT_COLUMN_WIDTH = 150;
 
 function getColumnWidth(col: string, config: Record<string, ColumnConfig>): number {
 	return config[col]?.width ?? DEFAULT_COLUMN_WIDTH;

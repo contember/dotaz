@@ -22,6 +22,12 @@ function unregister(id: string) {
 	commands.delete(id);
 }
 
+/** Clear all registered commands. Call on AppShell cleanup to prevent duplicate registrations after HMR. */
+function clear() {
+	commands.clear();
+	recentIds.length = 0;
+}
+
 function getAll(): Command[] {
 	return [...commands.values()];
 }
@@ -89,6 +95,7 @@ function execute(id: string) {
 export const commandRegistry = {
 	register,
 	unregister,
+	clear,
 	getAll,
 	getById,
 	getRecentIds,

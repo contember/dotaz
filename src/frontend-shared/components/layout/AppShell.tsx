@@ -192,6 +192,7 @@ export default function AppShell() {
 	});
 
 	onCleanup(() => {
+		commandRegistry.clear();
 		keyboardManager.destroy();
 		removeMenuListener?.();
 		removeResizeListener?.();
