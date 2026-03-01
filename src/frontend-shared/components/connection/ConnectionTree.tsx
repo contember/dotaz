@@ -354,7 +354,8 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 	}
 
 	function tableMenuItems(connectionId: string, schemaName: string, tableName: string, database?: string): ContextMenuEntry[] {
-		return [
+		const conn = connectionsStore.connections.find((c) => c.id === connectionId);
+		const items: ContextMenuEntry[] = [
 			{
 				label: "Open Data",
 				action: () => handleTableClick(connectionId, schemaName, tableName, database),
@@ -387,6 +388,23 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 				},
 			},
 		];
+
+		if (!conn?.readOnly) {
+			items.push("separator", {
+				label: "Import Data...",
+				action: () => {
+					handleTableClick(connectionId, schemaName, tableName, database);
+					// Use a short delay to let the tab render, then dispatch open-import event
+					setTimeout(() => {
+						window.dispatchEvent(new CustomEvent("dotaz:open-import", {
+							detail: { connectionId, schema: schemaName, table: tableName, database },
+						}));
+					}, 100);
+				},
+			});
+		}
+
+		return items;
 	}
 
 	function viewMenuItems(connectionId: string, view: SavedView, database?: string): ContextMenuEntry[] {

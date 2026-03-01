@@ -3,6 +3,7 @@ import type { ConnectionConfig, ConnectionInfo } from "../../shared/types/connec
 import type { DatabaseInfo } from "../../shared/types/database";
 import type { QueryResult, QueryHistoryEntry, ExplainResult } from "../../shared/types/query";
 import type { ExportOptions, ExportPreviewRequest, ExportResult } from "../../shared/types/export";
+import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from "../../shared/types/import";
 import type {
 	SavedView,
 	SavedViewConfig,
@@ -57,6 +58,10 @@ export interface RpcAdapter {
 	// ── Export ────────────────────────────────────────────
 	exportData(opts: ExportOptions): Promise<ExportResult>;
 	exportPreview(req: ExportPreviewRequest): Promise<string>;
+
+	// ── Import ────────────────────────────────────────────
+	importData(opts: ImportOptions): Promise<ImportResult>;
+	importPreview(req: ImportPreviewRequest): Promise<ImportPreviewResult>;
 
 	// ── Storage ──────────────────────────────────────────
 	encrypt?(config: string): Promise<string>;

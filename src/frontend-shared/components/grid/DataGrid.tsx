@@ -20,6 +20,7 @@ import TransposedGrid from "./TransposedGrid";
 import PendingChanges from "../edit/PendingChanges";
 import SaveViewDialog from "../views/SaveViewDialog";
 import ExportDialog from "../export/ExportDialog";
+import ImportDialog from "../import/ImportDialog";
 import ContextMenu from "../common/ContextMenu";
 import type { ContextMenuEntry } from "../common/ContextMenu";
 import Icon from "../common/Icon";
@@ -63,6 +64,7 @@ export default function DataGrid(props: DataGridProps) {
 	const [showPendingPanel, setShowPendingPanel] = createSignal(false);
 	const [saveViewOpen, setSaveViewOpen] = createSignal(false);
 	const [exportOpen, setExportOpen] = createSignal(false);
+	const [importOpen, setImportOpen] = createSignal(false);
 	const [cellContextMenu, setCellContextMenu] = createSignal<{
 		x: number;
 		y: number;
@@ -117,9 +119,22 @@ export default function DataGrid(props: DataGridProps) {
 	onMount(() => {
 		staleTimer = setInterval(() => setNow(Date.now()), 30_000);
 	});
+	// Listen for import dialog open events from context menu
+	function handleOpenImport(e: Event) {
+		const detail = (e as CustomEvent).detail;
+		if (detail?.connectionId === props.connectionId &&
+			detail?.schema === currentSchema() &&
+			detail?.table === currentTable()) {
+			setImportOpen(true);
+		}
+	}
+	onMount(() => {
+		window.addEventListener("dotaz:open-import", handleOpenImport);
+	});
 	onCleanup(() => {
 		if (staleTimer) clearInterval(staleTimer);
 		if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+		window.removeEventListener("dotaz:open-import", handleOpenImport);
 	});
 
 	// Sync tab dirty flag with pending changes state
@@ -928,6 +943,15 @@ export default function DataGrid(props: DataGridProps) {
 							>
 								<Icon name="export" size={12} /> Export
 							</button>
+							<Show when={!isReadOnly()}>
+								<button
+									class="data-grid__toolbar-btn"
+									onClick={() => setImportOpen(true)}
+									title="Import data"
+								>
+									<Icon name="import" size={12} /> Import
+								</button>
+							</Show>
 							<button
 								class="data-grid__toolbar-btn"
 								onClick={() => {
@@ -1182,6 +1206,18 @@ export default function DataGrid(props: DataGridProps) {
 				table={currentTable()}
 				database={props.database}
 				onClose={() => setExportOpen(false)}
+			/>
+
+			<ImportDialog
+				open={importOpen()}
+				connectionId={props.connectionId}
+				schema={currentSchema()}
+				table={currentTable()}
+				database={props.database}
+				onClose={() => setImportOpen(false)}
+				onImported={() => {
+					gridStore.refreshData(props.tabId);
+				}}
 			/>
 
 			<Show when={cellContextMenu()}>

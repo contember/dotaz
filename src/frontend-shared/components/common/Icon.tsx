@@ -15,6 +15,7 @@ import Settings from "lucide-solid/icons/settings";
 import Filter from "lucide-solid/icons/funnel";
 import Columns3 from "lucide-solid/icons/columns-3";
 import Download from "lucide-solid/icons/download";
+import Upload from "lucide-solid/icons/upload";
 import Search from "lucide-solid/icons/search";
 import Copy from "lucide-solid/icons/copy";
 import Pencil from "lucide-solid/icons/pencil";
@@ -61,6 +62,7 @@ export type IconName =
 	| "filter"
 	| "columns"
 	| "export"
+	| "import"
 	| "search"
 	| "copy"
 	| "edit"
@@ -113,6 +115,7 @@ const ICON_MAP: Record<Exclude<IconName, "spinner">, LucideComponent> = {
 	filter: Filter,
 	columns: Columns3,
 	export: Download,
+	import: Upload,
 	search: Search,
 	copy: Copy,
 	edit: Pencil,

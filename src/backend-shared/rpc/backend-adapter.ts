@@ -7,6 +7,7 @@ import type { ConnectionConfig, ConnectionInfo } from "../../shared/types/connec
 import type { DatabaseInfo } from "../../shared/types/database";
 import type { QueryResult, QueryHistoryEntry, ExplainResult } from "../../shared/types/query";
 import type { ExportOptions, ExportPreviewRequest, ExportResult } from "../../shared/types/export";
+import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from "../../shared/types/import";
 import type {
 	SavedView,
 	SavedViewConfig,
@@ -17,6 +18,7 @@ import type {
 import type { DatabaseDriver } from "../db/driver";
 import { TransactionManager } from "../services/transaction-manager";
 import { exportToFile, exportPreview } from "../services/export-service";
+import { parseImportPreview, importData as importDataService } from "../services/import-service";
 import { formatSql } from "../services/sql-formatter";
 
 
@@ -228,6 +230,31 @@ export class BackendAdapter implements RpcAdapter {
 			sort: req.sort,
 			limit: req.limit,
 		});
+	}
+
+	// ── Import ────────────────────────────────────────────
+
+	async importData(opts: ImportOptions): Promise<ImportResult> {
+		const driver = this.cm.getDriver(opts.connectionId, opts.database);
+		return importDataService(driver, {
+			schema: opts.schema,
+			table: opts.table,
+			fileContent: opts.fileContent,
+			format: opts.format,
+			delimiter: opts.delimiter,
+			hasHeader: opts.hasHeader,
+			mappings: opts.mappings,
+			batchSize: opts.batchSize,
+		});
+	}
+
+	async importPreview(req: ImportPreviewRequest): Promise<ImportPreviewResult> {
+		return parseImportPreview({
+			fileContent: req.fileContent,
+			format: req.format,
+			delimiter: req.delimiter,
+			hasHeader: req.hasHeader,
+		}, req.limit);
 	}
 
 	// ── Storage ──────────────────────────────────────────

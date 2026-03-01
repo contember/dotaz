@@ -1,6 +1,7 @@
 import type { RpcAdapter } from "./adapter";
 import type { ConnectionConfig } from "../../shared/types/connection";
 import type { ExportOptions, ExportPreviewRequest } from "../../shared/types/export";
+import type { ImportOptions, ImportPreviewRequest } from "../../shared/types/import";
 import type {
 	HistoryListParams,
 	SavedViewConfig,
@@ -94,6 +95,14 @@ export function createHandlers(adapter: RpcAdapter) {
 		"export.preview": async (req: ExportPreviewRequest) => {
 			const content = await adapter.exportPreview(req);
 			return { content };
+		},
+
+		// ── Import ────────────────────────────────────────
+		"import.importData": async (opts: ImportOptions) => {
+			return adapter.importData(opts);
+		},
+		"import.preview": async (req: ImportPreviewRequest) => {
+			return adapter.importPreview(req);
 		},
 
 		// ── History ───────────────────────────────────────

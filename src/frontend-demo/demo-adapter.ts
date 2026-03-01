@@ -6,6 +6,7 @@ import type { ConnectionConfig, ConnectionInfo } from "../shared/types/connectio
 import type { DatabaseInfo } from "../shared/types/database";
 import type { QueryResult, QueryHistoryEntry, QueryHistoryStatus, ExplainResult, ExplainNode } from "../shared/types/query";
 import type { ExportOptions, ExportPreviewRequest, ExportResult } from "../shared/types/export";
+import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from "../shared/types/import";
 import type {
 	SavedView,
 	SavedViewConfig,
@@ -13,6 +14,7 @@ import type {
 } from "../shared/types/rpc";
 import { splitStatements } from "../shared/sql/statements";
 import { exportPreview as generateExportPreview } from "../backend-shared/services/export-service";
+import { parseImportPreview, importData as importDataService } from "../backend-shared/services/import-service";
 import { formatSql } from "../backend-shared/services/sql-formatter";
 
 type EmitMessage = (channel: string, payload: any) => void;
@@ -310,6 +312,31 @@ export class DemoAdapter implements RpcAdapter {
 			sort: req.sort,
 			limit: req.limit,
 		});
+	}
+
+	// ── Import ────────────────────────────────────────────
+
+	async importData(opts: ImportOptions): Promise<ImportResult> {
+		const d = this.getConnectedDriver(opts.connectionId);
+		return importDataService(d, {
+			schema: opts.schema,
+			table: opts.table,
+			fileContent: opts.fileContent,
+			format: opts.format,
+			delimiter: opts.delimiter,
+			hasHeader: opts.hasHeader,
+			mappings: opts.mappings,
+			batchSize: opts.batchSize,
+		});
+	}
+
+	async importPreview(req: ImportPreviewRequest): Promise<ImportPreviewResult> {
+		return parseImportPreview({
+			fileContent: req.fileContent,
+			format: req.format,
+			delimiter: req.delimiter,
+			hasHeader: req.hasHeader,
+		}, req.limit);
 	}
 
 	// ── SQL formatting ───────────────────────────────────
