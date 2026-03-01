@@ -12,14 +12,24 @@ import type { ColumnFilter, SortColumn } from "../src/shared/types/grid";
 import type { QueryResult } from "../src/shared/types/query";
 import type { ConnectionManager } from "../src/bun/services/connection-manager";
 
-// Minimal mock driver for quoteIdentifier and getDriverType
-function mockDriver(type: "postgresql" | "sqlite" = "postgresql"): DatabaseDriver {
+// Minimal mock driver for quoteIdentifier, getDriverType, qualifyTable, emptyInsertSql
+function mockDriver(type: "postgresql" | "sqlite" | "mysql" = "postgresql"): DatabaseDriver {
+	const quoteIdentifier = type === "mysql"
+		? (name: string) => `\`${name.replace(/`/g, "``")}\``
+		: (name: string) => `"${name.replace(/"/g, '""')}"`;
+
 	return {
-		quoteIdentifier(name: string) {
-			return `"${name.replace(/"/g, '""')}"`;
-		},
+		quoteIdentifier,
 		getDriverType() {
 			return type;
+		},
+		qualifyTable(schema: string, table: string) {
+			if (type === "sqlite" && schema === "main") return quoteIdentifier(table);
+			return `${quoteIdentifier(schema)}.${quoteIdentifier(table)}`;
+		},
+		emptyInsertSql(qualifiedTable: string) {
+			if (type === "mysql") return `INSERT INTO ${qualifiedTable} () VALUES ()`;
+			return `INSERT INTO ${qualifiedTable} DEFAULT VALUES`;
 		},
 	} as DatabaseDriver;
 }
@@ -333,6 +343,8 @@ function makeMockDriver(overrides?: Partial<DatabaseDriver>): DatabaseDriver {
 		cancel: mock(async () => {}),
 		quoteIdentifier: (name: string) => `"${name}"`,
 		getDriverType: () => "sqlite" as const,
+		qualifyTable: (schema: string, table: string) => schema === "main" ? `"${table}"` : `"${schema}"."${table}"`,
+		emptyInsertSql: (qualifiedTable: string) => `INSERT INTO ${qualifiedTable} DEFAULT VALUES`,
 		...overrides,
 	} as unknown as DatabaseDriver;
 }

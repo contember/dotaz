@@ -1,12 +1,18 @@
 import type { DatabaseDriver } from "../db/driver";
 import { PostgresDriver } from "../db/postgres-driver";
 import { SqliteDriver } from "../db/sqlite-driver";
+import { MysqlDriver } from "../db/mysql-driver";
 import type { AppDatabase } from "../storage/app-db";
 import type {
 	ConnectionConfig,
 	ConnectionInfo,
 	ConnectionState,
 	PostgresConnectionConfig,
+} from "../../shared/types/connection";
+import {
+	getDefaultDatabase,
+	isServerConfig,
+	CONNECTION_TYPE_META,
 } from "../../shared/types/connection";
 import type { DatabaseInfo } from "../../shared/types/database";
 
@@ -87,7 +93,7 @@ export class ConnectionManager {
 			validateConfig(config);
 
 			// Cache the effective password for later database activations
-			if (config.type === "postgresql") {
+			if (isServerConfig(config)) {
 				this.passwords.set(connectionId, config.password);
 			}
 
@@ -99,8 +105,8 @@ export class ConnectionManager {
 			driverMap.set(defaultDb, driver);
 			this.drivers.set(connectionId, driverMap);
 
-			// Connect active databases in parallel (PostgreSQL only)
-			if (config.type === "postgresql" && config.activeDatabases) {
+			// Connect active databases in parallel (multi-database types only)
+			if (CONNECTION_TYPE_META[config.type].supportsMultiDatabase && 'activeDatabases' in config && config.activeDatabases) {
 				const activations = config.activeDatabases
 					.filter((db) => db !== config.database)
 					.map((db) => this.connectDatabase(connectionId, config, db));
@@ -162,11 +168,11 @@ export class ConnectionManager {
 
 	async listDatabases(connectionId: string): Promise<DatabaseInfo[]> {
 		const connInfo = this.appDb.getConnectionById(connectionId);
-		if (!connInfo || connInfo.config.type !== "postgresql") {
-			throw new Error("listDatabases is only supported for PostgreSQL connections");
+		if (!connInfo || !CONNECTION_TYPE_META[connInfo.config.type].supportsMultiDatabase) {
+			throw new Error("listDatabases is only supported for connections with multi-database support");
 		}
 
-		const defaultDb = connInfo.config.database;
+		const defaultDb = getDefaultDatabase(connInfo.config);
 		const driver = this.getDriver(connectionId, defaultDb);
 		const result = await driver.execute(
 			"SELECT datname FROM pg_database WHERE datistemplate = false AND datallowconn = true ORDER BY datname",
@@ -184,9 +190,12 @@ export class ConnectionManager {
 
 	async activateDatabase(connectionId: string, database: string): Promise<void> {
 		const connInfo = this.appDb.getConnectionById(connectionId);
-		if (!connInfo || connInfo.config.type !== "postgresql") {
-			throw new Error("activateDatabase is only supported for PostgreSQL connections");
+		if (!connInfo || !CONNECTION_TYPE_META[connInfo.config.type].supportsMultiDatabase) {
+			throw new Error("activateDatabase is only supported for connections with multi-database support");
 		}
+
+		// Currently only PostgreSQL supports multi-database
+		const pgConfig = connInfo.config as PostgresConnectionConfig;
 
 		const driverMap = this.drivers.get(connectionId);
 		if (!driverMap) {
@@ -196,9 +205,9 @@ export class ConnectionManager {
 		// Already active
 		if (driverMap.has(database)) return;
 
-		const password = this.passwords.get(connectionId) ?? connInfo.config.password;
+		const password = this.passwords.get(connectionId) ?? pgConfig.password;
 		const config: PostgresConnectionConfig = {
-			...connInfo.config,
+			...pgConfig,
 			database,
 			password,
 		};
@@ -207,23 +216,26 @@ export class ConnectionManager {
 
 		// Persist to config
 		const activeDatabases = [...new Set([
-			...(connInfo.config.activeDatabases ?? []),
+			...(pgConfig.activeDatabases ?? []),
 			database,
 		])];
 		this.appDb.updateConnection({
 			id: connectionId,
 			name: connInfo.name,
-			config: { ...connInfo.config, activeDatabases },
+			config: { ...pgConfig, activeDatabases },
 		});
 	}
 
 	async deactivateDatabase(connectionId: string, database: string): Promise<void> {
 		const connInfo = this.appDb.getConnectionById(connectionId);
-		if (!connInfo || connInfo.config.type !== "postgresql") {
-			throw new Error("deactivateDatabase is only supported for PostgreSQL connections");
+		if (!connInfo || !CONNECTION_TYPE_META[connInfo.config.type].supportsMultiDatabase) {
+			throw new Error("deactivateDatabase is only supported for connections with multi-database support");
 		}
 
-		if (database === connInfo.config.database) {
+		// Currently only PostgreSQL supports multi-database
+		const pgConfig = connInfo.config as PostgresConnectionConfig;
+
+		if (database === getDefaultDatabase(pgConfig)) {
 			throw new Error("Cannot deactivate the default database");
 		}
 
@@ -240,13 +252,13 @@ export class ConnectionManager {
 		}
 
 		// Persist to config
-		const activeDatabases = (connInfo.config.activeDatabases ?? [])
-			.filter((db) => db !== database);
+		const activeDatabases = (pgConfig.activeDatabases ?? [])
+			.filter((db: string) => db !== database);
 		this.appDb.updateConnection({
 			id: connectionId,
 			name: connInfo.name,
 			config: {
-				...connInfo.config,
+				...pgConfig,
 				activeDatabases: activeDatabases.length > 0 ? activeDatabases : undefined,
 			},
 		});
@@ -453,7 +465,7 @@ export class ConnectionManager {
 			this.drivers.set(connectionId, driverMap);
 
 			// Reconnect active databases
-			if (config.type === "postgresql" && (config as PostgresConnectionConfig).activeDatabases) {
+			if (CONNECTION_TYPE_META[config.type].supportsMultiDatabase && 'activeDatabases' in config && (config as PostgresConnectionConfig).activeDatabases) {
 				const activations = (config as PostgresConnectionConfig).activeDatabases!
 					.filter((db) => db !== (config as PostgresConnectionConfig).database)
 					.map((db) => this.connectDatabase(connectionId, config as PostgresConnectionConfig, db));
@@ -560,17 +572,13 @@ function createDriver(config: ConnectionConfig): DatabaseDriver {
 			return new PostgresDriver();
 		case "sqlite":
 			return new SqliteDriver();
+		case "mysql":
+			return new MysqlDriver();
 		default:
 			throw new Error(
 				`Unsupported connection type: ${(config as any).type}`,
 			);
 	}
-}
-
-function getDefaultDatabase(config: ConnectionConfig): string {
-	if (config.type === "postgresql") return config.database;
-	if (config.type === "sqlite") return config.path;
-	throw new Error(`Unsupported connection type: ${(config as any).type}`);
 }
 
 function validateConfig(config: ConnectionConfig, allowMissingPassword = false): void {
@@ -578,24 +586,20 @@ function validateConfig(config: ConnectionConfig, allowMissingPassword = false):
 		throw new Error("Connection config must have a type");
 	}
 
-	switch (config.type) {
-		case "postgresql": {
-			if (!config.host) throw new Error("PostgreSQL host is required");
-			if (!config.port) throw new Error("PostgreSQL port is required");
-			if (!config.database)
-				throw new Error("PostgreSQL database is required");
-			if (!config.user) throw new Error("PostgreSQL user is required");
-			if (!allowMissingPassword && (config.password === undefined || config.password === null))
-				throw new Error("PostgreSQL password is required");
-			break;
-		}
-		case "sqlite": {
-			if (!config.path) throw new Error("SQLite path is required");
-			break;
-		}
-		default:
-			throw new Error(
-				`Unsupported connection type: ${(config as any).type}`,
-			);
+	const meta = CONNECTION_TYPE_META[config.type];
+	if (!meta) {
+		throw new Error(`Unsupported connection type: ${(config as any).type}`);
+	}
+
+	if (meta.hasHost && isServerConfig(config)) {
+		const label = meta.label;
+		if (!config.host) throw new Error(`${label} host is required`);
+		if (!config.port) throw new Error(`${label} port is required`);
+		if (!config.database) throw new Error(`${label} database is required`);
+		if (!config.user) throw new Error(`${label} user is required`);
+		if (!allowMissingPassword && (config.password === undefined || config.password === null))
+			throw new Error(`${label} password is required`);
+	} else if (config.type === "sqlite") {
+		if (!config.path) throw new Error("SQLite path is required");
 	}
 }

@@ -1049,7 +1049,7 @@ describe("RPC Handlers", () => {
 
 			await expect(
 				handlers["databases.list"]({ connectionId: conn.id }),
-			).rejects.toThrow("only supported for PostgreSQL");
+			).rejects.toThrow("only supported for connections with multi-database support");
 		});
 
 		test("databases.activate rejects SQLite connections", async () => {
@@ -1061,7 +1061,7 @@ describe("RPC Handlers", () => {
 
 			await expect(
 				handlers["databases.activate"]({ connectionId: conn.id, database: "other" }),
-			).rejects.toThrow("only supported for PostgreSQL");
+			).rejects.toThrow("only supported for connections with multi-database support");
 		});
 
 		test("databases.deactivate rejects SQLite connections", async () => {
@@ -1073,7 +1073,7 @@ describe("RPC Handlers", () => {
 
 			await expect(
 				handlers["databases.deactivate"]({ connectionId: conn.id, database: "other" }),
-			).rejects.toThrow("only supported for PostgreSQL");
+			).rejects.toThrow("only supported for connections with multi-database support");
 		});
 	});
 

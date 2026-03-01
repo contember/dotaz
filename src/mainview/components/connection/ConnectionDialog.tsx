@@ -4,10 +4,11 @@ import type {
 	ConnectionInfo,
 	ConnectionType,
 } from "../../../shared/types/connection";
+import { CONNECTION_TYPE_META } from "../../../shared/types/connection";
 import { connectionsStore } from "../../stores/connections";
 import { isStateless } from "../../lib/mode";
 import { rpc } from "../../lib/rpc";
-import { siPostgresql, siSqlite } from "simple-icons";
+import { siPostgresql, siSqlite, siMysql } from "simple-icons";
 import { FolderOpen, Plug } from "lucide-solid";
 import Dialog from "../common/Dialog";
 import "./ConnectionDialog.css";
@@ -38,9 +39,17 @@ function defaultSqliteFields() {
 	};
 }
 
-function parseConnectionString(input: string): ReturnType<typeof defaultPgFields> | null {
+function parseConnectionString(input: string): { fields: ReturnType<typeof defaultPgFields>; type: "postgresql" | "mysql" } | null {
 	const trimmed = input.trim();
-	if (!trimmed.startsWith("postgresql://") && !trimmed.startsWith("postgres://")) {
+	let type: "postgresql" | "mysql";
+	let defaultPort: string;
+	if (trimmed.startsWith("postgresql://") || trimmed.startsWith("postgres://")) {
+		type = "postgresql";
+		defaultPort = "5432";
+	} else if (trimmed.startsWith("mysql://")) {
+		type = "mysql";
+		defaultPort = "3306";
+	} else {
 		return null;
 	}
 	try {
@@ -48,12 +57,12 @@ function parseConnectionString(input: string): ReturnType<typeof defaultPgFields
 		const user = decodeURIComponent(url.username);
 		const password = decodeURIComponent(url.password);
 		const host = url.hostname;
-		const port = url.port || "5432";
+		const port = url.port || defaultPort;
 		const database = url.pathname.replace(/^\//, "");
 		const sslmode = url.searchParams.get("sslmode");
 		const ssl = sslmode === "require" || sslmode === "verify-full" || sslmode === "verify-ca";
 		const name = user && host && database ? `${user}@${host}/${database}` : "";
-		return { name, host, port, database, user, password, ssl };
+		return { fields: { name, host, port, database, user, password, ssl }, type };
 	} catch {
 		return null;
 	}
@@ -86,7 +95,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 		if (conn) {
 			setDbType(conn.config.type);
 			setRememberPassword(connectionsStore.getRememberPassword(conn.id));
-			if (conn.config.type === "postgresql") {
+			if (conn.config.type === "postgresql" || conn.config.type === "mysql") {
 				setPgFields({
 					name: conn.name,
 					host: conn.config.host,
@@ -112,12 +121,13 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 
 	// Build config from current form state
 	function buildConfig(): ConnectionConfig {
-		if (dbType() === "postgresql") {
+		const meta = CONNECTION_TYPE_META[dbType()];
+		if (meta.hasHost) {
 			const f = pgFields();
 			return {
-				type: "postgresql",
+				type: dbType() as "postgresql" | "mysql",
 				host: f.host,
-				port: Number(f.port) || 5432,
+				port: Number(f.port) || meta.defaultPort!,
 				database: f.database,
 				user: f.user,
 				password: f.password,
@@ -132,7 +142,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 	}
 
 	function getName(): string {
-		return dbType() === "postgresql"
+		return CONNECTION_TYPE_META[dbType()].hasHost
 			? pgFields().name
 			: sqliteFields().name;
 	}
@@ -144,7 +154,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 			errs.name = "Name is required";
 		}
 
-		if (dbType() === "postgresql") {
+		if (CONNECTION_TYPE_META[dbType()].hasHost) {
 			const f = pgFields();
 			if (!f.host.trim()) errs.host = "Host is required";
 			if (!f.port.trim() || isNaN(Number(f.port))) errs.port = "Valid port is required";
@@ -234,7 +244,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 	}
 
 	function updateName(value: string) {
-		if (dbType() === "postgresql") {
+		if (CONNECTION_TYPE_META[dbType()].hasHost) {
 			updatePgField("name", value);
 		} else {
 			updateSqliteField("name", value);
@@ -245,10 +255,11 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 		setConnectionUrl(value);
 		const parsed = parseConnectionString(value);
 		if (parsed) {
+			setDbType(parsed.type);
 			const current = pgFields();
 			setPgFields({
-				...parsed,
-				name: current.name || parsed.name,
+				...parsed.fields,
+				name: current.name || parsed.fields.name,
 			});
 		}
 	}
@@ -271,26 +282,24 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 			<div class="conn-dialog">
 				{/* DB Type Switcher */}
 				<div class="conn-dialog__type-switcher">
-					<button
-						class="conn-dialog__type-btn"
-						classList={{ "conn-dialog__type-btn--active": dbType() === "postgresql" }}
-						onClick={() => setDbType("postgresql")}
-						disabled={!!props.connection}
-					>
-						<svg width={14} height={14} viewBox="0 0 24 24" fill={`#${siPostgresql.hex}`} aria-hidden="true"><path d={siPostgresql.path} /></svg> PostgreSQL
-					</button>
-					<button
-						class="conn-dialog__type-btn"
-						classList={{ "conn-dialog__type-btn--active": dbType() === "sqlite" }}
-						onClick={() => setDbType("sqlite")}
-						disabled={!!props.connection}
-					>
-						<svg width={14} height={14} viewBox="0 0 24 24" fill={`#${siSqlite.hex}`} aria-hidden="true"><path d={siSqlite.path} /></svg> SQLite
-					</button>
+					{(Object.entries(CONNECTION_TYPE_META) as [ConnectionType, typeof CONNECTION_TYPE_META[ConnectionType]][]).map(([type, meta]) => {
+						const icons: Record<ConnectionType, typeof siPostgresql> = { postgresql: siPostgresql, sqlite: siSqlite, mysql: siMysql };
+						const icon = icons[type];
+						return (
+							<button
+								class="conn-dialog__type-btn"
+								classList={{ "conn-dialog__type-btn--active": dbType() === type }}
+								onClick={() => setDbType(type)}
+								disabled={!!props.connection}
+							>
+								<svg width={14} height={14} viewBox="0 0 24 24" fill={`#${icon.hex}`} aria-hidden="true"><path d={icon.path} /></svg> {meta.label}
+							</button>
+						);
+					})}
 				</div>
 
-				{/* Connection URL (PostgreSQL, new connections only) */}
-				<Show when={dbType() === "postgresql" && !props.connection}>
+				{/* Connection URL (server types, new connections only) */}
+				<Show when={CONNECTION_TYPE_META[dbType()].hasHost && !props.connection}>
 					<div class="conn-dialog__field">
 						<label class="conn-dialog__label">URL</label>
 						<input
@@ -298,7 +307,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 							type="text"
 							value={connectionUrl()}
 							onInput={(e) => handleUrlInput(e.currentTarget.value)}
-							placeholder="postgresql://user:password@localhost:5432/mydb"
+							placeholder={dbType() === "mysql" ? "mysql://user:password@localhost:3306/mydb" : "postgresql://user:password@localhost:5432/mydb"}
 						/>
 					</div>
 				</Show>
@@ -319,8 +328,8 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 					</Show>
 				</div>
 
-				{/* PostgreSQL fields */}
-				<Show when={dbType() === "postgresql"}>
+				{/* Server connection fields (PostgreSQL, MySQL) */}
+				<Show when={CONNECTION_TYPE_META[dbType()].hasHost}>
 					<div class="conn-dialog__field">
 						<label class="conn-dialog__label">Host</label>
 						<input
@@ -344,7 +353,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 							type="text"
 							value={pgFields().port}
 							onInput={(e) => updatePgField("port", e.currentTarget.value)}
-							placeholder="5432"
+							placeholder={String(CONNECTION_TYPE_META[dbType()].defaultPort ?? 5432)}
 						/>
 						<Show when={errors().port}>
 							<span class="conn-dialog__error">{errors().port}</span>
@@ -418,7 +427,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 				</Show>
 
 				{/* SQLite fields */}
-				<Show when={dbType() === "sqlite"}>
+				<Show when={!CONNECTION_TYPE_META[dbType()].hasHost}>
 					<div class="conn-dialog__field">
 						<label class="conn-dialog__label">File Path</label>
 						<div class="conn-dialog__browse-row">

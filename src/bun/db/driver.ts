@@ -1,4 +1,4 @@
-import type { ConnectionConfig } from "../../shared/types/connection";
+import type { ConnectionConfig, ConnectionType } from "../../shared/types/connection";
 import type { QueryResult } from "../../shared/types/query";
 import type {
 	SchemaInfo,
@@ -33,6 +33,10 @@ export interface DatabaseDriver {
 	inTransaction(): boolean;
 
 	// Metadata
-	getDriverType(): "postgresql" | "sqlite";
+	getDriverType(): ConnectionType;
 	quoteIdentifier(name: string): string;
+
+	// SQL generation helpers
+	qualifyTable(schema: string, table: string): string;
+	emptyInsertSql(qualifiedTable: string): string;
 }

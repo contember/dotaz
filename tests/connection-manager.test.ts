@@ -508,7 +508,7 @@ describe("ConnectionManager", () => {
 			expect(() =>
 				manager.createConnection({
 					name: "Bad",
-					config: { type: "mysql" } as any,
+					config: { type: "oracle" } as any,
 				}),
 			).toThrow("Unsupported connection type");
 		});
@@ -835,7 +835,7 @@ describe("ConnectionManager", () => {
 			await manager.connect(conn.id);
 
 			await expect(manager.listDatabases(conn.id)).rejects.toThrow(
-				"only supported for PostgreSQL",
+				"only supported for connections with multi-database support",
 			);
 		});
 
@@ -848,7 +848,7 @@ describe("ConnectionManager", () => {
 
 			await expect(
 				manager.activateDatabase(conn.id, "other_db"),
-			).rejects.toThrow("only supported for PostgreSQL");
+			).rejects.toThrow("only supported for connections with multi-database support");
 		});
 
 		test("deactivateDatabase rejects SQLite connections", async () => {
@@ -860,7 +860,7 @@ describe("ConnectionManager", () => {
 
 			await expect(
 				manager.deactivateDatabase(conn.id, "other_db"),
-			).rejects.toThrow("only supported for PostgreSQL");
+			).rejects.toThrow("only supported for connections with multi-database support");
 		});
 
 		test("deactivateDatabase rejects default database", async () => {

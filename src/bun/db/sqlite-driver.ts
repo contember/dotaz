@@ -196,12 +196,21 @@ export class SqliteDriver implements DatabaseDriver {
 		return this.txActive;
 	}
 
-	getDriverType(): "postgresql" | "sqlite" {
+	getDriverType(): "sqlite" {
 		return "sqlite";
 	}
 
 	quoteIdentifier(name: string): string {
 		return `"${name.replace(/"/g, '""')}"`;
+	}
+
+	qualifyTable(schema: string, table: string): string {
+		if (schema === "main") return this.quoteIdentifier(table);
+		return `${this.quoteIdentifier(schema)}.${this.quoteIdentifier(table)}`;
+	}
+
+	emptyInsertSql(qualifiedTable: string): string {
+		return `INSERT INTO ${qualifiedTable} DEFAULT VALUES`;
 	}
 
 	private ensureConnected(): void {

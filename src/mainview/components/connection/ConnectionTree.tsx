@@ -1,5 +1,6 @@
 import { createSignal, For, Show, type JSX } from "solid-js";
-import type { ConnectionInfo, ConnectionState, PostgresConnectionConfig } from "../../../shared/types/connection";
+import type { ConnectionInfo, ConnectionState, ConnectionType } from "../../../shared/types/connection";
+import { CONNECTION_TYPE_META, getDefaultDatabase } from "../../../shared/types/connection";
 import type { SchemaInfo, TableInfo } from "../../../shared/types/database";
 import type { SavedView } from "../../../shared/types/rpc";
 import type { SchemaTree } from "../../stores/connections";
@@ -9,7 +10,7 @@ import { viewsStore } from "../../stores/views";
 import { gridStore } from "../../stores/grid";
 import { editorStore } from "../../stores/editor";
 import { rpc } from "../../lib/rpc";
-import { siPostgresql, siSqlite } from "simple-icons";
+import { siPostgresql, siSqlite, siMysql } from "simple-icons";
 import { Eye, Table, Bookmark, FolderOpen, Plus, Database } from "lucide-solid";
 import ContextMenu, { type ContextMenuEntry } from "../common/ContextMenu";
 import ConnectionTreeItem from "./ConnectionTreeItem";
@@ -38,10 +39,14 @@ function SimpleIcon(props: { icon: typeof siPostgresql; size?: number }) {
 	);
 }
 
-function getConnectionIcon(type: string): JSX.Element {
-	return type === "postgresql"
-		? <SimpleIcon icon={siPostgresql} />
-		: <SimpleIcon icon={siSqlite} />;
+const CONNECTION_ICONS: Record<ConnectionType, typeof siPostgresql> = {
+	postgresql: siPostgresql,
+	sqlite: siSqlite,
+	mysql: siMysql,
+};
+
+function getConnectionIcon(type: ConnectionType): JSX.Element {
+	return <SimpleIcon icon={CONNECTION_ICONS[type] ?? siSqlite} />;
 }
 
 interface ContextMenuState {
@@ -219,9 +224,9 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 			(conn.state === "connected" && !connectionsStore.getSchemaTree(conn.id));
 	}
 
-	/** Check if this PostgreSQL connection has multiple active databases */
+	/** Check if this connection has multiple active databases */
 	function hasMultipleDatabases(conn: ConnectionInfo): boolean {
-		if (conn.config.type !== "postgresql") return false;
+		if (!CONNECTION_TYPE_META[conn.config.type].supportsMultiDatabase) return false;
 		return connectionsStore.getActiveDatabaseNames(conn.id).length > 1;
 	}
 
@@ -236,7 +241,7 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 	function connectionMenuItems(conn: ConnectionInfo): ContextMenuEntry[] {
 		const isConnected = conn.state === "connected";
 		const isDisconnected = conn.state === "disconnected" || conn.state === "error";
-		const isPg = conn.config.type === "postgresql";
+		const supportsMultiDb = CONNECTION_TYPE_META[conn.config.type].supportsMultiDatabase;
 
 		const items: ContextMenuEntry[] = [
 			{
@@ -251,7 +256,7 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 			},
 		];
 
-		if (isPg) {
+		if (supportsMultiDb) {
 			items.push("separator");
 			items.push({
 				label: "Manage Databases...",
@@ -555,7 +560,7 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 												const dbTree = () => connectionsStore.getSchemaTree(conn.id, dbName);
 												const dbSchemas = () => dbTree()?.schemas ?? [];
 												const dbExpanded = () => isDatabaseExpanded(dbKey());
-												const isDefault = () => conn.config.type === "postgresql" && (conn.config as PostgresConnectionConfig).database === dbName;
+												const isDefault = () => getDefaultDatabase(conn.config) === dbName;
 
 												return (
 													<>

@@ -5,6 +5,11 @@ import type {
 	ConnectionInfo,
 	ConnectionState,
 } from "../../shared/types/connection";
+import {
+	getDefaultDatabase,
+	isServerConfig,
+	CONNECTION_TYPE_META,
+} from "../../shared/types/connection";
 import type { DatabaseInfo, SchemaInfo, TableInfo } from "../../shared/types/database";
 import { rpc, messages, friendlyErrorMessage } from "../lib/rpc";
 import { isStateless } from "../lib/mode";
@@ -80,9 +85,7 @@ async function loadSchemaTree(connectionId: string, database?: string) {
 function getDefaultDatabaseKey(connectionId: string): string {
 	const conn = state.connections.find((c) => c.id === connectionId);
 	if (!conn) return "__default__";
-	if (conn.config.type === "postgresql") return conn.config.database;
-	if (conn.config.type === "sqlite") return conn.config.path;
-	return "__default__";
+	return getDefaultDatabase(conn.config);
 }
 
 async function loadAvailableDatabases(connectionId: string) {
@@ -127,7 +130,7 @@ async function persistConnectionConfig(connectionId: string) {
 		if (!conn) return;
 
 		const remember = rememberPasswordMap.get(connectionId) ?? true;
-		const configToStore = !remember && conn.config.type === "postgresql"
+		const configToStore = !remember && isServerConfig(conn.config)
 			? { ...conn.config, password: "" }
 			: conn.config;
 		const { encryptedConfig } = await rpc.storage.encrypt(JSON.stringify(configToStore));
@@ -186,12 +189,12 @@ async function loadSchemaTreesForConnection(conn: ConnectionInfo) {
 	// Load default database schema tree
 	loadSchemaTree(conn.id);
 
-	// For PostgreSQL, load active databases and their schema trees
-	if (conn.config.type === "postgresql") {
+	// For multi-database types, load active databases and their schema trees
+	if (CONNECTION_TYPE_META[conn.config.type].supportsMultiDatabase) {
 		loadAvailableDatabases(conn.id);
-		const activeDbs = conn.config.activeDatabases ?? [];
+		const activeDbs = ('activeDatabases' in conn.config ? conn.config.activeDatabases : undefined) ?? [];
 		for (const db of activeDbs) {
-			if (db !== conn.config.database) {
+			if (db !== getDefaultDatabase(conn.config)) {
 				loadSchemaTree(conn.id, db);
 			}
 		}
@@ -204,7 +207,7 @@ async function createConnection(name: string, config: ConnectionConfig, remember
 
 	if (isStateless()) {
 		rememberPasswordMap.set(conn.id, rememberPassword);
-		const configToStore = !rememberPassword && config.type === "postgresql"
+		const configToStore = !rememberPassword && isServerConfig(config)
 			? { ...config, password: "" }
 			: config;
 		const { encryptedConfig } = await rpc.storage.encrypt(JSON.stringify(configToStore));
@@ -228,7 +231,7 @@ async function updateConnection(id: string, name: string, config: ConnectionConf
 	if (isStateless()) {
 		const remember = rememberPassword ?? rememberPasswordMap.get(id) ?? true;
 		rememberPasswordMap.set(id, remember);
-		const configToStore = !remember && config.type === "postgresql"
+		const configToStore = !remember && isServerConfig(config)
 			? { ...config, password: "" }
 			: config;
 		const { encryptedConfig } = await rpc.storage.encrypt(JSON.stringify(configToStore));

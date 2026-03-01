@@ -14,3 +14,20 @@ services:
       interval: 1s
       timeout: 3s
       retries: 10
+
+  mariadb:
+    image: mariadb:11
+    ports:
+      - "3388:3306"
+    environment:
+      MARIADB_ROOT_PASSWORD: dotaz
+      MARIADB_USER: dotaz
+      MARIADB_PASSWORD: dotaz
+      MARIADB_DATABASE: dotaz_test
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 1s
+      timeout: 3s
+      retries: 10

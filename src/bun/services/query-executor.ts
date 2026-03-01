@@ -133,16 +133,6 @@ export function buildOrderByClause(
 }
 
 /**
- * Qualify a table name with its schema. For SQLite "main" schema, skip qualification.
- */
-export function qualifyTable(schema: string, table: string, driver: DatabaseDriver): string {
-	if (driver.getDriverType() === "sqlite" && schema === "main") {
-		return driver.quoteIdentifier(table);
-	}
-	return `${driver.quoteIdentifier(schema)}.${driver.quoteIdentifier(table)}`;
-}
-
-/**
  * Build a complete SELECT query with pagination, sorting, and filtering.
  * Returns the SQL string and parameter values.
  */
@@ -155,7 +145,7 @@ export function buildSelectQuery(
 	filters: ColumnFilter[] | undefined,
 	driver: DatabaseDriver,
 ): { sql: string; params: unknown[] } {
-	const from = qualifyTable(schema, table, driver);
+	const from = driver.qualifyTable(schema, table);
 	const where = buildWhereClause(filters, driver);
 	const orderBy = buildOrderByClause(sort, driver);
 
@@ -188,7 +178,7 @@ export function buildCountQuery(
 	filters: ColumnFilter[] | undefined,
 	driver: DatabaseDriver,
 ): { sql: string; params: unknown[] } {
-	const from = qualifyTable(schema, table, driver);
+	const from = driver.qualifyTable(schema, table);
 	const where = buildWhereClause(filters, driver);
 
 	const parts = [`SELECT COUNT(*) AS count FROM ${from}`];
@@ -340,11 +330,11 @@ export interface GeneratedStatement {
  */
 export function generateInsert(change: DataChange, driver: DatabaseDriver): GeneratedStatement {
 	const values = change.values;
-	const table = qualifyTable(change.schema, change.table, driver);
+	const table = driver.qualifyTable(change.schema, change.table);
 
 	if (!values || Object.keys(values).length === 0) {
 		return {
-			sql: `INSERT INTO ${table} DEFAULT VALUES`,
+			sql: driver.emptyInsertSql(table),
 			params: [],
 		};
 	}
@@ -373,7 +363,7 @@ export function generateUpdate(change: DataChange, driver: DatabaseDriver): Gene
 		throw new Error("UPDATE change requires values");
 	}
 
-	const table = qualifyTable(change.schema, change.table, driver);
+	const table = driver.qualifyTable(change.schema, change.table);
 	const setCols = Object.keys(values);
 	const pkCols = Object.keys(primaryKeys);
 	const params: unknown[] = [];
@@ -406,7 +396,7 @@ export function generateDelete(change: DataChange, driver: DatabaseDriver): Gene
 		throw new Error("DELETE change requires primaryKeys");
 	}
 
-	const table = qualifyTable(change.schema, change.table, driver);
+	const table = driver.qualifyTable(change.schema, change.table);
 	const pkCols = Object.keys(primaryKeys);
 	const params: unknown[] = [];
 
@@ -458,13 +448,13 @@ function formatValueForPreview(value: unknown): string {
  * Values are inlined rather than parameterized.
  */
 export function generateChangePreview(change: DataChange, driver: DatabaseDriver): string {
-	const table = qualifyTable(change.schema, change.table, driver);
+	const table = driver.qualifyTable(change.schema, change.table);
 
 	switch (change.type) {
 		case "insert": {
 			const values = change.values;
 			if (!values || Object.keys(values).length === 0) {
-				return `INSERT INTO ${table} DEFAULT VALUES;`;
+				return `${driver.emptyInsertSql(table)};`;
 			}
 			const columns = Object.keys(values);
 			const quotedCols = columns.map((c) => driver.quoteIdentifier(c));

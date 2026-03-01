@@ -1,8 +1,10 @@
 import { onMount, onCleanup, createSignal, createEffect, Show } from "solid-js";
 import { EditorView, keymap, placeholder } from "@codemirror/view";
 import { Compartment, EditorState } from "@codemirror/state";
-import { sql, PostgreSQL, SQLite } from "@codemirror/lang-sql";
+import { sql, PostgreSQL, SQLite, MySQL } from "@codemirror/lang-sql";
 import { basicSetup } from "codemirror";
+import type { ConnectionType } from "../../../shared/types/connection";
+import { CONNECTION_TYPE_META } from "../../../shared/types/connection";
 import { editorStore } from "../../stores/editor";
 import { connectionsStore } from "../../stores/connections";
 import { rpc } from "../../lib/rpc";
@@ -110,19 +112,25 @@ function createDarkTheme() {
 	);
 }
 
+const DIALECT_MAP: Record<ConnectionType, typeof PostgreSQL> = {
+	postgresql: PostgreSQL,
+	sqlite: SQLite,
+	mysql: MySQL,
+};
+
 function getDialect(connectionId: string) {
 	const conn = connectionsStore.connections.find(
 		(c) => c.id === connectionId,
 	);
-	if (conn?.config.type === "sqlite") return SQLite;
-	return PostgreSQL;
+	return conn ? DIALECT_MAP[conn.config.type] : PostgreSQL;
 }
 
-function isSqliteConnection(connectionId: string): boolean {
+function isSingleSchemaConnection(connectionId: string): boolean {
 	const conn = connectionsStore.connections.find(
 		(c) => c.id === connectionId,
 	);
-	return conn?.config.type === "sqlite";
+	if (!conn) return false;
+	return !CONNECTION_TYPE_META[conn.config.type].supportsMultiDatabase;
 }
 
 async function buildSchemaSpec(
@@ -132,7 +140,7 @@ async function buildSchemaSpec(
 	const tree = connectionsStore.getSchemaTree(connectionId, database);
 	if (!tree) return {};
 
-	const sqlite = isSqliteConnection(connectionId);
+	const sqlite = isSingleSchemaConnection(connectionId);
 	const spec: Record<string, string[]> = {};
 
 	const fetchPromises: Promise<void>[] = [];
@@ -264,7 +272,7 @@ export default function SqlEditor(props: SqlEditorProps) {
 
 		const version = ++schemaVersion;
 		const dialect = getDialect(props.connectionId);
-		const sqlite = isSqliteConnection(props.connectionId);
+		const sqlite = isSingleSchemaConnection(props.connectionId);
 
 		buildSchemaSpec(props.connectionId, props.database).then((schema) => {
 			// Guard against stale results from earlier schema tree versions
