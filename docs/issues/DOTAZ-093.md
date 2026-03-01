@@ -28,10 +28,10 @@ Paste tabular data from clipboard into multiple grid rows. Supports pasting from
 
 ## Files
 
-- `src/mainview/components/grid/DataGrid.tsx` — handle Ctrl+V, parse clipboard
-- `src/mainview/components/grid/PastePreviewDialog.tsx` — preview dialog for large pastes
-- `src/mainview/components/grid/PastePreviewDialog.css` — dialog styling
-- `src/mainview/stores/grid.ts` — batch-create pending changes from parsed data
+- `src/frontend-shared/components/grid/DataGrid.tsx` — handle Ctrl+V, parse clipboard
+- `src/frontend-shared/components/grid/PastePreviewDialog.tsx` — preview dialog for large pastes
+- `src/frontend-shared/components/grid/PastePreviewDialog.css` — dialog styling
+- `src/frontend-shared/stores/grid.ts` — batch-create pending changes from parsed data
 
 ## Acceptance Criteria
 

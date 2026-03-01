@@ -25,12 +25,12 @@ Compare data between two tables or two query results. Display differences side-b
 
 ## Files
 
-- `src/bun/services/comparison-service.ts` — ComparisonService for fetching and diffing data
+- `src/backend-shared/services/comparison-service.ts` — ComparisonService for fetching and diffing data
 - `src/shared/types/comparison.ts` — ComparisonResult, DiffRow types
 - `src/shared/types/rpc.ts` — add `data.compare` RPC endpoint
-- `src/bun/rpc-handlers.ts` — comparison handler
-- `src/mainview/components/comparison/ComparisonDialog.tsx` — source selection dialog
-- `src/mainview/components/comparison/ComparisonView.tsx` — side-by-side diff grid
+- `src/backend-shared/rpc/rpc-handlers.ts` — comparison handler
+- `src/frontend-shared/components/comparison/ComparisonDialog.tsx` — source selection dialog
+- `src/frontend-shared/components/comparison/ComparisonView.tsx` — side-by-side diff grid
 
 ## Acceptance Criteria
 

@@ -21,8 +21,8 @@ customers ON orders.customer_id = customers.id
 
 ## Files
 
-- `src/mainview/components/editor/SqlEditor.tsx` — add custom CodeMirror completion source for JOIN
-- `src/mainview/stores/editor.ts` — provide FK data for autocomplete context
+- `src/frontend-shared/components/editor/SqlEditor.tsx` — add custom CodeMirror completion source for JOIN
+- `src/frontend-shared/stores/editor.ts` — provide FK data for autocomplete context
 
 ## Acceptance Criteria
 

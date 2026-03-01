@@ -24,10 +24,10 @@ Search for a text string across all tables (or selected tables) in a database. S
 
 ## Files
 
-- `src/bun/services/search-service.ts` — SearchService for cross-table text search
+- `src/backend-shared/services/search-service.ts` — SearchService for cross-table text search
 - `src/shared/types/rpc.ts` — add `search.searchDatabase` RPC endpoint with progress messages
-- `src/bun/rpc-handlers.ts` — search handler
-- `src/mainview/components/search/DatabaseSearchDialog.tsx` — search dialog with scope selection, progress, results
+- `src/backend-shared/rpc/rpc-handlers.ts` — search handler
+- `src/frontend-shared/components/search/DatabaseSearchDialog.tsx` — search dialog with scope selection, progress, results
 
 ## Acceptance Criteria
 

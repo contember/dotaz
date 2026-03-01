@@ -30,14 +30,14 @@ Generate SQL queries from natural language descriptions using an LLM API. The ed
 
 ## Files
 
-- `src/bun/services/ai-sql.ts` — LLM integration, schema context builder, prompt template
+- `src/backend-shared/services/ai-sql.ts` — LLM integration, schema context builder, prompt template
 - `src/shared/types/rpc.ts` — add `ai.generateSql` RPC endpoint
 - `src/shared/types/settings.ts` — AI provider config (API key, model, endpoint)
-- `src/bun/rpc-handlers.ts` — AI SQL handler
-- `src/mainview/components/editor/AiPrompt.tsx` — natural language input UI
-- `src/mainview/components/editor/AiPrompt.css` — prompt styling
-- `src/mainview/components/editor/QueryToolbar.tsx` — AI button in toolbar
-- `src/mainview/stores/editor.ts` — AI generation state
+- `src/backend-shared/rpc/rpc-handlers.ts` — AI SQL handler
+- `src/frontend-shared/components/editor/AiPrompt.tsx` — natural language input UI
+- `src/frontend-shared/components/editor/AiPrompt.css` — prompt styling
+- `src/frontend-shared/components/editor/QueryToolbar.tsx` — AI button in toolbar
+- `src/frontend-shared/stores/editor.ts` — AI generation state
 
 ## Acceptance Criteria
 

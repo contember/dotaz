@@ -59,14 +59,14 @@ In desktop mode only one window exists, so no conflict. In web mode the user may
 
 ## Files
 
-- `src/bun/storage/app-db.ts` — workspace table schema, save/load operations
+- `src/backend-shared/storage/app-db.ts` — workspace table schema, save/load operations
 - `src/shared/types/rpc.ts` — `workspace.save`, `workspace.load` RPC endpoints
 - `src/shared/types/workspace.ts` — WorkspaceState, TabState, EditorState types
-- `src/mainview/stores/tabs.ts` — persist on tab open/close/reorder, restore on init
-- `src/mainview/stores/editor.ts` — persist editor content on change (debounced)
-- `src/mainview/stores/grid.ts` — persist grid state (sort, filter, page)
-- `src/mainview/components/layout/AppShell.tsx` — restore workspace in `onMount()`
-- `src/mainview/lib/browser-storage.ts` — IndexedDB workspace store (stateless mode)
+- `src/frontend-shared/stores/tabs.ts` — persist on tab open/close/reorder, restore on init
+- `src/frontend-shared/stores/editor.ts` — persist editor content on change (debounced)
+- `src/frontend-shared/stores/grid.ts` — persist grid state (sort, filter, page)
+- `src/frontend-shared/components/layout/AppShell.tsx` — restore workspace in `onMount()`
+- `src/frontend-shared/lib/browser-storage.ts` — IndexedDB workspace store (stateless mode)
 
 ## Acceptance Criteria
 

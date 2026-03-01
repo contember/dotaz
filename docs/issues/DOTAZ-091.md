@@ -18,8 +18,8 @@ Add keyboard shortcuts to jump between SQL statements in the editor. When a scri
 
 ## Files
 
-- `src/mainview/components/editor/SqlEditor.tsx` — add CodeMirror keybindings for Alt+Up/Down
-- `src/mainview/components/editor/sql-utils.ts` — statement boundary detection (reuse from DOTAZ-056 if available)
+- `src/frontend-shared/components/editor/SqlEditor.tsx` — add CodeMirror keybindings for Alt+Up/Down
+- `src/frontend-shared/components/editor/sql-utils.ts` — statement boundary detection (reuse from DOTAZ-056 if available)
 
 ## Acceptance Criteria
 

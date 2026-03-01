@@ -21,9 +21,9 @@ Dedicated side panel for viewing and editing the value of the selected cell. Aut
 
 ## Files
 
-- `src/mainview/components/grid/ValueEditorPanel.tsx` — side panel component with type-aware rendering
-- `src/mainview/components/grid/DataGrid.tsx` — integrate panel, toggle button in toolbar
-- `src/mainview/stores/grid.ts` — add `valueEditorOpen` state
+- `src/frontend-shared/components/grid/ValueEditorPanel.tsx` — side panel component with type-aware rendering
+- `src/frontend-shared/components/grid/DataGrid.tsx` — integrate panel, toggle button in toolbar
+- `src/frontend-shared/stores/grid.ts` — add `valueEditorOpen` state
 
 ## Acceptance Criteria
 

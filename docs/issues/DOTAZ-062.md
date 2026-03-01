@@ -12,9 +12,9 @@ Aggregation is computed client-side over the currently displayed data. For numer
 
 ## Files
 
-- `src/mainview/components/grid/AggregatePanel.tsx` — floating panel component showing aggregated values
-- `src/mainview/components/grid/DataGrid.tsx` — integrate AggregatePanel, pass selected cell data
-- `src/mainview/stores/grid.ts` — track cell-level selection for aggregation
+- `src/frontend-shared/components/grid/AggregatePanel.tsx` — floating panel component showing aggregated values
+- `src/frontend-shared/components/grid/DataGrid.tsx` — integrate AggregatePanel, pass selected cell data
+- `src/frontend-shared/stores/grid.ts` — track cell-level selection for aggregation
 
 ## Acceptance Criteria
 

@@ -25,13 +25,13 @@ Changes needed:
 ## Files
 
 - `src/shared/types/errors.ts` — new file with error hierarchy and codes
-- `src/bun/db/postgres-driver.ts` — map PostgreSQL error codes to domain errors
-- `src/bun/db/sqlite-driver.ts` — map SQLite error codes to domain errors
-- `src/bun/db/mysql-driver.ts` — map MySQL error codes to domain errors
-- `src/bun/rpc-handlers.ts` — serialize domain errors with code through RPC
-- `src/mainview/lib/rpc-errors.ts` — update to handle error codes
-- `src/mainview/stores/grid.ts` — standardize error handling pattern
-- `src/mainview/stores/editor.ts` — standardize error handling pattern
+- `src/backend-shared/drivers/postgres-driver.ts` — map PostgreSQL error codes to domain errors
+- `src/backend-shared/drivers/sqlite-driver.ts` — map SQLite error codes to domain errors
+- `src/backend-shared/drivers/mysql-driver.ts` — map MySQL error codes to domain errors
+- `src/backend-shared/rpc/rpc-handlers.ts` — serialize domain errors with code through RPC
+- `src/frontend-shared/lib/rpc-errors.ts` — update to handle error codes
+- `src/frontend-shared/stores/grid.ts` — standardize error handling pattern
+- `src/frontend-shared/stores/editor.ts` — standardize error handling pattern
 
 ## Acceptance Criteria
 

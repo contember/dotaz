@@ -13,8 +13,8 @@ Add date range inputs (from/to) to the QueryHistory dialog header. Pass the date
 ## Files
 
 - `src/shared/types/rpc.ts` — add `startDate?: string` and `endDate?: string` to `HistoryListParams`
-- `src/bun/storage/app-db.ts` — extend `listHistory()` SQL to filter by `executed_at` date range
-- `src/mainview/components/history/QueryHistory.tsx` — add date range inputs (from/to) to filter area
+- `src/backend-shared/storage/app-db.ts` — extend `listHistory()` SQL to filter by `executed_at` date range
+- `src/frontend-shared/components/history/QueryHistory.tsx` — add date range inputs (from/to) to filter area
 
 ## Acceptance Criteria
 

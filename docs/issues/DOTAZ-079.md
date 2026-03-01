@@ -23,10 +23,10 @@ Allow editing cells directly in SELECT query results (not just in the table data
 
 ## Files
 
-- `src/bun/services/query-executor.ts` — add `analyzeQueryEditability(sql, columns)` to detect source table and PK
+- `src/backend-shared/services/query-executor.ts` — add `analyzeQueryEditability(sql, columns)` to detect source table and PK
 - `src/shared/types/query.ts` — add editability info to QueryResult
-- `src/mainview/components/editor/SqlResultPanel.tsx` — enable inline editing for editable result sets
-- `src/mainview/stores/editor.ts` — add pending changes management for query results
+- `src/frontend-shared/components/editor/SqlResultPanel.tsx` — enable inline editing for editable result sets
+- `src/frontend-shared/stores/editor.ts` — add pending changes management for query results
 
 ## Acceptance Criteria
 

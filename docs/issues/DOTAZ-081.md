@@ -18,21 +18,21 @@ Several utility functions and patterns are duplicated across frontend components
 `if (!appDb) throw new Error("App database not available")` is repeated at lines 219, 229, 237, and 5+ more locations in `rpc-handlers.ts`.
 
 Changes needed:
-1. Create `src/mainview/lib/column-types.ts` with shared `isNumericType`, `isBooleanType`, `isDateType`, `isTextType`
-2. Create `src/mainview/lib/tab-store-helpers.ts` with generic `getTab()` / `ensureTab()` utilities
+1. Create `src/frontend-shared/lib/column-types.ts` with shared `isNumericType`, `isBooleanType`, `isDateType`, `isTextType`
+2. Create `src/frontend-shared/lib/tab-store-helpers.ts` with generic `getTab()` / `ensureTab()` utilities
 3. Create `requireAppDb()` helper in `rpc-handlers.ts` (or extract to utility)
 4. Update all consumers to use the shared utilities
 
 ## Files
 
-- `src/mainview/lib/column-types.ts` — new file with data type helpers
-- `src/mainview/components/edit/InlineEditor.tsx` — import from column-types
-- `src/mainview/components/edit/RowDetailDialog.tsx` — import from column-types
-- `src/mainview/lib/tab-store-helpers.ts` — new file with tab utilities
-- `src/mainview/stores/grid.ts` — use shared tab helpers
-- `src/mainview/stores/editor.ts` — use shared tab helpers
-- `src/mainview/stores/tabs.ts` — use shared tab helpers
-- `src/bun/rpc-handlers.ts` — extract and use `requireAppDb()`
+- `src/frontend-shared/lib/column-types.ts` — new file with data type helpers
+- `src/frontend-shared/components/edit/InlineEditor.tsx` — import from column-types
+- `src/frontend-shared/components/edit/RowDetailDialog.tsx` — import from column-types
+- `src/frontend-shared/lib/tab-store-helpers.ts` — new file with tab utilities
+- `src/frontend-shared/stores/grid.ts` — use shared tab helpers
+- `src/frontend-shared/stores/editor.ts` — use shared tab helpers
+- `src/frontend-shared/stores/tabs.ts` — use shared tab helpers
+- `src/backend-shared/rpc/rpc-handlers.ts` — extract and use `requireAppDb()`
 
 ## Acceptance Criteria
 

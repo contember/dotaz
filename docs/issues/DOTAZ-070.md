@@ -21,9 +21,9 @@ Extend existing export (CSV, JSON, SQL INSERT) with additional useful formats:
 
 ## Files
 
-- `src/bun/services/export-service.ts` — add MarkdownFormatter, SqlUpdateFormatter, HtmlFormatter, XmlFormatter
+- `src/backend-shared/services/export-service.ts` — add MarkdownFormatter, SqlUpdateFormatter, HtmlFormatter, XmlFormatter
 - `src/shared/types/export.ts` — extend `ExportFormat` type with new formats
-- `src/mainview/components/export/ExportDialog.tsx` — add new formats to format selector
+- `src/frontend-shared/components/export/ExportDialog.tsx` — add new formats to format selector
 
 ## Acceptance Criteria
 

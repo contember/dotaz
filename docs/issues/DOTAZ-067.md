@@ -24,13 +24,13 @@ Add the ability to view execution plan of a SQL query. User clicks "Explain" (or
 
 ## Files
 
-- `src/bun/services/query-executor.ts` — add `explainQuery(connectionId, sql, analyze?)` method
+- `src/backend-shared/services/query-executor.ts` — add `explainQuery(connectionId, sql, analyze?)` method
 - `src/shared/types/query.ts` — add `ExplainNode` type for plan tree
 - `src/shared/types/rpc.ts` — add `query.explain` RPC endpoint
-- `src/bun/rpc-handlers.ts` — add explain handler
-- `src/mainview/components/editor/QueryToolbar.tsx` — add "Explain" button
-- `src/mainview/components/editor/ExplainPanel.tsx` — tree visualization of execution plan
-- `src/mainview/stores/editor.ts` — add explain action and state
+- `src/backend-shared/rpc/rpc-handlers.ts` — add explain handler
+- `src/frontend-shared/components/editor/QueryToolbar.tsx` — add "Explain" button
+- `src/frontend-shared/components/editor/ExplainPanel.tsx` — tree visualization of execution plan
+- `src/frontend-shared/stores/editor.ts` — add explain action and state
 
 ## Acceptance Criteria
 

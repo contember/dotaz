@@ -16,10 +16,10 @@ In transposed mode:
 
 ## Files
 
-- `src/mainview/stores/grid.ts` — add `transposed` state to TabGridState
-- `src/mainview/components/grid/DataGrid.tsx` — add transpose toggle button to toolbar
-- `src/mainview/components/grid/TransposedGrid.tsx` — transposed grid rendering component
-- `src/mainview/components/grid/GridCell.tsx` — support transposed cell rendering
+- `src/frontend-shared/stores/grid.ts` — add `transposed` state to TabGridState
+- `src/frontend-shared/components/grid/DataGrid.tsx` — add transpose toggle button to toolbar
+- `src/frontend-shared/components/grid/TransposedGrid.tsx` — transposed grid rendering component
+- `src/frontend-shared/components/grid/GridCell.tsx` — support transposed cell rendering
 
 ## Acceptance Criteria
 

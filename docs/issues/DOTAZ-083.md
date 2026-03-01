@@ -20,11 +20,11 @@ Changes needed:
 
 ## Files
 
-- `src/bun/db/driver.ts` — add `placeholder(index: number): string` to interface
-- `src/bun/db/postgres-driver.ts` — implement `placeholder()` returning `$N`
-- `src/bun/db/sqlite-driver.ts` — implement `placeholder()` returning `$N`
-- `src/bun/db/mysql-driver.ts` — implement `placeholder()` returning `?`, remove regex conversion
-- `src/bun/services/query-executor.ts` — pass placeholder generator to all build* functions
+- `src/backend-shared/db/driver.ts` — add `placeholder(index: number): string` to interface
+- `src/backend-shared/drivers/postgres-driver.ts` — implement `placeholder()` returning `$N`
+- `src/backend-shared/drivers/sqlite-driver.ts` — implement `placeholder()` returning `$N`
+- `src/backend-shared/drivers/mysql-driver.ts` — implement `placeholder()` returning `?`, remove regex conversion
+- `src/backend-shared/services/query-executor.ts` — pass placeholder generator to all build* functions
 
 ## Acceptance Criteria
 

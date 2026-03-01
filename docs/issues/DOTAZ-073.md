@@ -16,8 +16,8 @@ Allow pinning a result tab so it is not overwritten when running the next query.
 
 ## Files
 
-- `src/mainview/stores/editor.ts` — add `pinnedResults` tracking per tab
-- `src/mainview/components/editor/SqlResultPanel.tsx` — add pin icon, manage pinned state
+- `src/frontend-shared/stores/editor.ts` — add `pinnedResults` tracking per tab
+- `src/frontend-shared/components/editor/SqlResultPanel.tsx` — add pin icon, manage pinned state
 
 ## Acceptance Criteria
 

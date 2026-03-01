@@ -27,13 +27,13 @@ Combined feature: a transaction log panel showing all executed statements in the
 
 ## Files
 
-- `src/bun/services/query-executor.ts` — track executed statements in session log
+- `src/backend-shared/services/query-executor.ts` — track executed statements in session log
 - `src/shared/types/rpc.ts` — add `transaction.getLog` RPC endpoint
-- `src/bun/rpc-handlers.ts` — transaction log handler
-- `src/mainview/components/editor/TransactionLog.tsx` — log panel component
-- `src/mainview/components/editor/TransactionLog.css` — panel styling
-- `src/mainview/components/layout/StatusBar.tsx` — pending TX indicator
-- `src/mainview/stores/editor.ts` — transaction log state
+- `src/backend-shared/rpc/rpc-handlers.ts` — transaction log handler
+- `src/frontend-shared/components/editor/TransactionLog.tsx` — log panel component
+- `src/frontend-shared/components/editor/TransactionLog.css` — panel styling
+- `src/frontend-shared/components/layout/StatusBar.tsx` — pending TX indicator
+- `src/frontend-shared/stores/editor.ts` — transaction log state
 
 ## Acceptance Criteria
 

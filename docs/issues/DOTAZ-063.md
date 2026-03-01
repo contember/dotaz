@@ -17,8 +17,8 @@ Shortcuts only activate when the cell is empty or via a modifier key (e.g., Ctrl
 
 ## Files
 
-- `src/mainview/components/edit/InlineEditor.tsx` — add shortcut handling for quick values
-- `src/mainview/components/edit/RowDetailDialog.tsx` — same shortcuts in form editing
+- `src/frontend-shared/components/edit/InlineEditor.tsx` — add shortcut handling for quick values
+- `src/frontend-shared/components/edit/RowDetailDialog.tsx` — same shortcuts in form editing
 
 ## Acceptance Criteria
 

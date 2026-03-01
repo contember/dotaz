@@ -2,9 +2,12 @@
 
 ## Overview
 
-Dotaz is a desktop database client built on **Electrobun** (Bun backend + system webview). The frontend uses **Solid.js** with Vite (HMR). Communication between frontend and backend occurs via **Electrobun RPC** (type-safe, bidirectional).
+Dotaz is a desktop database client built on **Electrobun** (Bun backend + system webview) with a **Solid.js** frontend. It supports PostgreSQL and SQLite, focused on DML operations (viewing, editing, querying data) — no DDL/schema management.
 
-The application is focused on DML operations — viewing, editing, and querying data. It does not provide DDL tools (CREATE/ALTER/DROP).
+Runs in three modes:
+- **Desktop** (Electrobun) — native window with RPC transport, app state in backend SQLite
+- **Web** — standalone Bun HTTP/WebSocket server, app state in browser IndexedDB
+- **Demo** — browser-only with WASM SQLite, no server needed
 
 ---
 
@@ -19,7 +22,7 @@ The application is focused on DML operations — viewing, editing, and querying 
 | App state storage | `bun:sqlite` | Local SQLite for connections, history, settings, saved views. Stored in `Utils.paths.userData/dotaz.db` |
 | Data grid | `@tanstack/solid-virtual` | Virtual scrolling for large datasets, Solid.js integration |
 | SQL editor | CodeMirror 6 + `@codemirror/lang-sql` | Modular, extensible, schema-aware autocomplete |
-| Communication | Electrobun RPC | Type-safe, bidirectional, defined in shared types |
+| Communication | Pluggable transport | Electrobun RPC (desktop), WebSocket (web), inline calls (demo) |
 
 ---
 
@@ -34,42 +37,57 @@ dotaz/
   PRD.md                        # Product Requirements Document
   docs/
     ARCHITECTURE.md             # This document
-    issues/
-      DOTAZ-001.md ... DOTAZ-053.md  # Issue files
+    issues/                     # Issue files
   src/
-    shared/types/               # Shared types (RPC schema, data types)
-      rpc.ts                    # RPC schema definition (request/response types)
-      connection.ts             # Connection types (PG, SQLite configuration)
-      database.ts               # Database metadata types (schema, tables, columns)
-      grid.ts                   # Grid types (pagination, sort, filter)
-      query.ts                  # Query types (execute, result, history)
-      tab.ts                    # Tab types (data grid, SQL console, schema viewer)
-      export.ts                 # Export types (CSV, JSON, SQL formats)
-    bun/                        # Backend (Bun process)
-      index.ts                  # Entry point: window, menu, RPC setup
-      rpc-handlers.ts           # RPC handler implementation
+    shared/                     # Pure types + browser-safe utilities (no backend concepts)
+      types/
+        rpc.ts                  # RPC schema definition (request/response types)
+        connection.ts           # Connection types (PG, SQLite configuration)
+        database.ts             # Database metadata types (schema, tables, columns)
+        grid.ts                 # Grid types (pagination, sort, filter)
+        query.ts                # Query types (execute, result, history)
+        tab.ts                  # Tab types (data grid, SQL console, schema viewer)
+        export.ts               # Export types (CSV, JSON, SQL formats)
+    backend-shared/             # Backend logic: drivers, services, storage, RPC handlers
       db/
         driver.ts               # DatabaseDriver interface (abstraction)
+      drivers/
         postgres-driver.ts      # PostgreSQL implementation (Bun.SQL)
         sqlite-driver.ts        # SQLite implementation (Bun.SQL)
+        mysql-driver.ts         # MySQL implementation
       services/
         connection-manager.ts   # Connection management (connect/disconnect/pool)
         query-executor.ts       # Running queries with cancellation
-        schema-service.ts       # Schema introspection (tables, columns, FK, indexes)
         export-service.ts       # Data export (CSV, JSON, SQL INSERT)
         transaction-manager.ts  # Transaction management (begin/commit/rollback)
+        encryption.ts           # Password encryption for stored connections
       storage/
         app-db.ts               # Local SQLite for app data
         migrations.ts           # Schema migrations for app DB
-    mainview/                   # Frontend (Solid.js)
-      index.html                # HTML entry point
-      main.tsx                  # Solid.js render entry
+      rpc/
+        rpc-handlers.ts         # RPC handler implementation
+        adapter.ts              # RPC adapter
+        backend-adapter.ts      # Backend RPC adapter
+        handlers.ts             # Handler definitions
+    backend-types/              # Type-only re-exports for frontend (import type from backend-shared)
+    backend-desktop/            # Electrobun backend entry point
+      index.ts                  # Entry point: window, menu, RPC setup
+    backend-web/                # HTTP/WebSocket server entry point
+      server.ts                 # Bun.serve() with WebSocket RPC
+    frontend-shared/            # Solid.js UI: components, stores, lib
       App.tsx                   # Root component
       styles/global.css         # Global styles, dark theme, CSS variables
       lib/
-        rpc.ts                  # Frontend RPC client (Electroview wrapper)
+        rpc.ts                  # Frontend RPC client
         keyboard.ts             # Keyboard shortcut system
         commands.ts             # Command registry for command palette
+        transport/              # Transport abstraction (lazy proxy)
+          index.ts              # setTransport() + getTransport()
+          types.ts              # RpcTransport interface
+        storage/                # App state storage abstraction
+          index.ts              # setStorage() + getStorage()
+          indexeddb.ts           # IndexedDB implementation (web mode)
+          rpc.ts                # RPC-backed implementation (desktop mode)
       stores/
         connections.ts          # Connection store (list, state, active)
         tabs.ts                 # Tab store (open tabs, active tab)
@@ -122,6 +140,19 @@ dotaz/
           QueryHistory.tsx      # Panel of query history
         export/
           ExportDialog.tsx      # Export dialog (format, preview, saving)
+    frontend-desktop/           # Desktop entry: setTransport(electrobun) + setStorage(rpc)
+      index.html                # HTML entry point
+      main.tsx                  # Solid.js render entry
+      transport.ts              # Electrobun RPC transport
+    frontend-web/               # Web entry: setTransport(websocket) + setStorage(indexeddb)
+      index.html
+      main.tsx
+      transport.ts              # WebSocket transport
+    frontend-demo/              # Demo entry: setTransport(inline) + setStorage(rpc), WASM SQLite
+      index.html
+      main.tsx
+      transport.ts              # Inline transport (direct function calls)
+      wasm-sqlite-driver.ts     # WASM SQLite driver for browser
 ```
 
 ---
@@ -132,12 +163,14 @@ dotaz/
 
 ```
 ┌─────────────────────────────────────────────┐
-│  Frontend (Solid.js in webview)              │
+│  Frontend (Solid.js in webview/browser)      │
 │  ├─ Components (UI)                         │
 │  ├─ Stores (reactive state)                 │
 │  └─ Lib (RPC client, keyboard, commands)    │
-├─────────────── Electrobun RPC ──────────────┤
-│  Backend (Bun process)                      │
+├──────────── Transport (pluggable) ──────────┤
+│  Electrobun RPC │ WebSocket │ Inline calls  │
+├─────────────────────────────────────────────┤
+│  Backend (Bun process / WASM in demo)       │
 │  ├─ RPC Handlers (entry point)              │
 │  ├─ Services (business logic)               │
 │  ├─ DB Drivers (database abstraction)       │
@@ -145,11 +178,36 @@ dotaz/
 └─────────────────────────────────────────────┘
 ```
 
+### Transport & Storage — Registration Pattern
+
+Entry points register concrete implementations via `setTransport()` / `setStorage()`. Shared code accesses them through lazy proxies — no Vite swap plugins, no build-time module resolution tricks.
+
+```typescript
+// frontend-desktop/main.tsx
+setTransport(createElectrobunTransport());
+setStorage(new RpcAppStateStorage());
+render(() => <App />, document.getElementById("app")!);
+```
+
+### Dependency Graph (no cycles)
+
+```
+shared               ← no deps
+backend-shared       ← shared
+backend-types        ← backend-shared (import type only)
+frontend-shared      ← shared + backend-types (import type only)
+frontend-desktop     ← frontend-shared
+frontend-web         ← frontend-shared
+frontend-demo        ← frontend-shared + backend-shared (runtime — createHandlers/RpcAdapter)
+backend-desktop      ← backend-shared
+backend-web          ← backend-shared
+```
+
 ### Data Flow
 
 1. **User action** → Solid.js component
 2. Component calls **store** action
-3. Store calls **RPC** method via Electrobun
+3. Store calls **RPC** method via transport (Electrobun RPC / WebSocket / inline)
 4. RPC handler delegates to **service**
 5. Service uses **driver** for DB communication
 6. Result is returned the same way back
@@ -171,7 +229,7 @@ User clicks on table in sidebar
 
 ## RPC Schema
 
-RPC schema is defined in `src/shared/types/rpc.ts` and shared between backend and frontend. Electrobun RPC ensures type-safety.
+RPC schema is defined in `src/shared/types/rpc.ts` and shared between backend and frontend. Type-safety is ensured via `backend-types` (type-only re-exports).
 
 ### Main RPC Methods
 

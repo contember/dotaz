@@ -18,20 +18,20 @@ Several frontend patterns accumulate minor technical debt that should be cleaned
 `connections.ts` writes to IndexedDB with `.catch(e => console.warn(...))` pattern (lines 145-147, 223, etc.). Silent failures mean users may lose connection configs without knowing.
 
 Changes needed:
-1. Centralize layout constants in a shared module (e.g., `src/mainview/lib/layout-constants.ts`) or in CSS custom properties
+1. Centralize layout constants in a shared module (e.g., `src/frontend-shared/lib/layout-constants.ts`) or in CSS custom properties
 2. Add `clearCommands()` to command registry, call it on AppShell cleanup
 3. Improve IndexedDB error handling — show a toast on persistence failure instead of silent `console.warn`
 
 ## Files
 
-- `src/mainview/lib/layout-constants.ts` — new file with centralized constants
-- `src/mainview/components/grid/DataGrid.tsx` — import constants
-- `src/mainview/components/grid/VirtualScroller.tsx` — import constants
-- `src/mainview/components/grid/GridHeader.tsx` — import constants
-- `src/mainview/components/editor/SqlEditor.tsx` — import constants
-- `src/mainview/lib/commands.ts` — add `clearCommands()`, handle re-registration
-- `src/mainview/components/layout/AppShell.tsx` — call `clearCommands()` on cleanup
-- `src/mainview/stores/connections.ts` — show toast on IndexedDB persistence failures
+- `src/frontend-shared/lib/layout-constants.ts` — new file with centralized constants
+- `src/frontend-shared/components/grid/DataGrid.tsx` — import constants
+- `src/frontend-shared/components/grid/VirtualScroller.tsx` — import constants
+- `src/frontend-shared/components/grid/GridHeader.tsx` — import constants
+- `src/frontend-shared/components/editor/SqlEditor.tsx` — import constants
+- `src/frontend-shared/lib/commands.ts` — add `clearCommands()`, handle re-registration
+- `src/frontend-shared/components/layout/AppShell.tsx` — call `clearCommands()` on cleanup
+- `src/frontend-shared/stores/connections.ts` — show toast on IndexedDB persistence failures
 
 ## Acceptance Criteria
 

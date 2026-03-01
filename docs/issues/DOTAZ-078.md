@@ -25,10 +25,10 @@ The color appears as:
 ## Files
 
 - `src/shared/types/connection.ts` — add `color?: string` to connection config
-- `src/mainview/components/connection/ConnectionDialog.tsx` — add color palette picker
-- `src/bun/storage/app-db.ts` — persist color setting
-- `src/mainview/components/connection/ConnectionTree.tsx` — show color indicator
-- `src/mainview/components/layout/StatusBar.tsx` — show colored bar for active connection
+- `src/frontend-shared/components/connection/ConnectionDialog.tsx` — add color palette picker
+- `src/backend-shared/storage/app-db.ts` — persist color setting
+- `src/frontend-shared/components/connection/ConnectionTree.tsx` — show color indicator
+- `src/frontend-shared/components/layout/StatusBar.tsx` — show colored bar for active connection
 
 ## Acceptance Criteria
 

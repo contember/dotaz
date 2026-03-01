@@ -19,12 +19,12 @@ Changes needed:
 
 ## Files
 
-- `src/bun/rpc-handlers.ts` — replace `config: any` with `ConnectionConfig` (3 locations)
-- `src/bun/db/postgres-driver.ts` — create interfaces for introspection query rows, type result objects
-- `src/bun/db/sqlite-driver.ts` — create interfaces for PRAGMA results, type result objects
-- `src/bun/db/mysql-driver.ts` — create interfaces for information_schema rows, type result objects
-- `src/mainview/lib/transport/electrobun.ts` — remove `as any` cast, type method routing
-- `src/mainview/lib/transport/types.ts` — add generic typing to `addMessageListener`
+- `src/backend-shared/rpc/rpc-handlers.ts` — replace `config: any` with `ConnectionConfig` (3 locations)
+- `src/backend-shared/drivers/postgres-driver.ts` — create interfaces for introspection query rows, type result objects
+- `src/backend-shared/drivers/sqlite-driver.ts` — create interfaces for PRAGMA results, type result objects
+- `src/backend-shared/drivers/mysql-driver.ts` — create interfaces for information_schema rows, type result objects
+- `src/frontend-desktop/transport.ts` — remove `as any` cast, type method routing
+- `src/frontend-shared/lib/transport/types.ts` — add generic typing to `addMessageListener`
 
 ## Acceptance Criteria
 

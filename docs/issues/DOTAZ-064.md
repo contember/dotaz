@@ -12,10 +12,10 @@ Detection uses simple parsing: look for `DELETE FROM` or `UPDATE ... SET` withou
 
 ## Files
 
-- `src/bun/services/query-executor.ts` — add `detectDestructiveWithoutWhere(sql)` utility
+- `src/backend-shared/services/query-executor.ts` — add `detectDestructiveWithoutWhere(sql)` utility
 - `src/shared/types/rpc.ts` — add warning info to query execute response or new RPC for pre-check
-- `src/mainview/stores/editor.ts` — intercept execution, show confirmation if destructive
-- `src/mainview/components/editor/DestructiveQueryDialog.tsx` — confirmation dialog component
+- `src/frontend-shared/stores/editor.ts` — intercept execution, show confirmation if destructive
+- `src/frontend-shared/components/editor/DestructiveQueryDialog.tsx` — confirmation dialog component
 
 ## Acceptance Criteria
 

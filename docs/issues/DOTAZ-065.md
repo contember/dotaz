@@ -18,12 +18,12 @@ Setting is saved per connection in app database. Can be toggled at runtime witho
 ## Files
 
 - `src/shared/types/connection.ts` — add `readOnly?: boolean` to connection config
-- `src/mainview/components/connection/ConnectionDialog.tsx` — add Read-only checkbox/toggle
-- `src/bun/storage/app-db.ts` — persist readOnly setting
-- `src/mainview/stores/connections.ts` — expose readOnly state per connection
-- `src/mainview/components/grid/DataGrid.tsx` — disable editing controls when readOnly
-- `src/mainview/stores/editor.ts` — warn/block DML in readOnly mode
-- `src/mainview/components/layout/StatusBar.tsx` — show read-only indicator
+- `src/frontend-shared/components/connection/ConnectionDialog.tsx` — add Read-only checkbox/toggle
+- `src/backend-shared/storage/app-db.ts` — persist readOnly setting
+- `src/frontend-shared/stores/connections.ts` — expose readOnly state per connection
+- `src/frontend-shared/components/grid/DataGrid.tsx` — disable editing controls when readOnly
+- `src/frontend-shared/stores/editor.ts` — warn/block DML in readOnly mode
+- `src/frontend-shared/components/layout/StatusBar.tsx` — show read-only indicator
 
 ## Acceptance Criteria
 

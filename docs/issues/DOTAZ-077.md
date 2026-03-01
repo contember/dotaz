@@ -16,7 +16,7 @@ Enable multiple cursors support in the CodeMirror editor. CodeMirror 6 supports 
 
 ## Files
 
-- `src/mainview/components/editor/SqlEditor.tsx` — enable CodeMirror multi-cursor extensions
+- `src/frontend-shared/components/editor/SqlEditor.tsx` — enable CodeMirror multi-cursor extensions
 
 ## Acceptance Criteria
 

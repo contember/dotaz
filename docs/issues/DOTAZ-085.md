@@ -29,9 +29,9 @@ Changes needed:
 
 ## Files
 
-- `src/bun/storage/app-db.ts` — add `transaction()` method, typed setting getters, history pruning in `addHistory()`
-- `src/bun/rpc-handlers.ts` — wrap restore operations in transactions
-- `src/bun/services/connection-manager.ts` — add and enforce connection pool limit
+- `src/backend-shared/storage/app-db.ts` — add `transaction()` method, typed setting getters, history pruning in `addHistory()`
+- `src/backend-shared/rpc/rpc-handlers.ts` — wrap restore operations in transactions
+- `src/backend-shared/services/connection-manager.ts` — add and enforce connection pool limit
 
 ## Acceptance Criteria
 

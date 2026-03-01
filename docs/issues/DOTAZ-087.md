@@ -26,11 +26,11 @@ Support SSH tunneling for PostgreSQL connections. Essential for accessing produc
 
 ## Files
 
-- `src/bun/services/ssh-tunnel.ts` — SSH tunnel manager (create, destroy, health check)
+- `src/backend-shared/services/ssh-tunnel.ts` — SSH tunnel manager (create, destroy, health check)
 - `src/shared/types/connection.ts` — add SSH tunnel fields to connection config
-- `src/bun/services/connection-manager.ts` — integrate tunnel lifecycle with connect/disconnect
-- `src/mainview/components/connection/ConnectionDialog.tsx` — SSH tunnel config section
-- `src/bun/rpc-handlers.ts` — pass SSH config through connection RPC
+- `src/backend-shared/services/connection-manager.ts` — integrate tunnel lifecycle with connect/disconnect
+- `src/frontend-shared/components/connection/ConnectionDialog.tsx` — SSH tunnel config section
+- `src/backend-shared/rpc/rpc-handlers.ts` — pass SSH config through connection RPC
 
 ## Acceptance Criteria
 

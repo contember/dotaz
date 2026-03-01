@@ -26,11 +26,11 @@ Import data from a file (CSV, JSON) into an existing table. Natural counterpart 
 
 ## Files
 
-- `src/bun/services/import-service.ts` — ImportService with CSV/JSON parsing, column mapping, batched INSERT
+- `src/backend-shared/services/import-service.ts` — ImportService with CSV/JSON parsing, column mapping, batched INSERT
 - `src/shared/types/import.ts` — ImportOptions, ColumnMapping types
 - `src/shared/types/rpc.ts` — add `import.preview` and `import.importData` RPC endpoints
-- `src/bun/rpc-handlers.ts` — import handlers
-- `src/mainview/components/import/ImportDialog.tsx` — import wizard dialog with preview and column mapping
+- `src/backend-shared/rpc/rpc-handlers.ts` — import handlers
+- `src/frontend-shared/components/import/ImportDialog.tsx` — import wizard dialog with preview and column mapping
 
 ## Acceptance Criteria
 

@@ -23,12 +23,12 @@ Global settings for how data values are displayed in the grid. Configurable form
 
 ## Files
 
-- `src/bun/services/app-database.ts` — store format settings
+- `src/backend-shared/storage/app-db.ts` — store format settings
 - `src/shared/types/settings.ts` — format profile type definitions
-- `src/mainview/components/common/FormatSettingsDialog.tsx` — settings dialog
-- `src/mainview/components/common/FormatSettingsDialog.css` — dialog styling
-- `src/mainview/stores/settings.ts` — format settings store
-- `src/mainview/components/grid/GridCell.tsx` — apply format settings to cell rendering
+- `src/frontend-shared/components/common/FormatSettingsDialog.tsx` — settings dialog
+- `src/frontend-shared/components/common/FormatSettingsDialog.css` — dialog styling
+- `src/frontend-shared/stores/settings.ts` — format settings store
+- `src/frontend-shared/components/grid/GridCell.tsx` — apply format settings to cell rendering
 
 ## Acceptance Criteria
 

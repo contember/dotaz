@@ -23,10 +23,10 @@ Add an Advanced Copy option (Ctrl+Shift+C) that opens a dialog for configuring t
 
 ## Files
 
-- `src/mainview/components/grid/AdvancedCopyDialog.tsx` — dialog with format options and preview
-- `src/mainview/components/grid/AdvancedCopyDialog.css` — dialog styling
-- `src/mainview/components/grid/DataGrid.tsx` — wire Ctrl+Shift+C shortcut
-- `src/mainview/stores/grid.ts` — advanced copy logic with format options
+- `src/frontend-shared/components/grid/AdvancedCopyDialog.tsx` — dialog with format options and preview
+- `src/frontend-shared/components/grid/AdvancedCopyDialog.css` — dialog styling
+- `src/frontend-shared/components/grid/DataGrid.tsx` — wire Ctrl+Shift+C shortcut
+- `src/frontend-shared/stores/grid.ts` — advanced copy logic with format options
 
 ## Acceptance Criteria
 

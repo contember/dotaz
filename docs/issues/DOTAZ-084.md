@@ -28,13 +28,13 @@ Changes needed:
 - `src/shared/types/rpc.ts` — discriminated union for `DataChange`, update `SavedViewConfig`
 - `src/shared/types/database.ts` — add `DatabaseDataType` enum, update `ColumnInfo`
 - `src/shared/types/query.ts` — update `QueryResultColumn.dataType`
-- `src/bun/db/postgres-driver.ts` — map PostgreSQL types to `DatabaseDataType`
-- `src/bun/db/sqlite-driver.ts` — map SQLite types to `DatabaseDataType`
-- `src/bun/db/mysql-driver.ts` — map MySQL types to `DatabaseDataType`
-- `src/bun/services/query-executor.ts` — update DataChange handling for union type
-- `src/mainview/stores/grid.ts` — update SavedView usage
-- `src/mainview/components/edit/InlineEditor.tsx` — use `DatabaseDataType` enum
-- `src/mainview/components/edit/RowDetailDialog.tsx` — use `DatabaseDataType` enum
+- `src/backend-shared/drivers/postgres-driver.ts` — map PostgreSQL types to `DatabaseDataType`
+- `src/backend-shared/drivers/sqlite-driver.ts` — map SQLite types to `DatabaseDataType`
+- `src/backend-shared/drivers/mysql-driver.ts` — map MySQL types to `DatabaseDataType`
+- `src/backend-shared/services/query-executor.ts` — update DataChange handling for union type
+- `src/frontend-shared/stores/grid.ts` — update SavedView usage
+- `src/frontend-shared/components/edit/InlineEditor.tsx` — use `DatabaseDataType` enum
+- `src/frontend-shared/components/edit/RowDetailDialog.tsx` — use `DatabaseDataType` enum
 
 ## Acceptance Criteria
 

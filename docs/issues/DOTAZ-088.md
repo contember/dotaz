@@ -19,9 +19,9 @@ Add a search/filter input above the connection tree sidebar. Typing filters visi
 
 ## Files
 
-- `src/mainview/components/connection/ConnectionTree.tsx` — add filter input, filter logic
-- `src/mainview/components/connection/ConnectionTree.css` — search input styling
-- `src/mainview/components/layout/Sidebar.tsx` — ensure search input fits in sidebar layout
+- `src/frontend-shared/components/connection/ConnectionTree.tsx` — add filter input, filter logic
+- `src/frontend-shared/components/connection/ConnectionTree.css` — search input styling
+- `src/frontend-shared/components/layout/Sidebar.tsx` — ensure search input fits in sidebar layout
 
 ## Acceptance Criteria
 

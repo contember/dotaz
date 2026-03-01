@@ -20,11 +20,11 @@ Saved Views store grid state (filters, sort, columns). Bookmarks store SQL queri
 
 ## Files
 
-- `src/bun/storage/app-db.ts` — bookmarks table, CRUD methods
+- `src/backend-shared/storage/app-db.ts` — bookmarks table, CRUD methods
 - `src/shared/types/rpc.ts` — add `bookmarks.*` RPC endpoints
-- `src/bun/rpc-handlers.ts` — bookmark handlers
-- `src/mainview/components/bookmarks/BookmarksDialog.tsx` — bookmarks list dialog with search
-- `src/mainview/stores/editor.ts` — add bookmark save action
+- `src/backend-shared/rpc/rpc-handlers.ts` — bookmark handlers
+- `src/frontend-shared/components/bookmarks/BookmarksDialog.tsx` — bookmarks list dialog with search
+- `src/frontend-shared/stores/editor.ts` — add bookmark save action
 
 ## Acceptance Criteria
 

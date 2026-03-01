@@ -12,9 +12,9 @@ Implement local password encryption using a machine-derived key (e.g., from host
 
 ## Files
 
-- `src/bun/services/encryption.ts` — add `createLocalKey()` that derives a key from machine-specific data
-- `src/bun/storage/app-db.ts` — encrypt password field when saving connections, decrypt when loading
-- `src/bun/services/connection-manager.ts` — ensure decrypted passwords are used when connecting
+- `src/backend-shared/services/encryption.ts` — add `createLocalKey()` that derives a key from machine-specific data
+- `src/backend-shared/storage/app-db.ts` — encrypt password field when saving connections, decrypt when loading
+- `src/backend-shared/services/connection-manager.ts` — ensure decrypted passwords are used when connecting
 
 ## Acceptance Criteria
 

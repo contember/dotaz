@@ -20,9 +20,9 @@ Color scales on numeric columns in the data grid for quick visual analysis of da
 
 ## Files
 
-- `src/mainview/components/grid/GridCell.tsx` — apply heatmap background color
-- `src/mainview/stores/grid.ts` — add `heatmapColumns` state with mode per column
-- `src/mainview/components/grid/DataGrid.tsx` — compute min/max for heatmap columns
+- `src/frontend-shared/components/grid/GridCell.tsx` — apply heatmap background color
+- `src/frontend-shared/stores/grid.ts` — add `heatmapColumns` state with mode per column
+- `src/frontend-shared/components/grid/DataGrid.tsx` — compute min/max for heatmap columns
 
 ## Acceptance Criteria
 
