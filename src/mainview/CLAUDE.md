@@ -49,16 +49,18 @@ import { gridState, loadTableData } from "../stores/grid";
 
 ## RPC Client (`lib/rpc.ts`)
 
-Typed wrapper over the transport layer. Provides namespace access:
+Proxy-based client with types inferred from `createHandlers()` via `NamespacedRpcClient`. All methods use **object params** matching the handler signatures:
 ```typescript
 import { rpc } from "../lib/rpc";
 
 await rpc.connections.list();
-await rpc.data.getTableData({ connectionId, schema, table, ... });
-await rpc.query.execute(connectionId, sql, queryId);
+await rpc.query.execute({ connectionId, sql, queryId, database });
+await rpc.schema.load({ connectionId, database });
 ```
 
 Also exports `messages` for backend → frontend notifications (connection status changes, menu actions).
+
+New RPC methods added to `createHandlers()` are automatically available on the client — no manual wiring needed.
 
 ### Transport layer (`lib/transport/`)
 
