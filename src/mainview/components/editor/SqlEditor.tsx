@@ -2,6 +2,8 @@ import { onMount, onCleanup, createSignal, createEffect, Show } from "solid-js";
 import { EditorView, keymap, placeholder } from "@codemirror/view";
 import { Compartment, EditorState } from "@codemirror/state";
 import { sql, PostgreSQL, SQLite, MySQL } from "@codemirror/lang-sql";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { tags } from "@lezer/highlight";
 import { basicSetup } from "codemirror";
 import type { ConnectionType } from "../../../shared/types/connection";
 import { CONNECTION_TYPE_META } from "../../../shared/types/connection";
@@ -111,6 +113,21 @@ function createDarkTheme() {
 		{ dark: true },
 	);
 }
+
+const darkHighlightStyle = HighlightStyle.define([
+	{ tag: tags.keyword, color: "#c792ea" },
+	{ tag: [tags.name, tags.deleted, tags.character, tags.macroName], color: "#d1d5db" },
+	{ tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: "#dcdcaa" },
+	{ tag: [tags.propertyName], color: "#82aaff" },
+	{ tag: [tags.typeName, tags.className, tags.namespace, tags.changed, tags.annotation, tags.self, tags.modifier], color: "#82aaff" },
+	{ tag: [tags.number, tags.bool, tags.null], color: "#f5c06f" },
+	{ tag: [tags.string, tags.special(tags.brace)], color: "#a5d6a7" },
+	{ tag: tags.operator, color: "#89ddff" },
+	{ tag: [tags.definitionKeyword, tags.moduleKeyword], color: "#c792ea" },
+	{ tag: tags.comment, color: "#636d83", fontStyle: "italic" },
+	{ tag: tags.invalid, color: "#ef4444" },
+	{ tag: tags.punctuation, color: "#89ddff" },
+]);
 
 const DIALECT_MAP: Record<ConnectionType, typeof PostgreSQL> = {
 	postgresql: PostgreSQL,
@@ -233,6 +250,7 @@ export default function SqlEditor(props: SqlEditorProps) {
 				basicSetup,
 				sqlCompartment.of(sql({ dialect })),
 				createDarkTheme(),
+				syntaxHighlighting(darkHighlightStyle),
 				executeKeymap,
 				updateListener,
 				placeholder("Write your SQL query here..."),
