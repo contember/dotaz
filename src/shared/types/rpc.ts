@@ -1,56 +1,9 @@
-// RPC schema definitions per Electrobun RPC pattern
-// Covers all planned methods from ARCHITECTURE.md
-
 import type { RPCSchema } from "electrobun/bun";
-import type { ConnectionConfig, ConnectionInfo, ConnectionState } from "./connection";
-import type {
-	ColumnInfo,
-	DatabaseInfo,
-	ForeignKeyInfo,
-	IndexInfo,
-	ReferencingForeignKeyInfo,
-	SchemaData,
-	SchemaInfo,
-	TableInfo,
-} from "./database";
-import type { ExportOptions, ExportPreviewRequest, ExportResult } from "./export";
-import type {
-	ColumnFilter,
-	GridDataRequest,
-	GridDataResponse,
-} from "./grid";
-import type { QueryHistoryEntry, QueryResult } from "./query";
+import type { ConnectionState } from "./connection";
+import type { QueryHistoryEntry } from "./query";
+import type { RpcMethod, HandlerParams, HandlerReturn } from "../rpc/types";
 
-// ---- RPC request/response param types ----
-
-export interface CreateConnectionParams {
-	name: string;
-	config: ConnectionConfig;
-}
-
-export interface UpdateConnectionParams {
-	id: string;
-	name: string;
-	config: ConnectionConfig;
-}
-
-export interface ConnectionIdParams {
-	connectionId: string;
-	database?: string;
-}
-
-export interface SchemaParams {
-	connectionId: string;
-	schema: string;
-	database?: string;
-}
-
-export interface TableParams {
-	connectionId: string;
-	schema: string;
-	table: string;
-	database?: string;
-}
+// ---- Domain types used by handlers and adapters ----
 
 export interface ExecuteQueryParams {
 	connectionId: string;
@@ -60,28 +13,6 @@ export interface ExecuteQueryParams {
 	database?: string;
 	/** When provided, execute each statement with its own params sequentially (auto-wrapped in transaction). */
 	statements?: { sql: string; params?: unknown[] }[];
-}
-
-export interface FormatSqlParams {
-	sql: string;
-}
-
-export interface TransactionStatusResult {
-	active: boolean;
-}
-
-export interface ColumnStatsParams {
-	connectionId: string;
-	schema: string;
-	table: string;
-	column: string;
-	database?: string;
-}
-
-export interface ColumnStatsResult {
-	distinctCount: number;
-	nullCount: number;
-	sampleValues: unknown[];
 }
 
 export interface DataChange {
@@ -100,18 +31,10 @@ export interface ApplyChangesParams {
 	database?: string;
 }
 
-export interface ApplyChangesResult {
-	appliedCount: number;
-}
-
 export interface GenerateSqlParams {
 	connectionId: string;
 	changes: DataChange[];
 	database?: string;
-}
-
-export interface GenerateSqlResult {
-	sql: string;
 }
 
 export interface HistoryListParams {
@@ -171,15 +94,6 @@ export interface SaveDialogParams {
 	filters?: { name: string; extensions: string[] }[];
 }
 
-export interface SettingsGetParams {
-	key: string;
-}
-
-export interface SettingsSetParams {
-	key: string;
-	value: string;
-}
-
 // ---- Stateless mode types ----
 
 export interface StoredConnection {
@@ -198,221 +112,19 @@ export interface RestoreParams {
 	views: SavedView[];
 }
 
-// ---- Main RPC schema ----
+// ---- Main RPC schema (derived from handler map) ----
+
+type DotazRequests = {
+	[M in RpcMethod]: {
+		params: HandlerParams<M> extends void ? {} : HandlerParams<M>;
+		response: HandlerReturn<M>;
+	};
+};
 
 export type DotazRPC = {
 	bun: RPCSchema<{
-		requests: {
-			// Connection Management
-			"connections.list": {
-				params: {};
-				response: ConnectionInfo[];
-			};
-			"connections.create": {
-				params: CreateConnectionParams;
-				response: ConnectionInfo;
-			};
-			"connections.update": {
-				params: UpdateConnectionParams;
-				response: ConnectionInfo;
-			};
-			"connections.delete": {
-				params: { id: string };
-				response: void;
-			};
-			"connections.test": {
-				params: { config: ConnectionConfig };
-				response: { success: boolean; error?: string };
-			};
-			"connections.connect": {
-				params: ConnectionIdParams & { password?: string };
-				response: void;
-			};
-			"connections.disconnect": {
-				params: ConnectionIdParams;
-				response: void;
-			};
-
-			// Databases (multi-database PostgreSQL)
-			"databases.list": {
-				params: ConnectionIdParams;
-				response: DatabaseInfo[];
-			};
-			"databases.activate": {
-				params: ConnectionIdParams & { database: string };
-				response: void;
-			};
-			"databases.deactivate": {
-				params: ConnectionIdParams & { database: string };
-				response: void;
-			};
-
-			// Schema
-			"schema.getSchemas": {
-				params: ConnectionIdParams;
-				response: SchemaInfo[];
-			};
-			"schema.getTables": {
-				params: SchemaParams;
-				response: TableInfo[];
-			};
-			"schema.getColumns": {
-				params: TableParams;
-				response: ColumnInfo[];
-			};
-			"schema.getIndexes": {
-				params: TableParams;
-				response: IndexInfo[];
-			};
-			"schema.getForeignKeys": {
-				params: TableParams;
-				response: ForeignKeyInfo[];
-			};
-			"schema.getReferencingForeignKeys": {
-				params: TableParams;
-				response: ReferencingForeignKeyInfo[];
-			};
-			"schema.load": {
-				params: ConnectionIdParams;
-				response: SchemaData;
-			};
-
-			// Data Grid
-			"data.getTableData": {
-				params: GridDataRequest;
-				response: GridDataResponse;
-			};
-			"data.getRowCount": {
-				params: TableParams & { filters?: ColumnFilter[] };
-				response: { count: number };
-			};
-			"data.getColumnStats": {
-				params: ColumnStatsParams;
-				response: ColumnStatsResult;
-			};
-
-			// Data Editing
-			"data.applyChanges": {
-				params: ApplyChangesParams;
-				response: ApplyChangesResult;
-			};
-			"data.generateSql": {
-				params: GenerateSqlParams;
-				response: GenerateSqlResult;
-			};
-
-			// Query Execution
-			"query.execute": {
-				params: ExecuteQueryParams;
-				response: QueryResult[];
-			};
-			"query.cancel": {
-				params: { queryId: string };
-				response: void;
-			};
-			"query.format": {
-				params: FormatSqlParams;
-				response: { sql: string };
-			};
-
-			// Transactions
-			"tx.begin": {
-				params: ConnectionIdParams;
-				response: void;
-			};
-			"tx.commit": {
-				params: ConnectionIdParams;
-				response: void;
-			};
-			"tx.rollback": {
-				params: ConnectionIdParams;
-				response: void;
-			};
-			"tx.status": {
-				params: ConnectionIdParams;
-				response: TransactionStatusResult;
-			};
-
-			// Export
-			"export.exportData": {
-				params: ExportOptions;
-				response: ExportResult;
-			};
-			"export.preview": {
-				params: ExportPreviewRequest;
-				response: { content: string };
-			};
-
-			// History
-			"history.list": {
-				params: HistoryListParams;
-				response: QueryHistoryEntry[];
-			};
-			"history.clear": {
-				params: { connectionId?: string };
-				response: void;
-			};
-
-			// Saved Views
-			"views.list": {
-				params: ViewListParams;
-				response: SavedView[];
-			};
-			"views.save": {
-				params: SaveViewParams;
-				response: SavedView;
-			};
-			"views.update": {
-				params: UpdateViewParams;
-				response: SavedView;
-			};
-			"views.delete": {
-				params: { id: string };
-				response: void;
-			};
-			"views.listByConnection": {
-				params: ConnectionIdParams;
-				response: SavedView[];
-			};
-
-			// System
-			"system.showOpenDialog": {
-				params: OpenDialogParams;
-				response: { paths: string[]; cancelled: boolean };
-			};
-			"system.showSaveDialog": {
-				params: SaveDialogParams;
-				response: { path: string | null; cancelled: boolean };
-			};
-			"settings.get": {
-				params: SettingsGetParams;
-				response: { value: string | null };
-			};
-			"settings.set": {
-				params: SettingsSetParams;
-				response: void;
-			};
-			"settings.getAll": {
-				params: {};
-				response: Record<string, string>;
-			};
-
-			// Storage (stateless mode)
-			"storage.getMode": {
-				params: {};
-				response: { stateless: boolean };
-			};
-			"storage.restore": {
-				params: RestoreParams;
-				response: void;
-			};
-			"storage.encrypt": {
-				params: { config: string };
-				response: { encryptedConfig: string };
-			};
-		};
+		requests: DotazRequests;
 		messages: {
-			// Backend → Frontend notifications
 			"connections.statusChanged": {
 				connectionId: string;
 				state: ConnectionState;
