@@ -22,6 +22,8 @@ export interface TabEditorState {
 	queryId: string | null;
 	txMode: TxMode;
 	inTransaction: boolean;
+	/** Range of the last executed statement (for visual flash feedback) */
+	executedRange: { from: number; to: number } | null;
 }
 
 function createDefaultEditorState(connectionId: string, database?: string): TabEditorState {
@@ -38,6 +40,7 @@ function createDefaultEditorState(connectionId: string, database?: string): TabE
 		queryId: null,
 		txMode: "auto-commit",
 		inTransaction: false,
+		executedRange: null,
 	};
 }
 
@@ -170,9 +173,10 @@ async function executeStatement(tabId: string) {
 		await runQuery(tabId, tab.selectedText.trim());
 		return;
 	}
-	const stmt = getStatementAtCursor(tab.content, tab.cursorPosition);
-	if (stmt) {
-		await runQuery(tabId, stmt);
+	const result = getStatementAtCursor(tab.content, tab.cursorPosition);
+	if (result) {
+		setState("tabs", tabId, "executedRange", { from: result.from, to: result.to });
+		await runQuery(tabId, result.text);
 	}
 }
 

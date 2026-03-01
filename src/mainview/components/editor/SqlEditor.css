@@ -30,3 +30,9 @@
 .sql-editor__resize-handle:hover {
 	background: var(--accent);
 }
+
+/* Flash highlight for executed statement */
+.cm-executed-statement {
+	background-color: rgba(76, 175, 80, 0.15);
+	border-bottom: 2px solid rgba(76, 175, 80, 0.5);
+}

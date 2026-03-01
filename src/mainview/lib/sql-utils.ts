@@ -1,10 +1,16 @@
+export interface StatementAtCursor {
+	text: string;
+	from: number;
+	to: number;
+}
+
 /**
  * Find the SQL statement at the given cursor position.
  * Handles single-quoted strings, double-quoted identifiers,
  * dollar-quoted strings, line comments, and block comments.
- * Returns the trimmed statement text, or empty string if none found.
+ * Returns the statement text and its range, or null if none found.
  */
-export function getStatementAtCursor(sql: string, cursorPos: number): string {
+export function getStatementAtCursor(sql: string, cursorPos: number): StatementAtCursor | null {
 	// Find semicolon positions that are NOT inside strings/comments
 	const semicolons: number[] = [];
 	let i = 0;
@@ -95,5 +101,12 @@ export function getStatementAtCursor(sql: string, cursorPos: number): string {
 		}
 	}
 
-	return sql.slice(start, end).trim();
+	const text = sql.slice(start, end).trim();
+	if (!text) return null;
+
+	// Compute the actual positions of trimmed text within the original string
+	const trimStart = start + (sql.slice(start, end).length - sql.slice(start, end).trimStart().length);
+	const trimEnd = end - (sql.slice(start, end).length - sql.slice(start, end).trimEnd().length);
+
+	return { text, from: trimStart, to: trimEnd };
 }

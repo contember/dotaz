@@ -1,6 +1,6 @@
 import { onMount, onCleanup, createSignal, createEffect, Show } from "solid-js";
-import { EditorView, keymap, placeholder } from "@codemirror/view";
-import { Compartment, EditorState } from "@codemirror/state";
+import { EditorView, keymap, placeholder, Decoration, type DecorationSet } from "@codemirror/view";
+import { Compartment, EditorState, StateEffect, StateField } from "@codemirror/state";
 import { sql, PostgreSQL, SQLite, MySQL } from "@codemirror/lang-sql";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
@@ -129,6 +129,29 @@ const darkHighlightStyle = HighlightStyle.define([
 	{ tag: tags.punctuation, color: "#89ddff" },
 ]);
 
+// ── Executed statement flash highlight ────────────────────
+
+const setExecutedHighlight = StateEffect.define<{ from: number; to: number } | null>();
+
+const executedHighlightField = StateField.define<DecorationSet>({
+	create() {
+		return Decoration.none;
+	},
+	update(value, tr) {
+		for (const effect of tr.effects) {
+			if (effect.is(setExecutedHighlight)) {
+				if (effect.value) {
+					const mark = Decoration.mark({ class: "cm-executed-statement" });
+					return Decoration.set([mark.range(effect.value.from, effect.value.to)]);
+				}
+				return Decoration.none;
+			}
+		}
+		return value;
+	},
+	provide: (f) => EditorView.decorations.from(f),
+});
+
 const DIALECT_MAP: Record<ConnectionType, typeof PostgreSQL> = {
 	postgresql: PostgreSQL,
 	sqlite: SQLite,
@@ -246,6 +269,7 @@ export default function SqlEditor(props: SqlEditorProps) {
 				syntaxHighlighting(darkHighlightStyle),
 				executeKeymap,
 				updateListener,
+				executedHighlightField,
 				placeholder("Write your SQL query here..."),
 				EditorView.lineWrapping,
 			],
@@ -301,7 +325,27 @@ export default function SqlEditor(props: SqlEditorProps) {
 		});
 	});
 
+	// Flash highlight when a statement is executed
+	let highlightTimer: ReturnType<typeof setTimeout> | undefined;
+	createEffect(() => {
+		const tab = editorStore.getTab(props.tabId);
+		const range = tab?.executedRange;
+		if (!range || !editorView) return;
+
+		editorView.dispatch({
+			effects: setExecutedHighlight.of(range),
+		});
+
+		clearTimeout(highlightTimer);
+		highlightTimer = setTimeout(() => {
+			editorView?.dispatch({
+				effects: setExecutedHighlight.of(null),
+			});
+		}, 1500);
+	});
+
 	onCleanup(() => {
+		clearTimeout(highlightTimer);
 		editorView?.destroy();
 	});
 
