@@ -3,6 +3,7 @@ import type { GridColumnDef } from "../../../shared/types/grid";
 import Check from "lucide-solid/icons/check";
 import X from "lucide-solid/icons/x";
 import InlineEditor from "../edit/InlineEditor";
+import { isNumericType, isBooleanType, isTimestampType, isJsonType } from "../../lib/column-types";
 import "./GridCell.css";
 
 interface GridCellProps {
@@ -21,32 +22,6 @@ interface GridCellProps {
 	onMoveNext?: () => void;
 	onMoveDown?: () => void;
 	onFkClick?: () => void;
-}
-
-function isNumericType(dataType: string): boolean {
-	const t = dataType.toLowerCase();
-	return (
-		t.includes("int") ||
-		t.includes("numeric") ||
-		t.includes("decimal") ||
-		t.includes("float") ||
-		t.includes("double") ||
-		t.includes("real") ||
-		t.includes("serial")
-	);
-}
-
-function isBooleanType(dataType: string): boolean {
-	return dataType.toLowerCase().includes("bool");
-}
-
-function isTimestampType(dataType: string): boolean {
-	const t = dataType.toLowerCase();
-	return t.includes("timestamp") || t === "date" || t === "datetime";
-}
-
-function isJsonType(dataType: string): boolean {
-	return dataType.toLowerCase().includes("json");
 }
 
 function formatTimestamp(value: unknown): string {

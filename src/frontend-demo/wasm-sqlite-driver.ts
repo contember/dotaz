@@ -1,6 +1,9 @@
 import type { DatabaseDriver } from "../backend-shared/db/driver";
 import type { ConnectionConfig } from "../shared/types/connection";
 import type { QueryResult, QueryResultColumn } from "../shared/types/query";
+import {
+	DatabaseDataType,
+} from "../shared/types/database";
 import type {
 	SchemaInfo,
 	SchemaData,
@@ -10,6 +13,24 @@ import type {
 	ForeignKeyInfo,
 	ReferencingForeignKeyInfo,
 } from "../shared/types/database";
+
+/** Map SQLite type affinity strings to DatabaseDataType. */
+function mapWasmSqliteDataType(type: string): DatabaseDataType {
+	const t = type.toUpperCase();
+	if (t === "INTEGER" || t === "INT" || t === "BIGINT" || t === "SMALLINT" || t === "TINYINT" || t === "MEDIUMINT") return DatabaseDataType.Integer;
+	if (t === "REAL" || t === "FLOAT" || t === "DOUBLE") return DatabaseDataType.Float;
+	if (t === "NUMERIC" || t === "DECIMAL") return DatabaseDataType.Numeric;
+	if (t === "BOOLEAN" || t === "BOOL") return DatabaseDataType.Boolean;
+	if (t === "TEXT") return DatabaseDataType.Text;
+	if (t.includes("VARCHAR") || t.includes("VARYING")) return DatabaseDataType.Varchar;
+	if (t.includes("CHAR") && !t.includes("VARCHAR")) return DatabaseDataType.Char;
+	if (t === "DATE") return DatabaseDataType.Date;
+	if (t === "TIME") return DatabaseDataType.Time;
+	if (t === "DATETIME" || t.includes("TIMESTAMP")) return DatabaseDataType.Timestamp;
+	if (t === "JSON" || t === "JSONB") return DatabaseDataType.Json;
+	if (t === "BLOB" || t === "BINARY" || t.includes("VARBINARY")) return DatabaseDataType.Binary;
+	return DatabaseDataType.Unknown;
+}
 
 /**
  * DatabaseDriver implementation backed by @sqlite.org/sqlite-wasm OO1 API.
@@ -53,7 +74,7 @@ export class WasmSqliteDriver implements DatabaseDriver {
 
 			const columns: QueryResultColumn[] =
 				resultRows.length > 0
-					? Object.keys(resultRows[0]).map((name) => ({ name, dataType: "unknown" }))
+					? Object.keys(resultRows[0]).map((name) => ({ name, dataType: DatabaseDataType.Unknown }))
 					: [];
 
 			return {
@@ -156,7 +177,7 @@ export class WasmSqliteDriver implements DatabaseDriver {
 
 		return rows.map((row) => ({
 			name: row.name,
-			dataType: row.type || "BLOB",
+			dataType: mapWasmSqliteDataType(row.type || "BLOB"),
 			nullable: row.notnull === 0 && row.pk === 0,
 			defaultValue: row.dflt_value,
 			isPrimaryKey: row.pk > 0,

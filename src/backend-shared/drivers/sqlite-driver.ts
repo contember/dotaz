@@ -2,6 +2,9 @@ import { SQL } from "bun";
 import type { DatabaseDriver } from "../db/driver";
 import type { ConnectionConfig } from "../../shared/types/connection";
 import type { QueryResult, QueryResultColumn } from "../../shared/types/query";
+import {
+	DatabaseDataType,
+} from "../../shared/types/database";
 import type {
 	SchemaInfo,
 	SchemaData,
@@ -52,6 +55,24 @@ interface SqlitePragmaForeignKeyRow {
 	on_delete: string;
 }
 
+/** Map SQLite type affinity strings to DatabaseDataType. */
+function mapSqliteDataType(type: string): DatabaseDataType {
+	const t = type.toUpperCase();
+	if (t === "INTEGER" || t === "INT" || t === "BIGINT" || t === "SMALLINT" || t === "TINYINT" || t === "MEDIUMINT") return DatabaseDataType.Integer;
+	if (t === "REAL" || t === "FLOAT" || t === "DOUBLE") return DatabaseDataType.Float;
+	if (t === "NUMERIC" || t === "DECIMAL") return DatabaseDataType.Numeric;
+	if (t === "BOOLEAN" || t === "BOOL") return DatabaseDataType.Boolean;
+	if (t === "TEXT") return DatabaseDataType.Text;
+	if (t.includes("VARCHAR") || t.includes("VARYING")) return DatabaseDataType.Varchar;
+	if (t.includes("CHAR") && !t.includes("VARCHAR")) return DatabaseDataType.Char;
+	if (t === "DATE") return DatabaseDataType.Date;
+	if (t === "TIME") return DatabaseDataType.Time;
+	if (t === "DATETIME" || t.includes("TIMESTAMP")) return DatabaseDataType.Timestamp;
+	if (t === "JSON" || t === "JSONB") return DatabaseDataType.Json;
+	if (t === "BLOB" || t === "BINARY" || t.includes("VARBINARY")) return DatabaseDataType.Binary;
+	return DatabaseDataType.Unknown;
+}
+
 export class SqliteDriver implements DatabaseDriver {
 	private db: SQL | null = null;
 	private connected = false;
@@ -95,7 +116,7 @@ export class SqliteDriver implements DatabaseDriver {
 
 			const columns: QueryResultColumn[] =
 				rows.length > 0
-					? Object.keys(rows[0]).map((name) => ({ name, dataType: "unknown" }))
+					? Object.keys(rows[0]).map((name) => ({ name, dataType: DatabaseDataType.Unknown }))
 					: [];
 
 			return {
@@ -192,7 +213,7 @@ export class SqliteDriver implements DatabaseDriver {
 
 		return rows.map((row) => ({
 			name: row.name,
-			dataType: row.type || "BLOB",
+			dataType: mapSqliteDataType(row.type || "BLOB"),
 			nullable: row.notnull === 0 && row.pk === 0,
 			defaultValue: row.dflt_value,
 			isPrimaryKey: row.pk > 0,

@@ -1,5 +1,7 @@
 // Query execution and history types
 
+import type { DatabaseDataType } from "./database";
+
 export interface QueryRequest {
 	connectionId: string;
 	sql: string;
@@ -8,7 +10,7 @@ export interface QueryRequest {
 
 export interface QueryResultColumn {
 	name: string;
-	dataType: string;
+	dataType: DatabaseDataType;
 }
 
 export interface ErrorPosition {

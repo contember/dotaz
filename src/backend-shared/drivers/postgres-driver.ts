@@ -3,6 +3,9 @@ import type { ReservedSQL } from "bun";
 import type { DatabaseDriver } from "../db/driver";
 import type { ConnectionConfig } from "../../shared/types/connection";
 import type { QueryResult, QueryResultColumn } from "../../shared/types/query";
+import {
+	DatabaseDataType,
+} from "../../shared/types/database";
 import type {
 	SchemaInfo,
 	SchemaData,
@@ -65,6 +68,54 @@ interface PgTableRow {
 	table_type: string;
 }
 
+/** Map PostgreSQL information_schema data_type to DatabaseDataType. */
+function mapPgDataType(dataType: string): DatabaseDataType {
+	switch (dataType.toLowerCase()) {
+		case "integer":
+		case "bigint":
+		case "smallint":
+			return DatabaseDataType.Integer;
+		case "serial":
+		case "bigserial":
+		case "smallserial":
+			return DatabaseDataType.Serial;
+		case "real":
+		case "double precision":
+			return DatabaseDataType.Float;
+		case "numeric":
+		case "decimal":
+		case "money":
+			return DatabaseDataType.Numeric;
+		case "boolean":
+			return DatabaseDataType.Boolean;
+		case "text":
+			return DatabaseDataType.Text;
+		case "character varying":
+			return DatabaseDataType.Varchar;
+		case "character":
+			return DatabaseDataType.Char;
+		case "date":
+			return DatabaseDataType.Date;
+		case "time without time zone":
+		case "time with time zone":
+			return DatabaseDataType.Time;
+		case "timestamp without time zone":
+		case "timestamp with time zone":
+			return DatabaseDataType.Timestamp;
+		case "json":
+		case "jsonb":
+			return DatabaseDataType.Json;
+		case "uuid":
+			return DatabaseDataType.Uuid;
+		case "bytea":
+		case "bit":
+		case "bit varying":
+			return DatabaseDataType.Binary;
+		default:
+			return DatabaseDataType.Unknown;
+	}
+}
+
 export class PostgresDriver implements DatabaseDriver {
 	private db: SQL | null = null;
 	private connected = false;
@@ -123,7 +174,7 @@ export class PostgresDriver implements DatabaseDriver {
 				rows.length > 0
 					? Object.keys(rows[0]).map((name) => ({
 							name,
-							dataType: "unknown",
+							dataType: DatabaseDataType.Unknown,
 						}))
 					: [];
 
@@ -292,7 +343,7 @@ export class PostgresDriver implements DatabaseDriver {
 			if (!columns[key]) columns[key] = [];
 			columns[key].push({
 				name: row.column_name,
-				dataType: this.normalizeDataType(row.data_type, row.udt_name),
+				dataType: this.mapDataType(row.data_type, row.udt_name),
 				nullable: row.is_nullable === "YES",
 				defaultValue: row.column_default,
 				isPrimaryKey: row.is_primary_key,
@@ -465,18 +516,14 @@ export class PostgresDriver implements DatabaseDriver {
 		}
 	}
 
-	private normalizeDataType(dataType: string, udtName: string): string {
-		// Map information_schema data_type to more useful display names
-		switch (dataType) {
-			case "ARRAY":
-				// udtName starts with _ for array types, e.g. _int4 → int4[]
-				return udtName.startsWith("_")
-					? `${udtName.slice(1)}[]`
-					: `${udtName}[]`;
-			case "USER-DEFINED":
-				return udtName; // e.g. "jsonb", "hstore"
-			default:
-				return dataType;
+	private mapDataType(dataType: string, udtName: string): DatabaseDataType {
+		if (dataType === "ARRAY") return DatabaseDataType.Array;
+		if (dataType === "USER-DEFINED") {
+			// udtName for known types like jsonb, hstore
+			const u = udtName.toLowerCase();
+			if (u === "json" || u === "jsonb") return DatabaseDataType.Json;
+			return DatabaseDataType.Enum;
 		}
+		return mapPgDataType(dataType);
 	}
 }

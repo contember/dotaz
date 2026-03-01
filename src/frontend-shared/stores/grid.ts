@@ -1,7 +1,6 @@
 import { createStore } from "solid-js/store";
 import type {
 	ColumnFilter,
-	FilterOperator,
 	GridColumnDef,
 	SortColumn,
 } from "../../shared/types/grid";
@@ -911,16 +910,9 @@ function setActiveView(tabId: string, viewId: string | null, viewName: string | 
 async function applyViewConfig(tabId: string, config: SavedViewConfig) {
 	const tab = ensureTab(tabId);
 
-	setState("tabs", tabId, "sort", config.sort?.map(s => ({
-		column: s.column,
-		direction: s.direction,
-	})) ?? []);
+	setState("tabs", tabId, "sort", config.sort ?? []);
 
-	setState("tabs", tabId, "filters", config.filters?.map(f => ({
-		column: f.column,
-		operator: f.operator as FilterOperator,
-		value: f.value,
-	})) ?? []);
+	setState("tabs", tabId, "filters", config.filters ?? []);
 
 	if (config.columns) {
 		const visibleSet = new Set(config.columns);
@@ -991,8 +983,8 @@ function captureViewConfig(tabId: string): SavedViewConfig {
 
 	return {
 		columns: visible.map(c => c.name),
-		sort: tab.sort.map(s => ({ column: s.column, direction: s.direction })),
-		filters: tab.filters.map(f => ({ column: f.column, operator: f.operator, value: f.value })),
+		sort: [...tab.sort],
+		filters: [...tab.filters],
 		columnWidths: Object.keys(columnWidths).length > 0 ? columnWidths : undefined,
 	};
 }

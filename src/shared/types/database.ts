@@ -1,5 +1,26 @@
 // Database metadata types
 
+/** Canonical data type categories for compile-time type classification. */
+export enum DatabaseDataType {
+	Integer = "integer",
+	Serial = "serial",
+	Float = "float",
+	Numeric = "numeric",
+	Boolean = "boolean",
+	Text = "text",
+	Varchar = "varchar",
+	Char = "char",
+	Date = "date",
+	Time = "time",
+	Timestamp = "timestamp",
+	Json = "json",
+	Uuid = "uuid",
+	Binary = "binary",
+	Array = "array",
+	Enum = "enum",
+	Unknown = "unknown",
+}
+
 export interface DatabaseInfo {
 	name: string;
 	isDefault: boolean;
@@ -19,7 +40,7 @@ export interface TableInfo {
 
 export interface ColumnInfo {
 	name: string;
-	dataType: string;
+	dataType: DatabaseDataType;
 	nullable: boolean;
 	defaultValue: string | null;
 	isPrimaryKey: boolean;

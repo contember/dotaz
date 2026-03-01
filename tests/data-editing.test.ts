@@ -10,7 +10,7 @@ import {
 	generateChangePreview,
 	generateChangesPreview,
 } from "../src/backend-shared/services/query-executor";
-import type { DataChange } from "../src/shared/types/rpc";
+import type { DataChange, InsertChange, UpdateChange, DeleteChange } from "../src/shared/types/rpc";
 import type { DatabaseDriver } from "../src/backend-shared/db/driver";
 import type { SqliteConnectionConfig } from "../src/shared/types/connection";
 
@@ -55,7 +55,7 @@ describe("SQL Generation", () => {
 
 	describe("generateInsert", () => {
 		test("generates INSERT with correct columns and params", () => {
-			const change: DataChange = {
+			const change: InsertChange = {
 				type: "insert",
 				schema: "main",
 				table: "users",
@@ -67,7 +67,7 @@ describe("SQL Generation", () => {
 		});
 
 		test("handles NULL values in INSERT", () => {
-			const change: DataChange = {
+			const change: InsertChange = {
 				type: "insert",
 				schema: "main",
 				table: "users",
@@ -79,7 +79,7 @@ describe("SQL Generation", () => {
 		});
 
 		test("generates DEFAULT VALUES if no values provided", () => {
-			const change: DataChange = {
+			const change: InsertChange = {
 				type: "insert",
 				schema: "main",
 				table: "users",
@@ -90,7 +90,7 @@ describe("SQL Generation", () => {
 		});
 
 		test("generates DEFAULT VALUES if values is empty", () => {
-			const change: DataChange = {
+			const change: InsertChange = {
 				type: "insert",
 				schema: "main",
 				table: "users",
@@ -104,7 +104,7 @@ describe("SQL Generation", () => {
 
 	describe("generateUpdate", () => {
 		test("generates UPDATE with SET and WHERE clauses", () => {
-			const change: DataChange = {
+			const change: UpdateChange = {
 				type: "update",
 				schema: "main",
 				table: "users",
@@ -119,7 +119,7 @@ describe("SQL Generation", () => {
 		});
 
 		test("updates only modified columns", () => {
-			const change: DataChange = {
+			const change: UpdateChange = {
 				type: "update",
 				schema: "main",
 				table: "users",
@@ -132,7 +132,7 @@ describe("SQL Generation", () => {
 		});
 
 		test("handles composite primary key", () => {
-			const change: DataChange = {
+			const change: UpdateChange = {
 				type: "update",
 				schema: "main",
 				table: "user_roles",
@@ -147,7 +147,7 @@ describe("SQL Generation", () => {
 		});
 
 		test("handles SET NULL", () => {
-			const change: DataChange = {
+			const change: UpdateChange = {
 				type: "update",
 				schema: "main",
 				table: "users",
@@ -159,30 +159,13 @@ describe("SQL Generation", () => {
 			expect(result.params).toEqual([null, 1]);
 		});
 
-		test("throws if no primaryKeys", () => {
-			const change: DataChange = {
-				type: "update",
-				schema: "main",
-				table: "users",
-				values: { name: "x" },
-			};
-			expect(() => generateUpdate(change, driver)).toThrow("UPDATE change requires primaryKeys");
-		});
-
-		test("throws if no values", () => {
-			const change: DataChange = {
-				type: "update",
-				schema: "main",
-				table: "users",
-				primaryKeys: { id: 1 },
-			};
-			expect(() => generateUpdate(change, driver)).toThrow("UPDATE change requires values");
-		});
+		// Note: "throws if no primaryKeys" and "throws if no values" tests removed —
+		// these are now compile-time errors enforced by the UpdateChange type.
 	});
 
 	describe("generateDelete", () => {
 		test("generates DELETE with PK WHERE clause", () => {
-			const change: DataChange = {
+			const change: DeleteChange = {
 				type: "delete",
 				schema: "main",
 				table: "users",
@@ -194,7 +177,7 @@ describe("SQL Generation", () => {
 		});
 
 		test("handles composite primary key", () => {
-			const change: DataChange = {
+			const change: DeleteChange = {
 				type: "delete",
 				schema: "main",
 				table: "user_roles",
@@ -207,14 +190,8 @@ describe("SQL Generation", () => {
 			expect(result.params).toEqual([1, 2]);
 		});
 
-		test("throws if no primaryKeys", () => {
-			const change: DataChange = {
-				type: "delete",
-				schema: "main",
-				table: "users",
-			};
-			expect(() => generateDelete(change, driver)).toThrow("DELETE change requires primaryKeys");
-		});
+		// Note: "throws if no primaryKeys" test removed —
+		// now a compile-time error enforced by the DeleteChange type.
 	});
 
 	describe("generateChangeSql", () => {

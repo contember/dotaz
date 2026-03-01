@@ -1,5 +1,6 @@
 import { createSignal, onMount } from "solid-js";
 import type { GridColumnDef } from "../../../shared/types/grid";
+import { DatabaseDataType } from "../../../shared/types/database";
 import { isNumericType, isBooleanType, isDateType, isTextType } from "../../lib/column-types";
 import "./InlineEditor.css";
 
@@ -105,7 +106,7 @@ export default function InlineEditor(props: InlineEditorProps) {
 	function dateInputValue(): string {
 		if (isNull() || props.value === null || props.value === undefined) return "";
 		const str = String(props.value);
-		if (dataType().toLowerCase() === "date") {
+		if (dataType() === DatabaseDataType.Date) {
 			// Return YYYY-MM-DD
 			return str.substring(0, 10);
 		}

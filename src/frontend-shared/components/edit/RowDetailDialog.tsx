@@ -1,5 +1,6 @@
 import { createSignal, createEffect, createMemo, For, Show, on } from "solid-js";
 import type { GridColumnDef, ColumnFilter } from "../../../shared/types/grid";
+import { DatabaseDataType } from "../../../shared/types/database";
 import type { ForeignKeyInfo, ReferencingForeignKeyInfo } from "../../../shared/types/database";
 import ChevronUp from "lucide-solid/icons/chevron-up";
 import ChevronDown from "lucide-solid/icons/chevron-down";
@@ -55,10 +56,10 @@ function parseValue(text: string, column: GridColumnDef): unknown {
 	return text;
 }
 
-function dateInputValue(value: unknown, dataType: string): string {
+function dateInputValue(value: unknown, dataType: DatabaseDataType): string {
 	if (value === null || value === undefined) return "";
 	const str = String(value);
-	if (dataType.toLowerCase() === "date") {
+	if (dataType === DatabaseDataType.Date) {
 		return str.substring(0, 10);
 	}
 	const d = new Date(str);
@@ -282,7 +283,7 @@ export default function RowDetailDialog(props: RowDetailDialogProps) {
 		}
 
 		if (isDateType(col.dataType)) {
-			const inputType = col.dataType.toLowerCase() === "date" ? "date" : "datetime-local";
+			const inputType = col.dataType === DatabaseDataType.Date ? "date" : "datetime-local";
 			return (
 				<div class="row-detail__input-row">
 					<input

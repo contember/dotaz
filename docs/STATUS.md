@@ -40,7 +40,7 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 | DOTAZ-081 | Extract duplicated frontend utilities | done | column-types.ts, tab-store-helpers.ts, requireAppDb() |
 | DOTAZ-082 | Standardize error handling with domain error types | done | DatabaseError hierarchy with codes, driver error mapping, RPC errorCode propagation, frontend friendlyErrorMessage using codes, silent catches → console.debug |
 | DOTAZ-083 | Driver-aware query placeholder generation | done | `placeholder()` on SqlDialect/DatabaseDriver, builders use it, MySQL regex removed |
-| DOTAZ-084 | Improve shared domain model type safety | not started | DataChange discriminated union, DatabaseDataType enum |
+| DOTAZ-084 | Improve shared domain model type safety | in progress | DataChange discriminated union, DatabaseDataType enum |
 | DOTAZ-085 | AppDatabase transaction wrapping and storage improvements | not started | Atomic restores, history pruning, typed settings, pool limits |
 | DOTAZ-086 | Frontend architecture cleanup | not started | Centralize layout constants, fix command registry leak, IndexedDB error handling |
 

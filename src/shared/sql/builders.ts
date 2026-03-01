@@ -1,6 +1,7 @@
 import type { SqlDialect } from "./dialect";
 import type { ColumnFilter, SortColumn } from "../types/grid";
-import type { DataChange } from "../types/rpc";
+import type { DataChange, InsertChange, UpdateChange, DeleteChange } from "../types/rpc";
+import { DatabaseDataType } from "../types/database";
 
 export interface WhereClauseResult {
 	sql: string;
@@ -13,11 +14,9 @@ export interface GeneratedStatement {
 }
 
 /** Returns true if the column data type is searchable with CAST(... AS TEXT) LIKE. */
-function isSearchableType(dataType: string): boolean {
-	const lower = dataType.toLowerCase();
+function isSearchableType(dataType: DatabaseDataType): boolean {
 	// Exclude binary types that can't meaningfully be cast to text
-	if (lower.includes("bytea") || lower.includes("blob") || lower === "oid") return false;
-	return true;
+	return dataType !== DatabaseDataType.Binary;
 }
 
 /**
@@ -26,7 +25,7 @@ function isSearchableType(dataType: string): boolean {
  * Uses ILIKE for PostgreSQL (true case-insensitive), LIKE for SQLite.
  */
 export function buildQuickSearchClause(
-	columns: { name: string; dataType: string }[],
+	columns: { name: string; dataType: DatabaseDataType }[],
 	searchTerm: string,
 	dialect: SqlDialect,
 	paramOffset = 0,
@@ -276,9 +275,9 @@ export function buildCountQuery(
 // ── Data Editing SQL Generation ─────────────────────────────
 
 /**
- * Generate an INSERT statement from a DataChange.
+ * Generate an INSERT statement from an InsertChange.
  */
-export function generateInsert(change: DataChange, dialect: SqlDialect): GeneratedStatement {
+export function generateInsert(change: InsertChange, dialect: SqlDialect): GeneratedStatement {
 	const values = change.values;
 	const table = dialect.qualifyTable(change.schema, change.table);
 
@@ -301,15 +300,16 @@ export function generateInsert(change: DataChange, dialect: SqlDialect): Generat
 }
 
 /**
- * Generate an UPDATE statement from a DataChange.
+ * Generate an UPDATE statement from an UpdateChange.
  * Only updates the columns specified in `values`.
  */
-export function generateUpdate(change: DataChange, dialect: SqlDialect): GeneratedStatement {
+export function generateUpdate(change: UpdateChange, dialect: SqlDialect): GeneratedStatement {
 	const { primaryKeys, values } = change;
-	if (!primaryKeys || Object.keys(primaryKeys).length === 0) {
+
+	if (Object.keys(primaryKeys).length === 0) {
 		throw new Error("UPDATE change requires primaryKeys");
 	}
-	if (!values || Object.keys(values).length === 0) {
+	if (Object.keys(values).length === 0) {
 		throw new Error("UPDATE change requires values");
 	}
 
@@ -338,11 +338,12 @@ export function generateUpdate(change: DataChange, dialect: SqlDialect): Generat
 }
 
 /**
- * Generate a DELETE statement from a DataChange.
+ * Generate a DELETE statement from a DeleteChange.
  */
-export function generateDelete(change: DataChange, dialect: SqlDialect): GeneratedStatement {
+export function generateDelete(change: DeleteChange, dialect: SqlDialect): GeneratedStatement {
 	const { primaryKeys } = change;
-	if (!primaryKeys || Object.keys(primaryKeys).length === 0) {
+
+	if (Object.keys(primaryKeys).length === 0) {
 		throw new Error("DELETE change requires primaryKeys");
 	}
 
@@ -413,26 +414,24 @@ export function generateChangePreview(change: DataChange, dialect: SqlDialect): 
 		}
 		case "update": {
 			const { primaryKeys, values } = change;
-			const setCols = Object.keys(values!);
-			const pkCols = Object.keys(primaryKeys!);
+			const setCols = Object.keys(values);
+			const pkCols = Object.keys(primaryKeys);
 			const setClauses = setCols.map(
-				(col) => `${dialect.quoteIdentifier(col)} = ${formatValueForPreview(values![col])}`,
+				(col) => `${dialect.quoteIdentifier(col)} = ${formatValueForPreview(values[col])}`,
 			);
 			const whereClauses = pkCols.map(
-				(col) => `${dialect.quoteIdentifier(col)} = ${formatValueForPreview(primaryKeys![col])}`,
+				(col) => `${dialect.quoteIdentifier(col)} = ${formatValueForPreview(primaryKeys[col])}`,
 			);
 			return `UPDATE ${table} SET ${setClauses.join(", ")} WHERE ${whereClauses.join(" AND ")};`;
 		}
 		case "delete": {
 			const { primaryKeys } = change;
-			const pkCols = Object.keys(primaryKeys!);
+			const pkCols = Object.keys(primaryKeys);
 			const whereClauses = pkCols.map(
-				(col) => `${dialect.quoteIdentifier(col)} = ${formatValueForPreview(primaryKeys![col])}`,
+				(col) => `${dialect.quoteIdentifier(col)} = ${formatValueForPreview(primaryKeys[col])}`,
 			);
 			return `DELETE FROM ${table} WHERE ${whereClauses.join(" AND ")};`;
 		}
-		default:
-			throw new Error(`Unknown change type: ${(change as any).type}`);
 	}
 }
 

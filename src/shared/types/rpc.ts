@@ -1,14 +1,33 @@
+import type { SortColumn, ColumnFilter } from "./grid";
+
 // ---- Domain types used by handlers and adapters ----
 
-export interface DataChange {
-	type: "insert" | "update" | "delete";
+interface DataChangeBase {
 	schema: string;
 	table: string;
-	/** Primary key values identifying the row (for update/delete) */
-	primaryKeys?: Record<string, unknown>;
-	/** Column values (for insert/update) */
+}
+
+export interface InsertChange extends DataChangeBase {
+	type: "insert";
+	/** Column values for the new row. Empty/undefined means DEFAULT VALUES. */
 	values?: Record<string, unknown>;
 }
+
+export interface UpdateChange extends DataChangeBase {
+	type: "update";
+	/** Primary key values identifying the row to update. */
+	primaryKeys: Record<string, unknown>;
+	/** Column values to set. */
+	values: Record<string, unknown>;
+}
+
+export interface DeleteChange extends DataChangeBase {
+	type: "delete";
+	/** Primary key values identifying the row to delete. */
+	primaryKeys: Record<string, unknown>;
+}
+
+export type DataChange = InsertChange | UpdateChange | DeleteChange;
 
 export interface HistoryListParams {
 	connectionId?: string;
@@ -23,8 +42,8 @@ export interface HistoryListParams {
 
 export interface SavedViewConfig {
 	columns?: string[];
-	sort?: { column: string; direction: "asc" | "desc" }[];
-	filters?: { column: string; operator: string; value: unknown }[];
+	sort?: SortColumn[];
+	filters?: ColumnFilter[];
 	columnWidths?: Record<string, number>;
 }
 

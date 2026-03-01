@@ -13,6 +13,7 @@ import {
 	offsetToLineColumn,
 	parseErrorPosition,
 } from "../src/backend-shared/services/query-executor";
+import { DatabaseDataType } from "../src/shared/types/database";
 import type { DatabaseDriver } from "../src/backend-shared/db/driver";
 import type { ColumnFilter, SortColumn } from "../src/shared/types/grid";
 import type { QueryResult } from "../src/shared/types/query";
@@ -288,9 +289,9 @@ describe("buildQuickSearchClause", () => {
 	const sqliteDriver = mockDriver("sqlite");
 
 	const columns = [
-		{ name: "name", dataType: "varchar" },
-		{ name: "email", dataType: "text" },
-		{ name: "age", dataType: "integer" },
+		{ name: "name", dataType: DatabaseDataType.Varchar },
+		{ name: "email", dataType: DatabaseDataType.Text },
+		{ name: "age", dataType: DatabaseDataType.Integer },
 	];
 
 	test("returns empty for empty search term", () => {
@@ -317,10 +318,10 @@ describe("buildQuickSearchClause", () => {
 		expect(result.params).toEqual(["%alice%", "%alice%", "%alice%"]);
 	});
 
-	test("excludes bytea columns", () => {
+	test("excludes binary columns", () => {
 		const cols = [
-			{ name: "name", dataType: "varchar" },
-			{ name: "avatar", dataType: "bytea" },
+			{ name: "name", dataType: DatabaseDataType.Varchar },
+			{ name: "avatar", dataType: DatabaseDataType.Binary },
 		];
 		const result = buildQuickSearchClause(cols, "test", pgDriver);
 		expect(result.sql).toBe('(CAST("name" AS TEXT) ILIKE $1)');
@@ -329,8 +330,8 @@ describe("buildQuickSearchClause", () => {
 
 	test("excludes blob columns", () => {
 		const cols = [
-			{ name: "name", dataType: "text" },
-			{ name: "data", dataType: "blob" },
+			{ name: "name", dataType: DatabaseDataType.Text },
+			{ name: "data", dataType: DatabaseDataType.Binary },
 		];
 		const result = buildQuickSearchClause(cols, "test", sqliteDriver);
 		expect(result.sql).toBe('(CAST("name" AS TEXT) LIKE $1)');
@@ -338,12 +339,12 @@ describe("buildQuickSearchClause", () => {
 	});
 
 	test("returns empty when all columns are binary", () => {
-		const cols = [{ name: "data", dataType: "bytea" }];
+		const cols = [{ name: "data", dataType: DatabaseDataType.Binary }];
 		expect(buildQuickSearchClause(cols, "test", pgDriver)).toEqual({ sql: "", params: [] });
 	});
 
 	test("respects paramOffset", () => {
-		const cols = [{ name: "name", dataType: "text" }];
+		const cols = [{ name: "name", dataType: DatabaseDataType.Text }];
 		const result = buildQuickSearchClause(cols, "test", pgDriver, 3);
 		expect(result.sql).toBe('(CAST("name" AS TEXT) ILIKE $4)');
 		expect(result.params).toEqual(["%test%"]);

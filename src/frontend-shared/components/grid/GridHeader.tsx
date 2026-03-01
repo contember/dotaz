@@ -3,6 +3,7 @@ import type { GridColumnDef, SortColumn } from "../../../shared/types/grid";
 import type { ColumnConfig } from "../../stores/grid";
 import ChevronUp from "lucide-solid/icons/chevron-up";
 import ChevronDown from "lucide-solid/icons/chevron-down";
+import { getDataTypeLabel } from "../../lib/column-types";
 import "./GridHeader.css";
 
 interface GridHeaderProps {
@@ -18,30 +19,6 @@ interface GridHeaderProps {
 
 const DEFAULT_COLUMN_WIDTH = 150;
 const MIN_COLUMN_WIDTH = 50;
-
-function getDataTypeLabel(dataType: string): string {
-	const type = dataType.toLowerCase();
-	if (type.includes("serial")) return "SER";
-	if (type.includes("int")) return "INT";
-	if (type.includes("text") || type.includes("varchar") || type.includes("char")) return "TXT";
-	if (type.includes("bool")) return "BOOL";
-	if (type.includes("timestamp")) return "TS";
-	if (type.includes("date")) return "DATE";
-	if (type.includes("time")) return "TIME";
-	if (
-		type.includes("numeric") ||
-		type.includes("decimal") ||
-		type.includes("float") ||
-		type.includes("double") ||
-		type.includes("real")
-	)
-		return "NUM";
-	if (type.includes("json")) return "JSON";
-	if (type.includes("uuid")) return "UUID";
-	if (type.includes("bytea") || type.includes("blob")) return "BIN";
-	if (type.includes("array")) return "ARR";
-	return type.substring(0, 4).toUpperCase();
-}
 
 function getSortDirection(sort: SortColumn[], column: string): "asc" | "desc" | null {
 	const s = sort.find((s) => s.column === column);

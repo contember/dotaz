@@ -10,6 +10,7 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { PostgresDriver } from "../src/backend-shared/drivers/postgres-driver";
 import type { PostgresConnectionConfig } from "../src/shared/types/connection";
+import { DatabaseDataType } from "../src/shared/types/database";
 import { seedPostgres } from "./helpers";
 
 const config: PostgresConnectionConfig = {
@@ -246,14 +247,14 @@ describe("PostgresDriver loadSchema", () => {
 		expect(ageCol.nullable).toBe(true);
 
 		const metadataCol = columns.find((c) => c.name === "metadata")!;
-		expect(metadataCol.dataType).toBe("jsonb");
+		expect(metadataCol.dataType).toBe(DatabaseDataType.Json);
 	});
 
 	test("returns timestamptz type", async () => {
 		const data = await driver.loadSchema();
 		const columns = data.columns["test_schema.users"];
 		const createdCol = columns.find((c) => c.name === "created_at")!;
-		expect(createdCol.dataType).toBe("timestamp with time zone");
+		expect(createdCol.dataType).toBe(DatabaseDataType.Timestamp);
 	});
 
 	test("detects serial as autoincrement", async () => {

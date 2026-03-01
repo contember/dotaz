@@ -1,5 +1,7 @@
 // Grid data types for pagination, sorting, and filtering
 
+import type { DatabaseDataType } from "./database";
+
 export type SortDirection = "asc" | "desc";
 
 export type FilterOperator =
@@ -49,7 +51,7 @@ export interface GridDataResponse {
 
 export interface GridColumnDef {
 	name: string;
-	dataType: string;
+	dataType: DatabaseDataType;
 	nullable: boolean;
 	isPrimaryKey: boolean;
 }

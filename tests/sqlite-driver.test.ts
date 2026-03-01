@@ -6,6 +6,7 @@
  */
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { SqliteDriver } from "../src/backend-shared/drivers/sqlite-driver";
+import { DatabaseDataType } from "../src/shared/types/database";
 
 let driver: SqliteDriver;
 
@@ -221,19 +222,19 @@ describe("SqliteDriver loadSchema", () => {
 		expect(columns).toHaveLength(5);
 
 		const idCol = columns.find((c) => c.name === "id")!;
-		expect(idCol.dataType).toBe("INTEGER");
+		expect(idCol.dataType).toBe(DatabaseDataType.Integer);
 		expect(idCol.isPrimaryKey).toBe(true);
 		expect(idCol.isAutoIncrement).toBe(true);
 		expect(idCol.nullable).toBe(false);
 
 		const nameCol = columns.find((c) => c.name === "name")!;
-		expect(nameCol.dataType).toBe("TEXT");
+		expect(nameCol.dataType).toBe(DatabaseDataType.Text);
 		expect(nameCol.isPrimaryKey).toBe(false);
 		expect(nameCol.isAutoIncrement).toBe(false);
 		expect(nameCol.nullable).toBe(false);
 
 		const ageCol = columns.find((c) => c.name === "age")!;
-		expect(ageCol.dataType).toBe("INTEGER");
+		expect(ageCol.dataType).toBe(DatabaseDataType.Integer);
 		expect(ageCol.nullable).toBe(true);
 
 		const createdCol = columns.find((c) => c.name === "created_at")!;

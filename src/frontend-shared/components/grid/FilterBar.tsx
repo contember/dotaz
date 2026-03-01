@@ -4,9 +4,11 @@ import type {
 	FilterOperator,
 	GridColumnDef,
 } from "../../../shared/types/grid";
+import type { DatabaseDataType } from "../../../shared/types/database";
 import X from "lucide-solid/icons/x";
 import FilterX from "lucide-solid/icons/funnel-x";
 import Plus from "lucide-solid/icons/plus";
+import { getColumnCategory } from "../../lib/column-types";
 import "./FilterBar.css";
 
 interface FilterBarProps {
@@ -35,30 +37,7 @@ const ALL_OPERATORS: OperatorOption[] = [
 	{ value: "isNotNull", label: "IS NOT NULL" },
 ];
 
-function getColumnCategory(dataType: string): "text" | "number" | "boolean" | "other" {
-	const t = dataType.toLowerCase();
-	if (t.includes("bool")) return "boolean";
-	if (
-		t.includes("int") ||
-		t.includes("serial") ||
-		t.includes("numeric") ||
-		t.includes("decimal") ||
-		t.includes("float") ||
-		t.includes("double") ||
-		t.includes("real")
-	)
-		return "number";
-	if (
-		t.includes("text") ||
-		t.includes("varchar") ||
-		t.includes("char") ||
-		t.includes("name")
-	)
-		return "text";
-	return "other";
-}
-
-function getOperatorsForType(dataType: string): OperatorOption[] {
+function getOperatorsForType(dataType: DatabaseDataType): OperatorOption[] {
 	const category = getColumnCategory(dataType);
 	switch (category) {
 		case "boolean":

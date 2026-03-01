@@ -3,6 +3,9 @@ import type { ReservedSQL } from "bun";
 import type { DatabaseDriver } from "../db/driver";
 import type { ConnectionConfig } from "../../shared/types/connection";
 import type { QueryResult, QueryResultColumn } from "../../shared/types/query";
+import {
+	DatabaseDataType,
+} from "../../shared/types/database";
 import type {
 	SchemaInfo,
 	SchemaData,
@@ -65,6 +68,59 @@ interface MysqlTableRow {
 	table_type: string;
 }
 
+/** Map MySQL information_schema data_type to DatabaseDataType. */
+function mapMysqlDataType(dataType: string): DatabaseDataType {
+	switch (dataType.toLowerCase()) {
+		case "int":
+		case "integer":
+		case "bigint":
+		case "smallint":
+		case "tinyint":
+		case "mediumint":
+			return DatabaseDataType.Integer;
+		case "float":
+		case "double":
+			return DatabaseDataType.Float;
+		case "decimal":
+		case "numeric":
+			return DatabaseDataType.Numeric;
+		case "bit":
+		case "boolean":
+		case "bool":
+			return DatabaseDataType.Boolean;
+		case "text":
+		case "tinytext":
+		case "mediumtext":
+		case "longtext":
+			return DatabaseDataType.Text;
+		case "varchar":
+			return DatabaseDataType.Varchar;
+		case "char":
+			return DatabaseDataType.Char;
+		case "date":
+			return DatabaseDataType.Date;
+		case "time":
+			return DatabaseDataType.Time;
+		case "datetime":
+		case "timestamp":
+			return DatabaseDataType.Timestamp;
+		case "json":
+			return DatabaseDataType.Json;
+		case "binary":
+		case "varbinary":
+		case "blob":
+		case "tinyblob":
+		case "mediumblob":
+		case "longblob":
+			return DatabaseDataType.Binary;
+		case "enum":
+		case "set":
+			return DatabaseDataType.Enum;
+		default:
+			return DatabaseDataType.Unknown;
+	}
+}
+
 export class MysqlDriver implements DatabaseDriver {
 	private db: SQL | null = null;
 	private connected = false;
@@ -122,7 +178,7 @@ export class MysqlDriver implements DatabaseDriver {
 				rows.length > 0
 					? Object.keys(rows[0]).map((name) => ({
 							name,
-							dataType: "unknown",
+							dataType: DatabaseDataType.Unknown,
 						}))
 					: [];
 
@@ -243,7 +299,7 @@ export class MysqlDriver implements DatabaseDriver {
 			if (!columns[key]) columns[key] = [];
 			columns[key].push({
 				name: row.column_name,
-				dataType: row.column_type || row.data_type,
+				dataType: mapMysqlDataType(row.data_type),
 				nullable: row.is_nullable === "YES",
 				defaultValue: row.column_default,
 				isPrimaryKey: row.column_key === "PRI",
