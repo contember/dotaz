@@ -45,7 +45,7 @@
 	height: 24px;
 	background: none;
 	border: none;
-	color: var(--ink-muted);
+	color: var(--ink-secondary);
 	cursor: pointer;
 	border-radius: var(--radius-sm);
 }

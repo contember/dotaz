@@ -3,10 +3,10 @@
 	--surface: #1a1c20;
 	--surface-raised: #22252a;
 	--surface-overlay: #2a2e34;
-	--surface-inset: #14161a;
+	--surface-inset: rgba(0, 0, 0, 0.15);
 	--surface-hover: rgba(255, 255, 255, 0.04);
 	--surface-active: rgba(255, 255, 255, 0.07);
-	--surface-selected: rgba(52, 209, 180, 0.12);
+	--surface-selected: rgba(26, 125, 106, 0.18);
 
 	/* ── Ink — text hierarchy ───────────────────────────── */
 	--ink: #d1d5db;
@@ -14,12 +14,12 @@
 	--ink-muted: #525660;
 	--ink-inverse: #1a1c20;
 
-	/* ── Accent — terminal glow ─────────────────────────── */
-	--accent: #34d1b4;
-	--accent-hover: #5eddc6;
-	--accent-fg: #1a1c20;
-	--accent-wash: rgba(52, 209, 180, 0.10);
-	--accent-wash-hover: rgba(52, 209, 180, 0.18);
+	/* ── Accent — deep teal ────────────────────────────── */
+	--accent: #1a7d6a;
+	--accent-hover: #22917c;
+	--accent-fg: #ffffff;
+	--accent-wash: rgba(26, 125, 106, 0.14);
+	--accent-wash-hover: rgba(26, 125, 106, 0.24);
 
 	/* ── Semantic ───────────────────────────────────────── */
 	--success: #4ade80;
