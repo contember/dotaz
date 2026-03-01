@@ -534,8 +534,9 @@ export class QueryExecutor {
 		params?: unknown[],
 		timeoutMs?: number,
 		queryId?: string,
+		database?: string,
 	): Promise<QueryResult[]> {
-		const driver = this.connectionManager.getDriver(connectionId);
+		const driver = this.connectionManager.getDriver(connectionId, database);
 		const statements = splitStatements(sql);
 
 		if (statements.length === 0) {

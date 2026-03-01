@@ -3,7 +3,7 @@ import { Show } from "solid-js";
 import Icon from "../common/Icon";
 import "./ConnectionTree.css";
 
-export type TreeItemType = "connection" | "schema" | "table" | "view";
+export type TreeItemType = "connection" | "database" | "schema" | "table" | "view";
 
 interface ConnectionTreeItemProps {
 	label: string;

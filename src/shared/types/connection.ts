@@ -10,6 +10,7 @@ export interface PostgresConnectionConfig {
 	user: string;
 	password: string;
 	ssl?: boolean;
+	activeDatabases?: string[];
 }
 
 export interface SqliteConnectionConfig {

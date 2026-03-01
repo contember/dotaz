@@ -1,5 +1,11 @@
 // Database metadata types
 
+export interface DatabaseInfo {
+	name: string;
+	isDefault: boolean;
+	isActive: boolean;
+}
+
 export interface SchemaInfo {
 	name: string;
 }

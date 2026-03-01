@@ -8,6 +8,7 @@ import "./QueryToolbar.css";
 interface QueryToolbarProps {
 	tabId: string;
 	connectionId: string;
+	database?: string;
 	onOpenHistory?: () => void;
 }
 
@@ -177,6 +178,9 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 			<div class="query-toolbar__connection">
 				<span class="query-toolbar__connection-name">
 					{connection()?.name ?? "—"}
+					<Show when={props.database}>
+						<span style={{ color: "var(--text-muted)" }}> / {props.database}</span>
+					</Show>
 				</span>
 			</div>
 

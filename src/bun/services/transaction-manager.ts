@@ -11,33 +11,33 @@ export class TransactionManager {
 		this.cm = cm;
 	}
 
-	async begin(connectionId: string): Promise<void> {
-		const driver = this.cm.getDriver(connectionId);
+	async begin(connectionId: string, database?: string): Promise<void> {
+		const driver = this.cm.getDriver(connectionId, database);
 		if (driver.inTransaction()) {
 			throw new Error("Transaction already active on this connection");
 		}
 		await driver.beginTransaction();
 	}
 
-	async commit(connectionId: string): Promise<void> {
-		const driver = this.cm.getDriver(connectionId);
+	async commit(connectionId: string, database?: string): Promise<void> {
+		const driver = this.cm.getDriver(connectionId, database);
 		if (!driver.inTransaction()) {
 			throw new Error("No active transaction to commit");
 		}
 		await driver.commit();
 	}
 
-	async rollback(connectionId: string): Promise<void> {
-		const driver = this.cm.getDriver(connectionId);
+	async rollback(connectionId: string, database?: string): Promise<void> {
+		const driver = this.cm.getDriver(connectionId, database);
 		if (!driver.inTransaction()) {
 			throw new Error("No active transaction to rollback");
 		}
 		await driver.rollback();
 	}
 
-	isActive(connectionId: string): boolean {
+	isActive(connectionId: string, database?: string): boolean {
 		try {
-			const driver = this.cm.getDriver(connectionId);
+			const driver = this.cm.getDriver(connectionId, database);
 			return driver.inTransaction();
 		} catch {
 			return false;
@@ -45,9 +45,9 @@ export class TransactionManager {
 	}
 
 	/** Rollback any active transaction on this connection (e.g. before disconnect). */
-	async rollbackIfActive(connectionId: string): Promise<void> {
-		if (this.isActive(connectionId)) {
-			await this.rollback(connectionId);
+	async rollbackIfActive(connectionId: string, database?: string): Promise<void> {
+		if (this.isActive(connectionId, database)) {
+			await this.rollback(connectionId, database);
 		}
 	}
 }

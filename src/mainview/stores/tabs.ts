@@ -12,6 +12,7 @@ export interface OpenTabConfig {
 	connectionId: string;
 	schema?: string;
 	table?: string;
+	database?: string;
 	viewId?: string;
 	viewName?: string;
 }
@@ -47,6 +48,7 @@ function openTab(config: OpenTabConfig): string {
 		connectionId: config.connectionId,
 		schema: config.schema,
 		table: config.table,
+		database: config.database,
 		dirty: false,
 		viewId: config.viewId,
 		viewName: config.viewName,
@@ -175,9 +177,9 @@ function activatePrevTab() {
 }
 
 /** Find an open default (no viewId) data-grid tab for the given table and focus it. Returns tab ID or null. */
-function findDefaultTab(connectionId: string, schema: string, table: string): string | null {
+function findDefaultTab(connectionId: string, schema: string, table: string, database?: string): string | null {
 	const found = state.openTabs.find(
-		(t) => t.type === "data-grid" && t.connectionId === connectionId && t.schema === schema && t.table === table && !t.viewId,
+		(t) => t.type === "data-grid" && t.connectionId === connectionId && t.schema === schema && t.table === table && t.database === database && !t.viewId,
 	);
 	if (found) {
 		setState("activeTabId", found.id);

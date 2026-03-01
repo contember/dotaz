@@ -11,6 +11,7 @@ export interface ExportOptions {
 	schema: string;
 	table: string;
 	format: ExportFormat;
+	database?: string;
 	/** Target file path (from save dialog) */
 	filePath: string;
 	/** Column names to export (undefined = all) */
@@ -34,6 +35,7 @@ export interface ExportPreviewRequest {
 	schema: string;
 	table: string;
 	format: ExportFormat;
+	database?: string;
 	limit: number;
 	/** Column names to preview (undefined = all) */
 	columns?: string[];

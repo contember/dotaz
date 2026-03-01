@@ -1,14 +1,16 @@
 import { createSignal, For, Show, type JSX } from "solid-js";
-import type { ConnectionInfo, ConnectionState } from "../../../shared/types/connection";
+import type { ConnectionInfo, ConnectionState, PostgresConnectionConfig } from "../../../shared/types/connection";
 import type { SchemaInfo, TableInfo } from "../../../shared/types/database";
 import type { SavedView } from "../../../shared/types/rpc";
+import type { SchemaTree } from "../../stores/connections";
 import { connectionsStore } from "../../stores/connections";
 import { tabsStore } from "../../stores/tabs";
 import { viewsStore } from "../../stores/views";
 import { gridStore } from "../../stores/grid";
+import { editorStore } from "../../stores/editor";
 import { rpc } from "../../lib/rpc";
 import { siPostgresql, siSqlite } from "simple-icons";
-import { Eye, Table, Bookmark, FolderOpen, Plus } from "lucide-solid";
+import { Eye, Table, Bookmark, FolderOpen, Plus, Database } from "lucide-solid";
 import ContextMenu, { type ContextMenuEntry } from "../common/ContextMenu";
 import ConnectionTreeItem from "./ConnectionTreeItem";
 import "./ConnectionTree.css";
@@ -16,6 +18,7 @@ import "./ConnectionTree.css";
 interface ConnectionTreeProps {
 	onAddConnection: () => void;
 	onEditConnection: (conn: ConnectionInfo) => void;
+	onManageDatabases?: (conn: ConnectionInfo) => void;
 }
 
 const STATUS_COLORS: Record<ConnectionState, string | undefined> = {
@@ -49,12 +52,17 @@ interface ContextMenuState {
 
 export default function ConnectionTree(props: ConnectionTreeProps) {
 	const [expandedConnections, setExpandedConnections] = createSignal<Set<string>>(new Set());
+	const [expandedDatabases, setExpandedDatabases] = createSignal<Set<string>>(new Set());
 	const [expandedSchemas, setExpandedSchemas] = createSignal<Set<string>>(new Set());
 	const [expandedTables, setExpandedTables] = createSignal<Set<string>>(new Set());
 	const [contextMenu, setContextMenu] = createSignal<ContextMenuState | null>(null);
 
 	function isConnectionExpanded(id: string): boolean {
 		return expandedConnections().has(id);
+	}
+
+	function isDatabaseExpanded(key: string): boolean {
+		return expandedDatabases().has(key);
 	}
 
 	function isSchemaExpanded(key: string): boolean {
@@ -77,8 +85,26 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 		});
 	}
 
-	function tableKey(connectionId: string, schemaName: string, tableName: string): string {
-		return `${connectionId}:${schemaName}:${tableName}`;
+	function tableKey(connectionId: string, schemaName: string, tableName: string, database?: string): string {
+		return database
+			? `${connectionId}:${database}:${schemaName}:${tableName}`
+			: `${connectionId}:${schemaName}:${tableName}`;
+	}
+
+	function databaseKey(connectionId: string, dbName: string): string {
+		return `${connectionId}:db:${dbName}`;
+	}
+
+	function toggleDatabase(key: string) {
+		setExpandedDatabases((prev) => {
+			const next = new Set(prev);
+			if (next.has(key)) {
+				next.delete(key);
+			} else {
+				next.add(key);
+			}
+			return next;
+		});
 	}
 
 	function toggleConnection(conn: ConnectionInfo) {
@@ -144,9 +170,9 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 		});
 	}
 
-	function handleTableClick(connectionId: string, schema: string, table: string) {
+	function handleTableClick(connectionId: string, schema: string, table: string, database?: string) {
 		// Reuse existing default tab for this table
-		const existing = tabsStore.findDefaultTab(connectionId, schema, table);
+		const existing = tabsStore.findDefaultTab(connectionId, schema, table, database);
 		if (existing) return;
 
 		tabsStore.openTab({
@@ -155,10 +181,11 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 			connectionId,
 			schema,
 			table,
+			database,
 		});
 	}
 
-	function handleViewClick(connectionId: string, schema: string, table: string, view: SavedView) {
+	function handleViewClick(connectionId: string, schema: string, table: string, view: SavedView, database?: string) {
 		// Reuse existing view tab
 		const existing = tabsStore.findViewTab(view.id);
 		if (existing) return;
@@ -169,24 +196,33 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 			connectionId,
 			schema,
 			table,
+			database,
 			viewId: view.id,
 			viewName: view.name,
 		});
 
 		// Apply the saved view config once grid data is loaded
-		gridStore.loadTableData(tabId, connectionId, schema, table).then(() => {
+		gridStore.loadTableData(tabId, connectionId, schema, table, database).then(() => {
 			gridStore.setActiveView(tabId, view.id, view.name);
 			gridStore.applyViewConfig(tabId, view.config);
 		});
 	}
 
-	function schemaKey(connectionId: string, schemaName: string): string {
-		return `${connectionId}:${schemaName}`;
+	function schemaKey(connectionId: string, schemaName: string, database?: string): string {
+		return database
+			? `${connectionId}:${database}:${schemaName}`
+			: `${connectionId}:${schemaName}`;
 	}
 
 	function isLoading(conn: ConnectionInfo): boolean {
 		return conn.state === "connecting" ||
 			(conn.state === "connected" && !connectionsStore.getSchemaTree(conn.id));
+	}
+
+	/** Check if this PostgreSQL connection has multiple active databases */
+	function hasMultipleDatabases(conn: ConnectionInfo): boolean {
+		if (conn.config.type !== "postgresql") return false;
+		return connectionsStore.getActiveDatabaseNames(conn.id).length > 1;
 	}
 
 	// ── Context menu builders ────────────────────────────
@@ -200,8 +236,9 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 	function connectionMenuItems(conn: ConnectionInfo): ContextMenuEntry[] {
 		const isConnected = conn.state === "connected";
 		const isDisconnected = conn.state === "disconnected" || conn.state === "error";
+		const isPg = conn.config.type === "postgresql";
 
-		return [
+		const items: ContextMenuEntry[] = [
 			{
 				label: "Connect",
 				action: () => connectionsStore.connectTo(conn.id),
@@ -212,6 +249,18 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 				action: () => connectionsStore.disconnectFrom(conn.id),
 				disabled: !isConnected,
 			},
+		];
+
+		if (isPg) {
+			items.push("separator");
+			items.push({
+				label: "Manage Databases...",
+				action: () => props.onManageDatabases?.(conn),
+				disabled: !isConnected,
+			});
+		}
+
+		items.push(
 			"separator",
 			{
 				label: "Edit",
@@ -238,41 +287,74 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 					}
 				},
 			},
-		];
+		);
+
+		return items;
 	}
 
-	function schemaMenuItems(connectionId: string, schemaName: string): ContextMenuEntry[] {
+	function databaseMenuItems(connectionId: string, dbName: string, isDefault: boolean): ContextMenuEntry[] {
+		const items: ContextMenuEntry[] = [
+			{
+				label: "New SQL Console",
+				action: () => {
+					const tabId = tabsStore.openTab({
+						type: "sql-console",
+						title: `SQL — ${dbName}`,
+						connectionId,
+						database: dbName,
+					});
+					editorStore.initTab(tabId, connectionId, dbName);
+				},
+			},
+		];
+
+		if (!isDefault) {
+			items.push("separator");
+			items.push({
+				label: "Deactivate",
+				action: () => connectionsStore.deactivateDatabase(connectionId, dbName),
+			});
+		}
+
+		return items;
+	}
+
+	function schemaMenuItems(connectionId: string, schemaName: string, database?: string): ContextMenuEntry[] {
 		return [
 			{
 				label: "New SQL Console",
 				action: () => {
-					tabsStore.openTab({
+					const tabId = tabsStore.openTab({
 						type: "sql-console",
 						title: `SQL — ${schemaName}`,
 						connectionId,
 						schema: schemaName,
+						database,
 					});
+					editorStore.initTab(tabId, connectionId, database);
 				},
 			},
 		];
 	}
 
-	function tableMenuItems(connectionId: string, schemaName: string, tableName: string): ContextMenuEntry[] {
+	function tableMenuItems(connectionId: string, schemaName: string, tableName: string, database?: string): ContextMenuEntry[] {
 		return [
 			{
 				label: "Open Data",
-				action: () => handleTableClick(connectionId, schemaName, tableName),
+				action: () => handleTableClick(connectionId, schemaName, tableName, database),
 			},
 			{
 				label: "New SQL Console",
 				action: () => {
-					tabsStore.openTab({
+					const tabId = tabsStore.openTab({
 						type: "sql-console",
 						title: `SQL — ${tableName}`,
 						connectionId,
 						schema: schemaName,
 						table: tableName,
+						database,
 					});
+					editorStore.initTab(tabId, connectionId, database);
 				},
 			},
 			{
@@ -284,17 +366,18 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 						connectionId,
 						schema: schemaName,
 						table: tableName,
+						database,
 					});
 				},
 			},
 		];
 	}
 
-	function viewMenuItems(connectionId: string, view: SavedView): ContextMenuEntry[] {
+	function viewMenuItems(connectionId: string, view: SavedView, database?: string): ContextMenuEntry[] {
 		return [
 			{
 				label: "Open",
-				action: () => handleViewClick(connectionId, view.schemaName, view.tableName, view),
+				action: () => handleViewClick(connectionId, view.schemaName, view.tableName, view, database),
 			},
 			{
 				label: "Rename",
@@ -336,8 +419,8 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 
 	// ── Table rendering helper with optional views ──────
 
-	function renderTable(conn: ConnectionInfo, schema: SchemaInfo, table: TableInfo, baseLevel: number) {
-		const tKey = tableKey(conn.id, schema.name, table.name);
+	function renderTable(conn: ConnectionInfo, schema: SchemaInfo, table: TableInfo, baseLevel: number, database?: string) {
+		const tKey = tableKey(conn.id, schema.name, table.name, database);
 		const views = () => viewsStore.getViewsForTable(conn.id, schema.name, table.name);
 		const hasViews = () => views().length > 0;
 		const tExpanded = () => isTableExpanded(tKey);
@@ -351,9 +434,9 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 					icon={table.type === "view" ? <Eye size={14} /> : <Table size={14} />}
 					expanded={hasViews() ? tExpanded() : undefined}
 					hasChildren={hasViews()}
-					onClick={() => handleTableClick(conn.id, schema.name, table.name)}
+					onClick={() => handleTableClick(conn.id, schema.name, table.name, database)}
 					onToggle={hasViews() ? () => toggleTable(tKey) : undefined}
-					onContextMenu={(e) => showContextMenu(e, tableMenuItems(conn.id, schema.name, table.name))}
+					onContextMenu={(e) => showContextMenu(e, tableMenuItems(conn.id, schema.name, table.name, database))}
 				/>
 				<Show when={hasViews() && tExpanded()}>
 					<For each={views()}>
@@ -363,13 +446,59 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 								level={baseLevel + 1}
 								type="view"
 								icon={<Bookmark size={14} />}
-								onClick={() => handleViewClick(conn.id, schema.name, table.name, view)}
-								onContextMenu={(e) => showContextMenu(e, viewMenuItems(conn.id, view))}
+								onClick={() => handleViewClick(conn.id, schema.name, table.name, view, database)}
+								onContextMenu={(e) => showContextMenu(e, viewMenuItems(conn.id, view, database))}
 							/>
 						)}
 					</For>
 				</Show>
 			</>
+		);
+	}
+
+	// ── Schema tree rendering (shared between database and non-database views) ──
+
+	function renderSchemaTree(conn: ConnectionInfo, tree: SchemaTree, schemas: SchemaInfo[], baseLevel: number, database?: string) {
+		return (
+			<For each={schemas}>
+				{(schema: SchemaInfo) => {
+					const sKey = () => schemaKey(conn.id, schema.name, database);
+					const tables = () => tree.tables[schema.name] ?? [];
+					const sExpanded = () => isSchemaExpanded(sKey());
+
+					// For SQLite with only "main" schema, skip schema level
+					const isSingleSchema = () => schemas.length === 1 && schema.name === "main";
+
+					return (
+						<Show
+							when={!isSingleSchema()}
+							fallback={
+								<For each={tables()}>
+									{(table: TableInfo) => renderTable(conn, schema, table, baseLevel, database)}
+								</For>
+							}
+						>
+							<ConnectionTreeItem
+								label={schema.name}
+								level={baseLevel}
+								type="schema"
+								icon={<FolderOpen size={14} />}
+								expanded={sExpanded()}
+								hasChildren={tables().length > 0}
+								onToggle={() => toggleSchema(sKey())}
+								onClick={() => toggleSchema(sKey())}
+								onContextMenu={(e) => showContextMenu(e, schemaMenuItems(conn.id, schema.name, database))}
+							/>
+
+							<Show when={sExpanded()}>
+								<For each={tables()}>
+									{(table: TableInfo) => renderTable(conn, schema, table, baseLevel + 1, database)}
+								</For>
+							</Show>
+						</Show>
+					);
+				}}
+			</For>
 		);
 	}
 
@@ -393,6 +522,7 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 						const expanded = () => isConnectionExpanded(conn.id);
 						const loading = () => isLoading(conn);
 						const hasSchemas = () => conn.state === "connected" && schemas().length > 0;
+						const multiDb = () => hasMultipleDatabases(conn);
 
 						return (
 							<>
@@ -411,45 +541,44 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 								/>
 
 								<Show when={expanded() && !loading() && hasSchemas()}>
-									<For each={schemas()}>
-										{(schema: SchemaInfo) => {
-											const sKey = () => schemaKey(conn.id, schema.name);
-											const tables = () => tree()?.tables[schema.name] ?? [];
-											const sExpanded = () => isSchemaExpanded(sKey());
+									{/* PostgreSQL with multiple active databases: show database level */}
+									<Show
+										when={multiDb()}
+										fallback={
+											/* Single database or SQLite: render schemas directly at level 1+ */
+											renderSchemaTree(conn, tree()!, schemas(), 1)
+										}
+									>
+										<For each={connectionsStore.getActiveDatabaseNames(conn.id)}>
+											{(dbName) => {
+												const dbKey = () => databaseKey(conn.id, dbName);
+												const dbTree = () => connectionsStore.getSchemaTree(conn.id, dbName);
+												const dbSchemas = () => dbTree()?.schemas ?? [];
+												const dbExpanded = () => isDatabaseExpanded(dbKey());
+												const isDefault = () => conn.config.type === "postgresql" && (conn.config as PostgresConnectionConfig).database === dbName;
 
-											// For SQLite with only "main" schema, skip schema level
-											const isSingleSchema = () => schemas().length === 1 && schema.name === "main";
+												return (
+													<>
+														<ConnectionTreeItem
+															label={dbName}
+															level={1}
+															type="database"
+															icon={<Database size={14} />}
+															expanded={dbExpanded()}
+															hasChildren={dbSchemas().length > 0}
+															onToggle={() => toggleDatabase(dbKey())}
+															onClick={() => toggleDatabase(dbKey())}
+															onContextMenu={(e) => showContextMenu(e, databaseMenuItems(conn.id, dbName, isDefault()))}
+														/>
 
-											return (
-												<Show
-													when={!isSingleSchema()}
-													fallback={
-														<For each={tables()}>
-															{(table: TableInfo) => renderTable(conn, schema, table, 1)}
-														</For>
-													}
-												>
-													<ConnectionTreeItem
-														label={schema.name}
-														level={1}
-														type="schema"
-														icon={<FolderOpen size={14} />}
-														expanded={sExpanded()}
-														hasChildren={tables().length > 0}
-														onToggle={() => toggleSchema(sKey())}
-														onClick={() => toggleSchema(sKey())}
-														onContextMenu={(e) => showContextMenu(e, schemaMenuItems(conn.id, schema.name))}
-													/>
-
-													<Show when={sExpanded()}>
-														<For each={tables()}>
-															{(table: TableInfo) => renderTable(conn, schema, table, 2)}
-														</For>
-													</Show>
-												</Show>
-											);
-										}}
-									</For>
+														<Show when={dbExpanded() && dbSchemas().length > 0}>
+															{renderSchemaTree(conn, dbTree()!, dbSchemas(), 2, dbName)}
+														</Show>
+													</>
+												);
+											}}
+										</For>
+									</Show>
 								</Show>
 							</>
 						);

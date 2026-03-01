@@ -1,6 +1,8 @@
 import { createStore } from "solid-js/store";
 import type { QueryResult } from "../../shared/types/query";
 import { rpc } from "../lib/rpc";
+import { isStateless } from "../lib/mode";
+import { putHistoryEntry } from "../lib/browser-storage";
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -8,6 +10,7 @@ export type TxMode = "auto-commit" | "manual";
 
 export interface TabEditorState {
 	connectionId: string;
+	database?: string;
 	content: string;
 	selectedText: string;
 	results: QueryResult[];
@@ -19,9 +22,10 @@ export interface TabEditorState {
 	inTransaction: boolean;
 }
 
-function createDefaultEditorState(connectionId: string): TabEditorState {
+function createDefaultEditorState(connectionId: string, database?: string): TabEditorState {
 	return {
 		connectionId,
+		database,
 		content: "",
 		selectedText: "",
 		results: [],
@@ -60,9 +64,9 @@ function ensureTab(tabId: string): TabEditorState {
 
 // ── Actions ───────────────────────────────────────────────
 
-function initTab(tabId: string, connectionId: string) {
+function initTab(tabId: string, connectionId: string, database?: string) {
 	if (!getTab(tabId)) {
-		setState("tabs", tabId, createDefaultEditorState(connectionId));
+		setState("tabs", tabId, createDefaultEditorState(connectionId, database));
 	}
 }
 
@@ -74,6 +78,16 @@ function setContent(tabId: string, content: string) {
 function setSelectedText(tabId: string, selectedText: string) {
 	ensureTab(tabId);
 	setState("tabs", tabId, "selectedText", selectedText);
+}
+
+function syncLatestHistory(connectionId: string) {
+	if (!isStateless()) return;
+	// Fire-and-forget: fetch latest history entry and save to IndexedDB
+	rpc.history.list({ connectionId, limit: 1 }).then((entries) => {
+		if (entries.length > 0) {
+			putHistoryEntry(entries[0]).catch((e) => console.warn("Failed to store history entry:", e));
+		}
+	}).catch((e) => console.warn("Failed to fetch latest history:", e));
 }
 
 async function runQuery(tabId: string, sql: string) {
@@ -91,7 +105,7 @@ async function runQuery(tabId: string, sql: string) {
 	const startTime = performance.now();
 
 	try {
-		const results = await rpc.query.execute(tab.connectionId, sql, queryId);
+		const results = await rpc.query.execute(tab.connectionId, sql, queryId, undefined, tab.database);
 
 		// Discard stale results if a newer query was started
 		if (state.tabs[tabId]?.queryId !== queryId) return;
@@ -105,6 +119,8 @@ async function runQuery(tabId: string, sql: string) {
 			error: null,
 			queryId: null,
 		});
+
+		syncLatestHistory(tab.connectionId);
 	} catch (err) {
 		// Discard stale errors if a newer query was started
 		if (state.tabs[tabId]?.queryId !== queryId) return;
@@ -118,6 +134,8 @@ async function runQuery(tabId: string, sql: string) {
 			isRunning: false,
 			queryId: null,
 		});
+
+		syncLatestHistory(tab.connectionId);
 	}
 }
 
@@ -168,7 +186,7 @@ function setTxMode(tabId: string, mode: TxMode) {
 async function beginTransaction(tabId: string) {
 	const tab = ensureTab(tabId);
 	try {
-		await rpc.tx.begin(tab.connectionId);
+		await rpc.tx.begin(tab.connectionId, tab.database);
 		setState("tabs", tabId, "inTransaction", true);
 	} catch (err) {
 		const errorMessage = err instanceof Error ? err.message : String(err);
@@ -181,7 +199,7 @@ async function commitTransaction(tabId: string) {
 	if (!tab.inTransaction) return;
 
 	try {
-		await rpc.tx.commit(tab.connectionId);
+		await rpc.tx.commit(tab.connectionId, tab.database);
 		setState("tabs", tabId, "inTransaction", false);
 	} catch (err) {
 		const errorMessage = err instanceof Error ? err.message : String(err);
@@ -194,7 +212,7 @@ async function rollbackTransaction(tabId: string) {
 	if (!tab.inTransaction) return;
 
 	try {
-		await rpc.tx.rollback(tab.connectionId);
+		await rpc.tx.rollback(tab.connectionId, tab.database);
 		setState("tabs", tabId, "inTransaction", false);
 	} catch (err) {
 		const errorMessage = err instanceof Error ? err.message : String(err);

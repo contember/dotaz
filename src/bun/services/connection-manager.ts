@@ -6,7 +6,9 @@ import type {
 	ConnectionConfig,
 	ConnectionInfo,
 	ConnectionState,
+	PostgresConnectionConfig,
 } from "../../shared/types/connection";
+import type { DatabaseInfo } from "../../shared/types/database";
 
 export interface StatusChangeEvent {
 	connectionId: string;
@@ -38,7 +40,10 @@ interface ReconnectState {
 }
 
 export class ConnectionManager {
-	private drivers = new Map<string, DatabaseDriver>();
+	// Nested map: connectionId → databaseName → driver
+	private drivers = new Map<string, Map<string, DatabaseDriver>>();
+	// Cached passwords for multi-database activation (connectionId → password)
+	private passwords = new Map<string, string>();
 	private states = new Map<
 		string,
 		{ state: ConnectionState; error?: string }
@@ -59,7 +64,7 @@ export class ConnectionManager {
 
 	// ── Connection lifecycle ────────────────────────────────
 
-	async connect(connectionId: string): Promise<void> {
+	async connect(connectionId: string, configOverride?: { password?: string }): Promise<void> {
 		const connInfo = this.appDb.getConnectionById(connectionId);
 		if (!connInfo) {
 			throw new Error(`Connection not found: ${connectionId}`);
@@ -68,18 +73,40 @@ export class ConnectionManager {
 		// Cancel any pending auto-reconnect
 		this.cancelAutoReconnect(connectionId);
 
-		// Disconnect existing driver if already active
+		// Disconnect existing drivers if already active
 		if (this.drivers.has(connectionId)) {
-			await this.disconnectDriver(connectionId);
+			await this.disconnectAllDrivers(connectionId);
 		}
 
 		this.setConnectionState(connectionId, "connecting");
 
 		try {
-			validateConfig(connInfo.config);
-			const driver = createDriver(connInfo.config);
-			await driver.connect(connInfo.config);
-			this.drivers.set(connectionId, driver);
+			const config = configOverride
+				? { ...connInfo.config, ...configOverride }
+				: connInfo.config;
+			validateConfig(config);
+
+			// Cache the effective password for later database activations
+			if (config.type === "postgresql") {
+				this.passwords.set(connectionId, config.password);
+			}
+
+			const defaultDb = getDefaultDatabase(config);
+			const driver = createDriver(config);
+			await driver.connect(config);
+
+			const driverMap = new Map<string, DatabaseDriver>();
+			driverMap.set(defaultDb, driver);
+			this.drivers.set(connectionId, driverMap);
+
+			// Connect active databases in parallel (PostgreSQL only)
+			if (config.type === "postgresql" && config.activeDatabases) {
+				const activations = config.activeDatabases
+					.filter((db) => db !== config.database)
+					.map((db) => this.connectDatabase(connectionId, config, db));
+				await Promise.allSettled(activations);
+			}
+
 			this.setConnectionState(connectionId, "connected");
 			this.startHealthCheck(connectionId);
 		} catch (err) {
@@ -94,6 +121,7 @@ export class ConnectionManager {
 		this.cancelAutoReconnect(connectionId);
 		this.stopHealthCheck(connectionId);
 		await this.gracefulDisconnect(connectionId);
+		this.passwords.delete(connectionId);
 		this.setConnectionState(connectionId, "disconnected");
 	}
 
@@ -108,11 +136,19 @@ export class ConnectionManager {
 
 	// ── Active connection access ────────────────────────────
 
-	getDriver(connectionId: string): DatabaseDriver {
-		const driver = this.drivers.get(connectionId);
-		if (!driver) {
+	getDriver(connectionId: string, database?: string): DatabaseDriver {
+		const driverMap = this.drivers.get(connectionId);
+		if (!driverMap) {
 			throw new Error(
 				`No active connection for id: ${connectionId}`,
+			);
+		}
+
+		const dbName = database ?? this.getDefaultDatabaseName(connectionId);
+		const driver = driverMap.get(dbName);
+		if (!driver) {
+			throw new Error(
+				`No active driver for database "${dbName}" on connection ${connectionId}`,
 			);
 		}
 		return driver;
@@ -120,6 +156,100 @@ export class ConnectionManager {
 
 	getConnectionState(connectionId: string): ConnectionState {
 		return this.states.get(connectionId)?.state ?? "disconnected";
+	}
+
+	// ── Multi-database management ────────────────────────────
+
+	async listDatabases(connectionId: string): Promise<DatabaseInfo[]> {
+		const connInfo = this.appDb.getConnectionById(connectionId);
+		if (!connInfo || connInfo.config.type !== "postgresql") {
+			throw new Error("listDatabases is only supported for PostgreSQL connections");
+		}
+
+		const defaultDb = connInfo.config.database;
+		const driver = this.getDriver(connectionId, defaultDb);
+		const result = await driver.execute(
+			"SELECT datname FROM pg_database WHERE datistemplate = false AND datallowconn = true ORDER BY datname",
+		);
+
+		const driverMap = this.drivers.get(connectionId);
+		const activeDbs = driverMap ? [...driverMap.keys()] : [defaultDb];
+
+		return result.rows.map((row) => ({
+			name: row.datname as string,
+			isDefault: row.datname === defaultDb,
+			isActive: activeDbs.includes(row.datname as string),
+		}));
+	}
+
+	async activateDatabase(connectionId: string, database: string): Promise<void> {
+		const connInfo = this.appDb.getConnectionById(connectionId);
+		if (!connInfo || connInfo.config.type !== "postgresql") {
+			throw new Error("activateDatabase is only supported for PostgreSQL connections");
+		}
+
+		const driverMap = this.drivers.get(connectionId);
+		if (!driverMap) {
+			throw new Error(`No active connection for id: ${connectionId}`);
+		}
+
+		// Already active
+		if (driverMap.has(database)) return;
+
+		const password = this.passwords.get(connectionId) ?? connInfo.config.password;
+		const config: PostgresConnectionConfig = {
+			...connInfo.config,
+			database,
+			password,
+		};
+
+		await this.connectDatabase(connectionId, config, database);
+
+		// Persist to config
+		const activeDatabases = [...new Set([
+			...(connInfo.config.activeDatabases ?? []),
+			database,
+		])];
+		this.appDb.updateConnection({
+			id: connectionId,
+			name: connInfo.name,
+			config: { ...connInfo.config, activeDatabases },
+		});
+	}
+
+	async deactivateDatabase(connectionId: string, database: string): Promise<void> {
+		const connInfo = this.appDb.getConnectionById(connectionId);
+		if (!connInfo || connInfo.config.type !== "postgresql") {
+			throw new Error("deactivateDatabase is only supported for PostgreSQL connections");
+		}
+
+		if (database === connInfo.config.database) {
+			throw new Error("Cannot deactivate the default database");
+		}
+
+		const driverMap = this.drivers.get(connectionId);
+		if (driverMap) {
+			const driver = driverMap.get(database);
+			if (driver) {
+				try {
+					await driver.disconnect();
+				} finally {
+					driverMap.delete(database);
+				}
+			}
+		}
+
+		// Persist to config
+		const activeDatabases = (connInfo.config.activeDatabases ?? [])
+			.filter((db) => db !== database);
+		this.appDb.updateConnection({
+			id: connectionId,
+			name: connInfo.name,
+			config: {
+				...connInfo.config,
+				activeDatabases: activeDatabases.length > 0 ? activeDatabases : undefined,
+			},
+		});
 	}
 
 	// ── CRUD delegation to AppDatabase ──────────────────────
@@ -136,8 +266,8 @@ export class ConnectionManager {
 	createConnection(params: {
 		name: string;
 		config: ConnectionConfig;
-	}): ConnectionInfo {
-		validateConfig(params.config);
+	}, allowMissingPassword = false): ConnectionInfo {
+		validateConfig(params.config, allowMissingPassword);
 		return this.appDb.createConnection(params);
 	}
 
@@ -160,8 +290,9 @@ export class ConnectionManager {
 		this.stopHealthCheck(id);
 		// Disconnect if active before deleting
 		if (this.drivers.has(id)) {
-			await this.disconnectDriver(id);
+			await this.disconnectAllDrivers(id);
 		}
+		this.passwords.delete(id);
 		this.states.delete(id);
 		this.appDb.deleteConnection(id);
 	}
@@ -229,7 +360,12 @@ export class ConnectionManager {
 	}
 
 	private async performHealthCheck(connectionId: string): Promise<void> {
-		const driver = this.drivers.get(connectionId);
+		const driverMap = this.drivers.get(connectionId);
+		if (!driverMap) return;
+
+		// Health-check the default driver
+		const defaultDb = this.getDefaultDatabaseName(connectionId);
+		const driver = driverMap.get(defaultDb);
 		if (!driver) return;
 
 		try {
@@ -237,7 +373,7 @@ export class ConnectionManager {
 		} catch {
 			// Connection lost — stop health checks and begin auto-reconnect
 			this.stopHealthCheck(connectionId);
-			this.drivers.delete(connectionId);
+			await this.disconnectAllDrivers(connectionId);
 			this.setConnectionState(connectionId, "disconnected", "Connection lost");
 			this.startAutoReconnect(connectionId);
 		}
@@ -297,16 +433,33 @@ export class ConnectionManager {
 		this.setConnectionState(connectionId, "reconnecting");
 
 		try {
-			const driver = createDriver(connInfo.config);
-			await driver.connect(connInfo.config);
+			// Use cached password if available
+			const cachedPassword = this.passwords.get(connectionId);
+			const config = cachedPassword
+				? { ...connInfo.config, password: cachedPassword } as ConnectionConfig
+				: connInfo.config;
+
+			const defaultDb = getDefaultDatabase(config);
+			const driver = createDriver(config);
+			await driver.connect(config);
 
 			if (rs.cancelled) {
-				// Was cancelled while we were connecting
 				await driver.disconnect();
 				return;
 			}
 
-			this.drivers.set(connectionId, driver);
+			const driverMap = new Map<string, DatabaseDriver>();
+			driverMap.set(defaultDb, driver);
+			this.drivers.set(connectionId, driverMap);
+
+			// Reconnect active databases
+			if (config.type === "postgresql" && (config as PostgresConnectionConfig).activeDatabases) {
+				const activations = (config as PostgresConnectionConfig).activeDatabases!
+					.filter((db) => db !== (config as PostgresConnectionConfig).database)
+					.map((db) => this.connectDatabase(connectionId, config as PostgresConnectionConfig, db));
+				await Promise.allSettled(activations);
+			}
+
 			this.reconnectStates.delete(connectionId);
 			this.setConnectionState(connectionId, "connected");
 			this.startHealthCheck(connectionId);
@@ -319,45 +472,72 @@ export class ConnectionManager {
 	// ── Graceful disconnect ─────────────────────────────────
 
 	private async gracefulDisconnect(connectionId: string): Promise<void> {
-		const driver = this.drivers.get(connectionId);
-		if (!driver) return;
+		const driverMap = this.drivers.get(connectionId);
+		if (!driverMap) return;
 
-		try {
-			// Rollback any open transaction
-			if (driver.inTransaction()) {
+		for (const [dbName, driver] of driverMap) {
+			try {
+				if (driver.inTransaction()) {
+					try {
+						await driver.rollback();
+					} catch {
+						// Best-effort rollback
+					}
+				}
 				try {
-					await driver.rollback();
+					await driver.cancel();
 				} catch {
-					// Best-effort rollback
+					// Best-effort cancel
+				}
+			} finally {
+				try {
+					await driver.disconnect();
+				} finally {
+					driverMap.delete(dbName);
 				}
 			}
-
-			// Cancel any running query
-			try {
-				await driver.cancel();
-			} catch {
-				// Best-effort cancel
-			}
-		} finally {
-			try {
-				await driver.disconnect();
-			} finally {
-				this.drivers.delete(connectionId);
-			}
 		}
+		this.drivers.delete(connectionId);
 	}
 
 	// ── Private helpers ─────────────────────────────────────
 
-	private async disconnectDriver(connectionId: string): Promise<void> {
-		const driver = this.drivers.get(connectionId);
-		if (driver) {
+	private async disconnectAllDrivers(connectionId: string): Promise<void> {
+		const driverMap = this.drivers.get(connectionId);
+		if (!driverMap) return;
+
+		for (const [dbName, driver] of driverMap) {
 			try {
 				await driver.disconnect();
 			} finally {
-				this.drivers.delete(connectionId);
+				driverMap.delete(dbName);
 			}
 		}
+		this.drivers.delete(connectionId);
+	}
+
+	private async connectDatabase(
+		connectionId: string,
+		baseConfig: PostgresConnectionConfig,
+		database: string,
+	): Promise<void> {
+		const driverMap = this.drivers.get(connectionId);
+		if (!driverMap) {
+			throw new Error(`No active connection for id: ${connectionId}`);
+		}
+
+		const config: PostgresConnectionConfig = { ...baseConfig, database };
+		const driver = createDriver(config);
+		await driver.connect(config);
+		driverMap.set(database, driver);
+	}
+
+	private getDefaultDatabaseName(connectionId: string): string {
+		const connInfo = this.appDb.getConnectionById(connectionId);
+		if (!connInfo) {
+			throw new Error(`Connection not found: ${connectionId}`);
+		}
+		return getDefaultDatabase(connInfo.config);
 	}
 
 	private setConnectionState(
@@ -387,7 +567,13 @@ function createDriver(config: ConnectionConfig): DatabaseDriver {
 	}
 }
 
-function validateConfig(config: ConnectionConfig): void {
+function getDefaultDatabase(config: ConnectionConfig): string {
+	if (config.type === "postgresql") return config.database;
+	if (config.type === "sqlite") return config.path;
+	throw new Error(`Unsupported connection type: ${(config as any).type}`);
+}
+
+function validateConfig(config: ConnectionConfig, allowMissingPassword = false): void {
 	if (!config || !config.type) {
 		throw new Error("Connection config must have a type");
 	}
@@ -399,7 +585,7 @@ function validateConfig(config: ConnectionConfig): void {
 			if (!config.database)
 				throw new Error("PostgreSQL database is required");
 			if (!config.user) throw new Error("PostgreSQL user is required");
-			if (config.password === undefined || config.password === null)
+			if (!allowMissingPassword && (config.password === undefined || config.password === null))
 				throw new Error("PostgreSQL password is required");
 			break;
 		}

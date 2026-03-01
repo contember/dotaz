@@ -1,7 +1,8 @@
 import type { BrowserWindow } from "electrobun/bun";
-import type { DotazRPC, ExecuteQueryParams, ApplyChangesParams, GenerateSqlParams, OpenDialogParams, SaveDialogParams, ViewListParams, SaveViewParams, UpdateViewParams, HistoryListParams } from "../shared/types/rpc";
+import type { DotazRPC, ExecuteQueryParams, ApplyChangesParams, GenerateSqlParams, OpenDialogParams, SaveDialogParams, ViewListParams, SaveViewParams, UpdateViewParams, HistoryListParams, RestoreParams } from "../shared/types/rpc";
 import type { ConnectionManager } from "./services/connection-manager";
 import type { AppDatabase } from "./storage/app-db";
+import type { EncryptionService } from "./services/encryption";
 import type { GridDataRequest } from "../shared/types/grid";
 import type { ExportOptions, ExportPreviewRequest } from "../shared/types/export";
 import { buildSelectQuery, buildCountQuery, QueryExecutor, generateChangeSql, generateChangesPreview } from "./services/query-executor";
@@ -10,11 +11,18 @@ import { exportToFile, exportPreview } from "./services/export-service";
 import { formatSql } from "./services/sql-formatter";
 import { DEFAULT_SETTINGS } from "./storage/app-db";
 
+export interface StatelessOptions {
+	stateless: boolean;
+	encryption?: EncryptionService;
+}
+
 function notImplemented(method: string): never {
 	throw new Error(`Not implemented yet: ${method}`);
 }
 
-export function createHandlers(cm: ConnectionManager, qe?: QueryExecutor, appDb?: AppDatabase, Utils?: typeof import("electrobun/bun").Utils) {
+export function createHandlers(cm: ConnectionManager, qe?: QueryExecutor, appDb?: AppDatabase, Utils?: typeof import("electrobun/bun").Utils, opts?: StatelessOptions) {
+	const stateless = opts?.stateless ?? false;
+	const encryption = opts?.encryption;
 	const queryExecutor = qe ?? new QueryExecutor(cm, undefined, appDb);
 	const txManager = new TransactionManager(cm);
 	return {
@@ -34,38 +42,49 @@ export function createHandlers(cm: ConnectionManager, qe?: QueryExecutor, appDb?
 		"connections.test": async ({ config }: { config: any }) => {
 			return cm.testConnection(config);
 		},
-		"connections.connect": async ({ connectionId }: { connectionId: string }) => {
-			await cm.connect(connectionId);
+		"connections.connect": async ({ connectionId, password }: { connectionId: string; password?: string }) => {
+			await cm.connect(connectionId, password ? { password } : undefined);
 		},
 		"connections.disconnect": async ({ connectionId }: { connectionId: string }) => {
 			await cm.disconnect(connectionId);
 		},
 
+		// ── Databases (multi-database PostgreSQL) ────────
+		"databases.list": async ({ connectionId }: { connectionId: string }) => {
+			return cm.listDatabases(connectionId);
+		},
+		"databases.activate": async ({ connectionId, database }: { connectionId: string; database: string }) => {
+			await cm.activateDatabase(connectionId, database);
+		},
+		"databases.deactivate": async ({ connectionId, database }: { connectionId: string; database: string }) => {
+			await cm.deactivateDatabase(connectionId, database);
+		},
+
 		// ── Schema ───────────────────────────────────────
-		"schema.getSchemas": async ({ connectionId }: { connectionId: string }) => {
-			const driver = cm.getDriver(connectionId);
+		"schema.getSchemas": async ({ connectionId, database }: { connectionId: string; database?: string }) => {
+			const driver = cm.getDriver(connectionId, database);
 			return driver.getSchemas();
 		},
-		"schema.getTables": async ({ connectionId, schema }: { connectionId: string; schema: string }) => {
-			const driver = cm.getDriver(connectionId);
+		"schema.getTables": async ({ connectionId, schema, database }: { connectionId: string; schema: string; database?: string }) => {
+			const driver = cm.getDriver(connectionId, database);
 			return driver.getTables(schema);
 		},
-		"schema.getColumns": async ({ connectionId, schema, table }: { connectionId: string; schema: string; table: string }) => {
-			const driver = cm.getDriver(connectionId);
+		"schema.getColumns": async ({ connectionId, schema, table, database }: { connectionId: string; schema: string; table: string; database?: string }) => {
+			const driver = cm.getDriver(connectionId, database);
 			return driver.getColumns(schema, table);
 		},
-		"schema.getIndexes": async ({ connectionId, schema, table }: { connectionId: string; schema: string; table: string }) => {
-			const driver = cm.getDriver(connectionId);
+		"schema.getIndexes": async ({ connectionId, schema, table, database }: { connectionId: string; schema: string; table: string; database?: string }) => {
+			const driver = cm.getDriver(connectionId, database);
 			return driver.getIndexes(schema, table);
 		},
-		"schema.getForeignKeys": async ({ connectionId, schema, table }: { connectionId: string; schema: string; table: string }) => {
-			const driver = cm.getDriver(connectionId);
+		"schema.getForeignKeys": async ({ connectionId, schema, table, database }: { connectionId: string; schema: string; table: string; database?: string }) => {
+			const driver = cm.getDriver(connectionId, database);
 			return driver.getForeignKeys(schema, table);
 		},
 
 		// ── Data Grid ────────────────────────────────────
 		"data.getTableData": async (req: GridDataRequest) => {
-			const driver = cm.getDriver(req.connectionId);
+			const driver = cm.getDriver(req.connectionId, req.database);
 			const { sql, params } = buildSelectQuery(
 				req.schema, req.table, req.page, req.pageSize,
 				req.sort, req.filters, driver,
@@ -94,8 +113,8 @@ export function createHandlers(cm: ConnectionManager, qe?: QueryExecutor, appDb?
 				pageSize: req.pageSize,
 			};
 		},
-		"data.getRowCount": async ({ connectionId, schema, table, filters }: { connectionId: string; schema: string; table: string; filters?: import("../shared/types/grid").ColumnFilter[] }) => {
-			const driver = cm.getDriver(connectionId);
+		"data.getRowCount": async ({ connectionId, schema, table, filters, database }: { connectionId: string; schema: string; table: string; filters?: import("../shared/types/grid").ColumnFilter[]; database?: string }) => {
+			const driver = cm.getDriver(connectionId, database);
 			const { sql, params } = buildCountQuery(schema, table, filters, driver);
 			const result = await driver.execute(sql, params);
 			return { count: Number(result.rows[0]?.count ?? 0) };
@@ -105,8 +124,8 @@ export function createHandlers(cm: ConnectionManager, qe?: QueryExecutor, appDb?
 		},
 
 		// ── Data Editing ─────────────────────────────────
-		"data.applyChanges": async ({ connectionId, changes }: ApplyChangesParams) => {
-			const driver = cm.getDriver(connectionId);
+		"data.applyChanges": async ({ connectionId, changes, database }: ApplyChangesParams) => {
+			const driver = cm.getDriver(connectionId, database);
 			const inExistingTx = driver.inTransaction();
 
 			if (!inExistingTx) {
@@ -132,15 +151,15 @@ export function createHandlers(cm: ConnectionManager, qe?: QueryExecutor, appDb?
 				throw err;
 			}
 		},
-		"data.generateSql": ({ connectionId, changes }: GenerateSqlParams) => {
-			const driver = cm.getDriver(connectionId);
+		"data.generateSql": ({ connectionId, changes, database }: GenerateSqlParams) => {
+			const driver = cm.getDriver(connectionId, database);
 			const sql = generateChangesPreview(changes, driver);
 			return { sql };
 		},
 
 		// ── Query Execution ──────────────────────────────
-		"query.execute": async ({ connectionId, sql, queryId, params }: ExecuteQueryParams) => {
-			return queryExecutor.executeQuery(connectionId, sql, params, undefined, queryId);
+		"query.execute": async ({ connectionId, sql, queryId, params, database }: ExecuteQueryParams) => {
+			return queryExecutor.executeQuery(connectionId, sql, params, undefined, queryId, database);
 		},
 		"query.cancel": async ({ queryId }: { queryId: string }) => {
 			await queryExecutor.cancelQuery(queryId);
@@ -150,22 +169,22 @@ export function createHandlers(cm: ConnectionManager, qe?: QueryExecutor, appDb?
 		},
 
 		// ── Transactions ─────────────────────────────────
-		"tx.begin": async ({ connectionId }: { connectionId: string }) => {
-			await txManager.begin(connectionId);
+		"tx.begin": async ({ connectionId, database }: { connectionId: string; database?: string }) => {
+			await txManager.begin(connectionId, database);
 		},
-		"tx.commit": async ({ connectionId }: { connectionId: string }) => {
-			await txManager.commit(connectionId);
+		"tx.commit": async ({ connectionId, database }: { connectionId: string; database?: string }) => {
+			await txManager.commit(connectionId, database);
 		},
-		"tx.rollback": async ({ connectionId }: { connectionId: string }) => {
-			await txManager.rollback(connectionId);
+		"tx.rollback": async ({ connectionId, database }: { connectionId: string; database?: string }) => {
+			await txManager.rollback(connectionId, database);
 		},
-		"tx.status": ({ connectionId }: { connectionId: string }) => {
-			return { active: txManager.isActive(connectionId) };
+		"tx.status": ({ connectionId, database }: { connectionId: string; database?: string }) => {
+			return { active: txManager.isActive(connectionId, database) };
 		},
 
 		// ── Export ────────────────────────────────────────
 		"export.exportData": async (opts: ExportOptions) => {
-			const driver = cm.getDriver(opts.connectionId);
+			const driver = cm.getDriver(opts.connectionId, opts.database);
 			const result = await exportToFile(driver, {
 				schema: opts.schema,
 				table: opts.table,
@@ -181,7 +200,7 @@ export function createHandlers(cm: ConnectionManager, qe?: QueryExecutor, appDb?
 			return { ...result, filePath: opts.filePath };
 		},
 		"export.preview": async (req: ExportPreviewRequest) => {
-			const driver = cm.getDriver(req.connectionId);
+			const driver = cm.getDriver(req.connectionId, req.database);
 			const content = await exportPreview(driver, {
 				schema: req.schema,
 				table: req.table,
@@ -260,6 +279,52 @@ export function createHandlers(cm: ConnectionManager, qe?: QueryExecutor, appDb?
 		"views.listByConnection": ({ connectionId }: { connectionId: string }) => {
 			if (!appDb) throw new Error("AppDatabase not available");
 			return appDb.listSavedViewsByConnection(connectionId);
+		},
+
+		// ── Storage (stateless mode) ─────────────────────
+		"storage.getMode": () => {
+			return { stateless };
+		},
+		"storage.restore": async (params: RestoreParams) => {
+			if (!stateless || !encryption || !appDb) return;
+
+			// Restore connections
+			for (const stored of params.connections) {
+				try {
+					const configJson = await encryption.decrypt(stored.encryptedConfig);
+					const config = JSON.parse(configJson);
+					// Insert directly into app DB with the same ID
+					appDb.db.prepare(
+						"INSERT OR REPLACE INTO connections (id, name, type, config, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+					).run(stored.id, stored.name, config.type, JSON.stringify(config), stored.createdAt, stored.updatedAt);
+				} catch {
+					// Skip connections that fail to decrypt (e.g. key changed)
+				}
+			}
+
+			// Restore settings
+			for (const [key, value] of Object.entries(params.settings)) {
+				appDb.setSetting(key, value);
+			}
+
+			// Restore history
+			for (const entry of params.history) {
+				appDb.db.prepare(
+					"INSERT OR IGNORE INTO query_history (id, connection_id, sql, status, duration_ms, row_count, error_message, executed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+				).run(entry.id, entry.connectionId, entry.sql, entry.status, entry.durationMs ?? null, entry.rowCount ?? null, entry.errorMessage ?? null, entry.executedAt);
+			}
+
+			// Restore saved views
+			for (const view of params.views) {
+				appDb.db.prepare(
+					"INSERT OR REPLACE INTO saved_views (id, connection_id, schema_name, table_name, name, config, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+				).run(view.id, view.connectionId, view.schemaName, view.tableName, view.name, JSON.stringify(view.config), view.createdAt, view.updatedAt);
+			}
+		},
+		"storage.encrypt": async ({ config }: { config: string }) => {
+			if (!encryption) throw new Error("Encryption not available");
+			const encryptedConfig = await encryption.encrypt(config);
+			return { encryptedConfig };
 		},
 
 		// ── System ────────────────────────────────────────

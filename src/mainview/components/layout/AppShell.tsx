@@ -6,6 +6,8 @@ import StatusBar from "./StatusBar";
 import Icon from "../common/Icon";
 import ConnectionTree from "../connection/ConnectionTree";
 import ConnectionDialog from "../connection/ConnectionDialog";
+import DatabasePicker from "../connection/DatabasePicker";
+import PasswordDialog from "../connection/PasswordDialog";
 import QueryHistory from "../history/QueryHistory";
 import CommandPalette from "../common/CommandPalette";
 import ToastContainer from "../common/Toast";
@@ -24,6 +26,7 @@ import { friendlyErrorMessage, messages } from "../../lib/rpc";
 import { commandRegistry } from "../../lib/commands";
 import { keyboardManager } from "../../lib/keyboard";
 import type { ShortcutContext } from "../../lib/keyboard";
+import { detectMode } from "../../lib/mode";
 import "./AppShell.css";
 
 // Clean up grid/editor state when tabs are closed to prevent memory leaks
@@ -41,6 +44,8 @@ export default function AppShell() {
 	const [sidebarCollapsed, setSidebarCollapsed] = createSignal(false);
 	const [dialogOpen, setDialogOpen] = createSignal(false);
 	const [connectionToEdit, setConnectionToEdit] = createSignal<ConnectionInfo | null>(null);
+	const [dbPickerOpen, setDbPickerOpen] = createSignal(false);
+	const [dbPickerConnection, setDbPickerConnection] = createSignal<ConnectionInfo | null>(null);
 	const [historyOpen, setHistoryOpen] = createSignal(false);
 	const [paletteOpen, setPaletteOpen] = createSignal(false);
 
@@ -62,6 +67,11 @@ export default function AppShell() {
 		setDialogOpen(true);
 	}
 
+	function openManageDatabases(conn: ConnectionInfo) {
+		setDbPickerConnection(conn);
+		setDbPickerOpen(true);
+	}
+
 	let removeMenuListener: (() => void) | undefined;
 	let removeResizeListener: (() => void) | undefined;
 
@@ -75,8 +85,9 @@ export default function AppShell() {
 				type: "sql-console",
 				title: sourceTab.title,
 				connectionId: sourceTab.connectionId,
+				database: sourceTab.database,
 			});
-			editorStore.initTab(newTabId, sourceTab.connectionId);
+			editorStore.initTab(newTabId, sourceTab.connectionId, sourceTab.database);
 			if (editorTab?.content) {
 				editorStore.setContent(newTabId, editorTab.content);
 			}
@@ -87,6 +98,7 @@ export default function AppShell() {
 				connectionId: sourceTab.connectionId,
 				schema: sourceTab.schema,
 				table: sourceTab.table,
+				database: sourceTab.database,
 			});
 		} else if (sourceTab.type === "schema-viewer") {
 			tabsStore.openTab({
@@ -95,6 +107,7 @@ export default function AppShell() {
 				connectionId: sourceTab.connectionId,
 				schema: sourceTab.schema,
 				table: sourceTab.table,
+				database: sourceTab.database,
 			});
 		}
 	}
@@ -110,7 +123,8 @@ export default function AppShell() {
 		uiStore.addToast("error", friendlyErrorMessage(event.reason));
 	}
 
-	onMount(() => {
+	onMount(async () => {
+		await detectMode();
 		connectionsStore.loadConnections();
 		registerCommands();
 		registerShortcuts();
@@ -519,7 +533,7 @@ export default function AppShell() {
 					onToggleCollapse={toggleCollapse}
 					onAdd={openAddConnectionDialog}
 				>
-					<ConnectionTree onAddConnection={openAddConnectionDialog} onEditConnection={openEditConnectionDialog} />
+					<ConnectionTree onAddConnection={openAddConnectionDialog} onEditConnection={openEditConnectionDialog} onManageDatabases={openManageDatabases} />
 				</Sidebar>
 
 				<Show when={!sidebarCollapsed()}>
@@ -556,6 +570,7 @@ export default function AppShell() {
 											connectionId={tab.connectionId}
 											schema={tab.schema!}
 											table={tab.table!}
+											database={tab.database}
 										/>
 									</Match>
 									<Match when={tab.type === "sql-console"}>
@@ -563,11 +578,13 @@ export default function AppShell() {
 											<QueryToolbar
 												tabId={tab.id}
 												connectionId={tab.connectionId}
+												database={tab.database}
 												onOpenHistory={() => setHistoryOpen(true)}
 											/>
 											<SqlEditor
 												tabId={tab.id}
 												connectionId={tab.connectionId}
+												database={tab.database}
 											/>
 											<SqlResultPanel
 												tabId={tab.id}
@@ -581,6 +598,7 @@ export default function AppShell() {
 											connectionId={tab.connectionId}
 											schema={tab.schema!}
 											table={tab.table!}
+											database={tab.database}
 										/>
 									</Match>
 								</Switch>
@@ -594,7 +612,9 @@ export default function AppShell() {
 			connectionName={(() => {
 				const tab = tabsStore.activeTab;
 				if (!tab) return undefined;
-				return connectionsStore.connections.find(c => c.id === tab.connectionId)?.name;
+				const conn = connectionsStore.connections.find(c => c.id === tab.connectionId);
+				if (!conn) return undefined;
+				return tab.database ? `${conn.name} / ${tab.database}` : conn.name;
 			})()}
 			connectionStatus={(() => {
 				const tab = tabsStore.activeTab;
@@ -621,6 +641,14 @@ export default function AppShell() {
 				connection={connectionToEdit()}
 				onClose={() => setDialogOpen(false)}
 			/>
+
+			<DatabasePicker
+				open={dbPickerOpen()}
+				connection={dbPickerConnection()}
+				onClose={() => setDbPickerOpen(false)}
+			/>
+
+			<PasswordDialog />
 
 			<QueryHistory
 				open={historyOpen()}

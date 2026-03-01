@@ -12,6 +12,7 @@ interface SchemaViewerProps {
 	connectionId: string;
 	schema: string;
 	table: string;
+	database?: string;
 }
 
 export default function SchemaViewer(props: SchemaViewerProps) {
@@ -24,9 +25,9 @@ export default function SchemaViewer(props: SchemaViewerProps) {
 	onMount(async () => {
 		try {
 			const [cols, idxs, fks] = await Promise.all([
-				rpc.schema.getColumns(props.connectionId, props.schema, props.table),
-				rpc.schema.getIndexes(props.connectionId, props.schema, props.table),
-				rpc.schema.getForeignKeys(props.connectionId, props.schema, props.table),
+				rpc.schema.getColumns(props.connectionId, props.schema, props.table, props.database),
+				rpc.schema.getIndexes(props.connectionId, props.schema, props.table, props.database),
+				rpc.schema.getForeignKeys(props.connectionId, props.schema, props.table, props.database),
 			]);
 			setColumns(cols);
 			setIndexes(idxs);

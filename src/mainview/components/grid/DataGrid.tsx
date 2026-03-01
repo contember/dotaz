@@ -28,6 +28,7 @@ interface DataGridProps {
 	connectionId: string;
 	schema: string;
 	table: string;
+	database?: string;
 }
 
 const HEADER_HEIGHT = 34; // 32px height + 2px border
@@ -145,7 +146,7 @@ export default function DataGrid(props: DataGridProps) {
 	onMount(async () => {
 		const existing = gridStore.getTab(props.tabId);
 		if (!existing || existing.columns.length === 0) {
-			await gridStore.loadTableData(props.tabId, props.connectionId, props.schema, props.table);
+			await gridStore.loadTableData(props.tabId, props.connectionId, props.schema, props.table, props.database);
 		}
 
 		// Apply saved view config if this tab was opened for a specific view
@@ -177,6 +178,7 @@ export default function DataGrid(props: DataGridProps) {
 				props.connectionId,
 				schema,
 				table,
+				props.database,
 			);
 			setForeignKeys(fks);
 			const fkCols = new Set<string>();
@@ -699,6 +701,7 @@ export default function DataGrid(props: DataGridProps) {
 						connectionId: props.connectionId,
 						schema: fkTarget.schema,
 						table: fkTarget.table,
+						database: props.database,
 					});
 				},
 			});
@@ -883,6 +886,7 @@ export default function DataGrid(props: DataGridProps) {
 										connectionId: props.connectionId,
 										schema: currentSchema(),
 										table: currentTable(),
+										database: props.database,
 									});
 								}}
 								title="View table schema"
@@ -981,6 +985,7 @@ export default function DataGrid(props: DataGridProps) {
 							<PendingChanges
 								tabId={props.tabId}
 								connectionId={props.connectionId}
+								database={props.database}
 								onApplied={handleChangesApplied}
 							/>
 						</Show>
@@ -1060,6 +1065,7 @@ export default function DataGrid(props: DataGridProps) {
 				connectionId={props.connectionId}
 				schema={currentSchema()}
 				table={currentTable()}
+				database={props.database}
 				onClose={() => setExportOpen(false)}
 			/>
 

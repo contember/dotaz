@@ -10,6 +10,8 @@ export interface TabInfo {
 	/** Schema and table for data-grid and schema-viewer tabs */
 	schema?: string;
 	table?: string;
+	/** Database name (for multi-database PostgreSQL connections) */
+	database?: string;
 	/** Whether the tab has unsaved changes */
 	dirty?: boolean;
 	/** Associated saved view ID (if this tab is showing a saved view) */

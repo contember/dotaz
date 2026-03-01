@@ -1036,4 +1036,117 @@ describe("RPC Handlers", () => {
 			expect(result.rows[0].name).toBe("updated");
 		});
 	});
+
+	// ── databases.* ─────────────────────────────────────
+
+	describe("databases.*", () => {
+		test("databases.list rejects SQLite connections", async () => {
+			const conn = handlers["connections.create"]({
+				name: "SQLite DB Test",
+				config: sqliteConfig,
+			});
+			await handlers["connections.connect"]({ connectionId: conn.id });
+
+			await expect(
+				handlers["databases.list"]({ connectionId: conn.id }),
+			).rejects.toThrow("only supported for PostgreSQL");
+		});
+
+		test("databases.activate rejects SQLite connections", async () => {
+			const conn = handlers["connections.create"]({
+				name: "SQLite DB Test",
+				config: sqliteConfig,
+			});
+			await handlers["connections.connect"]({ connectionId: conn.id });
+
+			await expect(
+				handlers["databases.activate"]({ connectionId: conn.id, database: "other" }),
+			).rejects.toThrow("only supported for PostgreSQL");
+		});
+
+		test("databases.deactivate rejects SQLite connections", async () => {
+			const conn = handlers["connections.create"]({
+				name: "SQLite DB Test",
+				config: sqliteConfig,
+			});
+			await handlers["connections.connect"]({ connectionId: conn.id });
+
+			await expect(
+				handlers["databases.deactivate"]({ connectionId: conn.id, database: "other" }),
+			).rejects.toThrow("only supported for PostgreSQL");
+		});
+	});
+
+	// ── database param backward compatibility ────────────
+
+	describe("database param backward compatibility", () => {
+		let connectionId: string;
+
+		beforeEach(async () => {
+			const conn = handlers["connections.create"]({
+				name: "SQLite Compat Test",
+				config: sqliteConfig,
+			});
+			connectionId = conn.id;
+			await handlers["connections.connect"]({ connectionId });
+
+			const driver = cm.getDriver(connectionId);
+			await driver.execute(
+				"CREATE TABLE compat_test (id INTEGER PRIMARY KEY, name TEXT)",
+			);
+			await driver.execute("INSERT INTO compat_test (name) VALUES ('test')");
+		});
+
+		test("schema.getSchemas works without database param", async () => {
+			const schemas = await handlers["schema.getSchemas"]({ connectionId });
+			expect(schemas).toBeInstanceOf(Array);
+			expect(schemas.length).toBeGreaterThan(0);
+		});
+
+		test("schema.getTables works without database param", async () => {
+			const schemas = await handlers["schema.getSchemas"]({ connectionId });
+			const tables = await handlers["schema.getTables"]({
+				connectionId,
+				schema: schemas[0].name,
+			});
+			expect(tables).toBeInstanceOf(Array);
+		});
+
+		test("schema.getColumns works without database param", async () => {
+			const columns = await handlers["schema.getColumns"]({
+				connectionId,
+				schema: "main",
+				table: "compat_test",
+			});
+			expect(columns).toHaveLength(2);
+		});
+
+		test("data.getTableData works without database param", async () => {
+			const result = await handlers["data.getTableData"]({
+				connectionId,
+				schema: "main",
+				table: "compat_test",
+				page: 1,
+				pageSize: 10,
+			});
+			expect(result.rows).toHaveLength(1);
+		});
+
+		test("query.execute works without database param", async () => {
+			const results = await handlers["query.execute"]({
+				connectionId,
+				sql: "SELECT * FROM compat_test",
+				queryId: "compat-1",
+			});
+			expect(results).toHaveLength(1);
+			expect(results[0].rows).toHaveLength(1);
+		});
+
+		test("tx.begin/status/commit work without database param", async () => {
+			await handlers["tx.begin"]({ connectionId });
+			const status = handlers["tx.status"]({ connectionId });
+			expect(status.active).toBe(true);
+			await handlers["tx.commit"]({ connectionId });
+		});
+	});
 });

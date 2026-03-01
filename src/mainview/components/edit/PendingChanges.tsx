@@ -8,6 +8,7 @@ import "./PendingChanges.css";
 interface PendingChangesProps {
 	tabId: string;
 	connectionId: string;
+	database?: string;
 	onApplied: () => void;
 }
 
@@ -139,7 +140,7 @@ export default function PendingChanges(props: PendingChangesProps) {
 		setApplying(true);
 		setError(null);
 		try {
-			await rpc.data.applyChanges(props.connectionId, changes);
+			await rpc.data.applyChanges(props.connectionId, changes, props.database);
 			gridStore.revertChanges(props.tabId);
 			setPreviewSql(null);
 			props.onApplied();
@@ -155,7 +156,7 @@ export default function PendingChanges(props: PendingChangesProps) {
 		if (changes.length === 0) return;
 
 		try {
-			const result = await rpc.data.generateSql(props.connectionId, changes);
+			const result = await rpc.data.generateSql(props.connectionId, changes, props.database);
 			setPreviewSql(result.sql);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : String(err));

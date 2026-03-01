@@ -50,6 +50,7 @@ export interface PendingChanges {
 export interface FkNavigationEntry {
 	schema: string;
 	table: string;
+	database?: string;
 	filters: ColumnFilter[];
 	sort: SortColumn[];
 	columnConfig: Record<string, ColumnConfig>;
@@ -67,6 +68,7 @@ export interface TabGridState {
 	connectionId: string;
 	schema: string;
 	table: string;
+	database?: string;
 	columns: GridColumnDef[];
 	rows: Record<string, unknown>[];
 	totalCount: number;
@@ -99,11 +101,13 @@ function createDefaultTabState(
 	connectionId: string,
 	schema: string,
 	table: string,
+	database?: string,
 ): TabGridState {
 	return {
 		connectionId,
 		schema,
 		table,
+		database,
 		columns: [],
 		rows: [],
 		totalCount: 0,
@@ -168,6 +172,7 @@ async function fetchData(tabId: string) {
 			pageSize: tab.pageSize,
 			sort: tab.sort.length > 0 ? tab.sort : undefined,
 			filters: tab.filters.length > 0 ? tab.filters : undefined,
+			database: tab.database,
 		});
 
 		// Ignore stale responses — a newer request has been issued
@@ -201,9 +206,10 @@ async function loadTableData(
 	connectionId: string,
 	schema: string,
 	table: string,
+	database?: string,
 ) {
 	if (!getTab(tabId)) {
-		setState("tabs", tabId, createDefaultTabState(connectionId, schema, table));
+		setState("tabs", tabId, createDefaultTabState(connectionId, schema, table, database));
 	}
 	await fetchData(tabId);
 }
@@ -940,6 +946,7 @@ async function navigateToFkTarget(
 	const entry: FkNavigationEntry = {
 		schema: tab.schema,
 		table: tab.table,
+		database: tab.database,
 		filters: [...tab.filters],
 		sort: [...tab.sort],
 		columnConfig: { ...tab.columnConfig },
@@ -978,6 +985,7 @@ async function navigateBack(tabId: string) {
 	// Restore previous state
 	setState("tabs", tabId, "schema", entry.schema);
 	setState("tabs", tabId, "table", entry.table);
+	setState("tabs", tabId, "database", entry.database);
 	setState("tabs", tabId, "filters", entry.filters);
 	setState("tabs", tabId, "sort", entry.sort);
 	setState("tabs", tabId, "columnConfig", entry.columnConfig);

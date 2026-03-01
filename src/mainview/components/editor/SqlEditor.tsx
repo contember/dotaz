@@ -13,6 +13,7 @@ import "./SqlEditor.css";
 interface SqlEditorProps {
 	tabId: string;
 	connectionId: string;
+	database?: string;
 }
 
 const MIN_EDITOR_HEIGHT = 60;
@@ -126,8 +127,9 @@ function isSqliteConnection(connectionId: string): boolean {
 
 async function buildSchemaSpec(
 	connectionId: string,
+	database?: string,
 ): Promise<Record<string, readonly string[]>> {
-	const tree = connectionsStore.getSchemaTree(connectionId);
+	const tree = connectionsStore.getSchemaTree(connectionId, database);
 	if (!tree) return {};
 
 	const sqlite = isSqliteConnection(connectionId);
@@ -140,7 +142,7 @@ async function buildSchemaSpec(
 		for (const table of tables) {
 			fetchPromises.push(
 				rpc.schema
-					.getColumns(connectionId, schema.name, table.name)
+					.getColumns(connectionId, schema.name, table.name, database)
 					.then((columns) => {
 						const key = sqlite
 							? table.name
@@ -257,14 +259,14 @@ export default function SqlEditor(props: SqlEditorProps) {
 	let schemaVersion = 0;
 	createEffect(() => {
 		// Access schema tree reactively — triggers when it changes
-		const tree = connectionsStore.getSchemaTree(props.connectionId);
+		const tree = connectionsStore.getSchemaTree(props.connectionId, props.database);
 		if (!tree || !editorView) return;
 
 		const version = ++schemaVersion;
 		const dialect = getDialect(props.connectionId);
 		const sqlite = isSqliteConnection(props.connectionId);
 
-		buildSchemaSpec(props.connectionId).then((schema) => {
+		buildSchemaSpec(props.connectionId, props.database).then((schema) => {
 			// Guard against stale results from earlier schema tree versions
 			if (version !== schemaVersion || !editorView) return;
 

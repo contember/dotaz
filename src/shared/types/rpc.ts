@@ -5,6 +5,7 @@ import type { RPCSchema } from "electrobun/bun";
 import type { ConnectionConfig, ConnectionInfo, ConnectionState } from "./connection";
 import type {
 	ColumnInfo,
+	DatabaseInfo,
 	ForeignKeyInfo,
 	IndexInfo,
 	SchemaInfo,
@@ -33,17 +34,20 @@ export interface UpdateConnectionParams {
 
 export interface ConnectionIdParams {
 	connectionId: string;
+	database?: string;
 }
 
 export interface SchemaParams {
 	connectionId: string;
 	schema: string;
+	database?: string;
 }
 
 export interface TableParams {
 	connectionId: string;
 	schema: string;
 	table: string;
+	database?: string;
 }
 
 export interface ExecuteQueryParams {
@@ -51,6 +55,7 @@ export interface ExecuteQueryParams {
 	sql: string;
 	queryId: string;
 	params?: unknown[];
+	database?: string;
 }
 
 export interface FormatSqlParams {
@@ -66,6 +71,7 @@ export interface ColumnStatsParams {
 	schema: string;
 	table: string;
 	column: string;
+	database?: string;
 }
 
 export interface ColumnStatsResult {
@@ -87,6 +93,7 @@ export interface DataChange {
 export interface ApplyChangesParams {
 	connectionId: string;
 	changes: DataChange[];
+	database?: string;
 }
 
 export interface ApplyChangesResult {
@@ -96,6 +103,7 @@ export interface ApplyChangesResult {
 export interface GenerateSqlParams {
 	connectionId: string;
 	changes: DataChange[];
+	database?: string;
 }
 
 export interface GenerateSqlResult {
@@ -168,6 +176,24 @@ export interface SettingsSetParams {
 	value: string;
 }
 
+// ---- Stateless mode types ----
+
+export interface StoredConnection {
+	id: string;
+	name: string;
+	encryptedConfig: string;
+	rememberPassword: boolean;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface RestoreParams {
+	connections: StoredConnection[];
+	settings: Record<string, string>;
+	history: QueryHistoryEntry[];
+	views: SavedView[];
+}
+
 // ---- Main RPC schema ----
 
 export type DotazRPC = {
@@ -195,11 +221,25 @@ export type DotazRPC = {
 				response: { success: boolean; error?: string };
 			};
 			"connections.connect": {
-				params: ConnectionIdParams;
+				params: ConnectionIdParams & { password?: string };
 				response: void;
 			};
 			"connections.disconnect": {
 				params: ConnectionIdParams;
+				response: void;
+			};
+
+			// Databases (multi-database PostgreSQL)
+			"databases.list": {
+				params: ConnectionIdParams;
+				response: DatabaseInfo[];
+			};
+			"databases.activate": {
+				params: ConnectionIdParams & { database: string };
+				response: void;
+			};
+			"databases.deactivate": {
+				params: ConnectionIdParams & { database: string };
 				response: void;
 			};
 
@@ -343,6 +383,20 @@ export type DotazRPC = {
 			"settings.getAll": {
 				params: {};
 				response: Record<string, string>;
+			};
+
+			// Storage (stateless mode)
+			"storage.getMode": {
+				params: {};
+				response: { stateless: boolean };
+			};
+			"storage.restore": {
+				params: RestoreParams;
+				response: void;
+			};
+			"storage.encrypt": {
+				params: { config: string };
+				response: { encryptedConfig: string };
 			};
 		};
 		messages: {

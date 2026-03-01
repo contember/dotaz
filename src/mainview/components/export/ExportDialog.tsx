@@ -19,6 +19,7 @@ interface ExportDialogProps {
 	connectionId: string;
 	schema: string;
 	table: string;
+	database?: string;
 	onClose: () => void;
 }
 
@@ -155,6 +156,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 				delimiter: format() === "csv" ? delimiter() : undefined,
 				filters: getExportFilters(),
 				sort: getExportSort(),
+				database: props.database,
 			};
 
 			const result = await rpc.export.preview(params);
@@ -195,6 +197,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 				batchSize: format() === "sql" ? batchSize() : undefined,
 				filters: getExportFilters(),
 				sort: getExportSort(),
+				database: props.database,
 			});
 
 			setExportResult(result);
