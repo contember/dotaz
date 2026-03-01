@@ -34,10 +34,10 @@ export default defineConfig(({ mode }) => ({
 		emptyOutDir: true,
 	},
 	server: {
-		port: 5173,
+		port: mode === "web" ? 4201 : 5173,
 		strictPort: true,
 		proxy: mode === "web"
-			? { "/rpc": { target: "ws://localhost:3000", ws: true } }
+			? { "/rpc": { target: "ws://localhost:4200", ws: true } }
 			: undefined,
 	},
 }));

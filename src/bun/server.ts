@@ -7,7 +7,7 @@ import { AppDatabase, setDefaultDbPath } from "./storage/app-db";
 import { ConnectionManager } from "./services/connection-manager";
 import { createHandlers } from "./rpc-handlers";
 
-const PORT = Number(process.env.DOTAZ_PORT) || 3000;
+const PORT = Number(process.env.DOTAZ_PORT) || 4200;
 const DB_PATH = process.env.DOTAZ_DB_PATH || "./dotaz.db";
 const DIST_DIR = resolve(import.meta.dir, "../../dist");
 
