@@ -4,3 +4,6 @@ build/
 artifacts/
 .claude/
 .data/
+
+# Seed demo databases
+scripts/seed/*.db

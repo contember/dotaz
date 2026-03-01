@@ -15,7 +15,9 @@
 		"typecheck": "bunx tsc --noEmit",
 		"dev:web": "concurrently \"bun --watch src/bun/server.ts\" \"vite --mode web\"",
 		"build:web": "vite build --mode web",
-		"start:web": "bun src/bun/server.ts"
+		"start:web": "bun src/bun/server.ts",
+		"seed:sqlite": "bun scripts/seed/seed-sqlite.ts",
+		"seed:postgres": "bun scripts/seed/seed-postgres.ts"
 	},
 	"dependencies": {
 		"@codemirror/lang-sql": "^6.8.0",
@@ -28,6 +30,7 @@
 		"simple-icons": "^16.10.0"
 	},
 	"devDependencies": {
+		"@faker-js/faker": "^10.3.0",
 		"@types/bun": "latest",
 		"concurrently": "^9.1.0",
 		"solid-js": "^1.9.3",
