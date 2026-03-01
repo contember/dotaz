@@ -21,6 +21,7 @@
 
 .export-dialog__format-group {
 	display: flex;
+	flex-wrap: wrap;
 	border: 1px solid var(--edge-strong);
 	border-radius: var(--radius-sm);
 	overflow: hidden;
@@ -258,6 +259,14 @@
 .export-dialog__error {
 	font-size: var(--font-size-sm);
 	color: var(--error);
+}
+
+/* Note */
+
+.export-dialog__note {
+	font-size: var(--font-size-xs);
+	color: var(--ink-muted);
+	font-style: italic;
 }
 
 /* Info */

@@ -2,7 +2,7 @@
 
 import type { ColumnFilter, SortColumn } from "./grid";
 
-export type ExportFormat = "csv" | "json" | "sql";
+export type ExportFormat = "csv" | "json" | "sql" | "markdown" | "sql_update" | "html" | "xml";
 
 export type CsvDelimiter = "," | ";" | "\t";
 

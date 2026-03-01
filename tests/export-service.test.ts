@@ -573,3 +573,232 @@ describe("empty dataset", () => {
 		expect(parsed).toEqual([]);
 	});
 });
+
+// ── Markdown Export ────────────────────────────────────────
+
+describe("Markdown export", () => {
+	test("generates valid Markdown table with header and separator", async () => {
+		const driver = mockDriverBatched(sampleRows);
+		const filePath = join(tmpDir, "test.md");
+
+		const result = await exportToFile(driver, { ...baseParams, format: "markdown" }, filePath);
+
+		expect(result.rowCount).toBe(3);
+		const content = await Bun.file(filePath).text();
+		const lines = content.trim().split("\n");
+		expect(lines[0]).toBe("| id | name | age |");
+		expect(lines[1]).toBe("| --- | --- | --- |");
+		expect(lines[2]).toBe("| 1 | Alice | 30 |");
+		expect(lines[3]).toBe("| 2 | Bob | 25 |");
+		expect(lines[4]).toBe("| 3 | Charlie | NULL |");
+	});
+
+	test("escapes pipe characters in values", async () => {
+		const rows = [{ id: 1, name: "foo|bar" }];
+		const driver = mockDriverBatched(rows);
+		const filePath = join(tmpDir, "test.md");
+
+		await exportToFile(driver, { ...baseParams, format: "markdown" }, filePath);
+
+		const content = await Bun.file(filePath).text();
+		expect(content).toContain("foo\\|bar");
+	});
+
+	test("replaces newlines with spaces in values", async () => {
+		const rows = [{ id: 1, name: "Line1\nLine2" }];
+		const driver = mockDriverBatched(rows);
+		const filePath = join(tmpDir, "test.md");
+
+		await exportToFile(driver, { ...baseParams, format: "markdown" }, filePath);
+
+		const content = await Bun.file(filePath).text();
+		expect(content).toContain("Line1 Line2");
+	});
+
+	test("handles empty dataset", async () => {
+		const driver = mockDriverBatched([]);
+		const filePath = join(tmpDir, "test.md");
+
+		const result = await exportToFile(driver, { ...baseParams, format: "markdown" }, filePath);
+		expect(result.rowCount).toBe(0);
+	});
+
+	test("preview returns Markdown", async () => {
+		const driver = mockDriver(sampleRows);
+		const content = await exportPreview(driver, { ...baseParams, format: "markdown", limit: 10 });
+
+		expect(content).toContain("| id | name | age |");
+		expect(content).toContain("| --- | --- | --- |");
+		expect(content).toContain("| 1 | Alice | 30 |");
+	});
+});
+
+// ── SQL UPDATE Export ──────────────────────────────────────
+
+describe("SQL UPDATE export", () => {
+	test("generates UPDATE statements with first column as PK", async () => {
+		const driver = mockDriverBatched(sampleRows);
+		const filePath = join(tmpDir, "test.sql");
+
+		const result = await exportToFile(driver, { ...baseParams, format: "sql_update" }, filePath);
+
+		expect(result.rowCount).toBe(3);
+		const content = await Bun.file(filePath).text();
+		expect(content).toContain('UPDATE "public"."users" SET "name" = \'Alice\', "age" = 30 WHERE "id" = 1;');
+		expect(content).toContain('UPDATE "public"."users" SET "name" = \'Bob\', "age" = 25 WHERE "id" = 2;');
+		expect(content).toContain('UPDATE "public"."users" SET "name" = \'Charlie\', "age" = NULL WHERE "id" = 3;');
+	});
+
+	test("escapes single quotes in values", async () => {
+		const rows = [{ id: 1, name: "O'Brien" }];
+		const driver = mockDriverBatched(rows);
+		const filePath = join(tmpDir, "test.sql");
+
+		await exportToFile(driver, { ...baseParams, format: "sql_update" }, filePath);
+
+		const content = await Bun.file(filePath).text();
+		expect(content).toContain("'O''Brien'");
+	});
+
+	test("SQLite main schema omits schema qualification", async () => {
+		const driver = mockDriverBatched(sampleRows, "sqlite");
+		const filePath = join(tmpDir, "test.sql");
+
+		await exportToFile(driver, { ...baseParams, format: "sql_update", schema: "main" }, filePath);
+
+		const content = await Bun.file(filePath).text();
+		expect(content).toContain('UPDATE "users" SET');
+		expect(content).not.toContain('"main"');
+	});
+
+	test("preview returns SQL UPDATE", async () => {
+		const driver = mockDriver(sampleRows);
+		const content = await exportPreview(driver, { ...baseParams, format: "sql_update", limit: 10 });
+
+		expect(content).toContain("UPDATE");
+		expect(content).toContain("SET");
+		expect(content).toContain("WHERE");
+	});
+});
+
+// ── HTML Export ────────────────────────────────────────────
+
+describe("HTML export", () => {
+	test("generates valid HTML table", async () => {
+		const driver = mockDriverBatched(sampleRows);
+		const filePath = join(tmpDir, "test.html");
+
+		const result = await exportToFile(driver, { ...baseParams, format: "html" }, filePath);
+
+		expect(result.rowCount).toBe(3);
+		const content = await Bun.file(filePath).text();
+		expect(content).toContain("<table>");
+		expect(content).toContain("</table>");
+		expect(content).toContain("<thead>");
+		expect(content).toContain("<th>id</th>");
+		expect(content).toContain("<th>name</th>");
+		expect(content).toContain("<th>age</th>");
+		expect(content).toContain("<tbody>");
+		expect(content).toContain("<td>Alice</td>");
+		expect(content).toContain("<td>30</td>");
+		expect(content).toContain("<td></td>"); // null renders as empty
+	});
+
+	test("escapes HTML special characters", async () => {
+		const rows = [{ id: 1, name: '<script>alert("xss")</script>' }];
+		const driver = mockDriverBatched(rows);
+		const filePath = join(tmpDir, "test.html");
+
+		await exportToFile(driver, { ...baseParams, format: "html" }, filePath);
+
+		const content = await Bun.file(filePath).text();
+		expect(content).not.toContain("<script>");
+		expect(content).toContain("&lt;script&gt;");
+		expect(content).toContain("&quot;xss&quot;");
+	});
+
+	test("handles empty dataset", async () => {
+		const driver = mockDriverBatched([]);
+		const filePath = join(tmpDir, "test.html");
+
+		await exportToFile(driver, { ...baseParams, format: "html" }, filePath);
+
+		const content = await Bun.file(filePath).text();
+		expect(content).toContain("<table>");
+		expect(content).toContain("</table>");
+	});
+
+	test("preview returns HTML", async () => {
+		const driver = mockDriver(sampleRows);
+		const content = await exportPreview(driver, { ...baseParams, format: "html", limit: 10 });
+
+		expect(content).toContain("<table>");
+		expect(content).toContain("<th>id</th>");
+		expect(content).toContain("<td>Alice</td>");
+	});
+});
+
+// ── XML Export ─────────────────────────────────────────────
+
+describe("XML export", () => {
+	test("generates valid XML", async () => {
+		const driver = mockDriverBatched(sampleRows);
+		const filePath = join(tmpDir, "test.xml");
+
+		const result = await exportToFile(driver, { ...baseParams, format: "xml" }, filePath);
+
+		expect(result.rowCount).toBe(3);
+		const content = await Bun.file(filePath).text();
+		expect(content).toContain('<?xml version="1.0" encoding="UTF-8"?>');
+		expect(content).toContain("<rows>");
+		expect(content).toContain("</rows>");
+		expect(content).toContain("<row>");
+		expect(content).toContain("<id>1</id>");
+		expect(content).toContain("<name>Alice</name>");
+		expect(content).toContain("<age>30</age>");
+		expect(content).toContain('xsi:nil="true"'); // null values
+	});
+
+	test("escapes XML special characters", async () => {
+		const rows = [{ id: 1, name: "Tom & Jerry <3>" }];
+		const driver = mockDriverBatched(rows);
+		const filePath = join(tmpDir, "test.xml");
+
+		await exportToFile(driver, { ...baseParams, format: "xml" }, filePath);
+
+		const content = await Bun.file(filePath).text();
+		expect(content).toContain("Tom &amp; Jerry &lt;3&gt;");
+	});
+
+	test("sanitizes column names for XML tags", async () => {
+		const rows = [{ "123bad": "val", "good_name": "ok" }];
+		const driver = mockDriverBatched(rows);
+		const filePath = join(tmpDir, "test.xml");
+
+		await exportToFile(driver, { ...baseParams, format: "xml" }, filePath);
+
+		const content = await Bun.file(filePath).text();
+		// Column starting with digit should get underscore prefix
+		expect(content).toContain("<_123bad>");
+		expect(content).toContain("<good_name>");
+	});
+
+	test("handles empty dataset", async () => {
+		const driver = mockDriverBatched([]);
+		const filePath = join(tmpDir, "test.xml");
+
+		await exportToFile(driver, { ...baseParams, format: "xml" }, filePath);
+
+		const content = await Bun.file(filePath).text();
+		expect(content).toContain("<rows>");
+		expect(content).toContain("</rows>");
+	});
+
+	test("preview returns XML", async () => {
+		const driver = mockDriver(sampleRows);
+		const content = await exportPreview(driver, { ...baseParams, format: "xml", limit: 10 });
+
+		expect(content).toContain('<?xml version="1.0"');
+		expect(content).toContain("<id>1</id>");
+	});
+});

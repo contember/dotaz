@@ -29,6 +29,10 @@ const FORMAT_LABELS: Record<ExportFormat, string> = {
 	csv: "CSV",
 	json: "JSON",
 	sql: "SQL INSERT",
+	markdown: "Markdown",
+	sql_update: "SQL UPDATE",
+	html: "HTML",
+	xml: "XML",
 };
 
 const ENCODING_LABELS: Record<CsvEncoding, string> = {
@@ -47,6 +51,10 @@ const FILE_EXTENSIONS: Record<ExportFormat, string> = {
 	csv: "csv",
 	json: "json",
 	sql: "sql",
+	markdown: "md",
+	sql_update: "sql",
+	html: "html",
+	xml: "xml",
 };
 
 export default function ExportDialog(props: ExportDialogProps) {
@@ -367,6 +375,14 @@ export default function ExportDialog(props: ExportDialogProps) {
 									}}
 								/>
 							</div>
+						</div>
+					</div>
+				</Show>
+
+				<Show when={format() === "sql_update"}>
+					<div class="export-dialog__section">
+						<div class="export-dialog__note">
+							Uses the first column as the primary key for the WHERE clause.
 						</div>
 					</div>
 				</Show>

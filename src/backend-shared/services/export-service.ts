@@ -202,6 +202,14 @@ function createFormatter(params: ExportParams, driver: DatabaseDriver): Formatte
 			return new SqlInsertFormatter(
 				params.schema, params.table, driver, params.batchSize ?? 100,
 			);
+		case "markdown":
+			return new MarkdownFormatter();
+		case "sql_update":
+			return new SqlUpdateFormatter(params.schema, params.table, driver);
+		case "html":
+			return new HtmlFormatter();
+		case "xml":
+			return new XmlFormatter();
 	}
 }
 
@@ -346,6 +354,224 @@ function formatSqlValue(value: unknown): string {
 	if (typeof value === "string") return `'${value.replace(/'/g, "''")}'`;
 	if (typeof value === "object") return `'${JSON.stringify(value).replace(/'/g, "''")}'`;
 	return String(value);
+}
+
+// ── Markdown ───────────────────────────────────────────────
+
+class MarkdownFormatter implements Formatter {
+	private columns: string[] | null = null;
+
+	preamble(): string {
+		return "";
+	}
+
+	formatBatch(rows: Record<string, unknown>[], isFirst: boolean): string {
+		if (rows.length === 0) return "";
+
+		if (!this.columns) {
+			this.columns = collectAllColumns(rows);
+		}
+		const columns = this.columns;
+		const lines: string[] = [];
+
+		if (isFirst) {
+			lines.push("| " + columns.map(escapeMarkdownCell).join(" | ") + " |");
+			lines.push("| " + columns.map(() => "---").join(" | ") + " |");
+		}
+
+		for (const row of rows) {
+			const cells = columns.map((col) => escapeMarkdownCell(formatMarkdownValue(row[col])));
+			lines.push("| " + cells.join(" | ") + " |");
+		}
+
+		return lines.join("\n") + "\n";
+	}
+
+	epilogue(): string {
+		return "";
+	}
+}
+
+function formatMarkdownValue(value: unknown): string {
+	if (value === null || value === undefined) return "NULL";
+	if (typeof value === "object") return JSON.stringify(value);
+	return String(value);
+}
+
+function escapeMarkdownCell(value: string): string {
+	return value.replace(/\|/g, "\\|").replace(/\n/g, " ");
+}
+
+// ── SQL UPDATE ─────────────────────────────────────────────
+
+class SqlUpdateFormatter implements Formatter {
+	private tableName: string;
+	private columns: string[] | null = null;
+
+	constructor(
+		schema: string,
+		table: string,
+		driver: DatabaseDriver,
+	) {
+		this.tableName = driver.qualifyTable(schema, table);
+	}
+
+	preamble(): string {
+		return "";
+	}
+
+	formatBatch(rows: Record<string, unknown>[], _isFirst: boolean): string {
+		if (rows.length === 0) return "";
+
+		if (!this.columns) {
+			this.columns = collectAllColumns(rows);
+		}
+		const columns = this.columns;
+
+		// Use first column as PK for WHERE clause (convention: first column is typically the PK)
+		const pkColumn = columns[0];
+		const setCols = columns.slice(1);
+
+		const statements: string[] = [];
+
+		for (const row of rows) {
+			if (setCols.length === 0) continue;
+
+			const setClause = setCols
+				.map((col) => `"${col.replace(/"/g, '""')}" = ${formatSqlValue(row[col])}`)
+				.join(", ");
+			const whereClause = `"${pkColumn.replace(/"/g, '""')}" = ${formatSqlValue(row[pkColumn])}`;
+
+			statements.push(
+				`UPDATE ${this.tableName} SET ${setClause} WHERE ${whereClause};\n`,
+			);
+		}
+
+		return statements.join("");
+	}
+
+	epilogue(): string {
+		return "";
+	}
+}
+
+// ── HTML ───────────────────────────────────────────────────
+
+class HtmlFormatter implements Formatter {
+	private columns: string[] | null = null;
+
+	preamble(): string {
+		return "<table>\n";
+	}
+
+	formatBatch(rows: Record<string, unknown>[], isFirst: boolean): string {
+		if (rows.length === 0) return "";
+
+		if (!this.columns) {
+			this.columns = collectAllColumns(rows);
+		}
+		const columns = this.columns;
+		const lines: string[] = [];
+
+		if (isFirst) {
+			lines.push("  <thead>");
+			lines.push("    <tr>");
+			for (const col of columns) {
+				lines.push(`      <th>${escapeHtml(col)}</th>`);
+			}
+			lines.push("    </tr>");
+			lines.push("  </thead>");
+			lines.push("  <tbody>");
+		}
+
+		for (const row of rows) {
+			lines.push("    <tr>");
+			for (const col of columns) {
+				const value = row[col];
+				const display = value === null || value === undefined
+					? ""
+					: typeof value === "object"
+						? escapeHtml(JSON.stringify(value))
+						: escapeHtml(String(value));
+				lines.push(`      <td>${display}</td>`);
+			}
+			lines.push("    </tr>");
+		}
+
+		return lines.join("\n") + "\n";
+	}
+
+	epilogue(): string {
+		return "  </tbody>\n</table>\n";
+	}
+}
+
+function escapeHtml(str: string): string {
+	return str
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;");
+}
+
+// ── XML ────────────────────────────────────────────────────
+
+class XmlFormatter implements Formatter {
+	private columns: string[] | null = null;
+
+	preamble(): string {
+		return '<?xml version="1.0" encoding="UTF-8"?>\n<rows>\n';
+	}
+
+	formatBatch(rows: Record<string, unknown>[], _isFirst: boolean): string {
+		if (rows.length === 0) return "";
+
+		if (!this.columns) {
+			this.columns = collectAllColumns(rows);
+		}
+		const columns = this.columns;
+		const lines: string[] = [];
+
+		for (const row of rows) {
+			lines.push("  <row>");
+			for (const col of columns) {
+				const value = row[col];
+				const tag = xmlSafeTag(col);
+				if (value === null || value === undefined) {
+					lines.push(`    <${tag} xsi:nil="true"/>`);
+				} else {
+					const display = typeof value === "object"
+						? escapeXml(JSON.stringify(value))
+						: escapeXml(String(value));
+					lines.push(`    <${tag}>${display}</${tag}>`);
+				}
+			}
+			lines.push("  </row>");
+		}
+
+		return lines.join("\n") + "\n";
+	}
+
+	epilogue(): string {
+		return "</rows>\n";
+	}
+}
+
+function escapeXml(str: string): string {
+	return str
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&apos;");
+}
+
+/** Convert a column name to a valid XML tag name. */
+function xmlSafeTag(name: string): string {
+	// XML tags must start with a letter or underscore, contain only letters/digits/hyphens/dots/underscores
+	let tag = name.replace(/[^a-zA-Z0-9_.\-]/g, "_");
+	if (!/^[a-zA-Z_]/.test(tag)) tag = "_" + tag;
+	return tag;
 }
 
 // ── Encoding ───────────────────────────────────────────────
