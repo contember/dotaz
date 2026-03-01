@@ -21,7 +21,7 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 
 | Issue | Title | Status | Notes |
 |-------|-------|--------|-------|
-| DOTAZ-054 | SSL mode for PostgreSQL connections | in progress | FR-CONN-01: currently boolean, not functional |
+| DOTAZ-054 | SSL mode for PostgreSQL connections | done | SSLMode type, dropdown UI, driver sslmode param, migration v2 |
 | DOTAZ-055 | Quick full-text search in data grid | not started | FR-GRID-03: missing quick search across all columns |
 | DOTAZ-056 | Run current SQL statement at cursor position | not started | FR-SQL-03: only Run All and Run Selected exist |
 | DOTAZ-057 | SQL error position highlighting | not started | FR-SQL-04: errors lack line/column info |
@@ -102,3 +102,4 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 ---
 
 *Last updated: 2026-03-01*
+
