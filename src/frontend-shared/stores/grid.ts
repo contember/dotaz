@@ -97,6 +97,7 @@ export interface TabGridState {
 	activeViewId: string | null;
 	activeViewName: string | null;
 	fkNavigationHistory: FkNavigationEntry[];
+	transposed: boolean;
 }
 
 function createDefaultPendingChanges(): PendingChanges {
@@ -137,6 +138,7 @@ function createDefaultTabState(
 		activeViewId: null,
 		activeViewName: null,
 		fkNavigationHistory: [],
+		transposed: false,
 	};
 }
 
@@ -1097,6 +1099,11 @@ async function navigateBack(tabId: string) {
 	await fetchData(tabId);
 }
 
+function toggleTranspose(tabId: string) {
+	const tab = ensureTab(tabId);
+	setState("tabs", tabId, "transposed", !tab.transposed);
+}
+
 function removeTab(tabId: string) {
 	latestFetchId.delete(tabId);
 	setState("tabs", tabId, undefined!);
@@ -1144,6 +1151,9 @@ export const gridStore = {
 	getVisibleColumns,
 	computePinStyles,
 	removeTab,
+
+	// Transpose
+	toggleTranspose,
 
 	// FK navigation
 	navigateToFkTarget,

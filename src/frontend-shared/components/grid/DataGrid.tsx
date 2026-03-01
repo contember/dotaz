@@ -16,6 +16,7 @@ import ColumnManager from "./ColumnManager";
 import Pagination from "./Pagination";
 import RowDetailDialog from "../edit/RowDetailDialog";
 import AggregatePanel from "./AggregatePanel";
+import TransposedGrid from "./TransposedGrid";
 import PendingChanges from "../edit/PendingChanges";
 import SaveViewDialog from "../views/SaveViewDialog";
 import ExportDialog from "../export/ExportDialog";
@@ -25,6 +26,7 @@ import Icon from "../common/Icon";
 import RotateCcw from "lucide-solid/icons/rotate-ccw";
 import Save from "lucide-solid/icons/save";
 import Pencil from "lucide-solid/icons/pencil";
+import ArrowLeftRight from "lucide-solid/icons/arrow-left-right";
 import { HEADER_HEIGHT } from "../../lib/layout-constants";
 import "./DataGrid.css";
 
@@ -944,6 +946,14 @@ export default function DataGrid(props: DataGridProps) {
 							</button>
 							<button
 								class="data-grid__toolbar-btn"
+								classList={{ "data-grid__toolbar-btn--active": !!tabState().transposed }}
+								onClick={() => gridStore.toggleTranspose(props.tabId)}
+								title="Transpose view (Ctrl+Shift+T)"
+							>
+								<ArrowLeftRight size={12} /> Transpose
+							</button>
+							<button
+								class="data-grid__toolbar-btn"
 								onClick={handleRefresh}
 								disabled={tabState().loading}
 								title="Refresh data (F5)"
@@ -984,38 +994,64 @@ export default function DataGrid(props: DataGridProps) {
 							class="data-grid__table-container"
 							classList={{ "data-grid__table-container--loading": tabState().loading }}
 						>
-							<GridHeader
-								columns={visibleColumns()}
-								sort={tabState().sort}
-								columnConfig={tabState().columnConfig}
-								pinStyles={pinStyles()}
-								fkColumns={fkColumns()}
-								onToggleSort={handleToggleSort}
-								onResizeColumn={handleResizeColumn}
-								onHeaderContextMenu={handleHeaderContextMenu}
-							/>
+							<Show
+								when={tabState().transposed}
+								fallback={
+									<>
+										<GridHeader
+											columns={visibleColumns()}
+											sort={tabState().sort}
+											columnConfig={tabState().columnConfig}
+											pinStyles={pinStyles()}
+											fkColumns={fkColumns()}
+											onToggleSort={handleToggleSort}
+											onResizeColumn={handleResizeColumn}
+											onHeaderContextMenu={handleHeaderContextMenu}
+										/>
 
-							<VirtualScroller
-								scrollElement={() => scrollRef}
-								rows={tabState().rows}
-								columns={visibleColumns()}
-								columnConfig={tabState().columnConfig}
-								pinStyles={pinStyles()}
-								selectedRows={tabState().selectedRows}
-								scrollMargin={HEADER_HEIGHT}
-								onRowClick={handleRowClick}
-								onRowDblClick={handleRowDblClick}
-								editingCell={tabState().editingCell}
-								getChangedCells={getChangedCells}
-								isRowDeleted={(idx) => gridStore.isRowDeleted(props.tabId, idx)}
-								isRowNew={(idx) => gridStore.isRowNew(props.tabId, idx)}
-								fkMap={fkMap()}
-								onCellSave={handleCellSave}
-								onCellCancel={handleCellCancel}
-								onCellMoveNext={handleCellMoveNext}
-								onCellMoveDown={handleCellMoveDown}
-								onFkClick={handleFkClick}
-							/>
+										<VirtualScroller
+											scrollElement={() => scrollRef}
+											rows={tabState().rows}
+											columns={visibleColumns()}
+											columnConfig={tabState().columnConfig}
+											pinStyles={pinStyles()}
+											selectedRows={tabState().selectedRows}
+											scrollMargin={HEADER_HEIGHT}
+											onRowClick={handleRowClick}
+											onRowDblClick={handleRowDblClick}
+											editingCell={tabState().editingCell}
+											getChangedCells={getChangedCells}
+											isRowDeleted={(idx) => gridStore.isRowDeleted(props.tabId, idx)}
+											isRowNew={(idx) => gridStore.isRowNew(props.tabId, idx)}
+											fkMap={fkMap()}
+											onCellSave={handleCellSave}
+											onCellCancel={handleCellCancel}
+											onCellMoveNext={handleCellMoveNext}
+											onCellMoveDown={handleCellMoveDown}
+											onFkClick={handleFkClick}
+										/>
+									</>
+								}
+							>
+								<TransposedGrid
+									rows={tabState().rows}
+									columns={visibleColumns()}
+									columnConfig={tabState().columnConfig}
+									selectedRows={tabState().selectedRows}
+									onRowClick={handleRowClick}
+									onRowDblClick={handleRowDblClick}
+									editingCell={tabState().editingCell}
+									getChangedCells={getChangedCells}
+									isRowDeleted={(idx) => gridStore.isRowDeleted(props.tabId, idx)}
+									isRowNew={(idx) => gridStore.isRowNew(props.tabId, idx)}
+									fkMap={fkMap()}
+									onCellSave={handleCellSave}
+									onCellCancel={handleCellCancel}
+									onCellMoveNext={handleCellMoveNext}
+									onCellMoveDown={handleCellMoveDown}
+									onFkClick={handleFkClick}
+								/>
+							</Show>
 
 							<Show when={!tabState().loading && tabState().rows.length === 0}>
 								<div class="empty-state" style={{ "padding-top": "48px" }}>

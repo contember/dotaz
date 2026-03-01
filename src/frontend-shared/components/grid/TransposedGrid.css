@@ -1,0 +1,142 @@
+.transposed-grid {
+	display: flex;
+	flex-direction: column;
+	min-width: max-content;
+}
+
+/* ── Header row ──────────────────────────────────── */
+
+.transposed-grid__header-row {
+	display: flex;
+	position: sticky;
+	top: 0;
+	z-index: 2;
+	background: var(--surface-raised);
+	border-bottom: 2px solid var(--edge-strong);
+}
+
+.transposed-grid__corner {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	padding: 0 var(--spacing-sm);
+	height: 32px;
+	font-size: var(--font-size-sm);
+	font-weight: 500;
+	font-family: var(--font-mono);
+	color: var(--ink-muted);
+	border-right: 2px solid var(--edge-strong);
+	position: sticky;
+	left: 0;
+	z-index: 3;
+	background: var(--surface-raised);
+}
+
+.transposed-grid__col-header {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0 var(--spacing-sm);
+	height: 32px;
+	font-size: var(--font-size-sm);
+	font-weight: 500;
+	font-family: var(--font-mono);
+	color: var(--ink);
+	border-right: 1px solid var(--edge);
+	cursor: pointer;
+	user-select: none;
+}
+
+.transposed-grid__col-header:hover {
+	background: var(--surface-hover);
+}
+
+.transposed-grid__col-header--selected {
+	background: var(--surface-selected);
+}
+
+/* ── Data rows (one per original column) ────────── */
+
+.transposed-grid__row {
+	display: flex;
+	border-bottom: 1px solid var(--edge);
+}
+
+.transposed-grid__row--even {
+	background: transparent;
+}
+
+.transposed-grid__row--odd {
+	background: rgba(255, 255, 255, 0.02);
+}
+
+.transposed-grid__row:hover {
+	background: var(--surface-hover);
+}
+
+/* ── Row header (column name) ────────────────────── */
+
+.transposed-grid__row-header {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-xs);
+	padding: 0 var(--spacing-sm);
+	height: 32px;
+	border-right: 2px solid var(--edge-strong);
+	background: var(--surface-raised);
+	position: sticky;
+	left: 0;
+	z-index: 1;
+	font-size: var(--font-size-sm);
+	user-select: none;
+}
+
+.transposed-grid__type-badge {
+	font-size: 9px;
+	color: var(--ink-muted);
+	background: var(--surface-inset);
+	padding: 0 3px;
+	border-radius: 2px;
+	font-family: var(--font-mono);
+	flex-shrink: 0;
+}
+
+.transposed-grid__col-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-weight: 500;
+	font-family: var(--font-mono);
+	color: var(--ink);
+}
+
+.transposed-grid__col-icons {
+	display: flex;
+	gap: 2px;
+	flex-shrink: 0;
+	margin-left: auto;
+}
+
+.transposed-grid__icon-pk {
+	font-size: 9px;
+	color: var(--warning);
+	font-weight: 600;
+}
+
+.transposed-grid__icon-nullable {
+	font-size: 10px;
+	color: var(--ink-muted);
+}
+
+/* ── Cell wrapper ────────────────────────────────── */
+
+.transposed-grid__cell-wrapper {
+	flex-shrink: 0;
+	cursor: default;
+}
+
+.transposed-grid__cell-wrapper--selected {
+	background: var(--surface-selected);
+}

@@ -426,6 +426,19 @@ export default function AppShell() {
 		});
 
 		commandRegistry.register({
+			id: "toggle-transpose",
+			label: "Toggle Transpose View",
+			shortcut: "Ctrl+Shift+T",
+			category: "Grid",
+			handler: () => {
+				const tab = tabsStore.activeTab;
+				if (tab?.type === "data-grid") {
+					gridStore.toggleTranspose(tab.id);
+				}
+			},
+		});
+
+		commandRegistry.register({
 			id: "new-connection",
 			label: "New Connection",
 			category: "Connection",
@@ -518,6 +531,7 @@ export default function AppShell() {
 		keyboardManager.register("F2", "inline-edit", "data-grid");
 		keyboardManager.register("Delete", "delete-rows", "data-grid");
 		keyboardManager.register("Ctrl+S", "save-view", "data-grid");
+		keyboardManager.register("Ctrl+Shift+T", "toggle-transpose", "data-grid");
 	}
 
 	return (

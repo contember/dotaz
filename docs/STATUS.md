@@ -54,7 +54,7 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 | DOTAZ-063 | Quick value shortcuts during cell editing | done | SQL_DEFAULT sentinel, Ctrl+N/T/F/D shortcuts, single-key when empty for non-text columns |
 | DOTAZ-064 | Warning for DELETE/UPDATE without WHERE clause | done | detectDestructiveWithoutWhere() strips literals/comments, editor store intercepts execution, DestructiveQueryDialog with session suppress |
 | DOTAZ-065 | Read-only mode per connection | done | readOnly on ConnectionInfo, migration v3, grid/editor guards, lock icon, status bar badge, runtime toggle |
-| DOTAZ-066 | Transpose view for data grid | not started | Rows↔columns for wide tables |
+| DOTAZ-066 | Transpose view for data grid | done | TransposedGrid component, toolbar toggle, Ctrl+Shift+T shortcut, inline editing support |
 
 ---
 
@@ -101,5 +101,5 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 
 ---
 
-*Last updated: 2026-03-01 — DOTAZ-065 done*
+*Last updated: 2026-03-01 — DOTAZ-066 done*
 

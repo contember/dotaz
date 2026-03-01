@@ -161,6 +161,12 @@
 	background: var(--surface-hover);
 }
 
+.data-grid__toolbar-btn--active {
+	color: var(--accent);
+	border-color: var(--accent);
+	background: rgba(59, 130, 246, 0.1);
+}
+
 .data-grid__toolbar-btn:disabled {
 	opacity: 0.4;
 	cursor: default;
