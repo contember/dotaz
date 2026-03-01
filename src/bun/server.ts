@@ -1,51 +1,70 @@
 // Standalone web server entry point for Dotaz
 // Serves the frontend via HTTP and handles RPC over WebSocket
+// Each WebSocket connection gets its own isolated session (AppDatabase, ConnectionManager, handlers)
 
 import { existsSync, mkdirSync } from "fs";
 import { join, resolve } from "path";
-import { AppDatabase, setDefaultDbPath } from "./storage/app-db";
+import { AppDatabase } from "./storage/app-db";
 import { ConnectionManager } from "./services/connection-manager";
+import { EncryptionService } from "./services/encryption";
 import { createHandlers } from "./rpc-handlers";
 
 const PORT = Number(process.env.DOTAZ_PORT) || 4200;
-const DB_PATH = process.env.DOTAZ_DB_PATH || "./dotaz.db";
+const DB_PATH = process.env.DOTAZ_DB_PATH || "./.data/dotaz.db";
 const DIST_DIR = resolve(import.meta.dir, "../../dist");
 
-// Configure app database path
-setDefaultDbPath(() => {
+const STATELESS = process.env.DOTAZ_STATELESS === "1";
+const ENCRYPTION_KEY = process.env.DOTAZ_ENCRYPTION_KEY;
+
+if (STATELESS && !ENCRYPTION_KEY) {
+	console.error("DOTAZ_ENCRYPTION_KEY is required when DOTAZ_STATELESS=1");
+	process.exit(1);
+}
+
+// Ensure persistent DB directory exists once at startup
+if (!STATELESS) {
 	const dir = join(DB_PATH, "..");
 	if (!existsSync(dir)) {
 		mkdirSync(dir, { recursive: true });
 	}
-	return DB_PATH;
-});
+}
 
-const appDb = AppDatabase.getInstance();
-const connectionManager = new ConnectionManager(appDb);
+interface Session {
+	appDb: AppDatabase;
+	connectionManager: ConnectionManager;
+	handlers: ReturnType<typeof createHandlers>;
+	unsubscribe: () => void;
+}
 
-// Create RPC handlers without Utils (system dialogs handled client-side)
-const handlers = createHandlers(connectionManager, undefined, appDb, undefined);
+function createSession(ws: { send(data: string): void }): Session {
+	const dbPath = STATELESS ? ":memory:" : DB_PATH;
+	const appDb = AppDatabase.create(dbPath);
+	const connectionManager = new ConnectionManager(appDb);
+	const encryption = STATELESS && ENCRYPTION_KEY ? new EncryptionService(ENCRYPTION_KEY) : undefined;
+	const handlers = createHandlers(connectionManager, undefined, appDb, undefined, { stateless: STATELESS, encryption });
 
-// Track connected WebSocket clients for broadcasting
-const clients = new Set<any>();
-
-// Broadcast connection status changes to all connected clients
-connectionManager.onStatusChanged((event) => {
-	const msg = JSON.stringify({
-		type: "message",
-		channel: "connections.statusChanged",
-		payload: {
-			connectionId: event.connectionId,
-			state: event.state,
-			error: event.error,
-		},
+	const unsubscribe = connectionManager.onStatusChanged((event) => {
+		ws.send(JSON.stringify({
+			type: "message",
+			channel: "connections.statusChanged",
+			payload: {
+				connectionId: event.connectionId,
+				state: event.state,
+				error: event.error,
+			},
+		}));
 	});
-	for (const client of clients) {
-		client.send(msg);
-	}
-});
 
-const server = Bun.serve({
+	return { appDb, connectionManager, handlers, unsubscribe };
+}
+
+async function destroySession(session: Session): Promise<void> {
+	session.unsubscribe();
+	await session.connectionManager.disconnectAll();
+	session.appDb.close();
+}
+
+const server = Bun.serve<Session>({
 	port: PORT,
 	hostname: "localhost",
 
@@ -54,7 +73,8 @@ const server = Bun.serve({
 
 		// Upgrade WebSocket requests at /rpc
 		if (url.pathname === "/rpc") {
-			if (server.upgrade(req)) {
+			// Pass an empty data object; real session is created in open()
+			if (server.upgrade(req, { data: {} as Session })) {
 				return undefined as any;
 			}
 			return new Response("WebSocket upgrade failed", { status: 400 });
@@ -83,10 +103,12 @@ const server = Bun.serve({
 
 	websocket: {
 		open(ws) {
-			clients.add(ws);
+			const session = createSession(ws);
+			// Replace the placeholder data with the real session
+			Object.assign(ws.data, session);
 		},
-		close(ws) {
-			clients.delete(ws);
+		async close(ws) {
+			await destroySession(ws.data);
 		},
 		async message(ws, data) {
 			let msg: any;
@@ -98,7 +120,7 @@ const server = Bun.serve({
 			}
 
 			if (msg.type === "request") {
-				const handler = (handlers as any)[msg.method];
+				const handler = (ws.data.handlers as any)[msg.method];
 				if (!handler) {
 					ws.send(JSON.stringify({
 						type: "response",
@@ -130,4 +152,5 @@ const server = Bun.serve({
 	},
 });
 
-console.log(`Dotaz web server running at http://localhost:${server.port}`);
+const mode = STATELESS ? "stateless" : "persistent";
+console.log(`Dotaz web server running at http://localhost:${server.port} (${mode} mode)`);

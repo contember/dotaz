@@ -45,6 +45,21 @@ export class AppDatabase {
 	}
 
 	/**
+	 * Create a standalone AppDatabase instance (not the singleton).
+	 * Used for per-session isolation in the web server.
+	 */
+	static create(dbPath: string): AppDatabase {
+		return new AppDatabase(dbPath);
+	}
+
+	/**
+	 * Close the underlying SQLite database.
+	 */
+	close(): void {
+		this.db.close();
+	}
+
+	/**
 	 * Reset the singleton (for testing only).
 	 */
 	static resetInstance(): void {
