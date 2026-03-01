@@ -9,10 +9,15 @@ export interface HandlerOptions {
 	encryption?: EncryptionService;
 }
 
-export function createHandlers(cm: ConnectionManager, qe?: QueryExecutor, appDb?: AppDatabase, Utils?: typeof import("electrobun/bun").Utils, opts?: HandlerOptions) {
+function requireAppDb(appDb: AppDatabase | undefined): AppDatabase {
 	if (!appDb) throw new Error("AppDatabase is required");
-	const queryExecutor = qe ?? new QueryExecutor(cm, undefined, appDb);
-	const adapter = new BackendAdapter(cm, queryExecutor, appDb, {
+	return appDb;
+}
+
+export function createHandlers(cm: ConnectionManager, qe?: QueryExecutor, appDb?: AppDatabase, Utils?: typeof import("electrobun/bun").Utils, opts?: HandlerOptions) {
+	const db = requireAppDb(appDb);
+	const queryExecutor = qe ?? new QueryExecutor(cm, undefined, db);
+	const adapter = new BackendAdapter(cm, queryExecutor, db, {
 		encryption: opts?.encryption,
 		Utils,
 	});

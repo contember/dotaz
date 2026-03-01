@@ -37,7 +37,7 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 | Issue | Title | Status | Notes |
 |-------|-------|--------|-------|
 | DOTAZ-080 | Fix type safety at RPC boundary | done | Typed RPC handler params, driver introspection rows, result counts, transport layer |
-| DOTAZ-081 | Extract duplicated frontend utilities | not started | Column type helpers, tab store helpers, requireAppDb |
+| DOTAZ-081 | Extract duplicated frontend utilities | done | column-types.ts, tab-store-helpers.ts, requireAppDb() |
 | DOTAZ-082 | Standardize error handling with domain error types | not started | Error hierarchy with codes, consistent handling across layers |
 | DOTAZ-083 | Driver-aware query placeholder generation | not started | Fix fragile MySQL `$N` → `?` regex conversion |
 | DOTAZ-084 | Improve shared domain model type safety | not started | DataChange discriminated union, DatabaseDataType enum |
@@ -101,5 +101,5 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 
 ---
 
-*Last updated: 2026-03-01 — DOTAZ-080 done*
+*Last updated: 2026-03-01 — DOTAZ-081 done*
 

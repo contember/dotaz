@@ -6,6 +6,7 @@ import ChevronDown from "lucide-solid/icons/chevron-down";
 import { buildCountQuery } from "../../../shared/sql";
 import { rpc } from "../../lib/rpc";
 import { connectionsStore } from "../../stores/connections";
+import { isNumericType, isBooleanType, isDateType, isTextType } from "../../lib/column-types";
 import Dialog from "../common/Dialog";
 import "./RowDetailDialog.css";
 
@@ -31,35 +32,6 @@ interface RowDetailDialogProps {
 	onNavigate: (rowIndex: number) => void;
 	/** Navigate to a referencing table with filters applied. */
 	onNavigateToTable?: (schema: string, table: string, filters: ColumnFilter[]) => void;
-}
-
-// ── Type helpers (shared with InlineEditor) ──────────────
-
-function isNumericType(dataType: string): boolean {
-	const t = dataType.toLowerCase();
-	return (
-		t.includes("int") ||
-		t.includes("numeric") ||
-		t.includes("decimal") ||
-		t.includes("float") ||
-		t.includes("double") ||
-		t.includes("real") ||
-		t.includes("serial")
-	);
-}
-
-function isBooleanType(dataType: string): boolean {
-	return dataType.toLowerCase().includes("bool");
-}
-
-function isDateType(dataType: string): boolean {
-	const t = dataType.toLowerCase();
-	return t.includes("timestamp") || t === "date" || t === "datetime";
-}
-
-function isTextType(dataType: string): boolean {
-	const t = dataType.toLowerCase();
-	return t === "text" || t.includes("varchar") || t.includes("char") || t.includes("clob");
 }
 
 function valueToString(value: unknown): string {

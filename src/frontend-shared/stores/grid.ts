@@ -14,6 +14,7 @@ import {
 	generateChangesPreview,
 } from "../../shared/sql";
 import { rpc } from "../lib/rpc";
+import { createTabHelpers } from "../lib/tab-store-helpers";
 import { connectionsStore } from "./connections";
 
 // ── Column config (visibility, order, widths, pinned) ────
@@ -155,17 +156,7 @@ const [state, setState] = createStore<GridStoreState>({
 const latestFetchId = new Map<string, number>();
 let fetchSequence = 0;
 
-function getTab(tabId: string): TabGridState | undefined {
-	return state.tabs[tabId];
-}
-
-function ensureTab(tabId: string): TabGridState {
-	const tab = getTab(tabId);
-	if (!tab) {
-		throw new Error(`Grid state not found for tab ${tabId}`);
-	}
-	return tab;
-}
+const { getTab, ensureTab } = createTabHelpers(() => state.tabs, "Grid");
 
 async function fetchData(tabId: string) {
 	const tab = ensureTab(tabId);

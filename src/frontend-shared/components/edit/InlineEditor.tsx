@@ -1,5 +1,6 @@
 import { createSignal, onMount } from "solid-js";
 import type { GridColumnDef } from "../../../shared/types/grid";
+import { isNumericType, isBooleanType, isDateType, isTextType } from "../../lib/column-types";
 import "./InlineEditor.css";
 
 interface InlineEditorProps {
@@ -10,33 +11,6 @@ interface InlineEditorProps {
 	onCancel: () => void;
 	onMoveNext: () => void;
 	onMoveDown: () => void;
-}
-
-function isNumericType(dataType: string): boolean {
-	const t = dataType.toLowerCase();
-	return (
-		t.includes("int") ||
-		t.includes("numeric") ||
-		t.includes("decimal") ||
-		t.includes("float") ||
-		t.includes("double") ||
-		t.includes("real") ||
-		t.includes("serial")
-	);
-}
-
-function isBooleanType(dataType: string): boolean {
-	return dataType.toLowerCase().includes("bool");
-}
-
-function isDateType(dataType: string): boolean {
-	const t = dataType.toLowerCase();
-	return t.includes("timestamp") || t === "date" || t === "datetime";
-}
-
-function isTextType(dataType: string): boolean {
-	const t = dataType.toLowerCase();
-	return t === "text" || t.includes("varchar") || t.includes("char") || t.includes("clob");
 }
 
 function valueToString(value: unknown): string {

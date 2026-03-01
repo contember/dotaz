@@ -2,6 +2,7 @@ import { createStore } from "solid-js/store";
 import type { QueryResult } from "../../shared/types/query";
 import { rpc } from "../lib/rpc";
 import { storage } from "../lib/storage";
+import { createTabHelpers } from "../lib/tab-store-helpers";
 import { getStatementAtCursor } from "../lib/sql-utils";
 
 // ── Types ─────────────────────────────────────────────────
@@ -58,17 +59,7 @@ const [state, setState] = createStore<EditorStoreState>({
 
 // ── Internal helpers ──────────────────────────────────────
 
-function getTab(tabId: string): TabEditorState | undefined {
-	return state.tabs[tabId];
-}
-
-function ensureTab(tabId: string): TabEditorState {
-	const tab = getTab(tabId);
-	if (!tab) {
-		throw new Error(`Editor state not found for tab ${tabId}`);
-	}
-	return tab;
-}
+const { getTab, ensureTab } = createTabHelpers(() => state.tabs, "Editor");
 
 // ── Actions ───────────────────────────────────────────────
 
