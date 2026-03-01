@@ -2,31 +2,19 @@
 // Serves the frontend via HTTP and handles RPC over WebSocket
 // Each WebSocket connection gets its own isolated session (AppDatabase, ConnectionManager, handlers)
 
-import { existsSync, mkdirSync } from "fs";
-import { join, resolve } from "path";
+import { resolve } from "path";
 import { AppDatabase } from "./storage/app-db";
 import { ConnectionManager } from "./services/connection-manager";
 import { EncryptionService } from "./services/encryption";
 import { createHandlers } from "./rpc-handlers";
 
 const PORT = Number(process.env.DOTAZ_PORT) || 4200;
-const DB_PATH = process.env.DOTAZ_DB_PATH || "./.data/dotaz.db";
 const DIST_DIR = resolve(import.meta.dir, "../../dist");
 
-const STATELESS = process.env.DOTAZ_STATELESS === "1";
 const ENCRYPTION_KEY = process.env.DOTAZ_ENCRYPTION_KEY;
-
-if (STATELESS && !ENCRYPTION_KEY) {
-	console.error("DOTAZ_ENCRYPTION_KEY is required when DOTAZ_STATELESS=1");
+if (!ENCRYPTION_KEY) {
+	console.error("DOTAZ_ENCRYPTION_KEY is required for web mode");
 	process.exit(1);
-}
-
-// Ensure persistent DB directory exists once at startup
-if (!STATELESS) {
-	const dir = join(DB_PATH, "..");
-	if (!existsSync(dir)) {
-		mkdirSync(dir, { recursive: true });
-	}
 }
 
 interface Session {
@@ -37,11 +25,10 @@ interface Session {
 }
 
 function createSession(ws: { send(data: string): void }): Session {
-	const dbPath = STATELESS ? ":memory:" : DB_PATH;
-	const appDb = AppDatabase.create(dbPath);
+	const appDb = AppDatabase.create(":memory:");
 	const connectionManager = new ConnectionManager(appDb);
-	const encryption = STATELESS && ENCRYPTION_KEY ? new EncryptionService(ENCRYPTION_KEY) : undefined;
-	const handlers = createHandlers(connectionManager, undefined, appDb, undefined, { stateless: STATELESS, encryption });
+	const encryption = new EncryptionService(ENCRYPTION_KEY!);
+	const handlers = createHandlers(connectionManager, undefined, appDb, undefined, { encryption });
 
 	const unsubscribe = connectionManager.onStatusChanged((event) => {
 		ws.send(JSON.stringify({
@@ -81,7 +68,7 @@ const server = Bun.serve<Session>({
 		}
 
 		// Static file serving from dist/
-		let filePath = join(DIST_DIR, url.pathname);
+		let filePath = resolve(DIST_DIR, url.pathname.slice(1));
 
 		// Try exact file first
 		let file = Bun.file(filePath);
@@ -90,7 +77,7 @@ const server = Bun.serve<Session>({
 		}
 
 		// SPA fallback: serve index.html for non-file routes
-		filePath = join(DIST_DIR, "index.html");
+		filePath = resolve(DIST_DIR, "index.html");
 		file = Bun.file(filePath);
 		if (await file.exists()) {
 			return new Response(file, {
@@ -152,5 +139,4 @@ const server = Bun.serve<Session>({
 	},
 });
 
-const mode = STATELESS ? "stateless" : "persistent";
-console.log(`Dotaz web server running at http://localhost:${server.port} (${mode} mode)`);
+console.log(`Dotaz web server running at http://localhost:${server.port}`);

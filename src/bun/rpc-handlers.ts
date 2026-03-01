@@ -7,16 +7,14 @@ import { QueryExecutor } from "./services/query-executor";
 import { BackendAdapter } from "./rpc/backend-adapter";
 import { createHandlers as createSharedHandlers } from "../shared/rpc/handlers";
 
-export interface StatelessOptions {
-	stateless: boolean;
+export interface HandlerOptions {
 	encryption?: EncryptionService;
 }
 
-export function createHandlers(cm: ConnectionManager, qe?: QueryExecutor, appDb?: AppDatabase, Utils?: typeof import("electrobun/bun").Utils, opts?: StatelessOptions) {
+export function createHandlers(cm: ConnectionManager, qe?: QueryExecutor, appDb?: AppDatabase, Utils?: typeof import("electrobun/bun").Utils, opts?: HandlerOptions) {
 	if (!appDb) throw new Error("AppDatabase is required");
 	const queryExecutor = qe ?? new QueryExecutor(cm, undefined, appDb);
 	const adapter = new BackendAdapter(cm, queryExecutor, appDb, {
-		stateless: opts?.stateless,
 		encryption: opts?.encryption,
 		Utils,
 	});

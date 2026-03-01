@@ -26,7 +26,6 @@ import { friendlyErrorMessage, messages } from "../../lib/rpc";
 import { commandRegistry } from "../../lib/commands";
 import { keyboardManager } from "../../lib/keyboard";
 import type { ShortcutContext } from "../../lib/keyboard";
-import { detectMode } from "../../lib/mode";
 import "./AppShell.css";
 
 // Clean up grid/editor state when tabs are closed to prevent memory leaks
@@ -124,7 +123,6 @@ export default function AppShell() {
 	}
 
 	onMount(async () => {
-		await detectMode();
 		connectionsStore.loadConnections();
 		registerCommands();
 		registerShortcuts();

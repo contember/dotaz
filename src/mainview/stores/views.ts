@@ -1,8 +1,6 @@
 import { createStore } from "solid-js/store";
 import type { SavedView } from "../../shared/types/rpc";
-import { rpc } from "../lib/rpc";
-import { isStateless } from "../lib/mode";
-import { putStoredView } from "../lib/browser-storage";
+import { storage } from "../lib/storage";
 
 interface ViewsState {
 	viewsByConnection: Record<string, SavedView[]>;
@@ -14,15 +12,8 @@ const [state, setState] = createStore<ViewsState>({
 
 async function loadViewsForConnection(connectionId: string) {
 	try {
-		const views = await rpc.views.listByConnection({ connectionId });
+		const views = await storage.listViewsByConnection(connectionId);
 		setState("viewsByConnection", connectionId, views);
-
-		// Sync to IndexedDB in stateless mode
-		if (isStateless()) {
-			for (const view of views) {
-				putStoredView(view).catch((e) => console.warn("Failed to store view:", e));
-			}
-		}
 	} catch {
 		// Non-critical — sidebar still works without views
 	}

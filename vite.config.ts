@@ -23,13 +23,33 @@ function transportSwapPlugin(target: "websocket" | "inline"): Plugin {
 	};
 }
 
+function storageSwapPlugin(): Plugin {
+	const rpcPath = resolve(__dirname, "src/mainview/lib/storage/rpc.ts");
+	const targetPath = resolve(__dirname, "src/mainview/lib/storage/indexeddb.ts");
+	return {
+		name: "dotaz-storage-swap",
+		enforce: "pre",
+		resolveId(source, importer) {
+			if (!importer) return null;
+			if (source.endsWith("/rpc") || source === "./rpc") {
+				const importerDir = importer.substring(0, importer.lastIndexOf("/"));
+				const resolved = resolve(importerDir, source + ".ts");
+				if (resolved === rpcPath) {
+					return targetPath;
+				}
+			}
+			return null;
+		},
+	};
+}
+
 export default defineConfig(({ mode }) => {
 	const isWeb = mode === "web";
 	const isDemo = mode === "demo";
 
 	return {
 		plugins: [
-			...(isWeb ? [transportSwapPlugin("websocket")] : []),
+			...(isWeb ? [transportSwapPlugin("websocket"), storageSwapPlugin()] : []),
 			...(isDemo ? [transportSwapPlugin("inline")] : []),
 			solid(),
 		],

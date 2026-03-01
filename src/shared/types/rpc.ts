@@ -1,6 +1,5 @@
 import type { RPCSchema } from "electrobun/bun";
 import type { ConnectionState } from "./connection";
-import type { QueryHistoryEntry } from "./query";
 import type { RpcMethod, HandlerParams, HandlerReturn } from "../rpc/types";
 
 // ---- Domain types used by handlers and adapters ----
@@ -50,24 +49,6 @@ export interface SaveDialogParams {
 	title?: string;
 	defaultName?: string;
 	filters?: { name: string; extensions: string[] }[];
-}
-
-// ---- Stateless mode types ----
-
-export interface StoredConnection {
-	id: string;
-	name: string;
-	encryptedConfig: string;
-	rememberPassword: boolean;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export interface RestoreParams {
-	connections: StoredConnection[];
-	settings: Record<string, string>;
-	history: QueryHistoryEntry[];
-	views: SavedView[];
 }
 
 // ---- Main RPC schema (derived from handler map) ----

@@ -11,7 +11,6 @@ import type {
 	SavedView,
 	SavedViewConfig,
 	HistoryListParams,
-	RestoreParams,
 	OpenDialogParams,
 	SaveDialogParams,
 } from "../../shared/types/rpc";
@@ -22,14 +21,12 @@ import { formatSql } from "../services/sql-formatter";
 
 
 export interface BackendAdapterOptions {
-	stateless?: boolean;
 	encryption?: EncryptionService;
 	Utils?: typeof import("electrobun/bun").Utils;
 }
 
 export class BackendAdapter implements RpcAdapter {
 	private txManager: TransactionManager;
-	private stateless: boolean;
 	private encryption?: EncryptionService;
 	private Utils?: typeof import("electrobun/bun").Utils;
 
@@ -40,7 +37,6 @@ export class BackendAdapter implements RpcAdapter {
 		opts?: BackendAdapterOptions,
 	) {
 		this.txManager = new TransactionManager(cm);
-		this.stateless = opts?.stateless ?? false;
 		this.encryption = opts?.encryption;
 		this.Utils = opts?.Utils;
 	}
@@ -67,7 +63,18 @@ export class BackendAdapter implements RpcAdapter {
 		return this.cm.testConnection(config);
 	}
 
-	async connect(connectionId: string, password?: string): Promise<void> {
+	async connect(connectionId: string, password?: string, encryptedConfig?: string, name?: string): Promise<void> {
+		if (encryptedConfig && this.encryption) {
+			// Web mode: decrypt config, register in session's in-memory app-db
+			const configJson = await this.encryption.decrypt(encryptedConfig);
+			const config = JSON.parse(configJson) as ConnectionConfig;
+			const existing = this.appDb.getConnectionById(connectionId);
+			if (!existing) {
+				this.appDb.createConnectionWithId(connectionId, { name: name ?? connectionId, config });
+			} else {
+				this.appDb.updateConnection({ id: connectionId, name: name ?? existing.name, config });
+			}
+		}
 		await this.cm.connect(connectionId, password ? { password } : undefined);
 	}
 
@@ -215,47 +222,7 @@ export class BackendAdapter implements RpcAdapter {
 		});
 	}
 
-	// ── Storage (stateless mode) ─────────────────────────
-
-	isStateless(): boolean {
-		return this.stateless;
-	}
-
-	async restore(params: RestoreParams): Promise<void> {
-		if (!this.stateless || !this.encryption) return;
-
-		// Restore connections
-		for (const stored of params.connections) {
-			try {
-				const configJson = await this.encryption.decrypt(stored.encryptedConfig);
-				const config = JSON.parse(configJson);
-				this.appDb.db.prepare(
-					"INSERT OR REPLACE INTO connections (id, name, type, config, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-				).run(stored.id, stored.name, config.type, JSON.stringify(config), stored.createdAt, stored.updatedAt);
-			} catch {
-				// Skip connections that fail to decrypt
-			}
-		}
-
-		// Restore settings
-		for (const [key, value] of Object.entries(params.settings)) {
-			this.appDb.setSetting(key, value);
-		}
-
-		// Restore history
-		for (const entry of params.history) {
-			this.appDb.db.prepare(
-				"INSERT OR IGNORE INTO query_history (id, connection_id, sql, status, duration_ms, row_count, error_message, executed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-			).run(entry.id, entry.connectionId, entry.sql, entry.status, entry.durationMs ?? null, entry.rowCount ?? null, entry.errorMessage ?? null, entry.executedAt);
-		}
-
-		// Restore saved views
-		for (const view of params.views) {
-			this.appDb.db.prepare(
-				"INSERT OR REPLACE INTO saved_views (id, connection_id, schema_name, table_name, name, config, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-			).run(view.id, view.connectionId, view.schemaName, view.tableName, view.name, JSON.stringify(view.config), view.createdAt, view.updatedAt);
-		}
-	}
+	// ── Storage ──────────────────────────────────────────
 
 	async encrypt(config: string): Promise<string> {
 		if (!this.encryption) throw new Error("Encryption not available");

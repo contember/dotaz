@@ -3,7 +3,6 @@ import type { ExportOptions, ExportPreviewRequest } from "../types/export";
 import type {
 	HistoryListParams,
 	SavedViewConfig,
-	RestoreParams,
 	OpenDialogParams,
 	SaveDialogParams,
 } from "../types/rpc";
@@ -26,8 +25,8 @@ export function createHandlers(adapter: RpcAdapter) {
 		"connections.test": async ({ config }: { config: any }) => {
 			return adapter.testConnection(config);
 		},
-		"connections.connect": async ({ connectionId, password }: { connectionId: string; password?: string }) => {
-			await adapter.connect(connectionId, password);
+		"connections.connect": async ({ connectionId, password, encryptedConfig, name }: { connectionId: string; password?: string; encryptedConfig?: string; name?: string }) => {
+			await adapter.connect(connectionId, password, encryptedConfig, name);
 		},
 		"connections.disconnect": async ({ connectionId }: { connectionId: string }) => {
 			await adapter.disconnect(connectionId);
@@ -150,15 +149,7 @@ export function createHandlers(adapter: RpcAdapter) {
 			return adapter.listSavedViewsByConnection(connectionId);
 		},
 
-		// ── Storage (stateless mode) ─────────────────────
-		"storage.getMode": () => {
-			return { stateless: adapter.isStateless() };
-		},
-		"storage.restore": async (params: RestoreParams) => {
-			if (adapter.restore) {
-				await adapter.restore(params);
-			}
-		},
+		// ── Storage ──────────────────────────────────────
 		"storage.encrypt": async ({ config }: { config: string }) => {
 			if (!adapter.encrypt) {
 				throw new Error("Encryption not available");

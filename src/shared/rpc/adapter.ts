@@ -7,7 +7,6 @@ import type {
 	SavedView,
 	SavedViewConfig,
 	HistoryListParams,
-	RestoreParams,
 	OpenDialogParams,
 	SaveDialogParams,
 } from "../types/rpc";
@@ -19,7 +18,7 @@ export interface RpcAdapter {
 	updateConnection(params: { id: string; name: string; config: ConnectionConfig }): ConnectionInfo;
 	deleteConnection(id: string): void | Promise<void>;
 	testConnection(config: ConnectionConfig): Promise<{ success: boolean; error?: string }>;
-	connect(connectionId: string, password?: string): Promise<void>;
+	connect(connectionId: string, password?: string, encryptedConfig?: string, name?: string): Promise<void>;
 	disconnect(connectionId: string): Promise<void>;
 
 	// ── Driver access ─────────────────────────────────────
@@ -57,9 +56,7 @@ export interface RpcAdapter {
 	exportData(opts: ExportOptions): Promise<ExportResult>;
 	exportPreview(req: ExportPreviewRequest): Promise<string>;
 
-	// ── Storage (stateless mode) ─────────────────────────
-	isStateless(): boolean;
-	restore?(params: RestoreParams): Promise<void>;
+	// ── Storage ──────────────────────────────────────────
 	encrypt?(config: string): Promise<string>;
 
 	// ── System (optional — unavailable in demo/web) ──────

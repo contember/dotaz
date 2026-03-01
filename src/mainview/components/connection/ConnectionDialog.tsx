@@ -7,7 +7,7 @@ import type {
 } from "../../../shared/types/connection";
 import { CONNECTION_TYPE_META, SSL_MODES } from "../../../shared/types/connection";
 import { connectionsStore } from "../../stores/connections";
-import { isStateless } from "../../lib/mode";
+import { storage } from "../../lib/storage";
 import { rpc } from "../../lib/rpc";
 import { siPostgresql, siSqlite, siMysql } from "simple-icons";
 import FolderOpen from "lucide-solid/icons/folder-open";
@@ -96,7 +96,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 		const conn = props.connection;
 		if (conn) {
 			setDbType(conn.config.type);
-			setRememberPassword(connectionsStore.getRememberPassword(conn.id));
+			connectionsStore.getRememberPassword(conn.id).then(setRememberPassword);
 			if (conn.config.type === "postgresql" || conn.config.type === "mysql") {
 				const rawSsl = conn.config.ssl;
 				// Handle legacy boolean values from pre-migration data
@@ -432,7 +432,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 						</select>
 					</div>
 
-					<Show when={isStateless()}>
+					<Show when={storage.passConfigOnConnect}>
 						<div class="conn-dialog__field conn-dialog__field--inline">
 							<label class="conn-dialog__label conn-dialog__label--checkbox">
 								<input

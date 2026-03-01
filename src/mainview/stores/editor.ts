@@ -1,8 +1,7 @@
 import { createStore } from "solid-js/store";
 import type { QueryResult } from "../../shared/types/query";
 import { rpc } from "../lib/rpc";
-import { isStateless } from "../lib/mode";
-import { putHistoryEntry } from "../lib/browser-storage";
+import { storage } from "../lib/storage";
 import { getStatementAtCursor } from "../lib/sql-utils";
 
 // ── Types ─────────────────────────────────────────────────
@@ -94,14 +93,19 @@ function setCursorPosition(tabId: string, position: number) {
 	setState("tabs", tabId, "cursorPosition", position);
 }
 
-function syncLatestHistory(connectionId: string) {
-	if (!isStateless()) return;
-	// Fire-and-forget: fetch latest history entry and save to IndexedDB
-	rpc.history.list({ connectionId, limit: 1 }).then((entries) => {
-		if (entries.length > 0) {
-			putHistoryEntry(entries[0]).catch((e) => console.warn("Failed to store history entry:", e));
-		}
-	}).catch((e) => console.warn("Failed to fetch latest history:", e));
+function recordHistory(connectionId: string, sql: string, results: QueryResult[]) {
+	const hasError = results.some((r) => r.error);
+	const totalDuration = results.reduce((sum, r) => sum + (r.durationMs ?? 0), 0);
+	const totalRows = results.reduce((sum, r) => sum + (r.affectedRows ?? r.rowCount ?? 0), 0);
+	storage.addHistoryEntry({
+		connectionId,
+		sql,
+		status: hasError ? "error" : "success",
+		durationMs: Math.round(totalDuration),
+		rowCount: totalRows,
+		errorMessage: results.find((r) => r.error)?.error,
+		executedAt: new Date().toISOString(),
+	}).catch((e) => console.warn("Failed to record history:", e));
 }
 
 async function runQuery(tabId: string, sql: string, baseOffset = 0) {
@@ -142,7 +146,7 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0) {
 			errorOffset,
 		});
 
-		syncLatestHistory(tab.connectionId);
+		recordHistory(tab.connectionId, sql, results);
 	} catch (err) {
 		// Discard stale errors if a newer query was started
 		if (state.tabs[tabId]?.queryId !== queryId) return;
@@ -158,7 +162,13 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0) {
 			errorOffset: null,
 		});
 
-		syncLatestHistory(tab.connectionId);
+		recordHistory(tab.connectionId, sql, [{
+			columns: [],
+			rows: [],
+			rowCount: 0,
+			durationMs: duration,
+			error: errorMessage,
+		}]);
 	}
 }
 

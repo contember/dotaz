@@ -83,6 +83,10 @@ export class AppDatabase {
 
 	createConnection(params: { name: string; config: ConnectionConfig }): ConnectionInfo {
 		const id = crypto.randomUUID();
+		return this.createConnectionWithId(id, params);
+	}
+
+	createConnectionWithId(id: string, params: { name: string; config: ConnectionConfig }): ConnectionInfo {
 		const now = new Date().toISOString();
 		this.db.prepare(
 			"INSERT INTO connections (id, name, type, config, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",

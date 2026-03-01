@@ -7,7 +7,6 @@ import type {
 } from "../../shared/types/connection";
 import {
 	getDefaultDatabase,
-	isServerConfig,
 	CONNECTION_TYPE_META,
 } from "../../shared/types/connection";
 import type { ConnectionType } from "../../shared/types/connection";
@@ -15,17 +14,7 @@ import type { DatabaseInfo, SchemaData, SchemaInfo, TableInfo, ColumnInfo, Index
 import type { SqlDialect } from "../../shared/sql";
 import { PostgresDialect, SqliteDialect, MysqlDialect } from "../../shared/sql";
 import { rpc, messages, friendlyErrorMessage } from "../lib/rpc";
-import { isStateless } from "../lib/mode";
-import {
-	getStoredConnections,
-	putStoredConnection,
-	deleteStoredConnection,
-	getAllSettings,
-	getStoredHistory,
-	getStoredViews,
-	clearStoredHistory,
-	clearStoredViewsByConnection,
-} from "../lib/browser-storage";
+import { storage } from "../lib/storage";
 import { uiStore } from "./ui";
 
 export interface SchemaTree {
@@ -61,15 +50,12 @@ function setBeforeDisconnectHook(hook: ((connectionId: string) => boolean) | nul
 	beforeDisconnectHook = hook;
 }
 
-// ── Password prompt signal (for stateless mode) ──────────
+// ── Password prompt signal ───────────────────────────────
 const [passwordPrompt, setPasswordPrompt] = createSignal<{
 	connectionId: string;
 	connectionName: string;
 	resolve: (password: string | null) => void;
 } | null>(null);
-
-// ── Remember-password tracking for stateless mode ────────
-const rememberPasswordMap = new Map<string, boolean>();
 
 // ── Schema loading ───────────────────────────────────────
 
@@ -113,10 +99,6 @@ async function activateDatabase(connectionId: string, database: string) {
 	await rpc.databases.activate({ connectionId, database });
 	await loadSchemaTree(connectionId, database);
 	await loadAvailableDatabases(connectionId);
-
-	if (isStateless()) {
-		persistConnectionConfig(connectionId);
-	}
 }
 
 async function deactivateDatabase(connectionId: string, database: string) {
@@ -131,65 +113,12 @@ async function deactivateDatabase(connectionId: string, database: string) {
 	}
 
 	await loadAvailableDatabases(connectionId);
-
-	if (isStateless()) {
-		persistConnectionConfig(connectionId);
-	}
-}
-
-async function persistConnectionConfig(connectionId: string) {
-	// Re-fetch connection info and persist to IndexedDB
-	try {
-		const list = await rpc.connections.list();
-		const conn = list.find((c) => c.id === connectionId);
-		if (!conn) return;
-
-		const remember = rememberPasswordMap.get(connectionId) ?? true;
-		const configToStore = !remember && isServerConfig(conn.config)
-			? { ...conn.config, password: "" }
-			: conn.config;
-		const { encryptedConfig } = await rpc.storage.encrypt({ config: JSON.stringify(configToStore) });
-		await putStoredConnection({
-			id: connectionId,
-			name: conn.name,
-			encryptedConfig,
-			rememberPassword: remember,
-			createdAt: conn.createdAt,
-			updatedAt: conn.updatedAt,
-		});
-	} catch (e) {
-		console.warn("Failed to persist connection config:", e);
-	}
 }
 
 // ── Actions ──────────────────────────────────────────────
 
 async function loadConnections() {
-	if (isStateless()) {
-		// Restore data from IndexedDB into server's in-memory DB
-		const [storedConns, settings, history, views] = await Promise.all([
-			getStoredConnections(),
-			getAllSettings(),
-			getStoredHistory(),
-			getStoredViews(),
-		]);
-
-		// Track rememberPassword from stored connections
-		for (const sc of storedConns) {
-			rememberPasswordMap.set(sc.id, sc.rememberPassword);
-		}
-
-		if (storedConns.length > 0 || Object.keys(settings).length > 0 || history.length > 0 || views.length > 0) {
-			await rpc.storage.restore({
-				connections: storedConns,
-				settings,
-				history,
-				views,
-			});
-		}
-	}
-
-	const list = await rpc.connections.list();
+	const list = await storage.listConnections();
 	setState("connections", list);
 	// Load schema trees for connections the backend reports as already connected
 	// (e.g. after a frontend-only reload while the backend stayed alive)
@@ -217,54 +146,19 @@ async function loadSchemaTreesForConnection(conn: ConnectionInfo) {
 }
 
 async function createConnection(name: string, config: ConnectionConfig, rememberPassword = true): Promise<ConnectionInfo> {
-	const conn = await rpc.connections.create({ name, config });
+	const conn = await storage.createConnection(name, config, rememberPassword);
 	setState("connections", (prev) => [...prev, conn]);
-
-	if (isStateless()) {
-		rememberPasswordMap.set(conn.id, rememberPassword);
-		const configToStore = !rememberPassword && isServerConfig(config)
-			? { ...config, password: "" }
-			: config;
-		const { encryptedConfig } = await rpc.storage.encrypt({ config: JSON.stringify(configToStore) });
-		await putStoredConnection({
-			id: conn.id,
-			name,
-			encryptedConfig,
-			rememberPassword,
-			createdAt: conn.createdAt,
-			updatedAt: conn.updatedAt,
-		});
-	}
-
 	return conn;
 }
 
 async function updateConnection(id: string, name: string, config: ConnectionConfig, rememberPassword?: boolean): Promise<ConnectionInfo> {
-	const conn = await rpc.connections.update({ id, name, config });
+	const conn = await storage.updateConnection(id, name, config, rememberPassword);
 	setState("connections", (c) => c.id === id, conn);
-
-	if (isStateless()) {
-		const remember = rememberPassword ?? rememberPasswordMap.get(id) ?? true;
-		rememberPasswordMap.set(id, remember);
-		const configToStore = !remember && isServerConfig(config)
-			? { ...config, password: "" }
-			: config;
-		const { encryptedConfig } = await rpc.storage.encrypt({ config: JSON.stringify(configToStore) });
-		await putStoredConnection({
-			id,
-			name,
-			encryptedConfig,
-			rememberPassword: remember,
-			createdAt: conn.createdAt,
-			updatedAt: conn.updatedAt,
-		});
-	}
-
 	return conn;
 }
 
 async function deleteConnection(id: string) {
-	await rpc.connections.delete({ id });
+	await storage.deleteConnection(id);
 	setState("connections", (prev) => prev.filter((c) => c.id !== id));
 	// Clean up schema trees, schema data cache, and available databases
 	setState("schemaTrees", id, undefined!);
@@ -273,30 +167,30 @@ async function deleteConnection(id: string) {
 	if (state.activeConnectionId === id) {
 		setState("activeConnectionId", null);
 	}
-
-	if (isStateless()) {
-		rememberPasswordMap.delete(id);
-		await Promise.all([
-			deleteStoredConnection(id),
-			clearStoredHistory(id),
-			clearStoredViewsByConnection(id),
-		]);
-	}
 }
 
 async function connectTo(id: string, password?: string) {
-	// In stateless mode, if password not remembered, prompt for it
-	if (isStateless() && !password && rememberPasswordMap.get(id) === false) {
-		const conn = state.connections.find((c) => c.id === id);
-		const connName = conn?.name ?? "Connection";
-		const prompted = await promptForPassword(id, connName);
-		if (!prompted) return; // User cancelled
-		password = prompted;
+	// If adapter needs config on connect and password not remembered, prompt for it
+	if (storage.passConfigOnConnect && !password) {
+		const remember = await storage.getRememberPassword(id);
+		if (!remember) {
+			const conn = state.connections.find((c) => c.id === id);
+			const connName = conn?.name ?? "Connection";
+			const prompted = await promptForPassword(id, connName);
+			if (!prompted) return; // User cancelled
+			password = prompted;
+		}
 	}
 
 	updateConnectionState(id, "connecting");
 	try {
-		await rpc.connections.connect({ connectionId: id, password });
+		if (storage.passConfigOnConnect) {
+			const encryptedConfig = await storage.getEncryptedConfig(id);
+			const conn = state.connections.find((c) => c.id === id);
+			await rpc.connections.connect({ connectionId: id, password, encryptedConfig, name: conn?.name });
+		} else {
+			await rpc.connections.connect({ connectionId: id, password });
+		}
 		// Status will be updated via the statusChanged event
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);
@@ -334,8 +228,8 @@ function setActiveConnection(id: string | null) {
 	setState("activeConnectionId", id);
 }
 
-function getRememberPassword(id: string): boolean {
-	return rememberPasswordMap.get(id) ?? true;
+async function getRememberPassword(id: string): Promise<boolean> {
+	return storage.getRememberPassword(id);
 }
 
 // ── Internal helpers ─────────────────────────────────────
