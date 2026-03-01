@@ -34,6 +34,10 @@ const toastTimers = new Map<string, ReturnType<typeof setTimeout>>();
 // ── Toast actions ────────────────────────────────────────
 
 function addToast(type: ToastType, message: string, options?: ToastOptions): string {
+	// Deduplicate: skip if there's already an active toast with the same type and message
+	const existing = state.toasts.find((t) => t.type === type && t.message === message);
+	if (existing) return existing.id;
+
 	const id = crypto.randomUUID();
 	// Errors are persistent by default; others auto-dismiss after 5s
 	const duration = options?.duration ?? (type === "error" ? 0 : DEFAULT_DURATION);

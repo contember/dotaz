@@ -40,8 +40,8 @@ function connect(): Promise<void> {
 				req.reject(new Error("WebSocket closed"));
 				pending.delete(id);
 			}
-			// Auto-reconnect after delay
-			setTimeout(() => { connect(); }, 1000);
+			// Auto-reconnect after delay (catch to prevent unhandled rejection toasts)
+			setTimeout(() => { connect().catch(() => {}); }, 1000);
 		};
 
 		socket.onmessage = (event) => {
