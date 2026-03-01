@@ -835,6 +835,13 @@ function revertChanges(tabId: string) {
 	setState("tabs", tabId, "editingCell", null);
 }
 
+/** Clear pending changes tracking without reverting cell values (used after successful apply). */
+function clearPendingChanges(tabId: string) {
+	ensureTab(tabId);
+	setState("tabs", tabId, "pendingChanges", createDefaultPendingChanges());
+	setState("tabs", tabId, "editingCell", null);
+}
+
 // ── Saved view actions ────────────────────────────────────
 
 function setActiveView(tabId: string, viewId: string | null, viewName: string | null) {
@@ -1061,6 +1068,7 @@ export const gridStore = {
 	isRowDeleted,
 	buildDataChanges,
 	revertChanges,
+	clearPendingChanges,
 	revertRowUpdate,
 	revertNewRow,
 	revertDeletedRow,

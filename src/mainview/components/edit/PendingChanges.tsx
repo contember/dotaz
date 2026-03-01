@@ -147,7 +147,7 @@ export default function PendingChanges(props: PendingChangesProps) {
 		setError(null);
 		try {
 			await rpc.data.applyChanges(props.connectionId, changes, props.database);
-			gridStore.revertChanges(props.tabId);
+			gridStore.clearPendingChanges(props.tabId);
 			setPreviewSql(null);
 			props.onApplied();
 		} catch (err) {

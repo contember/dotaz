@@ -109,7 +109,7 @@ export default function InlineEditor(props: InlineEditorProps) {
 			e.stopPropagation();
 			save();
 			props.onMoveNext();
-		} else if (e.key === "Enter" && !isText()) {
+		} else if (e.key === "Enter" && !e.shiftKey) {
 			e.preventDefault();
 			e.stopPropagation();
 			save();
