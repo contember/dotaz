@@ -8,6 +8,7 @@ import type { DatabaseInfo } from "../../shared/types/database";
 import type { QueryResult, QueryHistoryEntry, ExplainResult } from "../../shared/types/query";
 import type { ExportOptions, ExportPreviewRequest, ExportResult } from "../../shared/types/export";
 import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from "../../shared/types/import";
+import type { ComparisonRequest, ComparisonResult } from "../../shared/types/comparison";
 import type {
 	SavedView,
 	SavedViewConfig,
@@ -19,6 +20,7 @@ import type { DatabaseDriver } from "../db/driver";
 import { TransactionManager } from "../services/transaction-manager";
 import { exportToFile, exportPreview } from "../services/export-service";
 import { parseImportPreview, importData as importDataService } from "../services/import-service";
+import { compareData as compareDataService } from "../services/comparison-service";
 import { formatSql } from "../services/sql-formatter";
 
 
@@ -255,6 +257,14 @@ export class BackendAdapter implements RpcAdapter {
 			delimiter: req.delimiter,
 			hasHeader: req.hasHeader,
 		}, req.limit);
+	}
+
+	// ── Data comparison ──────────────────────────────────
+
+	async compareData(req: ComparisonRequest): Promise<ComparisonResult> {
+		const leftDriver = this.cm.getDriver(req.left.connectionId, req.left.database);
+		const rightDriver = this.cm.getDriver(req.right.connectionId, req.right.database);
+		return compareDataService(leftDriver, rightDriver, req);
 	}
 
 	// ── Storage ──────────────────────────────────────────

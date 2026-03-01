@@ -8,6 +8,7 @@ import type {
 	OpenDialogParams,
 	SaveDialogParams,
 } from "../../shared/types/rpc";
+import type { ComparisonRequest } from "../../shared/types/comparison";
 
 export function createHandlers(adapter: RpcAdapter) {
 	return {
@@ -103,6 +104,11 @@ export function createHandlers(adapter: RpcAdapter) {
 		},
 		"import.preview": async (req: ImportPreviewRequest) => {
 			return adapter.importPreview(req);
+		},
+
+		// ── Data comparison ──────────────────────────────
+		"data.compare": async (req: ComparisonRequest) => {
+			return adapter.compareData(req);
 		},
 
 		// ── History ───────────────────────────────────────

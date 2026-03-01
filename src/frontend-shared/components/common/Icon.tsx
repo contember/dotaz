@@ -37,6 +37,7 @@ import Check from "lucide-solid/icons/check";
 import TriangleAlert from "lucide-solid/icons/triangle-alert";
 import CircleAlert from "lucide-solid/icons/circle-alert";
 import Info from "lucide-solid/icons/info";
+import GitCompareArrows from "lucide-solid/icons/git-compare-arrows";
 import type { JSX as SolidJSX } from "solid-js/jsx-runtime";
 
 type LucideProps = Partial<SolidJSX.SvgSVGAttributes<SVGSVGElement>> & {
@@ -87,6 +88,7 @@ export type IconName =
 	| "warning"
 	| "error"
 	| "info"
+	| "compare"
 	| "spinner";
 
 interface IconProps {
@@ -140,6 +142,7 @@ const ICON_MAP: Record<Exclude<IconName, "spinner">, LucideComponent> = {
 	warning: TriangleAlert,
 	error: CircleAlert,
 	info: Info,
+	compare: GitCompareArrows,
 };
 
 export default function Icon(props: IconProps) {

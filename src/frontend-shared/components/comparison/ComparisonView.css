@@ -1,0 +1,240 @@
+.comparison-view {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	overflow: hidden;
+}
+
+/* Loading */
+
+.comparison-view__loading {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--spacing-sm);
+	padding: var(--spacing-xl);
+	color: var(--ink-muted);
+	font-size: var(--font-size-sm);
+}
+
+/* Error */
+
+.comparison-view__error {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-sm);
+	padding: var(--spacing-md);
+	color: var(--error);
+	font-size: var(--font-size-sm);
+}
+
+/* Toolbar */
+
+.comparison-view__toolbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: var(--spacing-sm) var(--spacing-md);
+	border-bottom: 1px solid var(--edge);
+	flex-shrink: 0;
+}
+
+.comparison-view__stats {
+	display: flex;
+	gap: var(--spacing-sm);
+}
+
+.comparison-view__stat {
+	font-size: var(--font-size-xs);
+	padding: 2px var(--spacing-sm);
+	border-radius: var(--radius-sm);
+	border: 1px solid var(--edge);
+	background: transparent;
+	cursor: pointer;
+	color: var(--ink-secondary);
+	transition: background 0.15s, border-color 0.15s;
+}
+
+.comparison-view__stat:hover {
+	background: var(--surface-hover);
+}
+
+.comparison-view__stat--total {
+	cursor: default;
+	font-weight: 500;
+	color: var(--ink);
+}
+
+.comparison-view__stat--active {
+	border-color: var(--accent);
+	background: var(--accent);
+	color: var(--accent-fg);
+}
+
+.comparison-view__stat--matched:not(.comparison-view__stat--active) {
+	color: var(--ink-secondary);
+}
+
+.comparison-view__stat--added:not(.comparison-view__stat--active) {
+	color: var(--success);
+}
+
+.comparison-view__stat--removed:not(.comparison-view__stat--active) {
+	color: var(--error);
+}
+
+.comparison-view__stat--changed:not(.comparison-view__stat--active) {
+	color: var(--warning);
+}
+
+.comparison-view__info {
+	font-size: var(--font-size-xs);
+	color: var(--ink-muted);
+}
+
+/* Grid wrapper — side-by-side */
+
+.comparison-view__grid-wrapper {
+	display: flex;
+	flex: 1;
+	overflow: hidden;
+}
+
+.comparison-view__side {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+.comparison-view__side-header {
+	font-size: var(--font-size-xs);
+	font-weight: 600;
+	color: var(--ink-secondary);
+	padding: var(--spacing-xs) var(--spacing-sm);
+	background: var(--surface);
+	border-bottom: 1px solid var(--edge);
+	text-align: center;
+	flex-shrink: 0;
+}
+
+.comparison-view__divider {
+	width: 2px;
+	background: var(--edge-strong);
+	flex-shrink: 0;
+}
+
+.comparison-view__table-wrapper {
+	overflow: auto;
+	flex: 1;
+}
+
+/* Table */
+
+.comparison-view__table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: var(--font-size-xs);
+	table-layout: auto;
+}
+
+.comparison-view__th {
+	padding: var(--spacing-xs) var(--spacing-sm);
+	text-align: left;
+	font-weight: 500;
+	color: var(--ink-secondary);
+	background: var(--surface);
+	border-bottom: 1px solid var(--edge);
+	position: sticky;
+	top: 0;
+	white-space: nowrap;
+}
+
+.comparison-view__th--status {
+	width: 70px;
+}
+
+.comparison-view__td {
+	padding: var(--spacing-xs) var(--spacing-sm);
+	border-bottom: 1px solid var(--edge);
+	color: var(--ink);
+	max-width: 200px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.comparison-view__td--status {
+	width: 70px;
+}
+
+.comparison-view__td--null {
+	color: var(--ink-muted);
+	font-style: italic;
+}
+
+.comparison-view__td--empty {
+	background: var(--surface-inset);
+}
+
+.comparison-view__td--changed {
+	background: rgba(255, 193, 7, 0.15);
+	font-weight: 500;
+}
+
+/* Row status backgrounds */
+
+.comparison-view__row--removed {
+	background: rgba(244, 67, 54, 0.06);
+}
+
+.comparison-view__row--added {
+	background: rgba(76, 175, 80, 0.06);
+}
+
+.comparison-view__row--changed {
+	background: rgba(255, 193, 7, 0.04);
+}
+
+/* Status badge */
+
+.comparison-view__badge {
+	display: inline-block;
+	font-size: 10px;
+	padding: 1px 6px;
+	border-radius: 3px;
+	font-weight: 500;
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+}
+
+.comparison-view__badge--matched {
+	color: var(--ink-muted);
+	background: var(--surface);
+}
+
+.comparison-view__badge--added {
+	color: var(--success);
+	background: rgba(76, 175, 80, 0.12);
+}
+
+.comparison-view__badge--removed {
+	color: var(--error);
+	background: rgba(244, 67, 54, 0.12);
+}
+
+.comparison-view__badge--changed {
+	color: var(--warning);
+	background: rgba(255, 193, 7, 0.12);
+}
+
+/* Empty state */
+
+.comparison-view__empty {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 100%;
+	color: var(--ink-muted);
+	font-size: var(--font-size-sm);
+}

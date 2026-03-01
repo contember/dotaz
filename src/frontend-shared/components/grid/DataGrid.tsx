@@ -957,6 +957,22 @@ export default function DataGrid(props: DataGridProps) {
 							<button
 								class="data-grid__toolbar-btn"
 								onClick={() => {
+									window.dispatchEvent(new CustomEvent("dotaz:open-compare", {
+										detail: {
+											connectionId: props.connectionId,
+											schema: currentSchema(),
+											table: currentTable(),
+											database: props.database,
+										},
+									}));
+								}}
+								title="Compare this table with another"
+							>
+								<Icon name="compare" size={12} /> Compare
+							</button>
+							<button
+								class="data-grid__toolbar-btn"
+								onClick={() => {
 									tabsStore.openTab({
 										type: "schema-viewer",
 										title: `Schema — ${currentTable()}`,

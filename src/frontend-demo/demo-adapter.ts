@@ -12,9 +12,11 @@ import type {
 	SavedViewConfig,
 	HistoryListParams,
 } from "../shared/types/rpc";
+import type { ComparisonRequest, ComparisonResult } from "../shared/types/comparison";
 import { splitStatements } from "../shared/sql/statements";
 import { exportPreview as generateExportPreview } from "../backend-shared/services/export-service";
 import { parseImportPreview, importData as importDataService } from "../backend-shared/services/import-service";
+import { compareData as compareDataService } from "../backend-shared/services/comparison-service";
 import { formatSql } from "../backend-shared/services/sql-formatter";
 
 type EmitMessage = (channel: string, payload: any) => void;
@@ -337,6 +339,14 @@ export class DemoAdapter implements RpcAdapter {
 			delimiter: req.delimiter,
 			hasHeader: req.hasHeader,
 		}, req.limit);
+	}
+
+	// ── Data comparison ──────────────────────────────────
+
+	async compareData(req: ComparisonRequest): Promise<ComparisonResult> {
+		const leftDriver = this.getConnectedDriver(req.left.connectionId);
+		const rightDriver = this.getConnectedDriver(req.right.connectionId);
+		return compareDataService(leftDriver, rightDriver, req);
 	}
 
 	// ── SQL formatting ───────────────────────────────────

@@ -17,6 +17,9 @@ import QueryToolbar from "../editor/QueryToolbar";
 import SqlResultPanel from "../editor/SqlResultPanel";
 import DestructiveQueryDialog from "../editor/DestructiveQueryDialog";
 import SchemaViewer from "../schema/SchemaViewer";
+import ComparisonView from "../comparison/ComparisonView";
+import ComparisonDialog from "../comparison/ComparisonDialog";
+import type { ComparisonSource, ComparisonColumnMapping } from "../../../shared/types/comparison";
 import type { ConnectionInfo } from "../../../shared/types/connection";
 import { tabsStore } from "../../stores/tabs";
 import { connectionsStore } from "../../stores/connections";
@@ -24,15 +27,17 @@ import { editorStore } from "../../stores/editor";
 import { gridStore } from "../../stores/grid";
 import { uiStore } from "../../stores/ui";
 import { friendlyErrorMessage, messages } from "../../lib/rpc";
+import { setComparisonParams, getComparisonParams, removeComparisonParams } from "../../stores/comparison";
 import { commandRegistry } from "../../lib/commands";
 import { keyboardManager } from "../../lib/keyboard";
 import type { ShortcutContext } from "../../lib/keyboard";
 import "./AppShell.css";
 
-// Clean up grid/editor state when tabs are closed to prevent memory leaks
+// Clean up grid/editor/comparison state when tabs are closed to prevent memory leaks
 tabsStore.onTabClosed((tabId) => {
 	gridStore.removeTab(tabId);
 	editorStore.removeTab(tabId);
+	removeComparisonParams(tabId);
 });
 
 const MIN_WIDTH = 150;
@@ -48,6 +53,8 @@ export default function AppShell() {
 	const [dbPickerConnection, setDbPickerConnection] = createSignal<ConnectionInfo | null>(null);
 	const [historyOpen, setHistoryOpen] = createSignal(false);
 	const [paletteOpen, setPaletteOpen] = createSignal(false);
+	const [compareOpen, setCompareOpen] = createSignal(false);
+	const [compareInitialLeft, setCompareInitialLeft] = createSignal<{ connectionId: string; schema: string; table: string; database?: string } | undefined>(undefined);
 
 	function handleResize(deltaX: number) {
 		setSidebarWidth((w) => Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, w + deltaX)));
@@ -70,6 +77,27 @@ export default function AppShell() {
 	function openManageDatabases(conn: ConnectionInfo) {
 		setDbPickerConnection(conn);
 		setDbPickerOpen(true);
+	}
+
+	function handleCompare(left: ComparisonSource, right: ComparisonSource, keyColumns: ComparisonColumnMapping[], columnMappings: ComparisonColumnMapping[]) {
+		const params = { left, right, keyColumns, columnMappings };
+		const tabId = tabsStore.openTab({
+			type: "comparison",
+			title: "Compare",
+			connectionId: left.connectionId,
+		});
+		setComparisonParams(tabId, params);
+		setCompareOpen(false);
+	}
+
+	function handleOpenCompare(e: Event) {
+		const detail = (e as CustomEvent).detail;
+		if (detail) {
+			setCompareInitialLeft(detail);
+		} else {
+			setCompareInitialLeft(undefined);
+		}
+		setCompareOpen(true);
 	}
 
 	let removeMenuListener: (() => void) | undefined;
@@ -143,6 +171,7 @@ export default function AppShell() {
 		// Global error catching — prevents app crash on unhandled errors
 		window.addEventListener("error", handleUnhandledError);
 		window.addEventListener("unhandledrejection", handleUnhandledRejection);
+		window.addEventListener("dotaz:open-compare", handleOpenCompare);
 
 		// Responsive: auto-collapse sidebar under 600px
 		const mediaQuery = window.matchMedia("(max-width: 600px)");
@@ -201,6 +230,7 @@ export default function AppShell() {
 		connectionsStore.setBeforeDisconnectHook(null);
 		window.removeEventListener("error", handleUnhandledError);
 		window.removeEventListener("unhandledrejection", handleUnhandledRejection);
+		window.removeEventListener("dotaz:open-compare", handleOpenCompare);
 	});
 
 	// ── Command registration ──────────────────────────────
@@ -452,6 +482,26 @@ export default function AppShell() {
 		});
 
 		commandRegistry.register({
+			id: "compare-data",
+			label: "Compare Data",
+			category: "Grid",
+			handler: () => {
+				const tab = tabsStore.activeTab;
+				if (tab?.type === "data-grid" && tab.schema && tab.table) {
+					setCompareInitialLeft({
+						connectionId: tab.connectionId,
+						schema: tab.schema,
+						table: tab.table,
+						database: tab.database,
+					});
+				} else {
+					setCompareInitialLeft(undefined);
+				}
+				setCompareOpen(true);
+			},
+		});
+
+		commandRegistry.register({
 			id: "new-connection",
 			label: "New Connection",
 			category: "Connection",
@@ -632,6 +682,12 @@ export default function AppShell() {
 											database={tab.database}
 										/>
 									</Match>
+									<Match when={tab.type === "comparison"}>
+										<ComparisonView
+											tabId={tab.id}
+											initialParams={getComparisonParams(tab.id)}
+										/>
+									</Match>
 								</Switch>
 							)}
 						</Show>
@@ -701,6 +757,13 @@ export default function AppShell() {
 				statements={editorStore.pendingDestructiveQuery?.statements ?? []}
 				onConfirm={(suppress) => editorStore.confirmDestructiveQuery(suppress)}
 				onCancel={() => editorStore.cancelDestructiveQuery()}
+			/>
+
+			<ComparisonDialog
+				open={compareOpen()}
+				onClose={() => setCompareOpen(false)}
+				onCompare={handleCompare}
+				initialLeft={compareInitialLeft()}
 			/>
 
 			<ToastContainer />

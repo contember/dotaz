@@ -1,0 +1,231 @@
+.comparison-dialog {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-md);
+	min-width: 700px;
+}
+
+.comparison-dialog__sources {
+	display: flex;
+	gap: var(--spacing-sm);
+	align-items: flex-start;
+}
+
+.comparison-dialog__source {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-sm);
+	padding: var(--spacing-sm);
+	border: 1px solid var(--edge);
+	border-radius: var(--radius-sm);
+	background: var(--surface-inset);
+}
+
+.comparison-dialog__source-header {
+	font-size: var(--font-size-sm);
+	font-weight: 600;
+	color: var(--ink);
+}
+
+.comparison-dialog__arrow {
+	display: flex;
+	align-items: center;
+	padding-top: var(--spacing-xl);
+	color: var(--ink-muted);
+}
+
+.comparison-dialog__field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-xs);
+}
+
+.comparison-dialog__field--column {
+	flex-direction: column;
+}
+
+.comparison-dialog__label {
+	font-size: var(--font-size-xs);
+	font-weight: 500;
+	color: var(--ink-secondary);
+}
+
+.comparison-dialog__select {
+	padding: var(--spacing-xs) var(--spacing-sm);
+	border: 1px solid var(--edge);
+	border-radius: 4px;
+	background: var(--surface);
+	color: var(--ink);
+	font-size: var(--font-size-sm);
+	font-family: inherit;
+}
+
+.comparison-dialog__select:focus {
+	outline: none;
+	border-color: var(--accent);
+}
+
+.comparison-dialog__input {
+	padding: var(--spacing-xs) var(--spacing-sm);
+	border: 1px solid var(--edge);
+	border-radius: 4px;
+	background: var(--surface);
+	color: var(--ink);
+	font-size: var(--font-size-sm);
+	font-family: inherit;
+}
+
+.comparison-dialog__input:focus {
+	outline: none;
+	border-color: var(--accent);
+}
+
+.comparison-dialog__textarea {
+	padding: var(--spacing-sm);
+	border: 1px solid var(--edge);
+	border-radius: 4px;
+	background: var(--surface);
+	color: var(--ink);
+	font-size: var(--font-size-sm);
+	font-family: var(--font-mono);
+	resize: vertical;
+}
+
+.comparison-dialog__textarea:focus {
+	outline: none;
+	border-color: var(--accent);
+}
+
+.comparison-dialog__type-group {
+	display: flex;
+	border: 1px solid var(--edge-strong);
+	border-radius: var(--radius-sm);
+	overflow: hidden;
+}
+
+.comparison-dialog__type-btn {
+	flex: 1;
+	padding: var(--spacing-xs) var(--spacing-sm);
+	border: none;
+	border-right: 1px solid var(--edge);
+	background: transparent;
+	color: var(--ink-secondary);
+	font-size: var(--font-size-xs);
+	cursor: pointer;
+	transition: background 0.15s, color 0.15s;
+}
+
+.comparison-dialog__type-btn:last-child {
+	border-right: none;
+}
+
+.comparison-dialog__type-btn:hover {
+	background: var(--surface-hover);
+	color: var(--ink);
+}
+
+.comparison-dialog__type-btn--active {
+	background: var(--accent);
+	color: var(--accent-fg);
+	font-weight: 500;
+}
+
+/* Section */
+
+.comparison-dialog__section {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-xs);
+}
+
+.comparison-dialog__section-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	font-size: var(--font-size-sm);
+	font-weight: 500;
+	color: var(--ink-secondary);
+}
+
+.comparison-dialog__add-btn {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px var(--spacing-sm);
+	border: 1px solid var(--edge);
+	border-radius: 4px;
+	background: var(--surface);
+	color: var(--ink);
+	font-size: var(--font-size-xs);
+	cursor: pointer;
+}
+
+.comparison-dialog__add-btn:hover {
+	background: var(--surface-hover);
+}
+
+/* Key columns */
+
+.comparison-dialog__key-columns {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-xs);
+}
+
+.comparison-dialog__key-row {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-sm);
+}
+
+.comparison-dialog__key-row .comparison-dialog__select,
+.comparison-dialog__key-row .comparison-dialog__input {
+	flex: 1;
+}
+
+.comparison-dialog__key-arrow {
+	color: var(--ink-muted);
+	font-size: var(--font-size-sm);
+	font-weight: 600;
+}
+
+.comparison-dialog__remove-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	border: none;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--ink-muted);
+	cursor: pointer;
+}
+
+.comparison-dialog__remove-btn:hover {
+	background: var(--surface-hover);
+	color: var(--error);
+}
+
+.comparison-dialog__empty {
+	font-size: var(--font-size-xs);
+	color: var(--ink-muted);
+	padding: var(--spacing-sm);
+	text-align: center;
+}
+
+/* Error */
+
+.comparison-dialog__error {
+	font-size: var(--font-size-sm);
+	color: var(--error);
+}
+
+/* Actions */
+
+.comparison-dialog__actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: var(--spacing-sm);
+}

@@ -20,6 +20,7 @@ const TAB_ICONS: Record<TabType, IconName> = {
 	"data-grid": "grid",
 	"sql-console": "sql-console",
 	"schema-viewer": "schema",
+	"comparison": "compare",
 };
 
 export default function TabBar(props: TabBarProps) {

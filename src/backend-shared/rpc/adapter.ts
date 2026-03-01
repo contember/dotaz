@@ -4,6 +4,7 @@ import type { DatabaseInfo } from "../../shared/types/database";
 import type { QueryResult, QueryHistoryEntry, ExplainResult } from "../../shared/types/query";
 import type { ExportOptions, ExportPreviewRequest, ExportResult } from "../../shared/types/export";
 import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from "../../shared/types/import";
+import type { ComparisonRequest, ComparisonResult } from "../../shared/types/comparison";
 import type {
 	SavedView,
 	SavedViewConfig,
@@ -62,6 +63,9 @@ export interface RpcAdapter {
 	// ── Import ────────────────────────────────────────────
 	importData(opts: ImportOptions): Promise<ImportResult>;
 	importPreview(req: ImportPreviewRequest): Promise<ImportPreviewResult>;
+
+	// ── Data comparison ──────────────────────────────────
+	compareData(req: ComparisonRequest): Promise<ComparisonResult>;
 
 	// ── Storage ──────────────────────────────────────────
 	encrypt?(config: string): Promise<string>;
