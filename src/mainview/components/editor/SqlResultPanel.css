@@ -102,7 +102,7 @@
 
 .sql-result-panel__error {
 	padding: var(--spacing-md);
-	background: rgba(239, 68, 68, 0.1);
+	background: rgba(244, 71, 71, 0.1);
 	border-left: 3px solid var(--color-error);
 	margin: var(--spacing-sm);
 	border-radius: 4px;

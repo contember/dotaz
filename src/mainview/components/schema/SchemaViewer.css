@@ -146,13 +146,13 @@
 }
 
 .schema-viewer__pk-icon {
-	font-size: 14px;
+	display: inline-flex;
+	color: var(--color-success);
 }
 
 .schema-viewer__fk-icon {
+	display: inline-flex;
 	color: var(--accent);
-	font-weight: 700;
-	font-size: 14px;
 }
 
 .schema-viewer__auto-increment {

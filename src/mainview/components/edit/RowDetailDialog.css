@@ -208,29 +208,3 @@
 	border-top: 1px solid var(--border-color);
 }
 
-.row-detail__btn {
-	padding: var(--spacing-sm) var(--spacing-lg);
-	border-radius: 3px;
-	border: none;
-	font-size: var(--font-size-sm);
-	cursor: pointer;
-}
-
-.row-detail__btn--primary {
-	background: var(--accent);
-	color: var(--accent-fg);
-}
-
-.row-detail__btn--primary:hover {
-	background: var(--accent-hover);
-}
-
-.row-detail__btn--secondary {
-	background: var(--bg-input);
-	color: var(--text-primary);
-	border: 1px solid var(--border-color);
-}
-
-.row-detail__btn--secondary:hover {
-	background: var(--bg-hover);
-}

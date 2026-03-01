@@ -149,13 +149,13 @@ export default function SaveViewDialog(props: SaveViewDialogProps) {
 
 				<div class="save-view-dialog__actions">
 					<button
-						class="save-view-dialog__btn save-view-dialog__btn--secondary"
+						class="btn btn--secondary"
 						onClick={props.onClose}
 					>
 						Cancel
 					</button>
 					<button
-						class="save-view-dialog__btn save-view-dialog__btn--primary"
+						class="btn btn--primary"
 						onClick={handleSave}
 						disabled={saving() || !name().trim()}
 					>

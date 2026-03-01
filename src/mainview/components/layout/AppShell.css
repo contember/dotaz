@@ -53,6 +53,10 @@
 	margin: 0;
 }
 
+.welcome-screen__cta {
+	margin-top: var(--spacing-md);
+}
+
 .sql-console {
 	display: flex;
 	flex-direction: column;

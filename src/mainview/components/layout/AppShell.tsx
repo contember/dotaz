@@ -559,6 +559,9 @@ export default function AppShell() {
 								<p class="welcome-screen__subtitle">
 									Open a connection and select a table to get started.
 								</p>
+								<button class="btn btn--primary welcome-screen__cta" onClick={openAddConnectionDialog}>
+									Add Connection
+								</button>
 							</div>
 						</Show>
 						<Show when={tabsStore.activeTab} keyed>

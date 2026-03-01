@@ -29,7 +29,7 @@
 }
 
 .context-menu__item:hover {
-	background: var(--bg-selection);
+	background: var(--bg-hover);
 }
 
 .context-menu__item--disabled {

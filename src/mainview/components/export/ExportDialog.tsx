@@ -389,13 +389,13 @@ export default function ExportDialog(props: ExportDialogProps) {
 				{/* Actions */}
 				<div class="export-dialog__actions">
 					<button
-						class="export-dialog__btn export-dialog__btn--secondary"
+						class="btn btn--secondary"
 						onClick={props.onClose}
 					>
 						Close
 					</button>
 					<button
-						class="export-dialog__btn export-dialog__btn--primary"
+						class="btn btn--primary"
 						onClick={handleExport}
 						disabled={exporting()}
 					>

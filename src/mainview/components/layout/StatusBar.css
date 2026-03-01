@@ -28,7 +28,7 @@
 .status-bar__item--tx {
 	font-weight: 700;
 	background: var(--color-warning);
-	color: var(--bg-primary);
+	color: var(--text-inverse);
 	padding: 1px 6px;
 	border-radius: 3px;
 }

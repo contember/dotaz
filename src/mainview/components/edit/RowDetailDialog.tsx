@@ -400,13 +400,13 @@ export default function RowDetailDialog(props: RowDetailDialogProps) {
 				{/* Actions */}
 				<div class="row-detail__actions">
 					<button
-						class="row-detail__btn row-detail__btn--secondary"
+						class="btn btn--secondary"
 						onClick={handleCancel}
 					>
 						Cancel
 					</button>
 					<button
-						class="row-detail__btn row-detail__btn--primary"
+						class="btn btn--primary"
 						onClick={handleSave}
 					>
 						Save

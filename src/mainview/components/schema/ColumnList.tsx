@@ -1,4 +1,5 @@
 import { For, Show } from "solid-js";
+import { KeyRound, ArrowRight } from "lucide-solid";
 import type { ColumnInfo, ForeignKeyInfo } from "../../../shared/types/database";
 
 interface ColumnListProps {
@@ -43,10 +44,10 @@ export default function ColumnList(props: ColumnListProps) {
 								<tr class="schema-viewer__row">
 									<td class="schema-viewer__td schema-viewer__td--icon">
 										<Show when={col.isPrimaryKey}>
-											<span class="schema-viewer__pk-icon" title="Primary Key">&#128273;</span>
+											<span class="schema-viewer__pk-icon" title="Primary Key"><KeyRound size={14} /></span>
 										</Show>
 										<Show when={fk()}>
-											<span class="schema-viewer__fk-icon" title="Foreign Key">&#8594;</span>
+											<span class="schema-viewer__fk-icon" title="Foreign Key"><ArrowRight size={14} /></span>
 										</Show>
 									</td>
 									<td class="schema-viewer__td schema-viewer__td--name">
