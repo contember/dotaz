@@ -1,6 +1,8 @@
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 import type { QueryHistoryEntry } from "../../../shared/types/query";
 import { rpc } from "../../lib/rpc";
+import { isStateless } from "../../lib/mode";
+import { clearStoredHistory } from "../../lib/browser-storage";
 import { connectionsStore } from "../../stores/connections";
 import { tabsStore } from "../../stores/tabs";
 import { editorStore } from "../../stores/editor";
@@ -186,7 +188,9 @@ export default function QueryHistory(props: QueryHistoryProps) {
 		if (!confirmed) return;
 
 		try {
-			await rpc.history.clear(connectionFilter() || undefined);
+			const connId = connectionFilter() || undefined;
+			await rpc.history.clear({ connectionId: connId });
+			if (isStateless()) clearStoredHistory(connId).catch((e) => console.warn("Failed to clear stored history:", e));
 			setEntries([]);
 			setHasMore(false);
 		} catch {

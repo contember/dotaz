@@ -346,5 +346,3 @@ export function createHandlers(adapter: RpcAdapter) {
 		},
 	} as const;
 }
-
-export type HandlerMap = ReturnType<typeof createHandlers>;

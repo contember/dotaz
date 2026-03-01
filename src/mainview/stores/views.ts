@@ -14,7 +14,7 @@ const [state, setState] = createStore<ViewsState>({
 
 async function loadViewsForConnection(connectionId: string) {
 	try {
-		const views = await rpc.views.listByConnection(connectionId);
+		const views = await rpc.views.listByConnection({ connectionId });
 		setState("viewsByConnection", connectionId, views);
 
 		// Sync to IndexedDB in stateless mode

@@ -74,7 +74,7 @@ const rememberPasswordMap = new Map<string, boolean>();
 // ── Schema loading ───────────────────────────────────────
 
 async function loadSchemaTree(connectionId: string, database?: string) {
-	const schemaData = await rpc.schema.load(connectionId, database);
+	const schemaData = await rpc.schema.load({ connectionId, database });
 
 	const dbKey = database ?? getDefaultDatabaseKey(connectionId);
 
@@ -102,7 +102,7 @@ function getDefaultDatabaseKey(connectionId: string): string {
 
 async function loadAvailableDatabases(connectionId: string) {
 	try {
-		const databases = await rpc.databases.list(connectionId);
+		const databases = await rpc.databases.list({ connectionId });
 		setState("availableDatabases", connectionId, databases);
 	} catch {
 		// Not a PostgreSQL connection or not connected
@@ -110,7 +110,7 @@ async function loadAvailableDatabases(connectionId: string) {
 }
 
 async function activateDatabase(connectionId: string, database: string) {
-	await rpc.databases.activate(connectionId, database);
+	await rpc.databases.activate({ connectionId, database });
 	await loadSchemaTree(connectionId, database);
 	await loadAvailableDatabases(connectionId);
 
@@ -120,7 +120,7 @@ async function activateDatabase(connectionId: string, database: string) {
 }
 
 async function deactivateDatabase(connectionId: string, database: string) {
-	await rpc.databases.deactivate(connectionId, database);
+	await rpc.databases.deactivate({ connectionId, database });
 
 	// Remove schema tree and schema data cache for this database
 	if (state.schemaTrees[connectionId]) {
@@ -148,7 +148,7 @@ async function persistConnectionConfig(connectionId: string) {
 		const configToStore = !remember && isServerConfig(conn.config)
 			? { ...conn.config, password: "" }
 			: conn.config;
-		const { encryptedConfig } = await rpc.storage.encrypt(JSON.stringify(configToStore));
+		const { encryptedConfig } = await rpc.storage.encrypt({ config: JSON.stringify(configToStore) });
 		await putStoredConnection({
 			id: connectionId,
 			name: conn.name,
@@ -225,7 +225,7 @@ async function createConnection(name: string, config: ConnectionConfig, remember
 		const configToStore = !rememberPassword && isServerConfig(config)
 			? { ...config, password: "" }
 			: config;
-		const { encryptedConfig } = await rpc.storage.encrypt(JSON.stringify(configToStore));
+		const { encryptedConfig } = await rpc.storage.encrypt({ config: JSON.stringify(configToStore) });
 		await putStoredConnection({
 			id: conn.id,
 			name,
@@ -249,7 +249,7 @@ async function updateConnection(id: string, name: string, config: ConnectionConf
 		const configToStore = !remember && isServerConfig(config)
 			? { ...config, password: "" }
 			: config;
-		const { encryptedConfig } = await rpc.storage.encrypt(JSON.stringify(configToStore));
+		const { encryptedConfig } = await rpc.storage.encrypt({ config: JSON.stringify(configToStore) });
 		await putStoredConnection({
 			id,
 			name,
@@ -264,7 +264,7 @@ async function updateConnection(id: string, name: string, config: ConnectionConf
 }
 
 async function deleteConnection(id: string) {
-	await rpc.connections.delete(id);
+	await rpc.connections.delete({ id });
 	setState("connections", (prev) => prev.filter((c) => c.id !== id));
 	// Clean up schema trees, schema data cache, and available databases
 	setState("schemaTrees", id, undefined!);
@@ -296,7 +296,7 @@ async function connectTo(id: string, password?: string) {
 
 	updateConnectionState(id, "connecting");
 	try {
-		await rpc.connections.connect(id, password);
+		await rpc.connections.connect({ connectionId: id, password });
 		// Status will be updated via the statusChanged event
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);
@@ -322,7 +322,7 @@ async function disconnectFrom(id: string) {
 	if (beforeDisconnectHook && !beforeDisconnectHook(id)) {
 		return;
 	}
-	await rpc.connections.disconnect(id);
+	await rpc.connections.disconnect({ connectionId: id });
 	// Status will be updated via the statusChanged event
 	// Clean up schema trees, schema data cache, and available databases
 	setState("schemaTrees", id, undefined!);

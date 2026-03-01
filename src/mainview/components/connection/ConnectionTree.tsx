@@ -416,7 +416,7 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 					);
 					if (confirmed) {
 						try {
-							await rpc.views.delete(view.id);
+							await rpc.views.delete({ id: view.id });
 							await viewsStore.refreshViews(connectionId);
 						} catch {
 							// Ignore delete errors

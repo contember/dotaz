@@ -120,7 +120,7 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0) {
 	const startTime = performance.now();
 
 	try {
-		const results = await rpc.query.execute(tab.connectionId, sql, queryId, undefined, tab.database);
+		const results = await rpc.query.execute({ connectionId: tab.connectionId, sql, queryId, database: tab.database });
 
 		// Discard stale results if a newer query was started
 		if (state.tabs[tabId]?.queryId !== queryId) return;
@@ -199,7 +199,7 @@ async function cancelQuery(tabId: string) {
 	if (!tab.isRunning || !tab.queryId) return;
 
 	try {
-		await rpc.query.cancel(tab.queryId);
+		await rpc.query.cancel({ queryId: tab.queryId });
 	} catch {
 		// Cancellation is best-effort
 	}
@@ -210,7 +210,7 @@ async function formatSql(tabId: string) {
 	if (!tab.content.trim()) return;
 
 	try {
-		const result = await rpc.query.format(tab.content);
+		const result = await rpc.query.format({ sql: tab.content });
 		setState("tabs", tabId, "content", result.sql);
 	} catch {
 		// Format failure is non-critical
@@ -225,7 +225,7 @@ function setTxMode(tabId: string, mode: TxMode) {
 async function beginTransaction(tabId: string) {
 	const tab = ensureTab(tabId);
 	try {
-		await rpc.tx.begin(tab.connectionId, tab.database);
+		await rpc.tx.begin({ connectionId: tab.connectionId, database: tab.database });
 		setState("tabs", tabId, "inTransaction", true);
 	} catch (err) {
 		const errorMessage = err instanceof Error ? err.message : String(err);
@@ -238,7 +238,7 @@ async function commitTransaction(tabId: string) {
 	if (!tab.inTransaction) return;
 
 	try {
-		await rpc.tx.commit(tab.connectionId, tab.database);
+		await rpc.tx.commit({ connectionId: tab.connectionId, database: tab.database });
 		setState("tabs", tabId, "inTransaction", false);
 	} catch (err) {
 		const errorMessage = err instanceof Error ? err.message : String(err);
@@ -251,7 +251,7 @@ async function rollbackTransaction(tabId: string) {
 	if (!tab.inTransaction) return;
 
 	try {
-		await rpc.tx.rollback(tab.connectionId, tab.database);
+		await rpc.tx.rollback({ connectionId: tab.connectionId, database: tab.database });
 		setState("tabs", tabId, "inTransaction", false);
 	} catch (err) {
 		const errorMessage = err instanceof Error ? err.message : String(err);

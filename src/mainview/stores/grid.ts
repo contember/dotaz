@@ -209,8 +209,8 @@ async function fetchData(tabId: string) {
 		// Execute both queries
 		const queryId = `grid-${tabId}-${requestId}`;
 		const [dataResults, countResults] = await Promise.all([
-			rpc.query.execute(tab.connectionId, selectQuery.sql, queryId, selectQuery.params, tab.database),
-			rpc.query.execute(tab.connectionId, countQuery.sql, `${queryId}-count`, countQuery.params, tab.database),
+			rpc.query.execute({ connectionId: tab.connectionId, sql: selectQuery.sql, queryId, params: selectQuery.params, database: tab.database }),
+			rpc.query.execute({ connectionId: tab.connectionId, sql: countQuery.sql, queryId: `${queryId}-count`, params: countQuery.params, database: tab.database }),
 		]);
 
 		// Ignore stale responses — a newer request has been issued
@@ -869,7 +869,7 @@ async function applyChanges(tabId: string, database?: string) {
 
 	const dialect = connectionsStore.getDialect(tab.connectionId);
 	const statements = changes.map((change) => generateChangeSql(change, dialect));
-	await rpc.query.executeStatements(tab.connectionId, statements, database);
+	await rpc.query.execute({ connectionId: tab.connectionId, sql: "", queryId: "", statements, database });
 }
 
 function generateSqlPreview(tabId: string): string {

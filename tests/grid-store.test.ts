@@ -72,9 +72,9 @@ function makeQueryResult(rows: Record<string, unknown>[], rowCount?: number) {
 	return [{ columns: [], rows, rowCount: rowCount ?? rows.length }];
 }
 
-function defaultQueryExecuteImpl(_connId: string, sql: string) {
+function defaultQueryExecuteImpl(params: { connectionId: string; sql: string; queryId: string; params?: unknown[]; database?: string }) {
 	// Count queries return totalRows
-	if (sql.trimStart().toUpperCase().startsWith("SELECT COUNT(")) {
+	if (params.sql.trimStart().toUpperCase().startsWith("SELECT COUNT(")) {
 		return Promise.resolve(makeQueryResult([{ count: defaultTotalRows }]));
 	}
 	// Data queries return fresh copies of rows (to avoid cross-test mutation)
@@ -88,7 +88,6 @@ mock.module("../src/mainview/lib/rpc", () => {
 		rpc: {
 			query: {
 				execute: (...args: any[]) => mockQueryExecute(...args),
-				executeStatements: mock(() => Promise.resolve([])),
 			},
 		},
 		messages: {
@@ -165,8 +164,8 @@ describe("grid store", () => {
 			// 2 calls per fetch: data query + count query
 			expect(mockQueryExecute).toHaveBeenCalledTimes(2);
 			// First call is the data SELECT, second is COUNT
-			expect(mockQueryExecute.mock.calls[0][0]).toBe("conn-1");
-			expect(mockQueryExecute.mock.calls[1][0]).toBe("conn-1");
+			expect(mockQueryExecute.mock.calls[0][0].connectionId).toBe("conn-1");
+			expect(mockQueryExecute.mock.calls[1][0].connectionId).toBe("conn-1");
 		});
 
 		test("reuses existing tab state on subsequent calls", async () => {
@@ -184,12 +183,12 @@ describe("grid store", () => {
 		test("each tab has independent state", async () => {
 			// Each fetch makes 2 calls (data + count).
 			// Use custom impl that returns different data per connectionId.
-			mockQueryExecute.mockImplementation((_connId: string, sql: string) => {
-				if (sql.trimStart().toUpperCase().startsWith("SELECT COUNT(")) {
-					if (_connId === "conn-1") return Promise.resolve(makeQueryResult([{ count: 10 }]));
+			mockQueryExecute.mockImplementation((params: any) => {
+				if (params.sql.trimStart().toUpperCase().startsWith("SELECT COUNT(")) {
+					if (params.connectionId === "conn-1") return Promise.resolve(makeQueryResult([{ count: 10 }]));
 					return Promise.resolve(makeQueryResult([{ count: 200 }]));
 				}
-				if (_connId === "conn-1") return Promise.resolve(makeQueryResult([{ id: 1, name: "Alice" }]));
+				if (params.connectionId === "conn-1") return Promise.resolve(makeQueryResult([{ id: 1, name: "Alice" }]));
 				return Promise.resolve(makeQueryResult([{ id: 100, name: "Zara" }]));
 			});
 
@@ -532,8 +531,8 @@ describe("grid store", () => {
 		});
 
 		test("buildClipboardTsv copies single cell with NULL as empty string", async () => {
-			mockQueryExecute.mockImplementation((_connId: string, sql: string) => {
-				if (sql.trimStart().toUpperCase().startsWith("SELECT COUNT(")) {
+			mockQueryExecute.mockImplementation((params: any) => {
+				if (params.sql.trimStart().toUpperCase().startsWith("SELECT COUNT(")) {
 					return Promise.resolve(makeQueryResult([{ count: 1 }]));
 				}
 				return Promise.resolve(makeQueryResult([{ id: 1, name: null }]));

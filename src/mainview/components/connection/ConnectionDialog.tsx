@@ -194,7 +194,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 		setTesting(true);
 		setTestResult(null);
 		try {
-			const result = await rpc.connections.test(buildConfig());
+			const result = await rpc.connections.test({ config: buildConfig() });
 			setTestResult(result);
 		} catch (err) {
 			setTestResult({

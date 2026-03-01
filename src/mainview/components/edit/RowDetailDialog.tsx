@@ -147,10 +147,10 @@ export default function RowDetailDialog(props: RowDetailDialogProps) {
 
 			try {
 				const countQuery = buildCountQuery(fk.referencingSchema, fk.referencingTable, filters, dialect);
-				const results = await rpc.query.execute(
-					props.connectionId, countQuery.sql, `ref-count-${fk.constraintName}`,
-					countQuery.params, props.database,
-				);
+				const results = await rpc.query.execute({
+					connectionId: props.connectionId, sql: countQuery.sql, queryId: `ref-count-${fk.constraintName}`,
+					params: countQuery.params, database: props.database,
+				});
 				counts[fk.constraintName] = Number(results[0]?.rows[0]?.count ?? 0);
 			} catch {
 				counts[fk.constraintName] = -1;
