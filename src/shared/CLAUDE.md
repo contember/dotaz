@@ -15,7 +15,7 @@ src/shared/
 
 | File | Purpose |
 |---|---|
-| `rpc.ts` | RPC param/result types, `DotazRPC` Electrobun schema, domain types (`SavedView`, `DataChange`) |
+| `rpc.ts` | RPC param/result types, `DotazRPC` Electrobun schema, domain types (`SavedView`, `DataChange`, `HistoryListParams`) |
 | `connection.ts` | `ConnectionConfig`, `ConnectionInfo`, `ConnectionState` |
 | `database.ts` | `SchemaInfo`, `TableInfo`, `ColumnInfo`, `IndexInfo`, `ForeignKeyInfo`, `SchemaData` |
 | `grid.ts` | `GridDataRequest`, `GridDataResponse`, `SortColumn`, `ColumnFilter`, `FilterOperator` |

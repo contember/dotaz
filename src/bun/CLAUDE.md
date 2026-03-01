@@ -12,7 +12,7 @@ rpc-handlers.ts          ← RPC entry point, delegates to services
 │   ├── transaction-manager.ts  ← Begin/commit/rollback
 │   ├── export-service.ts       ← Export to CSV, JSON, SQL INSERT
 │   ├── sql-formatter.ts        ← SQL formatting
-│   └── encryption.ts           ← Password encryption (stateless mode)
+│   └── encryption.ts           ← Password encryption (web mode)
 ├── db/
 │   ├── driver.ts               ← DatabaseDriver interface (abstraction)
 │   ├── postgres-driver.ts      ← PostgreSQL via Bun.SQL
@@ -42,8 +42,6 @@ Both drivers use **`Bun.SQL`** with tagged template literals (`import { SQL } fr
 
 Single `createHandlers()` function that takes dependencies (ConnectionManager, QueryExecutor, AppDatabase) and returns a flat map of `"namespace.method"` → handler function. Used by both desktop (Electrobun) and web (WebSocket) modes.
 
-Supports a **stateless mode** (`DOTAZ_STATELESS=1`) where the backend has no persistent storage — the frontend stores data in browser localStorage and sends it via `storage.restore` on connect.
-
 ### Multi-database support
 
 PostgreSQL connections support multiple databases. The `database` parameter is optional in most RPC methods — when provided, the operation targets that specific database's connection.
@@ -57,11 +55,13 @@ Manages the lifecycle of database connections. Each connection has a unique ID. 
 
 ### App Storage (`storage/app-db.ts`)
 
-Local SQLite database at `Utils.paths.userData/dotaz.db` storing:
-- Saved connections (with encrypted passwords in stateless mode)
+Local SQLite database at `Utils.paths.userData/dotaz.db` (desktop) or `:memory:` (web) storing:
+- Saved connections
 - Query history
 - Saved views (column config, sort, filters)
 - Settings (key-value pairs)
+
+In web mode, the in-memory app-db is ephemeral per session — the frontend stores persistent app state in IndexedDB and passes encrypted config on connect.
 
 Migrations are in `storage/migrations.ts`.
 
@@ -69,13 +69,13 @@ Migrations are in `storage/migrations.ts`.
 
 Standalone Bun HTTP/WebSocket server for running without Electrobun:
 - `bun run dev:web` — starts server on port 4200 (or `DOTAZ_PORT`)
-- Each WebSocket connection gets its own isolated session (AppDatabase, ConnectionManager, handlers)
+- Each WebSocket connection gets its own isolated session (in-memory AppDatabase, ConnectionManager, handlers)
 - Serves the Vite-built frontend from `dist/`
+- Frontend passes `encryptedConfig` on connect; backend decrypts and registers in the session's in-memory app-db
 
 Environment variables:
 - `DOTAZ_PORT` — server port (default 4200)
-- `DOTAZ_DB_PATH` — app database path (default `.data/dotaz.db`)
-- `DOTAZ_STATELESS=1` — stateless mode (requires `DOTAZ_ENCRYPTION_KEY`)
+- `DOTAZ_ENCRYPTION_KEY` — required; used to encrypt/decrypt connection passwords stored in the browser
 
 ## Conventions
 

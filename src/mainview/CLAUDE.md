@@ -28,10 +28,13 @@ main.tsx / App.tsx               ← Entry point and root component
 │   ├── rpc.ts                   ← Typed RPC client (namespace access: rpc.connections.list())
 │   ├── rpc-errors.ts            ← RPC error handling and user-friendly messages
 │   ├── transport/               ← Transport abstraction (Electrobun RPC vs WebSocket)
+│   ├── storage/                 ← App state storage (connections, history, views)
+│   │   ├── index.ts             ← Re-export (default: rpc.ts, swapped to indexeddb.ts in web mode)
+│   │   ├── rpc.ts               ← RpcAppStateStorage — delegates to backend RPC (desktop)
+│   │   └── indexeddb.ts         ← IndexedDbAppStateStorage — browser IndexedDB (web)
+│   ├── app-state-storage.ts     ← AppStateStorage interface
 │   ├── keyboard.ts              ← Keyboard shortcut system
-│   ├── commands.ts              ← Command registry for command palette
-│   ├── mode.ts                  ← Application mode detection (desktop/web, stateless)
-│   └── browser-storage.ts       ← localStorage for stateless mode
+│   └── commands.ts              ← Command registry for command palette
 └── styles/
     └── global.css               ← Global styles, dark theme, CSS variables
 ```
@@ -40,7 +43,7 @@ main.tsx / App.tsx               ← Entry point and root component
 
 All state uses **Solid.js `createStore` / `createSignal`** — never React patterns (useState, useEffect, etc.).
 
-Data flow: **User action → Component → Store action → RPC call → Store update → Reactive re-render**
+Data flow: **User action → Component → Store action → Storage adapter / RPC call → Store update → Reactive re-render**
 
 Stores are module-level singletons (not context providers). Import directly:
 ```typescript
@@ -65,10 +68,18 @@ New RPC methods added to `createHandlers()` are automatically available on the c
 ### Transport layer (`lib/transport/`)
 
 Abstraction over communication channel:
-- `electrobun.ts` — Electrobun RPC (desktop mode)
-- `websocket.ts` — WebSocket (web mode)
+- `electrobun.ts` — Electrobun RPC (desktop mode, default)
+- `websocket.ts` — WebSocket (web mode, swapped at build time)
 
-Auto-detected based on `window.electrobun` availability.
+### Storage layer (`lib/storage/`)
+
+`AppStateStorage` interface for persisting connections, history, and saved views:
+- `rpc.ts` — `RpcAppStateStorage`: delegates to backend via RPC (desktop, default)
+- `indexeddb.ts` — `IndexedDbAppStateStorage`: stores in browser IndexedDB (web, swapped at build time)
+
+Both transport and storage use **Vite build-time plugins** to swap implementations. The `index.ts` re-exports the default (`./rpc`), which is redirected to the web adapter via `storageSwapPlugin()` in `vite.config.ts` when building for web mode.
+
+In web mode, passwords are encrypted by the server (`storage.encrypt` RPC) before being stored in IndexedDB. On connect, the encrypted config is sent back to the server for decryption.
 
 ## Styling
 
