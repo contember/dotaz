@@ -1,7 +1,7 @@
 import type { DatabaseDriver } from "../db/driver";
 import type { ColumnFilter, SortColumn } from "../../shared/types/grid";
 import type { ExportFormat, CsvDelimiter, CsvEncoding } from "../../shared/types/export";
-import { buildWhereClause, buildOrderByClause } from "./query-executor";
+import { buildWhereClause, buildOrderByClause } from "../../shared/sql/builders";
 
 const BATCH_SIZE = 1000;
 

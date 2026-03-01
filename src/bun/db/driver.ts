@@ -1,4 +1,5 @@
-import type { ConnectionConfig, ConnectionType } from "../../shared/types/connection";
+import type { ConnectionConfig } from "../../shared/types/connection";
+import type { SqlDialect } from "../../shared/sql/dialect";
 import type { QueryResult } from "../../shared/types/query";
 import type {
 	SchemaInfo,
@@ -9,7 +10,7 @@ import type {
 	ReferencingForeignKeyInfo,
 } from "../../shared/types/database";
 
-export interface DatabaseDriver {
+export interface DatabaseDriver extends SqlDialect {
 	// Lifecycle
 	connect(config: ConnectionConfig): Promise<void>;
 	disconnect(): Promise<void>;
@@ -33,12 +34,4 @@ export interface DatabaseDriver {
 	commit(): Promise<void>;
 	rollback(): Promise<void>;
 	inTransaction(): boolean;
-
-	// Metadata
-	getDriverType(): ConnectionType;
-	quoteIdentifier(name: string): string;
-
-	// SQL generation helpers
-	qualifyTable(schema: string, table: string): string;
-	emptyInsertSql(qualifiedTable: string): string;
 }
