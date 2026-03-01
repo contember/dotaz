@@ -62,7 +62,7 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 
 | Issue | Title | Status | Notes |
 |-------|-------|--------|-------|
-| DOTAZ-067 | EXPLAIN plan visualization | not started | Tree view of execution plan |
+| DOTAZ-067 | EXPLAIN plan visualization | in progress | Tree view of execution plan |
 | DOTAZ-068 | Data import (CSV/JSON into table) | not started | Counterpart to export |
 | DOTAZ-069 | Value editor side panel | not started | JSON/text/binary editor panel |
 | DOTAZ-070 | Additional export formats (Markdown, SQL UPDATE, HTML) | not started | Extend existing export |

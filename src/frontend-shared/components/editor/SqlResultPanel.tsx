@@ -7,6 +7,7 @@ import ChevronUp from "lucide-solid/icons/chevron-up";
 import ChevronDown from "lucide-solid/icons/chevron-down";
 import GridHeader from "../grid/GridHeader";
 import VirtualScroller from "../grid/VirtualScroller";
+import ExplainPanel from "./ExplainPanel";
 import Icon from "../common/Icon";
 import "./SqlResultPanel.css";
 
@@ -51,6 +52,7 @@ export default function SqlResultPanel(props: SqlResultPanelProps) {
 	const error = () => tab()?.error ?? null;
 	const isRunning = () => tab()?.isRunning ?? false;
 	const duration = () => tab()?.duration ?? 0;
+	const explainResult = () => tab()?.explainResult ?? null;
 
 	createEffect(() => {
 		results();
@@ -63,7 +65,7 @@ export default function SqlResultPanel(props: SqlResultPanelProps) {
 		return idx < r.length ? r[idx] : undefined;
 	};
 
-	const hasContent = () => results().length > 0 || error() !== null;
+	const hasContent = () => results().length > 0 || error() !== null || explainResult() !== null;
 
 	return (
 		<div
@@ -73,7 +75,12 @@ export default function SqlResultPanel(props: SqlResultPanelProps) {
 			<Show when={hasContent() || isRunning()}>
 				<div class="sql-result-panel__header">
 					<div class="sql-result-panel__header-left">
-						<Show when={results().length > 1}>
+						<Show when={explainResult()}>
+						<span class="sql-result-panel__meta" style={{ "font-weight": "600", color: "var(--ink)" }}>
+							Explain Plan
+						</span>
+					</Show>
+					<Show when={!explainResult() && results().length > 1}>
 							<For each={results()}>
 								{(result, idx) => (
 									<button
@@ -149,6 +156,10 @@ export default function SqlResultPanel(props: SqlResultPanelProps) {
 								</div>
 								<div class="sql-result-panel__error-message">{error()}</div>
 							</div>
+						</Match>
+
+						<Match when={explainResult()}>
+							{(result) => <ExplainPanel result={result()} />}
 						</Match>
 
 						<Match when={activeResult()}>

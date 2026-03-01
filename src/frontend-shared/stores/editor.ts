@@ -1,6 +1,6 @@
 import { createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
-import type { QueryResult } from "../../shared/types/query";
+import type { QueryResult, ExplainResult } from "../../shared/types/query";
 import { rpc, friendlyErrorMessage } from "../lib/rpc";
 import { storage } from "../lib/storage";
 import { createTabHelpers } from "../lib/tab-store-helpers";
@@ -30,6 +30,8 @@ export interface TabEditorState {
 	executedRange: { from: number; to: number } | null;
 	/** Error position in the editor (character offset, 0-based) for highlighting */
 	errorOffset: number | null;
+	/** EXPLAIN plan result (when explain mode is used instead of run) */
+	explainResult: ExplainResult | null;
 }
 
 function createDefaultEditorState(connectionId: string, database?: string): TabEditorState {
@@ -48,6 +50,7 @@ function createDefaultEditorState(connectionId: string, database?: string): TabE
 		inTransaction: false,
 		executedRange: null,
 		errorOffset: null,
+		explainResult: null,
 	};
 }
 
@@ -146,6 +149,7 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0) {
 		error: null,
 		queryId,
 		results: [],
+		explainResult: null,
 		duration: 0,
 		errorOffset: null,
 	});
@@ -325,6 +329,48 @@ async function rollbackTransaction(tabId: string) {
 	}
 }
 
+async function explainQuery(tabId: string, analyze = false) {
+	const tab = ensureTab(tabId);
+	let sql = tab.selectedText.trim();
+	if (!sql) {
+		const result = getStatementAtCursor(tab.content, tab.cursorPosition);
+		sql = result?.text ?? tab.content.trim();
+	}
+	if (!sql) return;
+
+	setState("tabs", tabId, {
+		isRunning: true,
+		error: null,
+		results: [],
+		explainResult: null,
+		duration: 0,
+		errorOffset: null,
+	});
+
+	try {
+		const explainResult = await rpc.query.explain({
+			connectionId: tab.connectionId,
+			sql,
+			analyze,
+			database: tab.database,
+		});
+
+		setState("tabs", tabId, {
+			explainResult,
+			duration: explainResult.durationMs,
+			isRunning: false,
+			error: explainResult.error ?? null,
+		});
+	} catch (err) {
+		const errorMessage = friendlyErrorMessage(err);
+		setState("tabs", tabId, {
+			error: errorMessage,
+			isRunning: false,
+			explainResult: null,
+		});
+	}
+}
+
 function removeTab(tabId: string) {
 	setState("tabs", tabId, undefined!);
 }
@@ -341,6 +387,7 @@ export const editorStore = {
 	executeSelected,
 	executeStatement,
 	cancelQuery,
+	explainQuery,
 	formatSql,
 	setTxMode,
 	beginTransaction,

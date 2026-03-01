@@ -4,7 +4,7 @@ import type { DemoAppState } from "./demo-state";
 import type { DatabaseDriver } from "../backend-shared/db/driver";
 import type { ConnectionConfig, ConnectionInfo } from "../shared/types/connection";
 import type { DatabaseInfo } from "../shared/types/database";
-import type { QueryResult, QueryHistoryEntry, QueryHistoryStatus } from "../shared/types/query";
+import type { QueryResult, QueryHistoryEntry, QueryHistoryStatus, ExplainResult, ExplainNode } from "../shared/types/query";
 import type { ExportOptions, ExportPreviewRequest, ExportResult } from "../shared/types/export";
 import type {
 	SavedView,
@@ -176,6 +176,27 @@ export class DemoAdapter implements RpcAdapter {
 		// WASM SQLite operations are synchronous; cancellation is a no-op
 	}
 
+	async explainQuery(connectionId: string, sql: string, _analyze: boolean): Promise<ExplainResult> {
+		const d = this.getConnectedDriver(connectionId);
+		const start = performance.now();
+		try {
+			const result = await d.execute(`EXPLAIN QUERY PLAN ${sql}`);
+			const durationMs = Math.round(performance.now() - start);
+			const nodes = parseSqliteExplain(result.rows);
+			const rawText = result.rows
+				.map((r) => `${r.id}|${r.parent}|${r.notused ?? 0}|${r.detail}`)
+				.join("\n");
+			return { nodes, rawText, durationMs };
+		} catch (err) {
+			return {
+				nodes: [],
+				rawText: "",
+				durationMs: Math.round(performance.now() - start),
+				error: err instanceof Error ? err.message : String(err),
+			};
+		}
+	}
+
 	// ── Transactions ──────────────────────────────────────
 
 	async beginTransaction(connectionId: string): Promise<void> {
@@ -318,4 +339,45 @@ export class DemoAdapter implements RpcAdapter {
 			// Don't let history logging break query execution
 		}
 	}
+}
+
+function parseSqliteExplain(rows: Record<string, unknown>[]): ExplainNode[] {
+	const nodeMap = new Map<number, ExplainNode>();
+	const childMap = new Map<number, ExplainNode[]>();
+
+	for (const row of rows) {
+		const id = Number(row.id ?? row.selectid ?? 0);
+		const parent = Number(row.parent ?? 0);
+		const detail = String(row.detail ?? "");
+
+		const node: ExplainNode = {
+			operation: detail,
+			children: [],
+		};
+
+		const scanMatch = detail.match(/^(SCAN|SEARCH|USE TEMP B-TREE)\s+(.*)/i);
+		if (scanMatch) {
+			node.operation = scanMatch[1];
+			const tableMatch = scanMatch[2].match(/^(\S+)/);
+			if (tableMatch) {
+				node.relation = tableMatch[1];
+			}
+		}
+
+		nodeMap.set(id, node);
+		if (!childMap.has(parent)) {
+			childMap.set(parent, []);
+		}
+		childMap.get(parent)!.push(node);
+	}
+
+	for (const [id, node] of nodeMap) {
+		node.children = childMap.get(id) ?? [];
+	}
+
+	return childMap.get(0) ?? [...nodeMap.values()].filter((_, i) => {
+		const row = rows[i];
+		const parent = Number(row?.parent ?? 0);
+		return !nodeMap.has(parent);
+	});
 }

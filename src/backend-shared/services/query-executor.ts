@@ -1,5 +1,5 @@
 import type { DatabaseDriver } from "../db/driver";
-import type { QueryResult } from "../../shared/types/query";
+import type { QueryResult, ExplainResult, ExplainNode } from "../../shared/types/query";
 import type { ConnectionManager } from "./connection-manager";
 import type { AppDatabase } from "../storage/app-db";
 import { splitStatements, parseErrorPosition } from "../../shared/sql/statements";
@@ -126,6 +126,71 @@ export class QueryExecutor {
 		return [...this.runningQueries.keys()];
 	}
 
+	/**
+	 * Run EXPLAIN on a SQL statement and return a parsed plan tree.
+	 */
+	async explainQuery(
+		connectionId: string,
+		sql: string,
+		analyze: boolean,
+		database?: string,
+	): Promise<ExplainResult> {
+		const driver = this.connectionManager.getDriver(connectionId, database);
+		const driverType = driver.getDriverType();
+		const start = performance.now();
+
+		try {
+			if (driverType === "sqlite") {
+				const result = await driver.execute(`EXPLAIN QUERY PLAN ${sql}`);
+				const durationMs = Math.round(performance.now() - start);
+				const nodes = parseSqliteExplain(result.rows);
+				const rawText = result.rows
+					.map((r) => `${r.id}|${r.parent}|${r.notused ?? 0}|${r.detail}`)
+					.join("\n");
+				return { nodes, rawText, durationMs };
+			}
+
+			// PostgreSQL / MySQL — use JSON format
+			const prefix = analyze
+				? "EXPLAIN (ANALYZE, FORMAT JSON)"
+				: "EXPLAIN (FORMAT JSON)";
+			const result = await driver.execute(`${prefix} ${sql}`);
+			const durationMs = Math.round(performance.now() - start);
+
+			// PG returns a single row with a column named "QUERY PLAN"
+			const jsonStr = result.rows[0]?.["QUERY PLAN"]
+				?? result.rows[0]?.["EXPLAIN"]
+				?? JSON.stringify(result.rows);
+			const plan = typeof jsonStr === "string" ? JSON.parse(jsonStr) : jsonStr;
+			const planArray = Array.isArray(plan) ? plan : [plan];
+			const nodes = planArray.map((p: Record<string, unknown>) =>
+				parsePostgresNode(p["Plan"] as Record<string, unknown> ?? p),
+			);
+
+			// Build raw text by re-running with TEXT format (fallback to JSON)
+			let rawText: string;
+			try {
+				const textPrefix = analyze ? "EXPLAIN (ANALYZE)" : "EXPLAIN";
+				const textResult = await driver.execute(`${textPrefix} ${sql}`);
+				rawText = textResult.rows
+					.map((r) => Object.values(r)[0])
+					.join("\n");
+			} catch {
+				rawText = JSON.stringify(plan, null, 2);
+			}
+
+			return { nodes, rawText, durationMs };
+		} catch (err) {
+			const durationMs = Math.round(performance.now() - start);
+			return {
+				nodes: [],
+				rawText: "",
+				durationMs,
+				error: err instanceof Error ? err.message : String(err),
+			};
+		}
+	}
+
 	private async executeSingle(
 		driver: DatabaseDriver,
 		sql: string,
@@ -213,4 +278,67 @@ function makeCancelledResult(durationMs = 0): QueryResult {
 		durationMs: Math.round(durationMs),
 		error: "Query was cancelled",
 	};
+}
+
+// ── EXPLAIN parsers ──────────────────────────────────────────
+
+function parsePostgresNode(plan: Record<string, unknown>): ExplainNode {
+	const children = (plan["Plans"] as Record<string, unknown>[] | undefined) ?? [];
+	const { "Node Type": _, "Relation Name": __, "Plans": ___, ...rest } = plan;
+	return {
+		operation: String(plan["Node Type"] ?? "Unknown"),
+		relation: plan["Relation Name"] ? String(plan["Relation Name"]) : undefined,
+		cost: typeof plan["Total Cost"] === "number" ? plan["Total Cost"] : undefined,
+		actualTime: typeof plan["Actual Total Time"] === "number" ? plan["Actual Total Time"] : undefined,
+		estimatedRows: typeof plan["Plan Rows"] === "number" ? plan["Plan Rows"] : undefined,
+		actualRows: typeof plan["Actual Rows"] === "number" ? plan["Actual Rows"] : undefined,
+		extra: Object.keys(rest).length > 0 ? rest : undefined,
+		children: children.map((c) => parsePostgresNode(c)),
+	};
+}
+
+function parseSqliteExplain(rows: Record<string, unknown>[]): ExplainNode[] {
+	// SQLite EXPLAIN QUERY PLAN returns: id, parent, notused, detail
+	const nodeMap = new Map<number, ExplainNode>();
+	const childMap = new Map<number, ExplainNode[]>();
+
+	for (const row of rows) {
+		const id = Number(row.id ?? row.selectid ?? 0);
+		const parent = Number(row.parent ?? 0);
+		const detail = String(row.detail ?? "");
+
+		const node: ExplainNode = {
+			operation: detail,
+			children: [],
+		};
+
+		// Parse operation details like "SCAN users" or "SEARCH users USING INDEX ..."
+		const scanMatch = detail.match(/^(SCAN|SEARCH|USE TEMP B-TREE)\s+(.*)/i);
+		if (scanMatch) {
+			node.operation = scanMatch[1];
+			const tablePart = scanMatch[2];
+			const tableMatch = tablePart.match(/^(\S+)/);
+			if (tableMatch) {
+				node.relation = tableMatch[1];
+			}
+		}
+
+		nodeMap.set(id, node);
+		if (!childMap.has(parent)) {
+			childMap.set(parent, []);
+		}
+		childMap.get(parent)!.push(node);
+	}
+
+	// Attach children
+	for (const [id, node] of nodeMap) {
+		node.children = childMap.get(id) ?? [];
+	}
+
+	// Return root nodes (parent = 0 or nodes whose parent doesn't exist in the map)
+	return childMap.get(0) ?? [...nodeMap.values()].filter((_, i) => {
+		const row = rows[i];
+		const parent = Number(row?.parent ?? 0);
+		return !nodeMap.has(parent);
+	});
 }

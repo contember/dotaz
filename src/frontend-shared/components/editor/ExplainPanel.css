@@ -1,0 +1,126 @@
+.explain-panel {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+.explain-panel__toolbar {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	padding: 4px var(--spacing-sm);
+	border-bottom: 1px solid var(--edge);
+	background: var(--surface-raised);
+}
+
+.explain-panel__tab {
+	padding: 2px 8px;
+	border: none;
+	background: transparent;
+	color: var(--ink-secondary);
+	font-size: var(--font-size-xs);
+	font-family: var(--font-ui);
+	cursor: pointer;
+	border-radius: 3px;
+}
+
+.explain-panel__tab:hover {
+	background: var(--surface-hover);
+}
+
+.explain-panel__tab--active {
+	background: var(--surface-active);
+	color: var(--ink);
+}
+
+.explain-panel__error {
+	padding: var(--spacing-md);
+	color: var(--error);
+	font-family: var(--font-mono);
+	font-size: var(--font-size-sm);
+}
+
+.explain-panel__raw {
+	flex: 1;
+	overflow: auto;
+	padding: var(--spacing-sm);
+	margin: 0;
+	font-family: var(--font-mono);
+	font-size: var(--font-size-sm);
+	color: var(--ink);
+	white-space: pre;
+	line-height: 1.5;
+}
+
+.explain-panel__tree {
+	flex: 1;
+	overflow: auto;
+	padding: var(--spacing-xs) 0;
+}
+
+/* Node rows */
+.explain-node__row {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-xs);
+	padding: 3px 4px;
+	font-size: var(--font-size-sm);
+	cursor: default;
+	user-select: none;
+}
+
+.explain-node__row:hover {
+	background: var(--surface-hover);
+}
+
+.explain-node__row--expensive {
+	background: rgba(239, 68, 68, 0.08);
+}
+
+.explain-node__row--expensive:hover {
+	background: rgba(239, 68, 68, 0.14);
+}
+
+.explain-node__toggle {
+	display: inline-flex;
+	width: 14px;
+	flex-shrink: 0;
+	color: var(--ink-muted);
+}
+
+.explain-node__operation {
+	font-weight: 600;
+	color: var(--ink);
+	white-space: nowrap;
+}
+
+.explain-node__relation {
+	color: var(--accent);
+	white-space: nowrap;
+}
+
+.explain-node__metrics {
+	display: flex;
+	gap: var(--spacing-sm);
+	margin-left: var(--spacing-sm);
+}
+
+.explain-node__metric {
+	color: var(--ink-muted);
+	font-family: var(--font-mono);
+	font-size: var(--font-size-xs);
+	white-space: nowrap;
+}
+
+.explain-node__bar {
+	height: 4px;
+	border-radius: 2px;
+	background: var(--accent);
+	flex-shrink: 0;
+	margin-left: var(--spacing-xs);
+}
+
+.explain-node__bar--hot {
+	background: var(--error);
+}

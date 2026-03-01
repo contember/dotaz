@@ -5,7 +5,7 @@ import type { AppDatabase } from "../storage/app-db";
 import type { EncryptionService } from "../services/encryption";
 import type { ConnectionConfig, ConnectionInfo } from "../../shared/types/connection";
 import type { DatabaseInfo } from "../../shared/types/database";
-import type { QueryResult, QueryHistoryEntry } from "../../shared/types/query";
+import type { QueryResult, QueryHistoryEntry, ExplainResult } from "../../shared/types/query";
 import type { ExportOptions, ExportPreviewRequest, ExportResult } from "../../shared/types/export";
 import type {
 	SavedView,
@@ -139,6 +139,10 @@ export class BackendAdapter implements RpcAdapter {
 
 	async cancelQuery(queryId: string): Promise<void> {
 		await this.queryExecutor.cancelQuery(queryId);
+	}
+
+	async explainQuery(connectionId: string, sql: string, analyze: boolean, database?: string): Promise<ExplainResult> {
+		return this.queryExecutor.explainQuery(connectionId, sql, analyze, database);
 	}
 
 	// ── Transactions ──────────────────────────────────────

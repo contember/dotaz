@@ -254,6 +254,22 @@ export default function SqlEditor(props: SqlEditorProps) {
 					return true;
 				},
 			},
+			{
+				key: "Ctrl-e",
+				mac: "Cmd-e",
+				run: () => {
+					editorStore.explainQuery(props.tabId, false);
+					return true;
+				},
+			},
+			{
+				key: "Ctrl-Shift-e",
+				mac: "Cmd-Shift-e",
+				run: () => {
+					editorStore.explainQuery(props.tabId, true);
+					return true;
+				},
+			},
 		]);
 
 		const updateListener = EditorView.updateListener.of((update) => {

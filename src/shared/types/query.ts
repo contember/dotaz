@@ -30,6 +30,26 @@ export interface QueryResult {
 	errorPosition?: ErrorPosition;
 }
 
+// ── EXPLAIN plan types ────────────────────────────────────
+
+export interface ExplainNode {
+	operation: string;
+	relation?: string;
+	cost?: number;
+	actualTime?: number;
+	estimatedRows?: number;
+	actualRows?: number;
+	extra?: Record<string, unknown>;
+	children: ExplainNode[];
+}
+
+export interface ExplainResult {
+	nodes: ExplainNode[];
+	rawText: string;
+	durationMs: number;
+	error?: string;
+}
+
 export type QueryHistoryStatus = "success" | "error";
 
 export interface QueryHistoryEntry {

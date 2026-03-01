@@ -2,6 +2,7 @@ import { Show } from "solid-js";
 import { editorStore, type TxMode } from "../../stores/editor";
 import { connectionsStore } from "../../stores/connections";
 import Play from "lucide-solid/icons/play";
+import ListTree from "lucide-solid/icons/list-tree";
 import AlignLeft from "lucide-solid/icons/text-align-start";
 import PlayCircle from "lucide-solid/icons/circle-play";
 import Check from "lucide-solid/icons/check";
@@ -37,6 +38,14 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 
 	function handleCancel() {
 		editorStore.cancelQuery(props.tabId);
+	}
+
+	function handleExplain() {
+		editorStore.explainQuery(props.tabId, false);
+	}
+
+	function handleExplainAnalyze() {
+		editorStore.explainQuery(props.tabId, true);
 	}
 
 	function handleFormat() {
@@ -97,6 +106,26 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 				title="Run Statement (Ctrl+Shift+Enter)"
 			>
 				<Play size={12} /> Run Statement
+			</button>
+
+			{/* Explain */}
+			<button
+				class="query-toolbar__btn"
+				onClick={handleExplain}
+				disabled={!hasContent() || isRunning()}
+				title="Explain (Ctrl+E)"
+			>
+				<ListTree size={12} /> Explain
+			</button>
+
+			{/* Explain Analyze */}
+			<button
+				class="query-toolbar__btn"
+				onClick={handleExplainAnalyze}
+				disabled={!hasContent() || isRunning()}
+				title="Explain Analyze (Ctrl+Shift+E)"
+			>
+				<ListTree size={12} /> Analyze
 			</button>
 
 			{/* Format */}

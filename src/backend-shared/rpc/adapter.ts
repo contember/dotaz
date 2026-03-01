@@ -1,7 +1,7 @@
 import type { DatabaseDriver } from "../db/driver";
 import type { ConnectionConfig, ConnectionInfo } from "../../shared/types/connection";
 import type { DatabaseInfo } from "../../shared/types/database";
-import type { QueryResult, QueryHistoryEntry } from "../../shared/types/query";
+import type { QueryResult, QueryHistoryEntry, ExplainResult } from "../../shared/types/query";
 import type { ExportOptions, ExportPreviewRequest, ExportResult } from "../../shared/types/export";
 import type {
 	SavedView,
@@ -35,6 +35,7 @@ export interface RpcAdapter {
 	/** Execute a batch of parameterized statements sequentially, auto-wrapped in transaction. */
 	executeStatements(connectionId: string, statements: { sql: string; params?: unknown[] }[], database?: string): Promise<QueryResult[]>;
 	cancelQuery(queryId: string): Promise<void>;
+	explainQuery(connectionId: string, sql: string, analyze: boolean, database?: string): Promise<ExplainResult>;
 
 	// ── Transactions ──────────────────────────────────────
 	beginTransaction(connectionId: string, database?: string): Promise<void>;
