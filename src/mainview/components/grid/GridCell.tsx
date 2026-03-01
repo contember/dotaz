@@ -1,6 +1,7 @@
 import { createEffect, createSignal, onCleanup, Show } from "solid-js";
 import type { GridColumnDef } from "../../../shared/types/grid";
-import { Check, X } from "lucide-solid";
+import Check from "lucide-solid/icons/check";
+import X from "lucide-solid/icons/x";
 import InlineEditor from "../edit/InlineEditor";
 import "./GridCell.css";
 
@@ -116,55 +117,56 @@ export default function GridCell(props: GridCellProps) {
 		}
 	});
 
-	if (props.editing) {
-		return (
-			<InlineEditor
-				value={props.value}
-				column={props.column}
-				width={props.width}
-				onSave={props.onSave!}
-				onCancel={props.onCancel!}
-				onMoveNext={props.onMoveNext!}
-				onMoveDown={props.onMoveDown!}
-			/>
-		);
-	}
-
 	function handleFkClick(e: MouseEvent) {
 		e.stopPropagation();
 		props.onFkClick?.();
 	}
 
 	return (
-		<div
-			class="grid-cell"
-			classList={{
-				"grid-cell--null": isNull(),
-				"grid-cell--number": isNumber() && !isNull(),
-				"grid-cell--boolean": isBool() && !isNull(),
-				"grid-cell--json": isJson() && !isNull(),
-				"grid-cell--timestamp": isTs() && !isNull(),
-				"grid-cell--fk": isFk(),
-				"grid-cell--changed": !!props.changed,
-				"grid-cell--deleted": !!props.deleted,
-				"grid-cell--new-row": !!props.newRow,
-			}}
-			style={{ width: `${props.width}px`, ...props.pinStyle }}
-			title={tooltipValue()}
-			data-column={props.column.name}
-			onClick={isJson() && !isNull() ? handleJsonClick : undefined}
+		<Show
+			when={!props.editing}
+			fallback={
+				<InlineEditor
+					value={props.value}
+					column={props.column}
+					width={props.width}
+					onSave={props.onSave!}
+					onCancel={props.onCancel!}
+					onMoveNext={props.onMoveNext!}
+					onMoveDown={props.onMoveDown!}
+				/>
+			}
 		>
-			<Show when={isFk()} fallback={displayValue()}>
-				<span class="grid-cell__fk-link" onClick={handleFkClick}>
-					{displayValue()}
-				</span>
-			</Show>
+			<div
+				class="grid-cell"
+				classList={{
+					"grid-cell--null": isNull(),
+					"grid-cell--number": isNumber() && !isNull(),
+					"grid-cell--boolean": isBool() && !isNull(),
+					"grid-cell--json": isJson() && !isNull(),
+					"grid-cell--timestamp": isTs() && !isNull(),
+					"grid-cell--fk": isFk(),
+					"grid-cell--changed": !!props.changed,
+					"grid-cell--deleted": !!props.deleted,
+					"grid-cell--new-row": !!props.newRow,
+				}}
+				style={{ width: `${props.width}px`, ...props.pinStyle }}
+				title={tooltipValue()}
+				data-column={props.column.name}
+				onClick={isJson() && !isNull() ? handleJsonClick : undefined}
+			>
+				<Show when={isFk()} fallback={displayValue()}>
+					<span class="grid-cell__fk-link" onClick={handleFkClick}>
+						{displayValue()}
+					</span>
+				</Show>
 
-			<Show when={jsonExpanded()}>
-				<div class="grid-cell__json-popup" onClick={(e) => e.stopPropagation()}>
-					<pre>{JSON.stringify(props.value, null, 2)}</pre>
-				</div>
-			</Show>
-		</div>
+				<Show when={jsonExpanded()}>
+					<div class="grid-cell__json-popup" onClick={(e) => e.stopPropagation()}>
+						<pre>{JSON.stringify(props.value, null, 2)}</pre>
+					</div>
+				</Show>
+			</div>
+		</Show>
 	);
 }

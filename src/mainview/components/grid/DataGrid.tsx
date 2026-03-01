@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, onMount, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, onMount, onCleanup, Show } from "solid-js";
 import type { ColumnFilter } from "../../../shared/types/grid";
 import type { ForeignKeyInfo } from "../../../shared/types/database";
 import type { SavedViewConfig } from "../../../shared/types/rpc";
@@ -20,7 +20,9 @@ import ExportDialog from "../export/ExportDialog";
 import ContextMenu from "../common/ContextMenu";
 import type { ContextMenuEntry } from "../common/ContextMenu";
 import Icon from "../common/Icon";
-import { RotateCcw, Save, Pencil } from "lucide-solid";
+import RotateCcw from "lucide-solid/icons/rotate-ccw";
+import Save from "lucide-solid/icons/save";
+import Pencil from "lucide-solid/icons/pencil";
 import "./DataGrid.css";
 
 interface DataGridProps {
@@ -163,14 +165,13 @@ export default function DataGrid(props: DataGridProps) {
 		await loadForeignKeys(props.schema, props.table);
 	});
 
-	// Reload FK info when the table changes (e.g. after FK navigation)
-	createEffect(() => {
-		const schema = currentSchema();
-		const table = currentTable();
-		// Skip initial load (handled by onMount)
-		if (schema === props.schema && table === props.table) return;
-		loadForeignKeys(schema, table);
-	});
+	// Reload FK info when the table changes (e.g. after FK navigation).
+	// defer: true skips the initial run (handled by onMount).
+	createEffect(on(
+		() => [currentSchema(), currentTable()] as const,
+		([schema, table]) => loadForeignKeys(schema, table),
+		{ defer: true },
+	));
 
 	async function loadForeignKeys(schema: string, table: string) {
 		try {
