@@ -1,26 +1,15 @@
 import type { RpcAdapter } from "./adapter";
 import type { SchemaData } from "../types/database";
-import type { GridDataRequest } from "../types/grid";
 import type { ExportOptions, ExportPreviewRequest } from "../types/export";
 import type {
-	ApplyChangesParams,
-	GenerateSqlParams,
 	ExecuteQueryParams,
 	HistoryListParams,
-	ViewListParams,
 	SaveViewParams,
 	UpdateViewParams,
 	RestoreParams,
 	OpenDialogParams,
 	SaveDialogParams,
 } from "../types/rpc";
-import {
-	buildSelectQuery,
-	buildCountQuery,
-	buildQuickSearchClause,
-	generateChangeSql,
-	generateChangesPreview,
-} from "../sql/builders";
 
 export function createHandlers(adapter: RpcAdapter) {
 	return {
@@ -59,30 +48,6 @@ export function createHandlers(adapter: RpcAdapter) {
 		},
 
 		// ── Schema ───────────────────────────────────────
-		"schema.getSchemas": async ({ connectionId, database }: { connectionId: string; database?: string }) => {
-			const driver = adapter.getDriver(connectionId, database);
-			return driver.getSchemas();
-		},
-		"schema.getTables": async ({ connectionId, schema, database }: { connectionId: string; schema: string; database?: string }) => {
-			const driver = adapter.getDriver(connectionId, database);
-			return driver.getTables(schema);
-		},
-		"schema.getColumns": async ({ connectionId, schema, table, database }: { connectionId: string; schema: string; table: string; database?: string }) => {
-			const driver = adapter.getDriver(connectionId, database);
-			return driver.getColumns(schema, table);
-		},
-		"schema.getIndexes": async ({ connectionId, schema, table, database }: { connectionId: string; schema: string; table: string; database?: string }) => {
-			const driver = adapter.getDriver(connectionId, database);
-			return driver.getIndexes(schema, table);
-		},
-		"schema.getForeignKeys": async ({ connectionId, schema, table, database }: { connectionId: string; schema: string; table: string; database?: string }) => {
-			const driver = adapter.getDriver(connectionId, database);
-			return driver.getForeignKeys(schema, table);
-		},
-		"schema.getReferencingForeignKeys": async ({ connectionId, schema, table, database }: { connectionId: string; schema: string; table: string; database?: string }) => {
-			const driver = adapter.getDriver(connectionId, database);
-			return driver.getReferencingForeignKeys(schema, table);
-		},
 		"schema.load": async ({ connectionId, database }: { connectionId: string; database?: string }): Promise<SchemaData> => {
 			const driver = adapter.getDriver(connectionId, database);
 			const schemas = await driver.getSchemas();
@@ -115,94 +80,6 @@ export function createHandlers(adapter: RpcAdapter) {
 			return { schemas, tables, columns, indexes, foreignKeys, referencingForeignKeys };
 		},
 
-		// ── Data Grid ────────────────────────────────────
-		"data.getTableData": async (req: GridDataRequest) => {
-			const driver = adapter.getDriver(req.connectionId, req.database);
-
-			// Get column metadata
-			const columns = await driver.getColumns(req.schema, req.table);
-			const gridColumns = columns.map((c) => ({
-				name: c.name,
-				dataType: c.dataType,
-				nullable: c.nullable,
-				isPrimaryKey: c.isPrimaryKey,
-			}));
-
-			// Build quick search clause if search term is provided
-			const filterParamCount = (req.filters ?? []).reduce((sum, f) => {
-				if (f.operator === "isNull" || f.operator === "isNotNull") return sum;
-				if (f.operator === "in" || f.operator === "notIn") {
-					return sum + (Array.isArray(f.value) ? f.value.length : 1);
-				}
-				return sum + 1;
-			}, 0);
-			const quickSearchClause = req.quickSearch
-				? buildQuickSearchClause(gridColumns, req.quickSearch, driver, filterParamCount)
-				: undefined;
-
-			const { sql, params } = buildSelectQuery(
-				req.schema, req.table, req.page, req.pageSize,
-				req.sort, req.filters, driver, quickSearchClause,
-			);
-			const result = await driver.execute(sql, params);
-
-			// Get total count with same filters + quick search
-			const countQuery = buildCountQuery(req.schema, req.table, req.filters, driver, quickSearchClause);
-			const countResult = await driver.execute(countQuery.sql, countQuery.params);
-			const totalRows = Number(countResult.rows[0]?.count ?? 0);
-
-			return {
-				columns: gridColumns,
-				rows: result.rows,
-				totalRows,
-				page: req.page,
-				pageSize: req.pageSize,
-			};
-		},
-		"data.getRowCount": async ({ connectionId, schema, table, filters, database }: { connectionId: string; schema: string; table: string; filters?: import("../types/grid").ColumnFilter[]; database?: string }) => {
-			const driver = adapter.getDriver(connectionId, database);
-			const { sql, params } = buildCountQuery(schema, table, filters, driver);
-			const result = await driver.execute(sql, params);
-			return { count: Number(result.rows[0]?.count ?? 0) };
-		},
-		"data.getColumnStats": () => {
-			throw new Error("Not implemented yet: data.getColumnStats");
-		},
-
-		// ── Data Editing ─────────────────────────────────
-		"data.applyChanges": async ({ connectionId, changes, database }: ApplyChangesParams) => {
-			const driver = adapter.getDriver(connectionId, database);
-			const inExistingTx = driver.inTransaction();
-
-			if (!inExistingTx) {
-				await driver.beginTransaction();
-			}
-			try {
-				for (const change of changes) {
-					const { sql, params } = generateChangeSql(change, driver);
-					await driver.execute(sql, params);
-				}
-				if (!inExistingTx) {
-					await driver.commit();
-				}
-				return { appliedCount: changes.length };
-			} catch (err) {
-				if (!inExistingTx) {
-					try {
-						await driver.rollback();
-					} catch {
-						// Don't mask the original error
-					}
-				}
-				throw err;
-			}
-		},
-		"data.generateSql": ({ connectionId, changes, database }: GenerateSqlParams) => {
-			const driver = adapter.getDriver(connectionId, database);
-			const sql = generateChangesPreview(changes, driver);
-			return { sql };
-		},
-
 		// ── Query Execution ──────────────────────────────
 		"query.execute": async ({ connectionId, sql, queryId, params, database, statements }: ExecuteQueryParams) => {
 			if (statements && statements.length > 0) {
@@ -227,9 +104,6 @@ export function createHandlers(adapter: RpcAdapter) {
 		"tx.rollback": async ({ connectionId, database }: { connectionId: string; database?: string }) => {
 			await adapter.rollbackTransaction(connectionId, database);
 		},
-		"tx.status": ({ connectionId, database }: { connectionId: string; database?: string }) => {
-			return { active: adapter.isTransactionActive(connectionId, database) };
-		},
 
 		// ── Export ────────────────────────────────────────
 		"export.exportData": async (opts: ExportOptions) => {
@@ -249,9 +123,6 @@ export function createHandlers(adapter: RpcAdapter) {
 		},
 
 		// ── Saved Views ──────────────────────────────────
-		"views.list": ({ connectionId, schemaName, tableName }: ViewListParams) => {
-			return adapter.listSavedViews(connectionId, schemaName, tableName);
-		},
 		"views.save": ({ connectionId, schemaName, tableName, name, config }: SaveViewParams) => {
 			if (!name || !name.trim()) {
 				throw new Error("View name is required");
@@ -329,20 +200,6 @@ export function createHandlers(adapter: RpcAdapter) {
 				return { path: null as string | null, cancelled: true };
 			}
 			return adapter.showSaveDialog(params);
-		},
-		"settings.get": ({ key }: { key: string }) => {
-			const stored = adapter.getSetting(key);
-			const defaults = adapter.getDefaultSettings();
-			const value = stored ?? defaults[key] ?? null;
-			return { value };
-		},
-		"settings.set": ({ key, value }: { key: string; value: string }) => {
-			adapter.setSetting(key, value);
-		},
-		"settings.getAll": () => {
-			const stored = adapter.getAllSettings();
-			const defaults = adapter.getDefaultSettings();
-			return { ...defaults, ...stored };
 		},
 	} as const;
 }

@@ -19,7 +19,7 @@ import type { DatabaseDriver } from "../db/driver";
 import { TransactionManager } from "../services/transaction-manager";
 import { exportToFile, exportPreview } from "../services/export-service";
 import { formatSql } from "../services/sql-formatter";
-import { DEFAULT_SETTINGS } from "../storage/app-db";
+
 
 export interface BackendAdapterOptions {
 	stateless?: boolean;
@@ -144,10 +144,6 @@ export class BackendAdapter implements RpcAdapter {
 		await this.txManager.rollback(connectionId, database);
 	}
 
-	isTransactionActive(connectionId: string, database?: string): boolean {
-		return this.txManager.isActive(connectionId, database);
-	}
-
 	// ── History ───────────────────────────────────────────
 
 	listHistory(params: HistoryListParams): QueryHistoryEntry[] {
@@ -182,24 +178,6 @@ export class BackendAdapter implements RpcAdapter {
 
 	getSavedViewById(id: string): SavedView | null {
 		return this.appDb.getSavedViewById(id);
-	}
-
-	// ── Settings ─────────────────────────────────────────
-
-	getSetting(key: string): string | null {
-		return this.appDb.getSetting(key);
-	}
-
-	setSetting(key: string, value: string): void {
-		this.appDb.setSetting(key, value);
-	}
-
-	getAllSettings(): Record<string, string> {
-		return this.appDb.getAllSettings();
-	}
-
-	getDefaultSettings(): Record<string, string> {
-		return DEFAULT_SETTINGS;
 	}
 
 	// ── Export ────────────────────────────────────────────

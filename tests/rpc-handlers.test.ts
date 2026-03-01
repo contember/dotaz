@@ -148,186 +148,37 @@ describe("RPC Handlers", () => {
 			);
 		});
 
-		test("schema.getSchemas returns schemas", async () => {
-			const schemas = await handlers["schema.getSchemas"]({ connectionId });
-			expect(schemas).toBeInstanceOf(Array);
-			expect(schemas.length).toBeGreaterThan(0);
-		});
+		test("schema.load returns full schema data", async () => {
+			const data = await handlers["schema.load"]({ connectionId });
+			expect(data.schemas).toBeInstanceOf(Array);
+			expect(data.schemas.length).toBeGreaterThan(0);
 
-		test("schema.getTables returns tables", async () => {
-			const schemas = await handlers["schema.getSchemas"]({ connectionId });
-			const tables = await handlers["schema.getTables"]({
-				connectionId,
-				schema: schemas[0].name,
-			});
-			expect(tables).toBeInstanceOf(Array);
-			const testTable = tables.find((t) => t.name === "test_table");
+			const schemaName = data.schemas[0].name;
+			expect(data.tables[schemaName]).toBeInstanceOf(Array);
+			const testTable = data.tables[schemaName].find((t) => t.name === "test_table");
 			expect(testTable).toBeTruthy();
 			expect(testTable!.type).toBe("table");
-		});
 
-		test("schema.getColumns returns columns for table", async () => {
-			const schemas = await handlers["schema.getSchemas"]({ connectionId });
-			const columns = await handlers["schema.getColumns"]({
-				connectionId,
-				schema: schemas[0].name,
-				table: "test_table",
-			});
-			expect(columns).toHaveLength(3);
-			const idCol = columns.find((c) => c.name === "id");
+			const cols = data.columns[`${schemaName}.test_table`];
+			expect(cols).toHaveLength(3);
+			const idCol = cols.find((c) => c.name === "id");
 			expect(idCol).toBeTruthy();
 			expect(idCol!.isPrimaryKey).toBe(true);
-		});
 
-		test("schema.getIndexes returns indexes for table", async () => {
-			const schemas = await handlers["schema.getSchemas"]({ connectionId });
-			const indexes = await handlers["schema.getIndexes"]({
-				connectionId,
-				schema: schemas[0].name,
-				table: "test_table",
-			});
-			expect(indexes).toBeInstanceOf(Array);
-			const nameIdx = indexes.find((i) => i.name === "idx_test_name");
+			const idxs = data.indexes[`${schemaName}.test_table`];
+			expect(idxs).toBeInstanceOf(Array);
+			const nameIdx = idxs.find((i) => i.name === "idx_test_name");
 			expect(nameIdx).toBeTruthy();
 			expect(nameIdx!.columns).toContain("name");
-		});
 
-		test("schema.getForeignKeys returns empty for table without FKs", async () => {
-			const schemas = await handlers["schema.getSchemas"]({ connectionId });
-			const fks = await handlers["schema.getForeignKeys"]({
-				connectionId,
-				schema: schemas[0].name,
-				table: "test_table",
-			});
+			const fks = data.foreignKeys[`${schemaName}.test_table`];
 			expect(fks).toEqual([]);
 		});
 
-		test("schema.* throws for non-connected connection", async () => {
+		test("schema.load throws for non-connected connection", async () => {
 			await expect(
-				handlers["schema.getSchemas"]({ connectionId: "nonexistent" }),
+				handlers["schema.load"]({ connectionId: "nonexistent" }),
 			).rejects.toThrow("No active connection");
-		});
-	});
-
-	// ── data.* ───────────────────────────────────────────
-
-	describe("data.*", () => {
-		let connectionId: string;
-
-		beforeEach(async () => {
-			const conn = handlers["connections.create"]({
-				name: "SQLite Data Test",
-				config: sqliteConfig,
-			});
-			connectionId = conn.id;
-			await handlers["connections.connect"]({ connectionId });
-
-			const driver = cm.getDriver(connectionId);
-			await driver.execute(
-				"CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER)",
-			);
-			await driver.execute("INSERT INTO users (name, age) VALUES ('Alice', 30)");
-			await driver.execute("INSERT INTO users (name, age) VALUES ('Bob', 25)");
-			await driver.execute("INSERT INTO users (name, age) VALUES ('Charlie', NULL)");
-		});
-
-		test("data.getTableData returns paginated data", async () => {
-			const result = await handlers["data.getTableData"]({
-				connectionId,
-				schema: "main",
-				table: "users",
-				page: 1,
-				pageSize: 2,
-			});
-			expect(result.rows).toHaveLength(2);
-			expect(result.totalRows).toBe(3);
-			expect(result.page).toBe(1);
-			expect(result.pageSize).toBe(2);
-			expect(result.columns.length).toBeGreaterThan(0);
-		});
-
-		test("data.getTableData page 2", async () => {
-			const result = await handlers["data.getTableData"]({
-				connectionId,
-				schema: "main",
-				table: "users",
-				page: 2,
-				pageSize: 2,
-			});
-			expect(result.rows).toHaveLength(1);
-			expect(result.totalRows).toBe(3);
-		});
-
-		test("data.getTableData with sort", async () => {
-			const result = await handlers["data.getTableData"]({
-				connectionId,
-				schema: "main",
-				table: "users",
-				page: 1,
-				pageSize: 10,
-				sort: [{ column: "name", direction: "desc" }],
-			});
-			expect(result.rows[0].name).toBe("Charlie");
-			expect(result.rows[2].name).toBe("Alice");
-		});
-
-		test("data.getTableData with filter", async () => {
-			const result = await handlers["data.getTableData"]({
-				connectionId,
-				schema: "main",
-				table: "users",
-				page: 1,
-				pageSize: 10,
-				filters: [{ column: "age", operator: "gt", value: 26 }],
-			});
-			expect(result.rows).toHaveLength(1);
-			expect(result.rows[0].name).toBe("Alice");
-			expect(result.totalRows).toBe(1);
-		});
-
-		test("data.getTableData with isNull filter", async () => {
-			const result = await handlers["data.getTableData"]({
-				connectionId,
-				schema: "main",
-				table: "users",
-				page: 1,
-				pageSize: 10,
-				filters: [{ column: "age", operator: "isNull", value: null }],
-			});
-			expect(result.rows).toHaveLength(1);
-			expect(result.rows[0].name).toBe("Charlie");
-		});
-
-		test("data.getTableData columns include metadata", async () => {
-			const result = await handlers["data.getTableData"]({
-				connectionId,
-				schema: "main",
-				table: "users",
-				page: 1,
-				pageSize: 10,
-			});
-			const idCol = result.columns.find((c) => c.name === "id");
-			expect(idCol).toBeTruthy();
-			expect(idCol!.isPrimaryKey).toBe(true);
-		});
-
-		test("data.getRowCount returns total count", async () => {
-			const result = await handlers["data.getRowCount"]({
-				connectionId,
-				schema: "main",
-				table: "users",
-			});
-			expect(result.count).toBe(3);
-		});
-
-		test("data.getRowCount with filters", async () => {
-			const result = await handlers["data.getRowCount"]({
-				connectionId,
-				schema: "main",
-				table: "users",
-				filters: [{ column: "age", operator: "isNotNull", value: null }],
-			});
-			expect(result.count).toBe(2);
 		});
 	});
 
@@ -414,15 +265,6 @@ describe("RPC Handlers", () => {
 			connectionId = conn.id;
 		});
 
-		test("views.list returns empty array initially", () => {
-			const result = handlers["views.list"]({
-				connectionId,
-				schemaName: "main",
-				tableName: "users",
-			});
-			expect(result).toEqual([]);
-		});
-
 		test("views.save creates and returns a saved view", () => {
 			const view = handlers["views.save"]({
 				connectionId,
@@ -443,39 +285,6 @@ describe("RPC Handlers", () => {
 			expect(view.config.sort).toEqual([{ column: "name", direction: "asc" }]);
 			expect(view.createdAt).toBeTruthy();
 			expect(view.updatedAt).toBeTruthy();
-		});
-
-		test("views.list returns views for a specific table", () => {
-			handlers["views.save"]({
-				connectionId,
-				schemaName: "main",
-				tableName: "users",
-				name: "View A",
-				config: {},
-			});
-			handlers["views.save"]({
-				connectionId,
-				schemaName: "main",
-				tableName: "posts",
-				name: "View B",
-				config: {},
-			});
-
-			const userViews = handlers["views.list"]({
-				connectionId,
-				schemaName: "main",
-				tableName: "users",
-			});
-			expect(userViews).toHaveLength(1);
-			expect(userViews[0].name).toBe("View A");
-
-			const postViews = handlers["views.list"]({
-				connectionId,
-				schemaName: "main",
-				tableName: "posts",
-			});
-			expect(postViews).toHaveLength(1);
-			expect(postViews[0].name).toBe("View B");
 		});
 
 		test("views.update modifies name and config", () => {
@@ -507,11 +316,7 @@ describe("RPC Handlers", () => {
 			});
 			handlers["views.delete"]({ id: view.id });
 
-			const views = handlers["views.list"]({
-				connectionId,
-				schemaName: "main",
-				tableName: "users",
-			});
+			const views = handlers["views.listByConnection"]({ connectionId });
 			expect(views).toHaveLength(0);
 		});
 
@@ -647,12 +452,8 @@ describe("RPC Handlers", () => {
 				config,
 			});
 
-			// Retrieve via list to verify deserialization
-			const views = handlers["views.list"]({
-				connectionId,
-				schemaName: "main",
-				tableName: "users",
-			});
+			// Retrieve via listByConnection to verify deserialization
+			const views = handlers["views.listByConnection"]({ connectionId });
 			expect(views[0].config).toEqual(config);
 		});
 	});
@@ -788,107 +589,9 @@ describe("RPC Handlers", () => {
 		});
 	});
 
-	// ── Stub handlers ────────────────────────────────────
-
-	describe("stub handlers", () => {
-		const stubs = [
-			"data.getColumnStats",
-		] as const;
-
-		for (const method of stubs) {
-			test(`${method} throws "Not implemented yet"`, () => {
-				expect(() =>
-					(handlers as any)[method]({}),
-				).toThrow(`Not implemented yet: ${method}`);
-			});
-		}
-	});
-
-	// ── settings.* ──────────────────────────────────────
-
-	describe("settings.*", () => {
-		test("settings.get returns default value for unset key", () => {
-			const result = handlers["settings.get"]({ key: "defaultPageSize" });
-			expect(result).toEqual({ value: "100" });
-		});
-
-		test("settings.get returns null for unknown key with no default", () => {
-			const result = handlers["settings.get"]({ key: "nonexistentKey" });
-			expect(result).toEqual({ value: null });
-		});
-
-		test("settings.set saves and settings.get retrieves value", () => {
-			handlers["settings.set"]({ key: "theme", value: "light" });
-			const result = handlers["settings.get"]({ key: "theme" });
-			expect(result).toEqual({ value: "light" });
-		});
-
-		test("settings.set updates existing key", () => {
-			handlers["settings.set"]({ key: "defaultPageSize", value: "50" });
-			handlers["settings.set"]({ key: "defaultPageSize", value: "200" });
-			const result = handlers["settings.get"]({ key: "defaultPageSize" });
-			expect(result).toEqual({ value: "200" });
-		});
-
-		test("settings.set overrides default value", () => {
-			// Default is "100"
-			handlers["settings.set"]({ key: "defaultPageSize", value: "25" });
-			const result = handlers["settings.get"]({ key: "defaultPageSize" });
-			expect(result).toEqual({ value: "25" });
-		});
-
-		test("settings.getAll returns all defaults when nothing is set", () => {
-			const result = handlers["settings.getAll"]();
-			expect(result.defaultPageSize).toBe("100");
-			expect(result.defaultTxMode).toBe("auto-commit");
-			expect(result.theme).toBe("dark");
-			expect(result.queryTimeout).toBe("30000");
-			expect(result.maxHistoryEntries).toBe("1000");
-			expect(result.clipboardIncludeHeaders).toBe("true");
-			expect(result.exportDefaultFormat).toBe("csv");
-		});
-
-		test("settings.getAll merges stored values over defaults", () => {
-			handlers["settings.set"]({ key: "theme", value: "light" });
-			handlers["settings.set"]({ key: "defaultPageSize", value: "50" });
-			const result = handlers["settings.getAll"]();
-			expect(result.theme).toBe("light");
-			expect(result.defaultPageSize).toBe("50");
-			// Defaults still present for unset keys
-			expect(result.defaultTxMode).toBe("auto-commit");
-			expect(result.queryTimeout).toBe("30000");
-		});
-
-		test("settings.getAll includes custom keys not in defaults", () => {
-			handlers["settings.set"]({ key: "customKey", value: "customValue" });
-			const result = handlers["settings.getAll"]();
-			expect(result.customKey).toBe("customValue");
-		});
-
-		test("settings values are persisted in app DB", () => {
-			handlers["settings.set"]({ key: "theme", value: "light" });
-			// Re-create handlers with the same appDb to verify persistence
-			const appDb = AppDatabase.getInstance(":memory:");
-			const freshHandlers = createHandlers(cm, undefined, appDb);
-			const result = freshHandlers["settings.get"]({ key: "theme" });
-			expect(result).toEqual({ value: "light" });
-		});
-	});
-
 	// ── tx.* ─────────────────────────────────────────────
 
 	describe("tx.*", () => {
-		test("tx.status returns inactive when no transaction", async () => {
-			const conn = handlers["connections.create"]({
-				name: "TX Test",
-				config: sqliteConfig,
-			});
-			await handlers["connections.connect"]({ connectionId: conn.id });
-
-			const result = handlers["tx.status"]({ connectionId: conn.id });
-			expect(result).toEqual({ active: false });
-		});
-
 		test("tx.begin starts a transaction", async () => {
 			const conn = handlers["connections.create"]({
 				name: "TX Test",
@@ -897,8 +600,8 @@ describe("RPC Handlers", () => {
 			await handlers["connections.connect"]({ connectionId: conn.id });
 
 			await handlers["tx.begin"]({ connectionId: conn.id });
-			const result = handlers["tx.status"]({ connectionId: conn.id });
-			expect(result).toEqual({ active: true });
+			const driver = cm.getDriver(conn.id);
+			expect(driver.inTransaction()).toBe(true);
 		});
 
 		test("tx.commit ends a transaction", async () => {
@@ -910,8 +613,8 @@ describe("RPC Handlers", () => {
 
 			await handlers["tx.begin"]({ connectionId: conn.id });
 			await handlers["tx.commit"]({ connectionId: conn.id });
-			const result = handlers["tx.status"]({ connectionId: conn.id });
-			expect(result).toEqual({ active: false });
+			const driver = cm.getDriver(conn.id);
+			expect(driver.inTransaction()).toBe(false);
 		});
 
 		test("tx.rollback ends a transaction", async () => {
@@ -923,8 +626,8 @@ describe("RPC Handlers", () => {
 
 			await handlers["tx.begin"]({ connectionId: conn.id });
 			await handlers["tx.rollback"]({ connectionId: conn.id });
-			const result = handlers["tx.status"]({ connectionId: conn.id });
-			expect(result).toEqual({ active: false });
+			const driver = cm.getDriver(conn.id);
+			expect(driver.inTransaction()).toBe(false);
 		});
 
 		test("tx.begin throws when transaction already active", async () => {
@@ -962,78 +665,6 @@ describe("RPC Handlers", () => {
 			await expect(
 				handlers["tx.rollback"]({ connectionId: conn.id }),
 			).rejects.toThrow("No active transaction to rollback");
-		});
-
-		test("data.applyChanges does not auto-commit when in manual transaction", async () => {
-			const conn = handlers["connections.create"]({
-				name: "TX Test",
-				config: sqliteConfig,
-			});
-			await handlers["connections.connect"]({ connectionId: conn.id });
-
-			// Create a table to work with
-			const driver = cm.getDriver(conn.id);
-			await driver.execute("CREATE TABLE test_tx (id INTEGER PRIMARY KEY, name TEXT)", []);
-			await driver.execute("INSERT INTO test_tx (id, name) VALUES (1, 'original')", []);
-
-			// Begin manual transaction
-			await handlers["tx.begin"]({ connectionId: conn.id });
-
-			// Apply changes within the transaction
-			await handlers["data.applyChanges"]({
-				connectionId: conn.id,
-				changes: [{
-					type: "update",
-					schema: "main",
-					table: "test_tx",
-					primaryKeys: { id: 1 },
-					values: { name: "updated" },
-				}],
-			});
-
-			// Transaction should still be active (not auto-committed)
-			const status = handlers["tx.status"]({ connectionId: conn.id });
-			expect(status.active).toBe(true);
-
-			// Commit manually
-			await handlers["tx.commit"]({ connectionId: conn.id });
-
-			// Verify the change persisted
-			const result = await driver.execute("SELECT name FROM test_tx WHERE id = 1", []);
-			expect(result.rows[0].name).toBe("updated");
-		});
-
-		test("data.applyChanges auto-commits when no manual transaction", async () => {
-			const conn = handlers["connections.create"]({
-				name: "TX Test",
-				config: sqliteConfig,
-			});
-			await handlers["connections.connect"]({ connectionId: conn.id });
-
-			// Create a table to work with
-			const driver = cm.getDriver(conn.id);
-			await driver.execute("CREATE TABLE test_tx2 (id INTEGER PRIMARY KEY, name TEXT)", []);
-			await driver.execute("INSERT INTO test_tx2 (id, name) VALUES (1, 'original')", []);
-
-			// Apply changes without manual transaction
-			await handlers["data.applyChanges"]({
-				connectionId: conn.id,
-				changes: [{
-					type: "update",
-					schema: "main",
-					table: "test_tx2",
-					primaryKeys: { id: 1 },
-					values: { name: "updated" },
-				}],
-			});
-
-			// No transaction should be active
-			const status = handlers["tx.status"]({ connectionId: conn.id });
-			expect(status.active).toBe(false);
-
-			// Verify the change persisted
-			const result = await driver.execute("SELECT name FROM test_tx2 WHERE id = 1", []);
-			expect(result.rows[0].name).toBe("updated");
 		});
 	});
 
@@ -1097,39 +728,10 @@ describe("RPC Handlers", () => {
 			await driver.execute("INSERT INTO compat_test (name) VALUES ('test')");
 		});
 
-		test("schema.getSchemas works without database param", async () => {
-			const schemas = await handlers["schema.getSchemas"]({ connectionId });
-			expect(schemas).toBeInstanceOf(Array);
-			expect(schemas.length).toBeGreaterThan(0);
-		});
-
-		test("schema.getTables works without database param", async () => {
-			const schemas = await handlers["schema.getSchemas"]({ connectionId });
-			const tables = await handlers["schema.getTables"]({
-				connectionId,
-				schema: schemas[0].name,
-			});
-			expect(tables).toBeInstanceOf(Array);
-		});
-
-		test("schema.getColumns works without database param", async () => {
-			const columns = await handlers["schema.getColumns"]({
-				connectionId,
-				schema: "main",
-				table: "compat_test",
-			});
-			expect(columns).toHaveLength(2);
-		});
-
-		test("data.getTableData works without database param", async () => {
-			const result = await handlers["data.getTableData"]({
-				connectionId,
-				schema: "main",
-				table: "compat_test",
-				page: 1,
-				pageSize: 10,
-			});
-			expect(result.rows).toHaveLength(1);
+		test("schema.load works without database param", async () => {
+			const data = await handlers["schema.load"]({ connectionId });
+			expect(data.schemas).toBeInstanceOf(Array);
+			expect(data.schemas.length).toBeGreaterThan(0);
 		});
 
 		test("query.execute works without database param", async () => {
@@ -1142,10 +744,10 @@ describe("RPC Handlers", () => {
 			expect(results[0].rows).toHaveLength(1);
 		});
 
-		test("tx.begin/status/commit work without database param", async () => {
+		test("tx.begin/commit work without database param", async () => {
 			await handlers["tx.begin"]({ connectionId });
-			const status = handlers["tx.status"]({ connectionId });
-			expect(status.active).toBe(true);
+			const driver = cm.getDriver(connectionId);
+			expect(driver.inTransaction()).toBe(true);
 			await handlers["tx.commit"]({ connectionId });
 		});
 	});

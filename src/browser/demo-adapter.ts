@@ -15,16 +15,6 @@ import { splitStatements } from "../shared/sql/statements";
 import { exportPreview as generateExportPreview } from "../bun/services/export-service";
 import { formatSql } from "../bun/services/sql-formatter";
 
-const DEFAULT_SETTINGS: Record<string, string> = {
-	defaultPageSize: "100",
-	defaultTxMode: "auto-commit",
-	theme: "dark",
-	queryTimeout: "30000",
-	maxHistoryEntries: "1000",
-	clipboardIncludeHeaders: "true",
-	exportDefaultFormat: "csv",
-};
-
 type EmitMessage = (channel: string, payload: any) => void;
 
 export class DemoAdapter implements RpcAdapter {
@@ -208,15 +198,6 @@ export class DemoAdapter implements RpcAdapter {
 		await d.rollback();
 	}
 
-	isTransactionActive(connectionId: string): boolean {
-		try {
-			const d = this.getConnectedDriver(connectionId);
-			return d.inTransaction();
-		} catch {
-			return false;
-		}
-	}
-
 	// ── History ───────────────────────────────────────────
 
 	listHistory(params: HistoryListParams): QueryHistoryEntry[] {
@@ -251,24 +232,6 @@ export class DemoAdapter implements RpcAdapter {
 
 	getSavedViewById(id: string): SavedView | null {
 		return this.state.getSavedViewById(id);
-	}
-
-	// ── Settings ─────────────────────────────────────────
-
-	getSetting(key: string): string | null {
-		return this.state.getSetting(key);
-	}
-
-	setSetting(key: string, value: string): void {
-		this.state.setSetting(key, value);
-	}
-
-	getAllSettings(): Record<string, string> {
-		return this.state.getAllSettings();
-	}
-
-	getDefaultSettings(): Record<string, string> {
-		return DEFAULT_SETTINGS;
 	}
 
 	// ── Export ────────────────────────────────────────────

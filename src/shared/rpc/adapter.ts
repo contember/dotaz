@@ -40,7 +40,6 @@ export interface RpcAdapter {
 	beginTransaction(connectionId: string, database?: string): Promise<void>;
 	commitTransaction(connectionId: string, database?: string): Promise<void>;
 	rollbackTransaction(connectionId: string, database?: string): Promise<void>;
-	isTransactionActive(connectionId: string, database?: string): boolean;
 
 	// ── History ───────────────────────────────────────────
 	listHistory(params: HistoryListParams): QueryHistoryEntry[];
@@ -53,12 +52,6 @@ export interface RpcAdapter {
 	deleteSavedView(id: string): void;
 	listSavedViewsByConnection(connectionId: string): SavedView[];
 	getSavedViewById(id: string): SavedView | null;
-
-	// ── Settings ─────────────────────────────────────────
-	getSetting(key: string): string | null;
-	setSetting(key: string, value: string): void;
-	getAllSettings(): Record<string, string>;
-	getDefaultSettings(): Record<string, string>;
 
 	// ── Export ────────────────────────────────────────────
 	exportData(opts: ExportOptions): Promise<ExportResult>;

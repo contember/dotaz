@@ -25,18 +25,6 @@ export interface DataChange {
 	values?: Record<string, unknown>;
 }
 
-export interface ApplyChangesParams {
-	connectionId: string;
-	changes: DataChange[];
-	database?: string;
-}
-
-export interface GenerateSqlParams {
-	connectionId: string;
-	changes: DataChange[];
-	database?: string;
-}
-
 export interface HistoryListParams {
 	connectionId?: string;
 	limit?: number;
@@ -74,12 +62,6 @@ export interface UpdateViewParams {
 	id: string;
 	name: string;
 	config: SavedViewConfig;
-}
-
-export interface ViewListParams {
-	connectionId: string;
-	schemaName: string;
-	tableName: string;
 }
 
 export interface OpenDialogParams {
