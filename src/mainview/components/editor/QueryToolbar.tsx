@@ -1,6 +1,7 @@
 import { Show } from "solid-js";
 import { editorStore, type TxMode } from "../../stores/editor";
 import { connectionsStore } from "../../stores/connections";
+import { Play, AlignLeft, PlayCircle, Check, RotateCcw } from "lucide-solid";
 import Icon from "../common/Icon";
 import "./QueryToolbar.css";
 
@@ -94,7 +95,7 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 				disabled={!hasSelection() || isRunning()}
 				title="Run Selected (Ctrl+Shift+Enter)"
 			>
-				Run Selected
+				<Play size={12} /> Run Selected
 			</button>
 
 			{/* Format */}
@@ -104,7 +105,7 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 				disabled={!hasContent() || isRunning()}
 				title="Format SQL"
 			>
-				Format
+				<AlignLeft size={12} /> Format
 			</button>
 
 			{/* History */}
@@ -148,7 +149,7 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 							onClick={handleBeginTx}
 							title="Begin Transaction"
 						>
-							Begin
+							<PlayCircle size={12} /> Begin
 						</button>
 					}
 				>
@@ -158,14 +159,14 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 						onClick={handleCommit}
 						title="Commit Transaction"
 					>
-						Commit
+						<Check size={12} /> Commit
 					</button>
 					<button
 						class="query-toolbar__btn"
 						onClick={handleRollback}
 						title="Rollback Transaction"
 					>
-						Rollback
+						<RotateCcw size={12} /> Rollback
 					</button>
 				</Show>
 			</Show>

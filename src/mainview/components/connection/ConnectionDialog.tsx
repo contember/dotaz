@@ -5,7 +5,10 @@ import type {
 	ConnectionType,
 } from "../../../shared/types/connection";
 import { connectionsStore } from "../../stores/connections";
+import { isStateless } from "../../lib/mode";
 import { rpc } from "../../lib/rpc";
+import { siPostgresql, siSqlite } from "simple-icons";
+import { FolderOpen, Plug } from "lucide-solid";
 import Dialog from "../common/Dialog";
 import "./ConnectionDialog.css";
 
@@ -40,6 +43,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 	const [pgFields, setPgFields] = createSignal(defaultPgFields());
 	const [sqliteFields, setSqliteFields] = createSignal(defaultSqliteFields());
 
+	const [rememberPassword, setRememberPassword] = createSignal(true);
 	const [testResult, setTestResult] = createSignal<{
 		success: boolean;
 		error?: string;
@@ -58,6 +62,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 		const conn = props.connection;
 		if (conn) {
 			setDbType(conn.config.type);
+			setRememberPassword(connectionsStore.getRememberPassword(conn.id));
 			if (conn.config.type === "postgresql") {
 				setPgFields({
 					name: conn.name,
@@ -76,6 +81,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 			}
 		} else {
 			setDbType("postgresql");
+			setRememberPassword(true);
 			setPgFields(defaultPgFields());
 			setSqliteFields(defaultSqliteFields());
 		}
@@ -157,9 +163,9 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 			const config = buildConfig();
 
 			if (props.connection) {
-				await connectionsStore.updateConnection(props.connection.id, name, config);
+				await connectionsStore.updateConnection(props.connection.id, name, config, rememberPassword());
 			} else {
-				await connectionsStore.createConnection(name, config);
+				await connectionsStore.createConnection(name, config, rememberPassword());
 			}
 			props.onClose();
 		} catch (err) {
@@ -236,7 +242,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 						onClick={() => setDbType("postgresql")}
 						disabled={!!props.connection}
 					>
-						PostgreSQL
+						<svg width={14} height={14} viewBox="0 0 24 24" fill={`#${siPostgresql.hex}`} aria-hidden="true"><path d={siPostgresql.path} /></svg> PostgreSQL
 					</button>
 					<button
 						class="conn-dialog__type-btn"
@@ -244,7 +250,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 						onClick={() => setDbType("sqlite")}
 						disabled={!!props.connection}
 					>
-						SQLite
+						<svg width={14} height={14} viewBox="0 0 24 24" fill={`#${siSqlite.hex}`} aria-hidden="true"><path d={siSqlite.path} /></svg> SQLite
 					</button>
 				</div>
 
@@ -346,6 +352,20 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 							Use SSL
 						</label>
 					</div>
+
+					<Show when={isStateless()}>
+						<div class="conn-dialog__field conn-dialog__field--inline">
+							<label class="conn-dialog__label conn-dialog__label--checkbox">
+								<input
+									type="checkbox"
+									checked={rememberPassword()}
+									onChange={(e) => setRememberPassword(e.currentTarget.checked)}
+								/>
+								Remember password
+							</label>
+							<span class="conn-dialog__hint">Password will be encrypted and stored in your browser</span>
+						</div>
+					</Show>
 				</Show>
 
 				{/* SQLite fields */}
@@ -365,7 +385,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 								class="conn-dialog__browse-btn"
 								onClick={handleBrowse}
 							>
-								Browse
+								<FolderOpen size={14} /> Browse
 							</button>
 						</div>
 						<Show when={errors().path}>
@@ -398,7 +418,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 						onClick={handleTestConnection}
 						disabled={testing()}
 					>
-						{testing() ? "Testing..." : "Test Connection"}
+						<Plug size={14} /> {testing() ? "Testing..." : "Test Connection"}
 					</button>
 					<div class="conn-dialog__actions-right">
 						<button

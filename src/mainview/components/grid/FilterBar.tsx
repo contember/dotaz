@@ -4,7 +4,7 @@ import type {
 	FilterOperator,
 	GridColumnDef,
 } from "../../../shared/types/grid";
-import { X } from "lucide-solid";
+import { X, FilterX, Plus } from "lucide-solid";
 import "./FilterBar.css";
 
 interface FilterBarProps {
@@ -180,7 +180,7 @@ export default function FilterBar(props: FilterBarProps) {
 
 				<Show when={props.filters.length > 1}>
 					<button class="filter-bar__clear-all" onClick={props.onClearAll}>
-						Clear All
+						<FilterX size={12} /> Clear All
 					</button>
 				</Show>
 			</div>
@@ -190,7 +190,7 @@ export default function FilterBar(props: FilterBarProps) {
 				fallback={
 					<Show when={availableColumns().length > 0}>
 						<button class="filter-bar__add-btn" onClick={() => setAdding(true)}>
-							+ Add Filter
+							<Plus size={12} /> Add Filter
 						</button>
 					</Show>
 				}

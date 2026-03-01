@@ -2,7 +2,7 @@ import { createSignal, For, Show, type JSX } from "solid-js";
 import type { GridColumnDef } from "../../../shared/types/grid";
 import { gridStore } from "../../stores/grid";
 import { rpc } from "../../lib/rpc";
-import { Plus, Pencil, Minus, X } from "lucide-solid";
+import { Plus, Pencil, Minus, X, Code, RotateCcw, Check } from "lucide-solid";
 import "./PendingChanges.css";
 
 interface PendingChangesProps {
@@ -173,7 +173,7 @@ export default function PendingChanges(props: PendingChangesProps) {
 						disabled={applying()}
 						title="Preview SQL"
 					>
-						SQL
+						<Code size={12} /> SQL
 					</button>
 					<button
 						class="pending-changes__btn pending-changes__btn--revert"
@@ -181,7 +181,7 @@ export default function PendingChanges(props: PendingChangesProps) {
 						disabled={applying()}
 						title="Revert all changes"
 					>
-						Revert All
+						<RotateCcw size={12} /> Revert All
 					</button>
 					<button
 						class="pending-changes__btn pending-changes__btn--apply"
@@ -189,7 +189,7 @@ export default function PendingChanges(props: PendingChangesProps) {
 						disabled={applying()}
 						title="Apply all changes"
 					>
-						{applying() ? "Applying..." : "Apply All"}
+						<Check size={12} /> {applying() ? "Applying..." : "Apply All"}
 					</button>
 				</div>
 			</div>

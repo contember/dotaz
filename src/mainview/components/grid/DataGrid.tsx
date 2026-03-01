@@ -20,6 +20,7 @@ import ExportDialog from "../export/ExportDialog";
 import ContextMenu from "../common/ContextMenu";
 import type { ContextMenuEntry } from "../common/ContextMenu";
 import Icon from "../common/Icon";
+import { RotateCcw, Save, Pencil } from "lucide-solid";
 import "./DataGrid.css";
 
 interface DataGridProps {
@@ -832,14 +833,14 @@ export default function DataGrid(props: DataGridProps) {
 											onClick={handleResetView}
 											title="Reset to saved state"
 										>
-											Reset
+											<RotateCcw size={12} /> Reset
 										</button>
 										<button
 											class="data-grid__toolbar-btn"
 											onClick={handleSaveAsNew}
 											title="Save as new view"
 										>
-											Save As...
+											<Save size={12} /> Save As...
 										</button>
 									</Show>
 								</Show>
@@ -1004,7 +1005,7 @@ export default function DataGrid(props: DataGridProps) {
 									onClick={() => setShowPendingPanel((prev) => !prev)}
 									title="Toggle pending changes panel"
 								>
-									{gridStore.pendingChangesCount(props.tabId)} pending change{gridStore.pendingChangesCount(props.tabId) !== 1 ? "s" : ""}
+									<Pencil size={12} /> {gridStore.pendingChangesCount(props.tabId)} pending change{gridStore.pendingChangesCount(props.tabId) !== 1 ? "s" : ""}
 								</button>
 							</Show>
 						</div>

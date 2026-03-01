@@ -4,6 +4,7 @@ import { rpc } from "../../lib/rpc";
 import { connectionsStore } from "../../stores/connections";
 import { tabsStore } from "../../stores/tabs";
 import { editorStore } from "../../stores/editor";
+import { Play, Copy, ClipboardPaste, Trash2 } from "lucide-solid";
 import Dialog from "../common/Dialog";
 import Icon from "../common/Icon";
 import "./QueryHistory.css";
@@ -228,7 +229,7 @@ export default function QueryHistory(props: QueryHistoryProps) {
 						disabled={entries().length === 0 && !loading()}
 						title={connectionFilter() ? "Clear history for this connection" : "Clear all history"}
 					>
-						Clear
+						<Trash2 size={12} /> Clear
 					</button>
 				</div>
 
@@ -317,21 +318,21 @@ export default function QueryHistory(props: QueryHistoryProps) {
 													onClick={() => handleRunAgain(entry)}
 													title="Open in new SQL console"
 												>
-													Run Again
+													<Play size={12} /> Run Again
 												</button>
 												<button
 													class="query-history__action-btn"
 													onClick={() => handleCopyToClipboard(entry)}
 													title="Copy SQL to clipboard"
 												>
-													Copy to Clipboard
+													<Copy size={12} /> Copy to Clipboard
 												</button>
 												<button
 													class="query-history__action-btn"
 													onClick={() => handleCopyToConsole(entry)}
 													title="Insert SQL into active console"
 												>
-													Copy to Console
+													<ClipboardPaste size={12} /> Copy to Console
 												</button>
 											</div>
 										</div>

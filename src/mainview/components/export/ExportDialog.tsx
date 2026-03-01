@@ -7,6 +7,7 @@ import type {
 import type { ColumnFilter, SortColumn } from "../../../shared/types/grid";
 import { gridStore } from "../../stores/grid";
 import { rpc } from "../../lib/rpc";
+import { Download, Eye } from "lucide-solid";
 import Dialog from "../common/Dialog";
 import "./ExportDialog.css";
 
@@ -338,7 +339,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 							onClick={loadPreview}
 							disabled={previewLoading()}
 						>
-							{previewLoading() ? "Loading..." : "Load Preview"}
+							<Eye size={12} /> {previewLoading() ? "Loading..." : "Load Preview"}
 						</button>
 					</div>
 					<Show when={preview()}>
@@ -395,7 +396,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 						onClick={handleExport}
 						disabled={exporting()}
 					>
-						{exporting() ? "Exporting..." : "Export"}
+						<Download size={14} /> {exporting() ? "Exporting..." : "Export"}
 					</button>
 				</div>
 			</div>

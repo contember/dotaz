@@ -8,7 +8,7 @@ import { viewsStore } from "../../stores/views";
 import { gridStore } from "../../stores/grid";
 import { rpc } from "../../lib/rpc";
 import { siPostgresql, siSqlite } from "simple-icons";
-import { Eye, Table, Bookmark, FolderOpen } from "lucide-solid";
+import { Eye, Table, Bookmark, FolderOpen, Plus } from "lucide-solid";
 import ContextMenu, { type ContextMenuEntry } from "../common/ContextMenu";
 import ConnectionTreeItem from "./ConnectionTreeItem";
 import "./ConnectionTree.css";
@@ -381,7 +381,7 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 					<div class="connection-tree__empty">
 						<span>No connections</span>
 						<button class="connection-tree__empty-cta" onClick={props.onAddConnection}>
-							Add Connection
+							<Plus size={14} /> Add Connection
 						</button>
 					</div>
 				}

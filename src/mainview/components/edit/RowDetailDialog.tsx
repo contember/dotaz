@@ -1,6 +1,7 @@
 import { createSignal, For, Show } from "solid-js";
 import type { GridColumnDef } from "../../../shared/types/grid";
 import type { ForeignKeyInfo } from "../../../shared/types/database";
+import { ChevronUp, ChevronDown } from "lucide-solid";
 import Dialog from "../common/Dialog";
 import "./RowDetailDialog.css";
 
@@ -349,7 +350,7 @@ export default function RowDetailDialog(props: RowDetailDialogProps) {
 							onClick={handlePrev}
 							title="Previous row (Ctrl+Up)"
 						>
-							&#x25B2; Prev
+							<ChevronUp size={14} /> Prev
 						</button>
 						<button
 							class="row-detail__nav-btn"
@@ -357,7 +358,7 @@ export default function RowDetailDialog(props: RowDetailDialogProps) {
 							onClick={handleNext}
 							title="Next row (Ctrl+Down)"
 						>
-							Next &#x25BC;
+							Next <ChevronDown size={14} />
 						</button>
 					</div>
 				</div>
