@@ -1,4 +1,5 @@
 import type { RpcAdapter } from "./adapter";
+import type { ConnectionConfig } from "../../shared/types/connection";
 import type { ExportOptions, ExportPreviewRequest } from "../../shared/types/export";
 import type {
 	HistoryListParams,
@@ -13,16 +14,16 @@ export function createHandlers(adapter: RpcAdapter) {
 		"connections.list": () => {
 			return adapter.listConnections();
 		},
-		"connections.create": ({ name, config }: { name: string; config: any }) => {
+		"connections.create": ({ name, config }: { name: string; config: ConnectionConfig }) => {
 			return adapter.createConnection({ name, config });
 		},
-		"connections.update": ({ id, name, config }: { id: string; name: string; config: any }) => {
+		"connections.update": ({ id, name, config }: { id: string; name: string; config: ConnectionConfig }) => {
 			return adapter.updateConnection({ id, name, config });
 		},
 		"connections.delete": async ({ id }: { id: string }) => {
 			await adapter.deleteConnection(id);
 		},
-		"connections.test": async ({ config }: { config: any }) => {
+		"connections.test": async ({ config }: { config: ConnectionConfig }) => {
 			return adapter.testConnection(config);
 		},
 		"connections.connect": async ({ connectionId, password, encryptedConfig, name }: { connectionId: string; password?: string; encryptedConfig?: string; name?: string }) => {

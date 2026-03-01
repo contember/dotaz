@@ -8,6 +8,60 @@ import type {
 	SchemaData,
 	TableInfo,
 } from "../../shared/types/database";
+import { getAffectedRowCount } from "../db/result-utils";
+
+/** Row shape from information_schema.columns */
+interface MysqlColumnRow {
+	table_schema: string;
+	table_name: string;
+	column_name: string;
+	data_type: string;
+	column_type: string;
+	is_nullable: string;
+	column_default: string | null;
+	character_maximum_length: number | null;
+	column_key: string;
+	extra: string;
+}
+
+/** Row shape from information_schema.STATISTICS */
+interface MysqlIndexRow {
+	table_schema: string;
+	table_name: string;
+	index_name: string;
+	non_unique: number | string;
+	columns: string;
+}
+
+/** Row shape from FK join query */
+interface MysqlForeignKeyRow {
+	table_schema: string;
+	table_name: string;
+	constraint_name: string;
+	columns: string;
+	referenced_schema: string;
+	referenced_table: string;
+	referenced_columns: string;
+	on_update: string;
+	on_delete: string;
+}
+
+/** Row shape from referencing FK query */
+interface MysqlReferencingFkRow {
+	referenced_schema: string;
+	referenced_table: string;
+	constraint_name: string;
+	referencing_schema: string;
+	referencing_table: string;
+	referencing_columns: string;
+	referenced_columns: string;
+}
+
+/** Row shape from information_schema.tables */
+interface MysqlTableRow {
+	name: string;
+	table_type: string;
+}
 
 /**
  * Convert PostgreSQL-style $N placeholders to MySQL-style ? placeholders.
@@ -79,7 +133,7 @@ export class MysqlDriver implements DatabaseDriver {
 				columns,
 				rows,
 				rowCount: rows.length,
-				affectedRows: (result as any).affectedRows ?? (result as any).count ?? 0,
+				affectedRows: getAffectedRowCount(result),
 				durationMs,
 			};
 		} finally {
@@ -185,7 +239,7 @@ export class MysqlDriver implements DatabaseDriver {
 
 		// Group columns by schema.table
 		const columns: SchemaData["columns"] = {};
-		for (const row of allColumns as any[]) {
+		for (const row of allColumns as MysqlColumnRow[]) {
 			const key = `${row.table_schema}.${row.table_name}`;
 			if (!columns[key]) columns[key] = [];
 			columns[key].push({
@@ -201,7 +255,7 @@ export class MysqlDriver implements DatabaseDriver {
 
 		// Group indexes by schema.table
 		const indexes: SchemaData["indexes"] = {};
-		for (const row of allIndexes as any[]) {
+		for (const row of allIndexes as MysqlIndexRow[]) {
 			const key = `${row.table_schema}.${row.table_name}`;
 			if (!indexes[key]) indexes[key] = [];
 			indexes[key].push({
@@ -214,7 +268,7 @@ export class MysqlDriver implements DatabaseDriver {
 
 		// Group foreign keys by schema.table
 		const foreignKeys: SchemaData["foreignKeys"] = {};
-		for (const row of allForeignKeys as any[]) {
+		for (const row of allForeignKeys as MysqlForeignKeyRow[]) {
 			const key = `${row.table_schema}.${row.table_name}`;
 			if (!foreignKeys[key]) foreignKeys[key] = [];
 			foreignKeys[key].push({
@@ -232,7 +286,7 @@ export class MysqlDriver implements DatabaseDriver {
 
 		// Group referencing foreign keys by schema.table (the referenced table)
 		const referencingForeignKeys: SchemaData["referencingForeignKeys"] = {};
-		for (const row of allReferencingForeignKeys as any[]) {
+		for (const row of allReferencingForeignKeys as MysqlReferencingFkRow[]) {
 			const key = `${row.referenced_schema}.${row.referenced_table}`;
 			if (!referencingForeignKeys[key]) referencingForeignKeys[key] = [];
 			referencingForeignKeys[key].push({
@@ -279,10 +333,10 @@ export class MysqlDriver implements DatabaseDriver {
 			ORDER BY table_name`,
 			[schema],
 		);
-		return [...rows].map((row: any) => ({
+		return [...rows].map((row: MysqlTableRow) => ({
 			schema,
 			name: row.name,
-			type: row.table_type === "VIEW" ? "view" : "table",
+			type: row.table_type === "VIEW" ? ("view" as const) : ("table" as const),
 		}));
 	}
 

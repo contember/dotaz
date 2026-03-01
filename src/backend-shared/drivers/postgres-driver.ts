@@ -8,6 +8,60 @@ import type {
 	SchemaData,
 	TableInfo,
 } from "../../shared/types/database";
+import { getAffectedRowCount } from "../db/result-utils";
+
+/** Row shape from information_schema.columns joined with PK info */
+interface PgColumnRow {
+	table_schema: string;
+	table_name: string;
+	column_name: string;
+	data_type: string;
+	udt_name: string;
+	is_nullable: string;
+	column_default: string | null;
+	character_maximum_length: number | null;
+	is_primary_key: boolean;
+}
+
+/** Row shape from pg_catalog index query */
+interface PgIndexRow {
+	table_schema: string;
+	table_name: string;
+	index_name: string;
+	is_unique: boolean;
+	is_primary: boolean;
+	columns: string[] | string;
+}
+
+/** Row shape from pg_catalog foreign key query */
+interface PgForeignKeyRow {
+	table_schema: string;
+	table_name: string;
+	constraint_name: string;
+	columns: string[] | string;
+	referenced_schema: string;
+	referenced_table: string;
+	referenced_columns: string[] | string;
+	on_update: string;
+	on_delete: string;
+}
+
+/** Row shape from pg_catalog referencing foreign key query */
+interface PgReferencingFkRow {
+	referenced_schema: string;
+	referenced_table: string;
+	constraint_name: string;
+	referencing_schema: string;
+	referencing_table: string;
+	referencing_columns: string[] | string;
+	referenced_columns: string[] | string;
+}
+
+/** Row shape from information_schema.tables */
+interface PgTableRow {
+	name: string;
+	table_type: string;
+}
 
 export class PostgresDriver implements DatabaseDriver {
 	private db: SQL | null = null;
@@ -70,7 +124,7 @@ export class PostgresDriver implements DatabaseDriver {
 				columns,
 				rows,
 				rowCount: rows.length,
-				affectedRows: (result as any).count ?? 0,
+				affectedRows: getAffectedRowCount(result),
 				durationMs,
 			};
 		} finally {
@@ -224,7 +278,7 @@ export class PostgresDriver implements DatabaseDriver {
 
 		// Group columns by schema.table
 		const columns: SchemaData["columns"] = {};
-		for (const row of allColumns as any[]) {
+		for (const row of allColumns as PgColumnRow[]) {
 			const key = `${row.table_schema}.${row.table_name}`;
 			if (!columns[key]) columns[key] = [];
 			columns[key].push({
@@ -243,7 +297,7 @@ export class PostgresDriver implements DatabaseDriver {
 
 		// Group indexes by schema.table
 		const indexes: SchemaData["indexes"] = {};
-		for (const row of allIndexes as any[]) {
+		for (const row of allIndexes as PgIndexRow[]) {
 			const key = `${row.table_schema}.${row.table_name}`;
 			if (!indexes[key]) indexes[key] = [];
 			indexes[key].push({
@@ -258,7 +312,7 @@ export class PostgresDriver implements DatabaseDriver {
 
 		// Group foreign keys by schema.table
 		const foreignKeys: SchemaData["foreignKeys"] = {};
-		for (const row of allForeignKeys as any[]) {
+		for (const row of allForeignKeys as PgForeignKeyRow[]) {
 			const key = `${row.table_schema}.${row.table_name}`;
 			if (!foreignKeys[key]) foreignKeys[key] = [];
 			foreignKeys[key].push({
@@ -278,7 +332,7 @@ export class PostgresDriver implements DatabaseDriver {
 
 		// Group referencing foreign keys by schema.table (the referenced table)
 		const referencingForeignKeys: SchemaData["referencingForeignKeys"] = {};
-		for (const row of allReferencingForeignKeys as any[]) {
+		for (const row of allReferencingForeignKeys as PgReferencingFkRow[]) {
 			const key = `${row.referenced_schema}.${row.referenced_table}`;
 			if (!referencingForeignKeys[key]) referencingForeignKeys[key] = [];
 			referencingForeignKeys[key].push({
@@ -330,10 +384,10 @@ export class PostgresDriver implements DatabaseDriver {
 			ORDER BY table_name`,
 			[schema],
 		);
-		return [...rows].map((row: any) => ({
+		return [...rows].map((row: PgTableRow) => ({
 			schema,
 			name: row.name,
-			type: row.table_type === "VIEW" ? "view" : "table",
+			type: row.table_type === "VIEW" ? ("view" as const) : ("table" as const),
 		}));
 	}
 

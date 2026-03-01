@@ -11,6 +11,44 @@ import type {
 	ForeignKeyInfo,
 	ReferencingForeignKeyInfo,
 } from "../../shared/types/database";
+import { getAffectedRowCount } from "../db/result-utils";
+
+/** Row shape from sqlite_master */
+interface SqliteMasterRow {
+	name: string;
+	type: string;
+}
+
+/** Row shape from PRAGMA table_info */
+interface SqlitePragmaTableInfoRow {
+	name: string;
+	type: string;
+	notnull: number;
+	dflt_value: string | null;
+	pk: number;
+}
+
+/** Row shape from PRAGMA index_list */
+interface SqlitePragmaIndexListRow {
+	name: string;
+	unique: number;
+	origin: string;
+}
+
+/** Row shape from PRAGMA index_info */
+interface SqlitePragmaIndexInfoRow {
+	name: string;
+}
+
+/** Row shape from PRAGMA foreign_key_list */
+interface SqlitePragmaForeignKeyRow {
+	id: number;
+	from: string;
+	to: string;
+	table: string;
+	on_update: string;
+	on_delete: string;
+}
 
 export class SqliteDriver implements DatabaseDriver {
 	private db: SQL | null = null;
@@ -56,7 +94,7 @@ export class SqliteDriver implements DatabaseDriver {
 			columns,
 			rows,
 			rowCount: rows.length,
-			affectedRows: (result as any).count ?? 0,
+			affectedRows: getAffectedRowCount(result),
 			durationMs,
 		};
 	}
@@ -124,7 +162,7 @@ export class SqliteDriver implements DatabaseDriver {
 		const rows = await this.db!.unsafe(
 			"SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY name",
 		);
-		return [...rows].map((row: any) => ({
+		return [...rows].map((row: SqliteMasterRow) => ({
 			schema,
 			name: row.name,
 			type: row.type as "table" | "view",
@@ -137,7 +175,7 @@ export class SqliteDriver implements DatabaseDriver {
 			...(await this.db!.unsafe(
 				`PRAGMA table_info(${this.quoteIdentifier(table)})`,
 			)),
-		] as any[];
+		] as SqlitePragmaTableInfoRow[];
 
 		const pkCount = rows.filter((r) => r.pk > 0).length;
 
@@ -160,7 +198,7 @@ export class SqliteDriver implements DatabaseDriver {
 			...(await this.db!.unsafe(
 				`PRAGMA index_list(${this.quoteIdentifier(table)})`,
 			)),
-		] as any[];
+		] as SqlitePragmaIndexListRow[];
 
 		const indexes: IndexInfo[] = [];
 		for (const idx of indexList) {
@@ -168,7 +206,7 @@ export class SqliteDriver implements DatabaseDriver {
 				...(await this.db!.unsafe(
 					`PRAGMA index_info(${this.quoteIdentifier(idx.name)})`,
 				)),
-			] as any[];
+			] as SqlitePragmaIndexInfoRow[];
 			indexes.push({
 				name: idx.name,
 				columns: indexInfo.map((col) => col.name),
@@ -188,7 +226,7 @@ export class SqliteDriver implements DatabaseDriver {
 			...(await this.db!.unsafe(
 				`PRAGMA foreign_key_list(${this.quoteIdentifier(table)})`,
 			)),
-		] as any[];
+		] as SqlitePragmaForeignKeyRow[];
 
 		// Group by FK id since one FK can span multiple columns
 		const fkMap = new Map<number, ForeignKeyInfo>();
