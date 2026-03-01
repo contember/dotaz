@@ -38,10 +38,32 @@ function defaultSqliteFields() {
 	};
 }
 
+function parseConnectionString(input: string): ReturnType<typeof defaultPgFields> | null {
+	const trimmed = input.trim();
+	if (!trimmed.startsWith("postgresql://") && !trimmed.startsWith("postgres://")) {
+		return null;
+	}
+	try {
+		const url = new URL(trimmed);
+		const user = decodeURIComponent(url.username);
+		const password = decodeURIComponent(url.password);
+		const host = url.hostname;
+		const port = url.port || "5432";
+		const database = url.pathname.replace(/^\//, "");
+		const sslmode = url.searchParams.get("sslmode");
+		const ssl = sslmode === "require" || sslmode === "verify-full" || sslmode === "verify-ca";
+		const name = user && host && database ? `${user}@${host}/${database}` : "";
+		return { name, host, port, database, user, password, ssl };
+	} catch {
+		return null;
+	}
+}
+
 export default function ConnectionDialog(props: ConnectionDialogProps) {
 	const [dbType, setDbType] = createSignal<ConnectionType>("postgresql");
 	const [pgFields, setPgFields] = createSignal(defaultPgFields());
 	const [sqliteFields, setSqliteFields] = createSignal(defaultSqliteFields());
+	const [connectionUrl, setConnectionUrl] = createSignal("");
 
 	const [rememberPassword, setRememberPassword] = createSignal(true);
 	const [testResult, setTestResult] = createSignal<{
@@ -58,6 +80,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 		setErrors({});
 		setTesting(false);
 		setSaving(false);
+		setConnectionUrl("");
 
 		const conn = props.connection;
 		if (conn) {
@@ -218,6 +241,18 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 		}
 	}
 
+	function handleUrlInput(value: string) {
+		setConnectionUrl(value);
+		const parsed = parseConnectionString(value);
+		if (parsed) {
+			const current = pgFields();
+			setPgFields({
+				...parsed,
+				name: current.name || parsed.name,
+			});
+		}
+	}
+
 	// Use a ref callback to reset form when dialog opens
 	// Solid.js doesn't re-mount Show children on prop changes, so we use a getter
 	const dialogOpen = () => {
@@ -253,6 +288,20 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 						<svg width={14} height={14} viewBox="0 0 24 24" fill={`#${siSqlite.hex}`} aria-hidden="true"><path d={siSqlite.path} /></svg> SQLite
 					</button>
 				</div>
+
+				{/* Connection URL (PostgreSQL, new connections only) */}
+				<Show when={dbType() === "postgresql" && !props.connection}>
+					<div class="conn-dialog__field">
+						<label class="conn-dialog__label">URL</label>
+						<input
+							class="conn-dialog__input conn-dialog__url-input"
+							type="text"
+							value={connectionUrl()}
+							onInput={(e) => handleUrlInput(e.currentTarget.value)}
+							placeholder="postgresql://user:password@localhost:5432/mydb"
+						/>
+					</div>
+				</Show>
 
 				{/* Name field (shared) */}
 				<div class="conn-dialog__field">
@@ -414,7 +463,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 				{/* Actions */}
 				<div class="conn-dialog__actions">
 					<button
-						class="conn-dialog__btn conn-dialog__btn--secondary"
+						class="btn btn--secondary"
 						onClick={handleTestConnection}
 						disabled={testing()}
 					>
@@ -422,13 +471,13 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 					</button>
 					<div class="conn-dialog__actions-right">
 						<button
-							class="conn-dialog__btn conn-dialog__btn--secondary"
+							class="btn btn--secondary"
 							onClick={props.onClose}
 						>
 							Cancel
 						</button>
 						<button
-							class="conn-dialog__btn conn-dialog__btn--primary"
+							class="btn btn--primary"
 							onClick={handleSave}
 							disabled={saving()}
 						>

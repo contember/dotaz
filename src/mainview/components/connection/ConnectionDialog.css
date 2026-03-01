@@ -81,6 +81,11 @@
 	border-color: var(--color-error);
 }
 
+.conn-dialog__url-input {
+	font-family: var(--font-mono);
+	font-size: var(--font-size-sm);
+}
+
 .conn-dialog__error {
 	font-size: var(--font-size-xs);
 	color: var(--color-error);
@@ -144,34 +149,3 @@
 	gap: var(--spacing-sm);
 }
 
-.conn-dialog__btn {
-	padding: var(--spacing-sm) var(--spacing-lg);
-	border-radius: 3px;
-	border: none;
-	font-size: var(--font-size-sm);
-	cursor: pointer;
-}
-
-.conn-dialog__btn:disabled {
-	opacity: 0.6;
-	cursor: default;
-}
-
-.conn-dialog__btn--primary {
-	background: var(--accent);
-	color: var(--accent-fg);
-}
-
-.conn-dialog__btn--primary:hover:not(:disabled) {
-	background: var(--accent-hover);
-}
-
-.conn-dialog__btn--secondary {
-	background: var(--bg-input);
-	color: var(--text-primary);
-	border: 1px solid var(--border-color);
-}
-
-.conn-dialog__btn--secondary:hover:not(:disabled) {
-	background: var(--bg-hover);
-}
