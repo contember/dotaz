@@ -50,6 +50,15 @@ export default function GridHeader(props: GridHeaderProps) {
 			document.removeEventListener("mouseup", onMouseUp);
 			document.body.style.cursor = "";
 			document.body.style.userSelect = "";
+			// Suppress the click event that the browser synthesizes after mouseup,
+			// so it doesn't trigger column sorting on the parent header cell.
+			document.addEventListener("click", suppressClick, true);
+		}
+
+		function suppressClick(ev: MouseEvent) {
+			ev.stopPropagation();
+			ev.preventDefault();
+			document.removeEventListener("click", suppressClick, true);
 		}
 
 		document.addEventListener("mousemove", onMouseMove);
