@@ -37,6 +37,48 @@ export const DEFAULT_FORMAT_PROFILE: FormatProfile = {
 	binaryDisplay: "size",
 };
 
+// ---- AI provider configuration ----
+
+export type AiProvider = "anthropic" | "openai" | "custom";
+
+export interface AiConfig {
+	provider: AiProvider;
+	apiKey: string;
+	model: string;
+	endpoint: string;
+}
+
+export const DEFAULT_AI_CONFIG: AiConfig = {
+	provider: "anthropic",
+	apiKey: "",
+	model: "claude-sonnet-4-20250514",
+	endpoint: "",
+};
+
+/** Setting key prefix for AI configuration entries. */
+export const AI_PREFIX = "ai.";
+
+/** Convert an AiConfig to a Record<string, string> for storage. */
+export function aiConfigToSettings(config: AiConfig): Record<string, string> {
+	return {
+		[`${AI_PREFIX}provider`]: config.provider,
+		[`${AI_PREFIX}apiKey`]: config.apiKey,
+		[`${AI_PREFIX}model`]: config.model,
+		[`${AI_PREFIX}endpoint`]: config.endpoint,
+	};
+}
+
+/** Reconstruct an AiConfig from stored settings, falling back to defaults. */
+export function settingsToAiConfig(settings: Record<string, string>): AiConfig {
+	const get = (key: string): string | undefined => settings[`${AI_PREFIX}${key}`];
+	return {
+		provider: (get("provider") as AiProvider) ?? DEFAULT_AI_CONFIG.provider,
+		apiKey: get("apiKey") ?? DEFAULT_AI_CONFIG.apiKey,
+		model: get("model") ?? DEFAULT_AI_CONFIG.model,
+		endpoint: get("endpoint") ?? DEFAULT_AI_CONFIG.endpoint,
+	};
+}
+
 /** Setting key prefix for format profile entries. */
 export const FORMAT_PREFIX = "format.";
 

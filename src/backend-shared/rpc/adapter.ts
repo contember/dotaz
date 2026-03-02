@@ -15,6 +15,8 @@ import type {
 	SearchDatabaseResult,
 	TransactionLogParams,
 	TransactionLogResult,
+	AiGenerateSqlParams,
+	AiGenerateSqlResult,
 } from "../../shared/types/rpc";
 
 export interface RpcAdapter {
@@ -94,4 +96,7 @@ export interface RpcAdapter {
 
 	// ── SQL formatting ───────────────────────────────────
 	formatSql(sql: string): string;
+
+	// ── AI SQL generation ────────────────────────────────
+	generateSql(params: AiGenerateSqlParams): Promise<AiGenerateSqlResult>;
 }

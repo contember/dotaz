@@ -124,6 +124,18 @@ export interface TransactionLogResult {
 	inTransaction: boolean;
 }
 
+// ---- AI SQL generation types ----
+
+export interface AiGenerateSqlParams {
+	connectionId: string;
+	database?: string;
+	prompt: string;
+}
+
+export interface AiGenerateSqlResult {
+	sql: string;
+}
+
 export interface OpenDialogParams {
 	title?: string;
 	filters?: { name: string; extensions: string[] }[];

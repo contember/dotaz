@@ -17,12 +17,16 @@ import type {
 	TransactionLogEntry,
 	TransactionLogParams,
 	TransactionLogResult,
+	AiGenerateSqlParams,
+	AiGenerateSqlResult,
 } from "../shared/types/rpc";
 import { splitStatements } from "../shared/sql/statements";
 import { exportPreview as generateExportPreview } from "../backend-shared/services/export-service";
 import { parseImportPreview, importData as importDataService } from "../backend-shared/services/import-service";
 import { searchDatabase } from "../backend-shared/services/search-service";
 import { formatSql } from "../backend-shared/services/sql-formatter";
+import { generateSql, buildSchemaContext } from "../backend-shared/services/ai-sql";
+import { settingsToAiConfig } from "../shared/types/settings";
 
 type EmitMessage = (channel: string, payload: any) => void;
 
@@ -419,6 +423,21 @@ export class DemoAdapter implements RpcAdapter {
 
 	formatSql(sql: string): string {
 		return formatSql(sql);
+	}
+
+	// ── AI SQL generation ────────────────────────────────
+
+	async generateSql(params: AiGenerateSqlParams): Promise<AiGenerateSqlResult> {
+		const d = this.getConnectedDriver(params.connectionId);
+		const schema = await d.loadSchema();
+		const schemaContext = buildSchemaContext(schema);
+		const aiConfig = settingsToAiConfig(this.state.getAllSettings());
+		const sql = await generateSql(aiConfig, {
+			prompt: params.prompt,
+			schemaContext,
+			dialect: "sqlite",
+		});
+		return { sql };
 	}
 
 	// ── Private ──────────────────────────────────────────

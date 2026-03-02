@@ -19,11 +19,13 @@ import SqlResultPanel from "../editor/SqlResultPanel";
 import TransactionLog from "../editor/TransactionLog";
 import TransactionWarningDialog from "../editor/TransactionWarningDialog";
 import DestructiveQueryDialog from "../editor/DestructiveQueryDialog";
+import AiPrompt from "../editor/AiPrompt";
 import SchemaViewer from "../schema/SchemaViewer";
 import ComparisonView from "../comparison/ComparisonView";
 import ComparisonDialog from "../comparison/ComparisonDialog";
 import DatabaseSearchDialog from "../search/DatabaseSearchDialog";
 import FormatSettingsDialog from "../common/FormatSettingsDialog";
+import AiSettingsDialog from "../common/AiSettingsDialog";
 import type { ComparisonSource, ComparisonColumnMapping } from "../../../shared/types/comparison";
 import type { ConnectionInfo } from "../../../shared/types/connection";
 import type { SearchScope } from "../../../shared/types/rpc";
@@ -72,6 +74,7 @@ export default function AppShell() {
 	const [searchInitialTable, setSearchInitialTable] = createSignal<string | undefined>(undefined);
 	const [searchInitialDatabase, setSearchInitialDatabase] = createSignal<string | undefined>(undefined);
 	const [formatSettingsOpen, setFormatSettingsOpen] = createSignal(false);
+	const [aiSettingsOpen, setAiSettingsOpen] = createSignal(false);
 	const [txLogOpen, setTxLogOpen] = createSignal(false);
 	const [txWarningOpen, setTxWarningOpen] = createSignal(false);
 	const [txWarningTabId, setTxWarningTabId] = createSignal<string | null>(null);
@@ -660,6 +663,28 @@ export default function AppShell() {
 				setFormatSettingsOpen(true);
 			},
 		});
+
+		commandRegistry.register({
+			id: "ai-generate-sql",
+			label: "Generate SQL with AI",
+			shortcut: "Ctrl+G",
+			category: "Query",
+			handler: () => {
+				const tab = tabsStore.activeTab;
+				if (tab?.type === "sql-console") {
+					editorStore.toggleAiPrompt(tab.id);
+				}
+			},
+		});
+
+		commandRegistry.register({
+			id: "ai-settings",
+			label: "AI Settings",
+			category: "View",
+			handler: () => {
+				setAiSettingsOpen(true);
+			},
+		});
 	}
 
 	// ── Shortcut registration ──────────────────────────────
@@ -679,6 +704,7 @@ export default function AppShell() {
 		keyboardManager.register("Ctrl+D", "bookmark-query", "sql-console");
 		keyboardManager.register("Ctrl+Shift+Enter", "commit-transaction", "sql-console");
 		keyboardManager.register("Ctrl+Shift+R", "rollback-transaction", "sql-console");
+		keyboardManager.register("Ctrl+G", "ai-generate-sql", "sql-console");
 
 		// Data grid context
 		keyboardManager.register("F5", "refresh-data", "data-grid");
@@ -760,6 +786,9 @@ export default function AppShell() {
 												onToggleTransactionLog={() => setTxLogOpen((v) => !v)}
 												transactionLogOpen={txLogOpen()}
 											/>
+											<Show when={editorStore.getTab(tab.id)?.aiPromptOpen}>
+												<AiPrompt tabId={tab.id} />
+											</Show>
 											<SqlEditor
 												tabId={tab.id}
 												connectionId={tab.connectionId}
@@ -931,6 +960,11 @@ export default function AppShell() {
 			<FormatSettingsDialog
 				open={formatSettingsOpen()}
 				onClose={() => setFormatSettingsOpen(false)}
+			/>
+
+			<AiSettingsDialog
+				open={aiSettingsOpen()}
+				onClose={() => setAiSettingsOpen(false)}
 			/>
 
 			<ToastContainer />

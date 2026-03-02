@@ -1,0 +1,94 @@
+.ai-prompt {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--spacing-sm);
+	padding: var(--spacing-sm);
+	background: var(--surface-raised);
+	border-bottom: 1px solid var(--edge);
+}
+
+.ai-prompt__input-wrapper {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-xs);
+}
+
+.ai-prompt__input {
+	width: 100%;
+	padding: var(--spacing-xs) var(--spacing-sm);
+	border: 1px solid var(--edge-strong);
+	border-radius: 4px;
+	background: var(--surface-base);
+	color: var(--ink);
+	font-family: var(--font-ui);
+	font-size: var(--font-size-sm);
+	resize: none;
+	outline: none;
+	min-height: 32px;
+	line-height: 1.4;
+}
+
+.ai-prompt__input:focus {
+	border-color: var(--accent);
+}
+
+.ai-prompt__input::placeholder {
+	color: var(--ink-muted);
+	font-style: italic;
+}
+
+.ai-prompt__actions {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-xs);
+	flex-shrink: 0;
+}
+
+.ai-prompt__btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	height: 28px;
+	padding: 0 var(--spacing-sm);
+	border: none;
+	border-radius: 3px;
+	background: var(--accent);
+	color: var(--accent-fg);
+	font-size: var(--font-size-xs);
+	font-family: var(--font-ui);
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.ai-prompt__btn:hover:not(:disabled) {
+	background: var(--accent-hover);
+}
+
+.ai-prompt__btn:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.ai-prompt__btn--close {
+	background: transparent;
+	color: var(--ink-muted);
+	padding: 0 4px;
+}
+
+.ai-prompt__btn--close:hover:not(:disabled) {
+	background: var(--surface-hover);
+	color: var(--ink);
+}
+
+.ai-prompt__error {
+	font-size: var(--font-size-xs);
+	color: var(--error);
+	margin: 0;
+}
+
+.ai-prompt__hint {
+	font-size: 11px;
+	color: var(--ink-muted);
+	margin: 0;
+}

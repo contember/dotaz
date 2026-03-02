@@ -18,6 +18,8 @@ import type {
 	SearchDatabaseResult,
 	TransactionLogParams,
 	TransactionLogResult,
+	AiGenerateSqlParams,
+	AiGenerateSqlResult,
 } from "../../shared/types/rpc";
 import type { DatabaseDriver } from "../db/driver";
 import { TransactionManager } from "../services/transaction-manager";
@@ -25,6 +27,8 @@ import { exportToFile, exportPreview } from "../services/export-service";
 import { parseImportPreview, importData as importDataService } from "../services/import-service";
 import { searchDatabase } from "../services/search-service";
 import { formatSql } from "../services/sql-formatter";
+import { generateSql, buildSchemaContext } from "../services/ai-sql";
+import { settingsToAiConfig } from "../../shared/types/settings";
 
 
 export interface BackendAdapterOptions {
@@ -380,5 +384,20 @@ export class BackendAdapter implements RpcAdapter {
 
 	formatSql(sql: string): string {
 		return formatSql(sql);
+	}
+
+	// ── AI SQL generation ────────────────────────────────
+
+	async generateSql(params: AiGenerateSqlParams): Promise<AiGenerateSqlResult> {
+		const driver = this.cm.getDriver(params.connectionId, params.database);
+		const schema = await driver.loadSchema();
+		const schemaContext = buildSchemaContext(schema);
+		const aiConfig = settingsToAiConfig(this.appDb.getAllSettings());
+		const sql = await generateSql(aiConfig, {
+			prompt: params.prompt,
+			schemaContext,
+			dialect: driver.getDriverType() as "postgresql" | "sqlite" | "mysql",
+		});
+		return { sql };
 	}
 }

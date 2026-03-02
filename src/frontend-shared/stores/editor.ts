@@ -65,6 +65,12 @@ export interface TabEditorState {
 	resultEditingCell: EditingCell | null;
 	/** Which result index is being edited */
 	resultEditingIndex: number | null;
+	/** Whether the AI prompt input is open */
+	aiPromptOpen: boolean;
+	/** Whether AI generation is in progress */
+	aiGenerating: boolean;
+	/** Error from AI generation */
+	aiError: string | null;
 }
 
 function createDefaultEditorState(connectionId: string, database?: string): TabEditorState {
@@ -92,6 +98,9 @@ function createDefaultEditorState(connectionId: string, database?: string): TabE
 		resultPendingChanges: {},
 		resultEditingCell: null,
 		resultEditingIndex: null,
+		aiPromptOpen: false,
+		aiGenerating: false,
+		aiError: null,
 	};
 }
 
@@ -810,6 +819,56 @@ function getPendingTxCount(connectionId: string): number {
 	return 0;
 }
 
+// ── AI SQL generation ─────────────────────────────────────
+
+function openAiPrompt(tabId: string) {
+	ensureTab(tabId);
+	setState("tabs", tabId, { aiPromptOpen: true, aiError: null });
+}
+
+function closeAiPrompt(tabId: string) {
+	ensureTab(tabId);
+	setState("tabs", tabId, { aiPromptOpen: false, aiGenerating: false, aiError: null });
+}
+
+function toggleAiPrompt(tabId: string) {
+	const tab = ensureTab(tabId);
+	if (tab.aiPromptOpen) {
+		closeAiPrompt(tabId);
+	} else {
+		openAiPrompt(tabId);
+	}
+}
+
+async function generateAiSql(tabId: string, prompt: string) {
+	const tab = ensureTab(tabId);
+	if (!prompt.trim()) return;
+
+	setState("tabs", tabId, { aiGenerating: true, aiError: null });
+
+	try {
+		const result = await rpc.ai.generateSql({
+			connectionId: tab.connectionId,
+			database: tab.database,
+			prompt: prompt.trim(),
+		});
+
+		// Insert generated SQL into editor
+		const currentContent = tab.content;
+		if (currentContent.trim()) {
+			// Append after existing content with a blank line separator
+			setState("tabs", tabId, "content", currentContent.trimEnd() + "\n\n" + result.sql);
+		} else {
+			setState("tabs", tabId, "content", result.sql);
+		}
+
+		setState("tabs", tabId, { aiGenerating: false, aiPromptOpen: false, aiError: null });
+	} catch (err) {
+		const errorMessage = friendlyErrorMessage(err);
+		setState("tabs", tabId, { aiGenerating: false, aiError: errorMessage });
+	}
+}
+
 // ── Export ─────────────────────────────────────────────────
 
 export const editorStore = {
@@ -860,4 +919,9 @@ export const editorStore = {
 	setTxLogSelectedEntry,
 	clearTransactionLog,
 	getPendingTxCount,
+	// AI SQL generation
+	openAiPrompt,
+	closeAiPrompt,
+	toggleAiPrompt,
+	generateAiSql,
 };

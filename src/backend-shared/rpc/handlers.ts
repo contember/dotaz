@@ -9,6 +9,7 @@ import type {
 	SaveDialogParams,
 	SearchDatabaseParams,
 	TransactionLogParams,
+	AiGenerateSqlParams,
 } from "../../shared/types/rpc";
 export function createHandlers(adapter: RpcAdapter) {
 	return {
@@ -223,6 +224,11 @@ export function createHandlers(adapter: RpcAdapter) {
 			}
 			const encryptedConfig = await adapter.encrypt(config);
 			return { encryptedConfig };
+		},
+
+		// ── AI SQL generation ─────────────────────────────
+		"ai.generateSql": async (params: AiGenerateSqlParams) => {
+			return adapter.generateSql(params);
 		},
 
 		// ── System ────────────────────────────────────────

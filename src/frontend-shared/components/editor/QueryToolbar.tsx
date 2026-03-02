@@ -164,6 +164,16 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 				</button>
 			</Show>
 
+			{/* AI Generate */}
+			<button
+				class={`query-toolbar__btn${tab()?.aiPromptOpen ? " query-toolbar__btn--active" : ""}`}
+				onClick={() => editorStore.toggleAiPrompt(props.tabId)}
+				disabled={isRunning()}
+				title="Generate SQL with AI (Ctrl+G)"
+			>
+				<Icon name="sparkles" size={12} /> AI
+			</button>
+
 			{/* Transaction Log */}
 			<Show when={props.onToggleTransactionLog}>
 				<button
