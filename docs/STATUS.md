@@ -120,7 +120,7 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 |-------|-------|--------|-------|
 | DOTAZ-102 | Web session lifecycle management | done | disconnectedAt field, 5-min TTL timer in maybeDestroySession, 60s zombie sweep, cancelAllForConnection on QueryExecutor, destroySession cancels running queries |
 | DOTAZ-103 | Transaction state notification on reconnect | done | hadTransaction on ReconnectState, transactionLost in StatusChangeEvent, frontend resets editor tx state + warning toast |
-| DOTAZ-104 | Parameterize LIMIT/OFFSET in driver iterate() | not started | SQLite + MySQL iterate — use ? params instead of interpolation |
+| DOTAZ-104 | Parameterize LIMIT/OFFSET in driver iterate() | done | SQLite + MySQL iterate — use ? params instead of interpolation |
 | DOTAZ-105 | Runtime validation for settings and shared types | not started | Settings type guards, import source union, comparison key fix |
 | DOTAZ-106 | CSV parser memory protection | not started | Max buffer size limit to prevent OOM on malformed input |
 | DOTAZ-107 | Web streaming and session tests | not started | Token registry, session lifecycle, stream ref counting tests; depends on DOTAZ-102 |
@@ -140,5 +140,5 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 
 ---
 
-*Last updated: 2026-03-02 — DOTAZ-103 done*
+*Last updated: 2026-03-02 — DOTAZ-104 done*
 
