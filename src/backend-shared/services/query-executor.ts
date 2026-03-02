@@ -80,6 +80,7 @@ interface RunningQuery {
 	queryId: string;
 	connectionId: string;
 	cancelled: boolean;
+	sessionId?: string;
 }
 
 export class QueryExecutor {
@@ -107,6 +108,7 @@ export class QueryExecutor {
 		timeoutMs?: number,
 		queryId?: string,
 		database?: string,
+		sessionId?: string,
 	): Promise<QueryResult[]> {
 		const driver = this.connectionManager.getDriver(connectionId, database);
 		const statements = splitStatements(sql);
@@ -115,8 +117,17 @@ export class QueryExecutor {
 			return [];
 		}
 
+		// Auto-reserve an ephemeral session for multi-statement batches
+		// so all statements run on the same connection.
+		let ephemeralSessionId: string | undefined;
+		if (!sessionId && statements.length > 1) {
+			ephemeralSessionId = `__ephemeral_${crypto.randomUUID()}`;
+			await driver.reserveSession(ephemeralSessionId);
+		}
+		const effectiveSessionId = sessionId ?? ephemeralSessionId;
+
 		const id = queryId ?? crypto.randomUUID();
-		const entry: RunningQuery = { queryId: id, connectionId, cancelled: false };
+		const entry: RunningQuery = { queryId: id, connectionId, cancelled: false, sessionId: effectiveSessionId };
 		this.runningQueries.set(id, entry);
 
 		const timeout = timeoutMs ?? this.defaultTimeoutMs;
@@ -136,6 +147,7 @@ export class QueryExecutor {
 					statements.length === 1 ? params : undefined,
 					timeout,
 					entry,
+					effectiveSessionId,
 				);
 				results.push(result);
 
@@ -145,6 +157,9 @@ export class QueryExecutor {
 			}
 		} finally {
 			this.runningQueries.delete(id);
+			if (ephemeralSessionId) {
+				await driver.releaseSession(ephemeralSessionId);
+			}
 			this.logHistory(connectionId, sql, results, database);
 		}
 
@@ -164,7 +179,11 @@ export class QueryExecutor {
 
 		try {
 			const driver = this.connectionManager.getDriver(entry.connectionId);
-			await driver.cancel();
+			if (entry.sessionId !== undefined) {
+				await driver.cancel(entry.sessionId);
+			} else {
+				await driver.cancel();
+			}
 		} catch (err) {
 			console.debug("Cancel query failed (driver may have completed):", err instanceof Error ? err.message : err);
 		}
@@ -207,6 +226,7 @@ export class QueryExecutor {
 		sql: string,
 		analyze: boolean,
 		database?: string,
+		sessionId?: string,
 	): Promise<ExplainResult> {
 		const driver = this.connectionManager.getDriver(connectionId, database);
 		const driverType = driver.getDriverType();
@@ -214,7 +234,9 @@ export class QueryExecutor {
 
 		try {
 			if (driverType === "sqlite") {
-				const result = await driver.execute(`EXPLAIN QUERY PLAN ${sql}`);
+				const result = sessionId !== undefined
+					? await driver.execute(`EXPLAIN QUERY PLAN ${sql}`, undefined, sessionId)
+					: await driver.execute(`EXPLAIN QUERY PLAN ${sql}`);
 				const durationMs = Math.round(performance.now() - start);
 				const nodes = parseSqliteExplain(result.rows);
 				const rawText = result.rows
@@ -227,7 +249,9 @@ export class QueryExecutor {
 			const prefix = analyze
 				? "EXPLAIN (ANALYZE, FORMAT JSON)"
 				: "EXPLAIN (FORMAT JSON)";
-			const result = await driver.execute(`${prefix} ${sql}`);
+			const result = sessionId !== undefined
+				? await driver.execute(`${prefix} ${sql}`, undefined, sessionId)
+				: await driver.execute(`${prefix} ${sql}`);
 			const durationMs = Math.round(performance.now() - start);
 
 			// PG returns a single row with a column named "QUERY PLAN"
@@ -244,7 +268,9 @@ export class QueryExecutor {
 			let rawText: string;
 			try {
 				const textPrefix = analyze ? "EXPLAIN (ANALYZE)" : "EXPLAIN";
-				const textResult = await driver.execute(`${textPrefix} ${sql}`);
+				const textResult = sessionId !== undefined
+					? await driver.execute(`${textPrefix} ${sql}`, undefined, sessionId)
+					: await driver.execute(`${textPrefix} ${sql}`);
 				rawText = textResult.rows
 					.map((r) => Object.values(r)[0])
 					.join("\n");
@@ -270,13 +296,16 @@ export class QueryExecutor {
 		params: unknown[] | undefined,
 		timeoutMs: number,
 		entry: RunningQuery,
+		sessionId?: string,
 	): Promise<QueryResult> {
 		const start = performance.now();
 		const { promise: timeoutPromise, cancel: cancelTimeout } = this.createTimeout(timeoutMs);
 
 		try {
 			const result = await Promise.race([
-				driver.execute(sql, params),
+				sessionId !== undefined
+					? driver.execute(sql, params, sessionId)
+					: driver.execute(sql, params),
 				timeoutPromise,
 			]);
 

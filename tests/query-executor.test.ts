@@ -595,6 +595,8 @@ function makeMockDriver(overrides?: Partial<DatabaseDriver>): DatabaseDriver {
 	return {
 		execute: mock(async () => makeSuccessResult([{ id: 1 }])),
 		cancel: mock(async () => {}),
+		reserveSession: mock(async () => {}),
+		releaseSession: mock(async () => {}),
 		quoteIdentifier: (name: string) => `"${name}"`,
 		getDriverType: () => "sqlite" as const,
 		qualifyTable: (schema: string, table: string) => schema === "main" ? `"${table}"` : `"${schema}"."${table}"`,
@@ -675,7 +677,12 @@ describe("QueryExecutor", () => {
 
 		await executor.executeQuery("conn-1", "SELECT 1; SELECT 2", [42]);
 
-		expect(driver.execute).toHaveBeenCalledWith("SELECT 1", undefined);
+		// Params should be undefined for individual statements in a multi-statement batch.
+		// The third argument is the ephemeral sessionId (a UUID string).
+		const calls = (driver.execute as ReturnType<typeof mock>).mock.calls;
+		expect(calls[0][0]).toBe("SELECT 1");
+		expect(calls[0][1]).toBeUndefined();
+		expect(calls[0][2]).toBeString(); // ephemeral sessionId
 	});
 
 	test("DML query returns affected rows", async () => {
@@ -955,6 +962,160 @@ describe("QueryExecutor", () => {
 
 		expect(results[0].error).toBe("connection lost");
 		expect(results[0].errorPosition).toBeUndefined();
+	});
+});
+
+// ── QueryExecutor — session affinity ─────────────────────
+
+describe("QueryExecutor session affinity", () => {
+	test("single-statement without sessionId does not reserve session", async () => {
+		const driver = makeMockDriver();
+		const cm = makeMockConnectionManager(driver);
+		const executor = new QueryExecutor(cm);
+
+		await executor.executeQuery("conn-1", "SELECT 1");
+
+		expect(driver.reserveSession).not.toHaveBeenCalled();
+		expect(driver.releaseSession).not.toHaveBeenCalled();
+	});
+
+	test("multi-statement without sessionId auto-reserves ephemeral session", async () => {
+		const driver = makeMockDriver();
+		const cm = makeMockConnectionManager(driver);
+		const executor = new QueryExecutor(cm);
+
+		await executor.executeQuery("conn-1", "SELECT 1; SELECT 2");
+
+		expect(driver.reserveSession).toHaveBeenCalledTimes(1);
+		const reservedId = (driver.reserveSession as ReturnType<typeof mock>).mock.calls[0][0];
+		expect(reservedId).toStartWith("__ephemeral_");
+
+		expect(driver.releaseSession).toHaveBeenCalledTimes(1);
+		expect((driver.releaseSession as ReturnType<typeof mock>).mock.calls[0][0]).toBe(reservedId);
+	});
+
+	test("multi-statement threads ephemeral sessionId to all execute calls", async () => {
+		const driver = makeMockDriver();
+		const cm = makeMockConnectionManager(driver);
+		const executor = new QueryExecutor(cm);
+
+		await executor.executeQuery("conn-1", "SELECT 1; SELECT 2; SELECT 3");
+
+		const executeCalls = (driver.execute as ReturnType<typeof mock>).mock.calls;
+		expect(executeCalls).toHaveLength(3);
+
+		const sessionId = executeCalls[0][2];
+		expect(sessionId).toStartWith("__ephemeral_");
+		// All statements use the same sessionId
+		expect(executeCalls[1][2]).toBe(sessionId);
+		expect(executeCalls[2][2]).toBe(sessionId);
+	});
+
+	test("ephemeral session is released even on error", async () => {
+		let callCount = 0;
+		const driver = makeMockDriver({
+			execute: mock(async () => {
+				callCount++;
+				if (callCount === 2) throw new Error("fail");
+				return makeSuccessResult();
+			}),
+		});
+		const cm = makeMockConnectionManager(driver);
+		const executor = new QueryExecutor(cm);
+
+		await executor.executeQuery("conn-1", "SELECT 1; BAD SQL; SELECT 3");
+
+		expect(driver.reserveSession).toHaveBeenCalledTimes(1);
+		expect(driver.releaseSession).toHaveBeenCalledTimes(1);
+	});
+
+	test("explicit sessionId skips ephemeral reservation", async () => {
+		const driver = makeMockDriver();
+		const cm = makeMockConnectionManager(driver);
+		const executor = new QueryExecutor(cm);
+
+		await executor.executeQuery("conn-1", "SELECT 1; SELECT 2", undefined, undefined, undefined, undefined, "my-session");
+
+		expect(driver.reserveSession).not.toHaveBeenCalled();
+		expect(driver.releaseSession).not.toHaveBeenCalled();
+
+		const executeCalls = (driver.execute as ReturnType<typeof mock>).mock.calls;
+		expect(executeCalls[0][2]).toBe("my-session");
+		expect(executeCalls[1][2]).toBe("my-session");
+	});
+
+	test("single-statement with explicit sessionId threads it to execute", async () => {
+		const driver = makeMockDriver();
+		const cm = makeMockConnectionManager(driver);
+		const executor = new QueryExecutor(cm);
+
+		await executor.executeQuery("conn-1", "SELECT 1", undefined, undefined, undefined, undefined, "my-session");
+
+		const executeCalls = (driver.execute as ReturnType<typeof mock>).mock.calls;
+		expect(executeCalls[0][2]).toBe("my-session");
+	});
+
+	test("cancelQuery passes sessionId to driver.cancel for ephemeral session", async () => {
+		let resolveExecute: () => void;
+		const executePromise = new Promise<void>((r) => { resolveExecute = r; });
+
+		const driver = makeMockDriver({
+			execute: mock(async () => {
+				await executePromise;
+				return makeSuccessResult();
+			}),
+			cancel: mock(async () => {
+				resolveExecute!();
+			}),
+		});
+		const cm = makeMockConnectionManager(driver);
+		const executor = new QueryExecutor(cm, 5000);
+
+		const resultPromise = executor.executeQuery("conn-1", "SELECT 1; SELECT 2");
+
+		await new Promise((r) => setTimeout(r, 10));
+
+		const queryIds = executor.getRunningQueryIds();
+		expect(queryIds).toHaveLength(1);
+
+		await executor.cancelQuery(queryIds[0]);
+
+		await resultPromise;
+
+		// cancel was called with the ephemeral sessionId
+		const cancelCalls = (driver.cancel as ReturnType<typeof mock>).mock.calls;
+		expect(cancelCalls[0][0]).toStartWith("__ephemeral_");
+	});
+
+	test("cancelQuery calls driver.cancel without sessionId for single-statement", async () => {
+		let resolveExecute: () => void;
+		const executePromise = new Promise<void>((r) => { resolveExecute = r; });
+
+		const driver = makeMockDriver({
+			execute: mock(async () => {
+				await executePromise;
+				return makeSuccessResult();
+			}),
+			cancel: mock(async () => {
+				resolveExecute!();
+			}),
+		});
+		const cm = makeMockConnectionManager(driver);
+		const executor = new QueryExecutor(cm, 5000);
+
+		const resultPromise = executor.executeQuery("conn-1", "SELECT 1");
+
+		await new Promise((r) => setTimeout(r, 10));
+
+		const queryIds = executor.getRunningQueryIds();
+		await executor.cancelQuery(queryIds[0]);
+
+		await resultPromise;
+
+		// cancel was called without sessionId
+		const cancelCalls = (driver.cancel as ReturnType<typeof mock>).mock.calls;
+		expect(cancelCalls).toHaveLength(1);
+		expect(cancelCalls[0]).toHaveLength(0);
 	});
 });
 
