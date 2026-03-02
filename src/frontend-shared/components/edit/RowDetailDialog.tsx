@@ -5,8 +5,10 @@ import type { ForeignKeyInfo, ReferencingForeignKeyInfo } from "../../../shared/
 import ChevronUp from "lucide-solid/icons/chevron-up";
 import ChevronDown from "lucide-solid/icons/chevron-down";
 import { buildCountQuery } from "../../../shared/sql";
+import ExternalLink from "lucide-solid/icons/external-link";
 import { rpc } from "../../lib/rpc";
 import { connectionsStore } from "../../stores/connections";
+import { tabsStore } from "../../stores/tabs";
 import { isNumericType, isBooleanType, isDateType, isTextType } from "../../lib/column-types";
 import Dialog from "../common/Dialog";
 import "./RowDetailDialog.css";
@@ -280,6 +282,39 @@ export default function RowDetailDialog(props: RowDetailDialogProps) {
 		}
 	}
 
+	// ── Open in Tab ──────────────────────────────────────────
+
+	function canOpenInTab(): boolean {
+		if (pkColumns().size === 0) return false;
+		const row = currentRow();
+		if (!row) return false;
+		// Check if this is a new unsaved row (no PK values yet)
+		for (const pk of pkColumns()) {
+			if (row[pk] === null || row[pk] === undefined) return false;
+		}
+		return true;
+	}
+
+	function handleOpenInTab() {
+		const row = currentRow();
+		if (!row) return;
+		const pks: Record<string, unknown> = {};
+		for (const pk of pkColumns()) {
+			pks[pk] = row[pk];
+		}
+		saveCurrentEdits();
+		tabsStore.openTab({
+			type: "row-detail",
+			title: `${props.table} — ${Object.values(pks).join(", ")}`,
+			connectionId: props.connectionId,
+			schema: props.schema,
+			table: props.table,
+			database: props.database,
+			primaryKeys: pks,
+		});
+		props.onClose();
+	}
+
 	// ── Render field input by type ────────────────────────────
 
 	function renderInput(col: GridColumnDef) {
@@ -413,6 +448,14 @@ export default function RowDetailDialog(props: RowDetailDialogProps) {
 							title="Next row (Ctrl+Down)"
 						>
 							Next <ChevronDown size={14} />
+						</button>
+						<button
+							class="row-detail__nav-btn"
+							disabled={!canOpenInTab()}
+							onClick={handleOpenInTab}
+							title="Open in separate tab"
+						>
+							<ExternalLink size={14} /> Open in Tab
 						</button>
 					</div>
 				</div>

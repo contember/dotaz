@@ -33,6 +33,8 @@ export interface WorkspaceTab {
 	gridSort?: SortColumn[];
 	/** Grid column filters (data-grid tabs only) */
 	gridFilters?: ColumnFilter[];
+	/** Primary key values identifying the row (row-detail tabs only) */
+	primaryKeys?: Record<string, unknown>;
 }
 
 /** Persisted layout state. */

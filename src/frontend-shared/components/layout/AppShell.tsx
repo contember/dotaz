@@ -21,6 +21,7 @@ import TransactionWarningDialog from "../editor/TransactionWarningDialog";
 import DestructiveQueryDialog from "../editor/DestructiveQueryDialog";
 import AiPrompt from "../editor/AiPrompt";
 import SchemaViewer from "../schema/SchemaViewer";
+import RowDetailTab from "../edit/RowDetailTab";
 import ComparisonView from "../comparison/ComparisonView";
 import ComparisonDialog from "../comparison/ComparisonDialog";
 import DatabaseSearchDialog from "../search/DatabaseSearchDialog";
@@ -184,6 +185,16 @@ export default function AppShell() {
 				table: sourceTab.table,
 				database: sourceTab.database,
 			});
+		} else if (sourceTab.type === "row-detail") {
+			tabsStore.openTab({
+				type: "row-detail",
+				title: sourceTab.title,
+				connectionId: sourceTab.connectionId,
+				schema: sourceTab.schema,
+				table: sourceTab.table,
+				database: sourceTab.database,
+				primaryKeys: sourceTab.primaryKeys,
+			});
 		}
 	}
 
@@ -318,6 +329,9 @@ export default function AppShell() {
 				viewId: tab.viewId,
 				viewName: tab.viewName,
 			};
+			if (tab.type === "row-detail") {
+				wsTab.primaryKeys = tab.primaryKeys;
+			}
 			if (tab.type === "sql-console") {
 				const editor = editorStore.getTab(tab.id);
 				if (editor) {
@@ -367,6 +381,7 @@ export default function AppShell() {
 				database: wsTab.database,
 				viewId: wsTab.viewId,
 				viewName: wsTab.viewName,
+				primaryKeys: wsTab.primaryKeys,
 			});
 
 			// Restore editor state for SQL console tabs
@@ -963,6 +978,16 @@ export default function AppShell() {
 											schema={tab.schema!}
 											table={tab.table!}
 											database={tab.database}
+										/>
+									</Match>
+									<Match when={tab.type === "row-detail"}>
+										<RowDetailTab
+											tabId={tab.id}
+											connectionId={tab.connectionId}
+											schema={tab.schema!}
+											table={tab.table!}
+											database={tab.database}
+											primaryKeys={tab.primaryKeys!}
 										/>
 									</Match>
 									<Match when={tab.type === "comparison"}>

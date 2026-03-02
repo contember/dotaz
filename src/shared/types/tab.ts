@@ -1,6 +1,6 @@
 // Tab types
 
-export type TabType = "data-grid" | "sql-console" | "schema-viewer" | "comparison";
+export type TabType = "data-grid" | "sql-console" | "schema-viewer" | "comparison" | "row-detail";
 
 export interface TabInfo {
 	id: string;
@@ -20,4 +20,6 @@ export interface TabInfo {
 	viewName?: string;
 	/** Whether the view config has been modified from its saved state */
 	viewModified?: boolean;
+	/** Primary key values identifying the row (row-detail tabs only) */
+	primaryKeys?: Record<string, unknown>;
 }

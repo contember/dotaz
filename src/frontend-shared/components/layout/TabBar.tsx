@@ -22,6 +22,7 @@ const TAB_ICONS: Record<TabType, IconName> = {
 	"sql-console": "sql-console",
 	"schema-viewer": "schema",
 	"comparison": "compare",
+	"row-detail": "edit",
 };
 
 export default function TabBar(props: TabBarProps) {

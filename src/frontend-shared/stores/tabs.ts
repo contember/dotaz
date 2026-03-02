@@ -16,6 +16,7 @@ export interface OpenTabConfig {
 	database?: string;
 	viewId?: string;
 	viewName?: string;
+	primaryKeys?: Record<string, unknown>;
 }
 
 const [state, setState] = createStore<TabState>({
@@ -53,6 +54,7 @@ function openTab(config: OpenTabConfig): string {
 		dirty: false,
 		viewId: config.viewId,
 		viewName: config.viewName,
+		primaryKeys: config.primaryKeys,
 	};
 	setState("openTabs", (tabs) => [...tabs, tab]);
 	setState("activeTabId", id);

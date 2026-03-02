@@ -796,6 +796,26 @@ export default function DataGrid(props: DataGridProps) {
 				},
 			},
 			{
+				label: "Open Row in Tab",
+				action: () => {
+					const pkCols = t.columns.filter((c) => c.isPrimaryKey);
+					const pks: Record<string, unknown> = {};
+					for (const pk of pkCols) {
+						pks[pk.name] = row[pk.name];
+					}
+					tabsStore.openTab({
+						type: "row-detail",
+						title: `${currentTable()} — ${Object.values(pks).join(", ")}`,
+						connectionId: props.connectionId,
+						schema: currentSchema(),
+						table: currentTable(),
+						database: props.database,
+						primaryKeys: pks,
+					});
+				},
+				disabled: t.columns.filter((c) => c.isPrimaryKey).length === 0 || gridStore.isRowNew(props.tabId, rowIndex),
+			},
+			{
 				label: "Delete Row",
 				action: () => {
 					gridStore.selectRow(props.tabId, rowIndex);
