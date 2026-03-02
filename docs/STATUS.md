@@ -110,9 +110,9 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 | DOTAZ-098 | Export service streaming refactor | done | `exportToStream()` using `driver.iterate()`, backpressure, no LIMIT/OFFSET in service |
 | DOTAZ-099 | Import service streaming refactor | done | `importFromStream()` using CSV parser + `driver.importBatch()`, full rollback, filePath/fileContent dispatch |
 | DOTAZ-100 | Frontend capabilities and desktop/demo mode updates | done | AppCapabilities registration, mode-aware ImportDialog (desktop filePath / demo fileContent), demo Blob export via exportToStream, progress counter via RPC events, partial preview warning |
-| DOTAZ-101 | Web streaming infrastructure | in progress | Token registry, HTTP stream endpoints, StreamSaver.js, session bridging, delayed cleanup, cancellation |
+| DOTAZ-101 | Web streaming infrastructure | done | Token registry, HTTP stream endpoints, browser download export, HTTP POST import, session delayed cleanup, WS progress, cancellation |
 
 ---
 
-*Last updated: 2026-03-02 — DOTAZ-100 done*
+*Last updated: 2026-03-02 — DOTAZ-101 done*
 
