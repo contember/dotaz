@@ -1,0 +1,24 @@
+.tab-switcher__item-icon {
+	flex-shrink: 0;
+	color: var(--ink-secondary);
+}
+
+.tab-switcher__item-title {
+	color: var(--ink);
+	font-size: var(--font-size-base);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.tab-switcher__item-connection {
+	color: var(--ink-muted);
+	font-size: var(--font-size-xs);
+	white-space: nowrap;
+	flex-shrink: 0;
+	margin-left: auto;
+}
+
+.tab-switcher__item--active .tab-switcher__item-icon {
+	color: var(--accent);
+}

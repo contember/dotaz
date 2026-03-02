@@ -164,6 +164,11 @@ textarea {
 	transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
+select option {
+	background: var(--surface-overlay);
+	color: var(--ink);
+}
+
 input:focus,
 select:focus,
 textarea:focus {

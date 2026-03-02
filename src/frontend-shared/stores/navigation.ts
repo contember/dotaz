@@ -21,6 +21,12 @@ const [canGoForward, setCanGoForward] = createSignal(false);
 /** Suppresses recording during goBack/goForward execution. */
 let navigating = false;
 
+/** Monotonically increasing position counter for browser history integration. */
+let navPosition = 0;
+
+/** Tracks where we expect to be in browser history. */
+let expectedPosition = 0;
+
 function updateSignals() {
 	setCanGoBack(backStack.length > 0);
 	setCanGoForward(forwardStack.length > 0);
@@ -57,6 +63,12 @@ function pushCurrent() {
 
 	// Any new navigation clears the forward stack
 	forwardStack.length = 0;
+
+	// Push browser history entry so back/forward buttons trigger popstate
+	navPosition++;
+	expectedPosition = navPosition;
+	history.pushState({ __dotazNav: navPosition }, "");
+
 	updateSignals();
 }
 
@@ -81,7 +93,8 @@ async function navigateToEntry(entry: NavigationEntry) {
 	}
 }
 
-async function goBack() {
+/** Internal back navigation — called from popstate handler. */
+async function doGoBack() {
 	if (backStack.length === 0) return;
 
 	const current = getCurrentEntry();
@@ -100,7 +113,8 @@ async function goBack() {
 	updateSignals();
 }
 
-async function goForward() {
+/** Internal forward navigation — called from popstate handler. */
+async function doGoForward() {
 	if (forwardStack.length === 0) return;
 
 	const current = getCurrentEntry();
@@ -122,6 +136,32 @@ async function goForward() {
 	updateSignals();
 }
 
+/** Triggers browser back, which fires popstate → doGoBack. */
+function goBack() {
+	if (backStack.length === 0) return;
+	history.back();
+}
+
+/** Triggers browser forward, which fires popstate → doGoForward. */
+function goForward() {
+	if (forwardStack.length === 0) return;
+	history.forward();
+}
+
+function handlePopState(e: PopStateEvent) {
+	const state = e.state;
+	if (!state || typeof state.__dotazNav !== "number") return;
+
+	const targetPos = state.__dotazNav;
+	if (targetPos < expectedPosition) {
+		expectedPosition = targetPos;
+		doGoBack();
+	} else if (targetPos > expectedPosition) {
+		expectedPosition = targetPos;
+		doGoForward();
+	}
+}
+
 function handleTabClosed(tabId: string) {
 	// Remove all entries referencing the closed tab
 	for (let i = backStack.length - 1; i >= 0; i--) {
@@ -138,6 +178,24 @@ function handleTabClosed(tabId: string) {
 tabsStore.onBeforeTabChange(() => pushCurrent());
 gridStore.onBeforeFkNavigation(() => pushCurrent());
 
+// ── Lifecycle ────────────────────────────────────────────
+
+let initialized = false;
+
+function init() {
+	if (initialized) return;
+	initialized = true;
+	// Set base history state so we can detect direction from popstate
+	history.replaceState({ __dotazNav: 0 }, "");
+	window.addEventListener("popstate", handlePopState);
+}
+
+function destroy() {
+	if (!initialized) return;
+	initialized = false;
+	window.removeEventListener("popstate", handlePopState);
+}
+
 // ── Export ────────────────────────────────────────────────
 
 export const navigationStore = {
@@ -150,4 +208,6 @@ export const navigationStore = {
 	goBack,
 	goForward,
 	handleTabClosed,
+	init,
+	destroy,
 };

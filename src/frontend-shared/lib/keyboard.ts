@@ -18,6 +18,7 @@ const PLATFORM_SHORTCUTS: Record<string, { desktop: string; browser: string }> =
 	"close-tab": { desktop: "Ctrl+W", browser: "Alt+W" },
 	"next-tab": { desktop: "Ctrl+Tab", browser: "Alt+PageDown" },
 	"prev-tab": { desktop: "Ctrl+Shift+Tab", browser: "Alt+PageUp" },
+	"tab-switcher": { desktop: "Ctrl+E", browser: "Alt+E" },
 };
 
 /** Returns the correct shortcut combo for a platform-aware command ID. */

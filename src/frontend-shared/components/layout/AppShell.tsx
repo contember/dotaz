@@ -11,6 +11,7 @@ import PasswordDialog from "../connection/PasswordDialog";
 import QueryHistory from "../history/QueryHistory";
 import BookmarksDialog from "../bookmarks/BookmarksDialog";
 import CommandPalette from "../common/CommandPalette";
+import TabSwitcher from "../common/TabSwitcher";
 import ToastContainer from "../common/Toast";
 import DataGrid from "../grid/DataGrid";
 import SqlEditor from "../editor/SqlEditor";
@@ -73,6 +74,7 @@ export default function AppShell() {
 	const [bookmarksInitialSql, setBookmarksInitialSql] = createSignal<string | undefined>(undefined);
 	const [bookmarksInitialConn, setBookmarksInitialConn] = createSignal<string | undefined>(undefined);
 	const [paletteOpen, setPaletteOpen] = createSignal(false);
+	const [tabSwitcherOpen, setTabSwitcherOpen] = createSignal(false);
 	const [compareOpen, setCompareOpen] = createSignal(false);
 	const [compareInitialLeft, setCompareInitialLeft] = createSignal<{ connectionId: string; schema: string; table: string; database?: string } | undefined>(undefined);
 	const [searchOpen, setSearchOpen] = createSignal(false);
@@ -223,6 +225,7 @@ export default function AppShell() {
 			return "global";
 		});
 		keyboardManager.init();
+		navigationStore.init();
 
 		// ── Workspace persistence ────────────────────────
 		setWorkspaceStateCollector(collectWorkspaceState);
@@ -303,6 +306,7 @@ export default function AppShell() {
 	onCleanup(() => {
 		commandRegistry.clear();
 		keyboardManager.destroy();
+		navigationStore.destroy();
 		removeMenuListener?.();
 		removeSessionListener?.();
 		removeStatusListener?.();
@@ -430,6 +434,14 @@ export default function AppShell() {
 			shortcut: "Ctrl+Shift+P",
 			category: "Navigation",
 			handler: () => setPaletteOpen((v) => !v),
+		});
+
+		commandRegistry.register({
+			id: "tab-switcher",
+			label: "Switch Tab",
+			shortcut: platformShortcut("tab-switcher"),
+			category: "Navigation",
+			handler: () => setTabSwitcherOpen((v) => !v),
 		});
 
 		commandRegistry.register({
@@ -872,7 +884,7 @@ export default function AppShell() {
 		keyboardManager.register("Ctrl+B", "toggle-sidebar");
 
 		// Platform-aware shortcuts (Ctrl-based in desktop, Alt-based in browser)
-		for (const cmdId of ["new-sql-console", "close-tab", "next-tab", "prev-tab"] as const) {
+		for (const cmdId of ["new-sql-console", "close-tab", "next-tab", "prev-tab", "tab-switcher"] as const) {
 			keyboardManager.register(platformShortcut(cmdId), cmdId);
 		}
 		keyboardManager.register("Ctrl+Shift+L", "focus-navigator-filter");
@@ -1098,6 +1110,11 @@ export default function AppShell() {
 			<CommandPalette
 				open={paletteOpen()}
 				onClose={() => setPaletteOpen(false)}
+			/>
+
+			<TabSwitcher
+				open={tabSwitcherOpen()}
+				onClose={() => setTabSwitcherOpen(false)}
 			/>
 
 			<DestructiveQueryDialog
