@@ -23,6 +23,8 @@ import SaveViewDialog from "../views/SaveViewDialog";
 import ExportDialog from "../export/ExportDialog";
 import ImportDialog from "../import/ImportDialog";
 import AdvancedCopyDialog from "./AdvancedCopyDialog";
+import PastePreviewDialog from "./PastePreviewDialog";
+import { parseClipboardText, cellValueToDbValue } from "../../lib/clipboard-paste";
 import ContextMenu from "../common/ContextMenu";
 import type { ContextMenuEntry } from "../common/ContextMenu";
 import Icon from "../common/Icon";
@@ -70,6 +72,10 @@ export default function DataGrid(props: DataGridProps) {
 	const [exportOpen, setExportOpen] = createSignal(false);
 	const [importOpen, setImportOpen] = createSignal(false);
 	const [advancedCopyOpen, setAdvancedCopyOpen] = createSignal(false);
+	const [pastePreview, setPastePreview] = createSignal<{
+		rows: string[][];
+		delimiter: string;
+	} | null>(null);
 	const [cellContextMenu, setCellContextMenu] = createSignal<{
 		x: number;
 		y: number;
@@ -513,6 +519,52 @@ export default function DataGrid(props: DataGridProps) {
 		}
 	}
 
+	const PASTE_PREVIEW_THRESHOLD = 50;
+
+	async function handlePaste() {
+		if (isReadOnly()) return;
+		const t = tab();
+		if (!t?.focusedCell) return;
+
+		let text: string;
+		try {
+			text = await navigator.clipboard.readText();
+		} catch {
+			return; // Clipboard API may fail
+		}
+		if (!text.trim()) return;
+
+		const parsed = parseClipboardText(text);
+		if (parsed.rows.length === 0) return;
+
+		if (parsed.rows.length > PASTE_PREVIEW_THRESHOLD) {
+			setPastePreview(parsed);
+		} else {
+			executePaste(parsed.rows, true);
+		}
+	}
+
+	function executePaste(rows: string[][], treatNullText: boolean) {
+		const t = tab();
+		if (!t?.focusedCell) return;
+
+		const data = rows.map((row) =>
+			row.map((cell) => cellValueToDbValue(cell, treatNullText)),
+		);
+		gridStore.pasteCells(props.tabId, t.focusedCell.row, t.focusedCell.column, data);
+
+		const msg = `Pasted ${rows.length} row${rows.length !== 1 ? "s" : ""}`;
+		setCopyFeedback(msg);
+		setTimeout(() => setCopyFeedback(null), COPY_FLASH_DURATION);
+	}
+
+	function handlePastePreviewConfirm(treatNullText: boolean) {
+		const preview = pastePreview();
+		if (!preview) return;
+		executePaste(preview.rows, treatNullText);
+		setPastePreview(null);
+	}
+
 	// ── Context menus ────────────────────────────────────────
 
 	function handleGridContextMenu(e: MouseEvent) {
@@ -581,6 +633,14 @@ export default function DataGrid(props: DataGridProps) {
 			handler(e) {
 				e.preventDefault();
 				handleCopy();
+			},
+		},
+		{
+			key: "v",
+			ctrl: true,
+			handler(e) {
+				e.preventDefault();
+				handlePaste();
 			},
 		},
 		{
@@ -681,6 +741,11 @@ export default function DataGrid(props: DataGridProps) {
 			{
 				label: "Advanced Copy...",
 				action: () => setAdvancedCopyOpen(true),
+			},
+			{
+				label: "Paste",
+				action: () => handlePaste(),
+				disabled: isDeleted || ro,
 			},
 			"separator",
 			{
@@ -1333,6 +1398,25 @@ export default function DataGrid(props: DataGridProps) {
 					gridStore.refreshData(props.tabId);
 				}}
 			/>
+
+			<Show when={pastePreview()}>
+				{(preview) => {
+					const t = tab()!;
+					return (
+						<PastePreviewDialog
+							open={true}
+							parsedRows={preview().rows}
+							delimiter={preview().delimiter}
+							columns={visibleColumns()}
+							startColumn={t.focusedCell?.column ?? ""}
+							startRow={t.focusedCell?.row ?? 0}
+							totalExistingRows={t.rows.length}
+							onConfirm={handlePastePreviewConfirm}
+							onClose={() => setPastePreview(null)}
+						/>
+					);
+				}}
+			</Show>
 
 			<Show when={cellContextMenu()}>
 				{(ctx) => (

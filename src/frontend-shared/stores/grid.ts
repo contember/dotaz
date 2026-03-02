@@ -705,6 +705,39 @@ function addNewRow(tabId: string) {
 	return newIndex;
 }
 
+/**
+ * Paste parsed clipboard data into the grid starting at the given cell.
+ * Overwrites existing rows and creates new INSERT rows when pasting beyond the last row.
+ * Each pasted cell becomes a pending change (same as inline editing).
+ */
+function pasteCells(
+	tabId: string,
+	startRow: number,
+	startColumn: string,
+	data: unknown[][],
+) {
+	const tab = ensureTab(tabId);
+	const visibleCols = getVisibleColumns(tab);
+	const colNames = visibleCols.map((c) => c.name);
+	const startColIdx = colNames.indexOf(startColumn);
+	if (startColIdx < 0) return;
+
+	for (let r = 0; r < data.length; r++) {
+		const rowIndex = startRow + r;
+		// Create new row if we're past the end
+		if (rowIndex >= tab.rows.length) {
+			addNewRow(tabId);
+		}
+		const pasteRow = data[r];
+		for (let c = 0; c < pasteRow.length; c++) {
+			const colIdx = startColIdx + c;
+			if (colIdx >= colNames.length) break; // skip columns beyond visible range
+			const colName = colNames[colIdx];
+			setCellValue(tabId, rowIndex, colName, pasteRow[c]);
+		}
+	}
+}
+
 function deleteSelectedRows(tabId: string) {
 	const tab = ensureTab(tabId);
 	if (tab.selectedRows.size === 0) return;
@@ -1355,6 +1388,7 @@ export const gridStore = {
 	stopEditing,
 	setCellValue,
 	addNewRow,
+	pasteCells,
 	deleteSelectedRows,
 	hasPendingChanges,
 	pendingChangesCount,

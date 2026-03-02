@@ -95,7 +95,7 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 | DOTAZ-090 | Transaction log and pending transaction viewer | done | SessionLog in-memory per-connection, RPC endpoints, TransactionLog panel, TX warning dialog with Commit/Rollback/Cancel, pending count in status bar |
 | DOTAZ-091 | Query navigation in SQL editor | done | Alt+Up/Down navigate between SQL statements, extracted findSemicolons helper, Prec.highest to override default line-move bindings |
 | DOTAZ-092 | Data format profiles | done | FormatProfile types, settings RPC, settingsStore, FormatSettingsDialog, GridCell formatting (date/number/null/boolean/binary), command palette access |
-| DOTAZ-093 | Advanced Paste into data grid | not started | Multi-row paste with delimiter detection |
+| DOTAZ-093 | Advanced Paste into data grid | done | Ctrl+V paste with auto-detect delimiter (tab/comma/semicolon), quoted values, preview dialog >50 rows, NULL handling, new INSERT rows |
 | DOTAZ-094 | AI SQL generation from natural language | not started | LLM-powered SQL with schema context |
 | DOTAZ-095 | Workspace persistence (tabs, editor state, layout) | not started | Restore open tabs, SQL content, layout after restart |
 
@@ -114,5 +114,5 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 
 ---
 
-*Last updated: 2026-03-02 — DOTAZ-092 done*
+*Last updated: 2026-03-02 — DOTAZ-093 done*
 
