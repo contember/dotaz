@@ -1,13 +1,19 @@
 import { createSignal, createEffect, For, Show, Switch, Match } from "solid-js";
-import type { QueryResult, QueryResultColumn } from "../../../shared/types/query";
+import type { QueryResult, QueryResultColumn, QueryEditability } from "../../../shared/types/query";
 import type { GridColumnDef } from "../../../shared/types/grid";
 import type { ColumnConfig } from "../../stores/grid";
 import { editorStore, type PinnedResultSet } from "../../stores/editor";
+import { connectionsStore } from "../../stores/connections";
 import ChevronUp from "lucide-solid/icons/chevron-up";
 import ChevronDown from "lucide-solid/icons/chevron-down";
 import Pin from "lucide-solid/icons/pin";
 import PinOff from "lucide-solid/icons/pin-off";
+import Pencil from "lucide-solid/icons/pencil";
 import X from "lucide-solid/icons/x";
+import Check from "lucide-solid/icons/check";
+import Code from "lucide-solid/icons/code";
+import RotateCcw from "lucide-solid/icons/rotate-ccw";
+import Lock from "lucide-solid/icons/lock";
 import GridHeader from "../grid/GridHeader";
 import VirtualScroller from "../grid/VirtualScroller";
 import ExplainPanel from "./ExplainPanel";
@@ -23,15 +29,14 @@ const HEADER_HEIGHT = 34;
 const EMPTY_SORT: [] = [];
 const EMPTY_PIN_STYLES = new Map<string, Record<string, string>>();
 const EMPTY_FK_COLUMNS = new Set<string>();
-const EMPTY_SELECTED_ROWS = new Set<number>();
 const noop = () => {};
 
-function toGridColumn(col: QueryResultColumn): GridColumnDef {
+function toGridColumn(col: QueryResultColumn, editability?: QueryEditability): GridColumnDef {
 	return {
 		name: col.name,
 		dataType: col.dataType,
 		nullable: false,
-		isPrimaryKey: false,
+		isPrimaryKey: editability?.primaryKeys?.includes(col.name) ?? false,
 	};
 }
 
@@ -44,6 +49,19 @@ function getResultLabel(result: QueryResult, index: number): string {
 	if (result.error) return `Error`;
 	if (result.columns.length > 0) return `Result ${index + 1}`;
 	return `Statement ${index + 1}`;
+}
+
+function getReadOnlyReason(editability: QueryEditability): string {
+	switch (editability.reason) {
+		case "not_select": return "Not a SELECT query";
+		case "aggregation": return "Aggregation query (GROUP BY / aggregate functions)";
+		case "union": return "UNION / INTERSECT / EXCEPT query";
+		case "subquery": return "Contains subqueries";
+		case "multi_table": return "Multi-table query (JOIN / multiple tables)";
+		case "no_pk": return "Primary key columns not in result set";
+		case "unknown_table": return "Could not identify source table";
+		default: return "Read-only result";
+	}
 }
 
 export default function SqlResultPanel(props: SqlResultPanelProps) {
@@ -99,6 +117,16 @@ export default function SqlResultPanel(props: SqlResultPanelProps) {
 		const idx = activeResultIndex();
 		return idx < r.length ? r[idx] : undefined;
 	};
+
+	// Editability for the active result
+	const activeEditability = (): QueryEditability | undefined => {
+		if (isViewingPinned()) return undefined; // Pinned results are not editable
+		const t = tab();
+		if (!t) return undefined;
+		return t.resultEditability[activeResultIndex()];
+	};
+
+	const isReadOnly = () => connectionsStore.isReadOnly(props.connectionId);
 
 	const hasContent = () => results().length > 0 || error() !== null || explainResult() !== null;
 	const anyContent = () => hasContent() || currentHasContent() || hasPinnedTabs();
@@ -198,6 +226,35 @@ export default function SqlResultPanel(props: SqlResultPanelProps) {
 								)}
 							</For>
 						</Show>
+
+						{/* Editability indicator */}
+						<Show when={activeResult() && !activeResult()!.error && activeResult()!.columns.length > 0}>
+							{(_) => {
+								const ed = activeEditability();
+								return (
+									<Show when={ed}>
+										{(editability) => (
+											<Show
+												when={editability().editable && !isReadOnly()}
+												fallback={
+													<span
+														class="sql-result-panel__editable-badge sql-result-panel__editable-badge--readonly"
+														title={isReadOnly() ? "Connection is read-only" : getReadOnlyReason(editability())}
+													>
+														<Lock size={10} /> Read-only
+													</span>
+												}
+											>
+												<span class="sql-result-panel__editable-badge sql-result-panel__editable-badge--editable">
+													<Pencil size={10} /> Editable
+												</span>
+											</Show>
+										)}
+									</Show>
+								);
+							}}
+						</Show>
+
 						<Show
 							when={
 								activeResult() &&
@@ -303,7 +360,13 @@ export default function SqlResultPanel(props: SqlResultPanelProps) {
 									</Match>
 
 									<Match when={result().columns.length > 0}>
-										<ResultGrid result={result()} />
+										<ResultGrid
+											tabId={props.tabId}
+											connectionId={props.connectionId}
+											resultIndex={activeResultIndex()}
+											result={result()}
+											editability={activeEditability()}
+										/>
 									</Match>
 								</Switch>
 							)}
@@ -315,13 +378,55 @@ export default function SqlResultPanel(props: SqlResultPanelProps) {
 	);
 }
 
-function ResultGrid(props: { result: QueryResult }) {
-	const [scrollEl, setScrollEl] = createSignal<HTMLDivElement>();
-	const [columnWidths, setColumnWidths] = createSignal<Record<string, number>>(
-		{},
-	);
+// ── ResultGrid with editing support ───────────────────────
 
-	const columns = () => props.result.columns.map(toGridColumn);
+interface ResultGridProps {
+	tabId: string;
+	connectionId: string;
+	resultIndex: number;
+	result: QueryResult;
+	editability?: QueryEditability;
+}
+
+function ResultGrid(props: ResultGridProps) {
+	const [scrollEl, setScrollEl] = createSignal<HTMLDivElement>();
+	const [columnWidths, setColumnWidths] = createSignal<Record<string, number>>({});
+	const [selectedRows, setSelectedRows] = createSignal<Set<number>>(new Set());
+	const [showPendingPanel, setShowPendingPanel] = createSignal(false);
+	const [applying, setApplying] = createSignal(false);
+	const [applyError, setApplyError] = createSignal<string | null>(null);
+	const [previewSql, setPreviewSql] = createSignal<string | null>(null);
+
+	const tab = () => editorStore.getTab(props.tabId);
+	const isEditable = () => {
+		const e = props.editability;
+		return e?.editable === true && !connectionsStore.isReadOnly(props.connectionId);
+	};
+
+	const editableColumnSet = (): Set<string> => {
+		if (!isEditable()) return new Set();
+		return new Set(props.editability!.editableColumns ?? []);
+	};
+
+	const columns = () => props.result.columns.map((col) => toGridColumn(col, props.editability));
+
+	// Use mutable rows from editor store when editable, original otherwise
+	const rows = (): Record<string, unknown>[] => {
+		if (isEditable()) {
+			const t = tab();
+			return t?.resultRows[props.resultIndex] ?? props.result.rows;
+		}
+		return props.result.rows;
+	};
+
+	const editingCell = () => {
+		const t = tab();
+		if (!t || t.resultEditingIndex !== props.resultIndex) return null;
+		return t.resultEditingCell;
+	};
+
+	const hasPending = () => editorStore.hasResultPendingChanges(props.tabId, props.resultIndex);
+	const pendingCount = () => editorStore.resultPendingChangesCount(props.tabId, props.resultIndex);
 
 	const columnConfig = (): Record<string, ColumnConfig> => {
 		const widths = columnWidths();
@@ -336,27 +441,282 @@ function ResultGrid(props: { result: QueryResult }) {
 		setColumnWidths((prev) => ({ ...prev, [column]: width }));
 	}
 
+	function handleRowClick(index: number, _e: MouseEvent) {
+		const next = new Set<number>();
+		next.add(index);
+		setSelectedRows(next);
+	}
+
+	function handleRowDblClick(index: number, e: MouseEvent) {
+		if (!isEditable()) return;
+		const target = e.target as HTMLElement;
+		const cellEl = target.closest<HTMLElement>("[data-column]");
+		const columnName = cellEl?.dataset.column;
+		if (columnName && editableColumnSet().has(columnName)) {
+			editorStore.startResultEditing(props.tabId, props.resultIndex, index, columnName);
+		}
+	}
+
+	function handleCellSave(rowIndex: number, column: string, value: unknown) {
+		editorStore.setResultCellValue(props.tabId, props.resultIndex, rowIndex, column, value);
+		editorStore.stopResultEditing(props.tabId);
+	}
+
+	function handleCellCancel() {
+		editorStore.stopResultEditing(props.tabId);
+	}
+
+	function handleCellMoveNext(rowIndex: number, currentColumn: string) {
+		const cols = columns();
+		const editableCols = editableColumnSet();
+		const idx = cols.findIndex((c) => c.name === currentColumn);
+		for (let i = idx + 1; i < cols.length; i++) {
+			if (editableCols.has(cols[i].name)) {
+				editorStore.startResultEditing(props.tabId, props.resultIndex, rowIndex, cols[i].name);
+				return;
+			}
+		}
+		editorStore.stopResultEditing(props.tabId);
+	}
+
+	function handleCellMoveDown(rowIndex: number, currentColumn: string) {
+		const r = rows();
+		if (rowIndex < r.length - 1) {
+			editorStore.startResultEditing(props.tabId, props.resultIndex, rowIndex + 1, currentColumn);
+		} else {
+			editorStore.stopResultEditing(props.tabId);
+		}
+	}
+
+	function getChangedCells(rowIndex: number): Set<string> {
+		const changed = new Set<string>();
+		const t = tab();
+		if (!t) return changed;
+		const pending = t.resultPendingChanges[props.resultIndex];
+		if (!pending) return changed;
+		for (const key of Object.keys(pending.cellEdits)) {
+			const edit = pending.cellEdits[key];
+			if (edit.rowIndex === rowIndex) {
+				changed.add(edit.column);
+			}
+		}
+		return changed;
+	}
+
+	async function handleApply() {
+		if (!hasPending()) return;
+		setApplying(true);
+		setApplyError(null);
+		try {
+			await editorStore.applyResultChanges(props.tabId, props.resultIndex);
+			editorStore.clearResultPendingChanges(props.tabId, props.resultIndex);
+			setPreviewSql(null);
+			setShowPendingPanel(false);
+		} catch (err) {
+			setApplyError(err instanceof Error ? err.message : String(err));
+		} finally {
+			setApplying(false);
+		}
+	}
+
+	function handleRevert() {
+		editorStore.revertResultChanges(props.tabId, props.resultIndex);
+		setApplyError(null);
+		setPreviewSql(null);
+	}
+
+	function handlePreviewSql() {
+		try {
+			const sql = editorStore.generateResultSqlPreview(props.tabId, props.resultIndex);
+			setPreviewSql(sql);
+		} catch (err) {
+			setApplyError(err instanceof Error ? err.message : String(err));
+		}
+	}
+
 	return (
-		<div class="result-grid" ref={setScrollEl}>
-			<GridHeader
-				columns={columns()}
-				sort={EMPTY_SORT}
-				columnConfig={columnConfig()}
-				pinStyles={EMPTY_PIN_STYLES}
-				fkColumns={EMPTY_FK_COLUMNS}
-				onToggleSort={noop}
-				onResizeColumn={handleResizeColumn}
-			/>
-			<VirtualScroller
-				scrollElement={scrollEl}
-				rows={props.result.rows}
-				columns={columns()}
-				columnConfig={columnConfig()}
-				pinStyles={EMPTY_PIN_STYLES}
-				selectedRows={EMPTY_SELECTED_ROWS}
-				scrollMargin={HEADER_HEIGHT}
-				onRowClick={noop}
-			/>
+		<div class="result-grid-wrapper">
+			<div class="result-grid" ref={setScrollEl}>
+				<GridHeader
+					columns={columns()}
+					sort={EMPTY_SORT}
+					columnConfig={columnConfig()}
+					pinStyles={EMPTY_PIN_STYLES}
+					fkColumns={EMPTY_FK_COLUMNS}
+					onToggleSort={noop}
+					onResizeColumn={handleResizeColumn}
+				/>
+				<VirtualScroller
+					scrollElement={scrollEl}
+					rows={rows()}
+					columns={columns()}
+					columnConfig={columnConfig()}
+					pinStyles={EMPTY_PIN_STYLES}
+					selectedRows={selectedRows()}
+					scrollMargin={HEADER_HEIGHT}
+					onRowClick={handleRowClick}
+					onRowDblClick={isEditable() ? handleRowDblClick : undefined}
+					editingCell={isEditable() ? editingCell() : undefined}
+					getChangedCells={isEditable() ? getChangedCells : undefined}
+					onCellSave={isEditable() ? handleCellSave : undefined}
+					onCellCancel={isEditable() ? handleCellCancel : undefined}
+					onCellMoveNext={isEditable() ? handleCellMoveNext : undefined}
+					onCellMoveDown={isEditable() ? handleCellMoveDown : undefined}
+				/>
+			</div>
+
+			{/* Pending changes bar */}
+			<Show when={hasPending()}>
+				<div class="result-pending-bar">
+					<div class="result-pending-bar__info">
+						<Pencil size={12} />
+						<span>{pendingCount()} pending change{pendingCount() !== 1 ? "s" : ""}</span>
+					</div>
+					<div class="result-pending-bar__actions">
+						<button
+							class="result-pending-bar__btn"
+							onClick={() => setShowPendingPanel((v) => !v)}
+							title={showPendingPanel() ? "Hide details" : "Show details"}
+						>
+							{showPendingPanel() ? "Hide" : "Details"}
+						</button>
+						<button
+							class="result-pending-bar__btn result-pending-bar__btn--preview"
+							onClick={handlePreviewSql}
+							disabled={applying()}
+							title="Preview SQL"
+						>
+							<Code size={12} /> SQL
+						</button>
+						<button
+							class="result-pending-bar__btn result-pending-bar__btn--revert"
+							onClick={handleRevert}
+							disabled={applying()}
+							title="Revert all changes"
+						>
+							<RotateCcw size={12} /> Revert
+						</button>
+						<button
+							class="result-pending-bar__btn result-pending-bar__btn--apply"
+							onClick={handleApply}
+							disabled={applying()}
+							title="Apply all changes"
+						>
+							<Check size={12} /> {applying() ? "Applying..." : "Apply"}
+						</button>
+					</div>
+				</div>
+
+				<Show when={applyError()}>
+					<div class="result-pending-bar__error">{applyError()}</div>
+				</Show>
+
+				<Show when={previewSql()}>
+					<div class="result-pending-bar__preview">
+						<div class="result-pending-bar__preview-header">
+							<span>SQL Preview</span>
+							<button
+								class="result-pending-bar__preview-close"
+								onClick={() => setPreviewSql(null)}
+								title="Close preview"
+							>
+								<X size={14} />
+							</button>
+						</div>
+						<pre class="result-pending-bar__preview-sql">{previewSql()}</pre>
+					</div>
+				</Show>
+
+				<Show when={showPendingPanel()}>
+					<ResultPendingChangesList
+						tabId={props.tabId}
+						resultIndex={props.resultIndex}
+						editability={props.editability!}
+						disabled={applying()}
+					/>
+				</Show>
+			</Show>
+		</div>
+	);
+}
+
+// ── Pending changes detail list ───────────────────────────
+
+function ResultPendingChangesList(props: {
+	tabId: string;
+	resultIndex: number;
+	editability: QueryEditability;
+	disabled: boolean;
+}) {
+	const tab = () => editorStore.getTab(props.tabId);
+
+	function formatValue(value: unknown): string {
+		if (value === null || value === undefined) return "NULL";
+		if (typeof value === "object") return JSON.stringify(value);
+		return String(value);
+	}
+
+	function truncate(str: string, max: number): string {
+		return str.length > max ? str.substring(0, max) + "..." : str;
+	}
+
+	function buildItems(): Array<{ rowIndex: number; description: string }> {
+		const t = tab();
+		if (!t) return [];
+		const pending = t.resultPendingChanges[props.resultIndex];
+		if (!pending) return [];
+		const pkColumns = props.editability.primaryKeys ?? [];
+		const items: Array<{ rowIndex: number; description: string }> = [];
+
+		// Group edits by row
+		const editsByRow = new Map<number, Array<{ column: string; oldValue: unknown; newValue: unknown }>>();
+		for (const edit of Object.values(pending.cellEdits)) {
+			let rowEdits = editsByRow.get(edit.rowIndex);
+			if (!rowEdits) {
+				rowEdits = [];
+				editsByRow.set(edit.rowIndex, rowEdits);
+			}
+			rowEdits.push({ column: edit.column, oldValue: edit.oldValue, newValue: edit.newValue });
+		}
+
+		for (const [rowIndex, edits] of editsByRow) {
+			const originalRow = t.results[props.resultIndex]?.rows[rowIndex];
+			const pkDesc = pkColumns.map((pk) => `${pk}=${formatValue(originalRow?.[pk])}`).join(", ");
+			const editDescs = edits.map(
+				(e) => `${e.column}: ${truncate(formatValue(e.oldValue), 20)} \u2192 ${truncate(formatValue(e.newValue), 20)}`,
+			);
+			items.push({
+				rowIndex,
+				description: pkDesc ? `[${pkDesc}] ${editDescs.join("; ")}` : editDescs.join("; "),
+			});
+		}
+
+		return items;
+	}
+
+	return (
+		<div class="result-pending-list">
+			<For each={buildItems()}>
+				{(item) => (
+					<div class="result-pending-list__item">
+						<span class="result-pending-list__item-icon">
+							<Pencil size={12} />
+						</span>
+						<span class="result-pending-list__item-type">UPDATE</span>
+						<span class="result-pending-list__item-desc" title={item.description}>
+							{item.description}
+						</span>
+						<button
+							class="result-pending-list__item-revert"
+							onClick={() => editorStore.revertResultRowUpdate(props.tabId, props.resultIndex, item.rowIndex)}
+							disabled={props.disabled}
+							title="Revert this change"
+						>
+							<X size={14} />
+						</button>
+					</div>
+				)}
+			</For>
 		</div>
 	);
 }

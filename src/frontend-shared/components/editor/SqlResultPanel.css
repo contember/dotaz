@@ -213,8 +213,208 @@
 	margin-right: 4px;
 }
 
-/* Result Grid */
+/* Editability badge */
+.sql-result-panel__editable-badge {
+	display: flex;
+	align-items: center;
+	gap: 3px;
+	padding: 1px 6px;
+	border-radius: 3px;
+	font-size: var(--font-size-xs);
+	font-weight: 500;
+	user-select: none;
+}
+
+.sql-result-panel__editable-badge--editable {
+	color: var(--success, #4ade80);
+	background: rgba(74, 222, 128, 0.1);
+}
+
+.sql-result-panel__editable-badge--readonly {
+	color: var(--ink-muted);
+	cursor: help;
+}
+
+/* Result Grid wrapper */
+.result-grid-wrapper {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
 .result-grid {
 	flex: 1;
 	overflow: auto;
+}
+
+/* Result pending changes bar */
+.result-pending-bar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 4px var(--spacing-sm);
+	background: var(--surface-raised);
+	border-top: 1px solid var(--edge);
+	font-size: var(--font-size-xs);
+	flex-shrink: 0;
+}
+
+.result-pending-bar__info {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	color: var(--accent, #82aaff);
+	font-weight: 500;
+}
+
+.result-pending-bar__actions {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.result-pending-bar__btn {
+	display: flex;
+	align-items: center;
+	gap: 3px;
+	padding: 2px 8px;
+	border: 1px solid var(--edge);
+	background: transparent;
+	color: var(--ink-secondary);
+	font-size: var(--font-size-xs);
+	font-family: var(--font-ui);
+	border-radius: 3px;
+	cursor: pointer;
+}
+
+.result-pending-bar__btn:hover {
+	background: var(--surface-hover);
+	color: var(--ink);
+}
+
+.result-pending-bar__btn:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.result-pending-bar__btn--apply {
+	background: var(--accent, #82aaff);
+	color: var(--surface);
+	border-color: var(--accent, #82aaff);
+}
+
+.result-pending-bar__btn--apply:hover {
+	opacity: 0.9;
+	color: var(--surface);
+}
+
+.result-pending-bar__btn--revert {
+	color: var(--warning, #f59e0b);
+	border-color: var(--warning, #f59e0b);
+}
+
+.result-pending-bar__error {
+	padding: 4px var(--spacing-sm);
+	background: rgba(239, 68, 68, 0.1);
+	color: var(--error);
+	font-size: var(--font-size-xs);
+	border-top: 1px solid var(--edge);
+	flex-shrink: 0;
+}
+
+.result-pending-bar__preview {
+	border-top: 1px solid var(--edge);
+	flex-shrink: 0;
+	max-height: 120px;
+	overflow: auto;
+}
+
+.result-pending-bar__preview-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 2px var(--spacing-sm);
+	font-size: var(--font-size-xs);
+	color: var(--ink-secondary);
+}
+
+.result-pending-bar__preview-close {
+	display: flex;
+	align-items: center;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: var(--ink-muted);
+	cursor: pointer;
+}
+
+.result-pending-bar__preview-close:hover {
+	color: var(--ink);
+}
+
+.result-pending-bar__preview-sql {
+	margin: 0;
+	padding: 4px var(--spacing-sm);
+	font-family: var(--font-mono);
+	font-size: var(--font-size-xs);
+	color: var(--ink);
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+/* Result pending changes list */
+.result-pending-list {
+	border-top: 1px solid var(--edge);
+	max-height: 120px;
+	overflow-y: auto;
+	flex-shrink: 0;
+}
+
+.result-pending-list__item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 3px var(--spacing-sm);
+	font-size: var(--font-size-xs);
+	border-bottom: 1px solid var(--edge-light, rgba(255,255,255,0.04));
+}
+
+.result-pending-list__item-icon {
+	color: var(--accent, #82aaff);
+	flex-shrink: 0;
+}
+
+.result-pending-list__item-type {
+	font-weight: 600;
+	color: var(--accent, #82aaff);
+	flex-shrink: 0;
+}
+
+.result-pending-list__item-desc {
+	flex: 1;
+	color: var(--ink-secondary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.result-pending-list__item-revert {
+	display: flex;
+	align-items: center;
+	padding: 0;
+	border: none;
+	background: transparent;
+	color: var(--ink-muted);
+	cursor: pointer;
+	flex-shrink: 0;
+}
+
+.result-pending-list__item-revert:hover {
+	color: var(--error);
+}
+
+.result-pending-list__item-revert:disabled {
+	opacity: 0.5;
+	cursor: default;
 }

@@ -1,11 +1,15 @@
 import { createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
-import type { QueryResult, ExplainResult } from "../../shared/types/query";
+import type { QueryResult, QueryEditability, ExplainResult } from "../../shared/types/query";
+import type { DataChange } from "../../shared/types/rpc";
+import type { CellChange, EditingCell } from "./grid";
 import { rpc, friendlyErrorMessage } from "../lib/rpc";
 import { storage } from "../lib/storage";
 import { createTabHelpers } from "../lib/tab-store-helpers";
 import { getStatementAtCursor } from "../lib/sql-utils";
 import { splitStatements, detectDestructiveWithoutWhere } from "../../shared/sql/statements";
+import { analyzeSelectSource } from "../../shared/sql/editability";
+import { generateChangeSql, generateChangesPreview } from "../../shared/sql/builders";
 import { connectionsStore } from "./connections";
 import { uiStore } from "./ui";
 
@@ -19,6 +23,11 @@ export interface PinnedResultSet {
 	error: string | null;
 	duration: number;
 	explainResult: ExplainResult | null;
+}
+
+/** Pending changes for editable query results. */
+export interface ResultPendingChanges {
+	cellEdits: Record<string, CellChange>;
 }
 
 export interface TabEditorState {
@@ -44,6 +53,18 @@ export interface TabEditorState {
 	pinnedResults: PinnedResultSet[];
 	/** Which result view is active: null = current results, string = pinned id */
 	activeResultView: string | null;
+	/** The SQL that was last executed (needed for editability analysis) */
+	lastExecutedSql: string | null;
+	/** Editability info for each result set (indexed by result index) */
+	resultEditability: Record<number, QueryEditability>;
+	/** Mutable copy of rows for editing (keyed by result index) */
+	resultRows: Record<number, Record<string, unknown>[]>;
+	/** Pending cell edits for result rows (keyed by result index) */
+	resultPendingChanges: Record<number, ResultPendingChanges>;
+	/** Currently editing cell in result grid */
+	resultEditingCell: EditingCell | null;
+	/** Which result index is being edited */
+	resultEditingIndex: number | null;
 }
 
 function createDefaultEditorState(connectionId: string, database?: string): TabEditorState {
@@ -65,7 +86,17 @@ function createDefaultEditorState(connectionId: string, database?: string): TabE
 		explainResult: null,
 		pinnedResults: [],
 		activeResultView: null,
+		lastExecutedSql: null,
+		resultEditability: {},
+		resultRows: {},
+		resultPendingChanges: {},
+		resultEditingCell: null,
+		resultEditingIndex: null,
 	};
+}
+
+function createDefaultResultPendingChanges(): ResultPendingChanges {
+	return { cellEdits: {} };
 }
 
 // ── Store ─────────────────────────────────────────────────
@@ -167,6 +198,12 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0) {
 		duration: 0,
 		errorOffset: null,
 		activeResultView: null,
+		lastExecutedSql: sql,
+		resultEditability: {},
+		resultRows: {},
+		resultPendingChanges: {},
+		resultEditingCell: null,
+		resultEditingIndex: null,
 	});
 
 	const startTime = performance.now();
@@ -193,6 +230,9 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0) {
 			queryId: null,
 			errorOffset,
 		});
+
+		// Compute editability for each result set
+		computeResultEditability(tabId, sql, results);
 
 		recordHistory(tab.connectionId, sql, results);
 	} catch (err) {
@@ -428,6 +468,276 @@ function removeTab(tabId: string) {
 	setState("tabs", tabId, undefined!);
 }
 
+// ── Result editability ────────────────────────────────────
+
+/**
+ * Compute editability for query results using SQL analysis and schema metadata.
+ * Called after query execution completes.
+ */
+function computeResultEditability(tabId: string, sql: string, results: QueryResult[]) {
+	const tab = getTab(tabId);
+	if (!tab) return;
+
+	// Split into statements to analyze each one individually
+	const statements = splitStatements(sql);
+	const editability: Record<number, QueryEditability> = {};
+	const resultRows: Record<number, Record<string, unknown>[]> = {};
+
+	for (let i = 0; i < results.length; i++) {
+		const result = results[i];
+		// Only analyze results with columns (SELECT results, not DML)
+		if (!result.columns.length || result.error) continue;
+
+		const stmt = statements[i] ?? sql;
+		const analysis = analyzeSelectSource(stmt);
+
+		if (!analysis.editable) {
+			editability[i] = { editable: false, reason: analysis.reason };
+			continue;
+		}
+
+		const source = analysis.source;
+
+		// Look up the table in the connection's schema cache
+		const schema = source.schema ?? getDefaultSchema(tab.connectionId);
+		const columns = connectionsStore.getColumns(tab.connectionId, schema, source.table, tab.database);
+
+		if (columns.length === 0) {
+			editability[i] = { editable: false, reason: "unknown_table" };
+			continue;
+		}
+
+		// Find PK columns
+		const pkColumns = columns.filter((c) => c.isPrimaryKey).map((c) => c.name);
+		if (pkColumns.length === 0) {
+			editability[i] = { editable: false, reason: "no_pk" };
+			continue;
+		}
+
+		// Check if PK columns are in the result set
+		const resultColumnNames = new Set(result.columns.map((c) => c.name));
+		const missingPks = pkColumns.filter((pk) => !resultColumnNames.has(pk));
+		if (missingPks.length > 0) {
+			editability[i] = { editable: false, reason: "no_pk" };
+			continue;
+		}
+
+		// Determine which result columns map to table columns (those are editable)
+		const tableColumnNames = new Set(columns.map((c) => c.name));
+		const editableColumns = result.columns
+			.map((c) => c.name)
+			.filter((name) => tableColumnNames.has(name));
+
+		editability[i] = {
+			editable: true,
+			schema,
+			table: source.table,
+			primaryKeys: pkColumns,
+			editableColumns,
+		};
+
+		// Create mutable copy of rows
+		resultRows[i] = result.rows.map((row) => ({ ...row }));
+	}
+
+	setState("tabs", tabId, "resultEditability", editability);
+	setState("tabs", tabId, "resultRows", resultRows);
+}
+
+/**
+ * Get the default schema for a connection based on its type.
+ */
+function getDefaultSchema(connectionId: string): string {
+	const connType = connectionsStore.getConnectionType(connectionId);
+	if (connType === "sqlite") return "main";
+	return "public"; // PostgreSQL default
+}
+
+// ── Result editing actions ────────────────────────────────
+
+function startResultEditing(tabId: string, resultIndex: number, row: number, column: string) {
+	ensureTab(tabId);
+	setState("tabs", tabId, "resultEditingCell", { row, column });
+	setState("tabs", tabId, "resultEditingIndex", resultIndex);
+}
+
+function stopResultEditing(tabId: string) {
+	ensureTab(tabId);
+	setState("tabs", tabId, "resultEditingCell", null);
+}
+
+function setResultCellValue(tabId: string, resultIndex: number, rowIndex: number, column: string, newValue: unknown) {
+	const tab = ensureTab(tabId);
+	const rows = tab.resultRows[resultIndex];
+	if (!rows) return;
+
+	const key = `${rowIndex}:${column}`;
+	const pending = tab.resultPendingChanges[resultIndex] ?? createDefaultResultPendingChanges();
+	const existing = pending.cellEdits[key];
+	const oldValue = existing ? existing.oldValue : tab.results[resultIndex]?.rows[rowIndex]?.[column];
+
+	if (oldValue === newValue) {
+		// Reverting to original: remove the edit
+		const next = { ...pending.cellEdits };
+		delete next[key];
+		if (!tab.resultPendingChanges[resultIndex]) {
+			setState("tabs", tabId, "resultPendingChanges", resultIndex, { cellEdits: next });
+		} else {
+			setState("tabs", tabId, "resultPendingChanges", resultIndex, "cellEdits", next);
+		}
+	} else {
+		if (!tab.resultPendingChanges[resultIndex]) {
+			setState("tabs", tabId, "resultPendingChanges", resultIndex, {
+				cellEdits: { [key]: { rowIndex, column, oldValue, newValue } },
+			});
+		} else {
+			setState("tabs", tabId, "resultPendingChanges", resultIndex, "cellEdits", key, {
+				rowIndex, column, oldValue, newValue,
+			});
+		}
+	}
+
+	// Update mutable row for display
+	setState("tabs", tabId, "resultRows", resultIndex, rowIndex, column, newValue);
+}
+
+function hasResultPendingChanges(tabId: string, resultIndex: number): boolean {
+	const tab = getTab(tabId);
+	if (!tab) return false;
+	const pending = tab.resultPendingChanges[resultIndex];
+	if (!pending) return false;
+	return Object.keys(pending.cellEdits).length > 0;
+}
+
+function hasAnyResultPendingChanges(tabId: string): boolean {
+	const tab = getTab(tabId);
+	if (!tab) return false;
+	for (const pending of Object.values(tab.resultPendingChanges)) {
+		if (Object.keys(pending.cellEdits).length > 0) return true;
+	}
+	return false;
+}
+
+function resultPendingChangesCount(tabId: string, resultIndex: number): number {
+	const tab = getTab(tabId);
+	if (!tab) return 0;
+	const pending = tab.resultPendingChanges[resultIndex];
+	if (!pending) return 0;
+	// Count distinct rows with changes
+	const rows = new Set<number>();
+	for (const edit of Object.values(pending.cellEdits)) {
+		rows.add(edit.rowIndex);
+	}
+	return rows.size;
+}
+
+function isResultCellChanged(tabId: string, resultIndex: number, rowIndex: number, column: string): boolean {
+	const tab = getTab(tabId);
+	if (!tab) return false;
+	const pending = tab.resultPendingChanges[resultIndex];
+	if (!pending) return false;
+	return `${rowIndex}:${column}` in pending.cellEdits;
+}
+
+function buildResultDataChanges(tabId: string, resultIndex: number): DataChange[] {
+	const tab = ensureTab(tabId);
+	const editability = tab.resultEditability[resultIndex];
+	if (!editability?.editable) return [];
+
+	const pending = tab.resultPendingChanges[resultIndex];
+	if (!pending) return [];
+
+	const pkColumns = editability.primaryKeys!;
+	const changes: DataChange[] = [];
+
+	// Group cell edits by row
+	const editsByRow = new Map<number, Record<string, unknown>>();
+	for (const edit of Object.values(pending.cellEdits)) {
+		let rowEdits = editsByRow.get(edit.rowIndex);
+		if (!rowEdits) {
+			rowEdits = {};
+			editsByRow.set(edit.rowIndex, rowEdits);
+		}
+		rowEdits[edit.column] = edit.newValue;
+	}
+
+	for (const [rowIndex, values] of editsByRow) {
+		// Use original row data for PK values
+		const originalRow = tab.results[resultIndex]?.rows[rowIndex];
+		if (!originalRow) continue;
+
+		const primaryKeys: Record<string, unknown> = {};
+		for (const pk of pkColumns) {
+			// If PK was edited, use the original value
+			const pkEdit = pending.cellEdits[`${rowIndex}:${pk}`];
+			primaryKeys[pk] = pkEdit ? pkEdit.oldValue : originalRow[pk];
+		}
+
+		changes.push({
+			type: "update",
+			schema: editability.schema!,
+			table: editability.table!,
+			primaryKeys,
+			values,
+		});
+	}
+
+	return changes;
+}
+
+async function applyResultChanges(tabId: string, resultIndex: number) {
+	const tab = ensureTab(tabId);
+	const changes = buildResultDataChanges(tabId, resultIndex);
+	if (changes.length === 0) return;
+
+	const dialect = connectionsStore.getDialect(tab.connectionId);
+	const statements = changes.map((change) => generateChangeSql(change, dialect));
+	await rpc.query.execute({ connectionId: tab.connectionId, sql: "", queryId: "", statements, database: tab.database });
+}
+
+function generateResultSqlPreview(tabId: string, resultIndex: number): string {
+	const tab = ensureTab(tabId);
+	const changes = buildResultDataChanges(tabId, resultIndex);
+	if (changes.length === 0) return "";
+	const dialect = connectionsStore.getDialect(tab.connectionId);
+	return generateChangesPreview(changes, dialect);
+}
+
+function revertResultChanges(tabId: string, resultIndex: number) {
+	const tab = ensureTab(tabId);
+	const pending = tab.resultPendingChanges[resultIndex];
+	if (!pending) return;
+
+	// Restore original values in mutable rows
+	for (const edit of Object.values(pending.cellEdits)) {
+		setState("tabs", tabId, "resultRows", resultIndex, edit.rowIndex, edit.column, edit.oldValue);
+	}
+
+	setState("tabs", tabId, "resultPendingChanges", resultIndex, createDefaultResultPendingChanges());
+	setState("tabs", tabId, "resultEditingCell", null);
+}
+
+function clearResultPendingChanges(tabId: string, resultIndex: number) {
+	ensureTab(tabId);
+	setState("tabs", tabId, "resultPendingChanges", resultIndex, createDefaultResultPendingChanges());
+	setState("tabs", tabId, "resultEditingCell", null);
+}
+
+function revertResultRowUpdate(tabId: string, resultIndex: number, rowIndex: number) {
+	const tab = ensureTab(tabId);
+	const pending = tab.resultPendingChanges[resultIndex];
+	if (!pending) return;
+
+	const edits = { ...pending.cellEdits };
+	for (const [key, edit] of Object.entries(edits)) {
+		if (edit.rowIndex === rowIndex) {
+			setState("tabs", tabId, "resultRows", resultIndex, rowIndex, edit.column, edit.oldValue);
+			delete edits[key];
+		}
+	}
+	setState("tabs", tabId, "resultPendingChanges", resultIndex, "cellEdits", edits);
+}
+
 // ── Export ─────────────────────────────────────────────────
 
 export const editorStore = {
@@ -455,4 +765,18 @@ export const editorStore = {
 	},
 	confirmDestructiveQuery,
 	cancelDestructiveQuery,
+	// Result editing
+	startResultEditing,
+	stopResultEditing,
+	setResultCellValue,
+	hasResultPendingChanges,
+	hasAnyResultPendingChanges,
+	resultPendingChangesCount,
+	isResultCellChanged,
+	buildResultDataChanges,
+	applyResultChanges,
+	generateResultSqlPreview,
+	revertResultChanges,
+	clearResultPendingChanges,
+	revertResultRowUpdate,
 };

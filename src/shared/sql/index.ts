@@ -20,3 +20,5 @@ export {
 	offsetToLineColumn,
 	parseErrorPosition,
 } from "./statements";
+export type { QueryEditabilityReason, SelectSourceInfo, SelectAnalysisResult } from "./editability";
+export { analyzeSelectSource } from "./editability";

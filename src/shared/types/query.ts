@@ -19,6 +19,19 @@ export interface ErrorPosition {
 	offset?: number;
 }
 
+export interface QueryEditability {
+	editable: boolean;
+	reason?: import("../sql/editability").QueryEditabilityReason;
+	/** Source table schema (if editable). */
+	schema?: string;
+	/** Source table name (if editable). */
+	table?: string;
+	/** Primary key columns present in the result set. */
+	primaryKeys?: string[];
+	/** Result columns that map to actual table columns (editable columns). */
+	editableColumns?: string[];
+}
+
 export interface QueryResult {
 	columns: QueryResultColumn[];
 	rows: Record<string, unknown>[];
