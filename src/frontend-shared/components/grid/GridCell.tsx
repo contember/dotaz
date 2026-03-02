@@ -18,6 +18,8 @@ interface GridCellProps {
 	newRow?: boolean;
 	/** FK target info for this column (if it's a single-column FK). */
 	fkTarget?: { schema: string; table: string; column: string };
+	/** Background color for heatmap visualization. */
+	heatmapColor?: string;
 	onSave?: (value: unknown) => void;
 	onCancel?: () => void;
 	onMoveNext?: () => void;
@@ -129,7 +131,11 @@ export default function GridCell(props: GridCellProps) {
 					"grid-cell--deleted": !!props.deleted,
 					"grid-cell--new-row": !!props.newRow,
 				}}
-				style={{ width: `${props.width}px`, ...props.pinStyle }}
+				style={{
+				width: `${props.width}px`,
+				...props.pinStyle,
+				...(props.heatmapColor ? { "background-color": props.heatmapColor } : {}),
+			}}
 				title={tooltipValue()}
 				data-column={props.column.name}
 				onClick={isJson() && !isNull() ? handleJsonClick : undefined}

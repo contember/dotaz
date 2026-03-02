@@ -1,6 +1,7 @@
 import { For } from "solid-js";
 import type { GridColumnDef } from "../../../shared/types/grid";
-import type { ColumnConfig, EditingCell, FkTarget } from "../../stores/grid";
+import type { ColumnConfig, EditingCell, FkTarget, HeatmapInfo } from "../../stores/grid";
+import { gridStore } from "../../stores/grid";
 import GridCell from "./GridCell";
 import { DEFAULT_COLUMN_WIDTH } from "../../lib/layout-constants";
 import "./GridRow.css";
@@ -20,6 +21,7 @@ interface GridRowProps {
 	isDeleted?: boolean;
 	isNewRow?: boolean;
 	fkMap?: Map<string, FkTarget>;
+	heatmapInfo?: Map<string, HeatmapInfo>;
 	onCellSave?: (column: string, value: unknown) => void;
 	onCellCancel?: () => void;
 	onCellMoveNext?: (column: string) => void;
@@ -60,6 +62,10 @@ export default function GridRow(props: GridRowProps) {
 						props.editingCell?.row === props.index &&
 						props.editingCell?.column === col.name;
 					const isChanged = () => props.changedCells?.has(col.name) ?? false;
+					const heatmapColor = () => {
+						const info = props.heatmapInfo?.get(col.name);
+						return info ? gridStore.computeHeatmapColor(props.row[col.name], info) : undefined;
+					};
 
 					return (
 						<GridCell
@@ -72,6 +78,7 @@ export default function GridRow(props: GridRowProps) {
 							deleted={props.isDeleted}
 							newRow={props.isNewRow}
 							fkTarget={props.fkMap?.get(col.name)}
+							heatmapColor={heatmapColor()}
 							onSave={(value) => props.onCellSave?.(col.name, value)}
 							onCancel={() => props.onCellCancel?.()}
 							onMoveNext={() => props.onCellMoveNext?.(col.name)}

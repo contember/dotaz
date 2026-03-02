@@ -1,7 +1,7 @@
 import { createSignal, For, onMount, Show } from "solid-js";
 import { createVirtualizer } from "@tanstack/solid-virtual";
 import type { GridColumnDef } from "../../../shared/types/grid";
-import type { ColumnConfig, EditingCell, FkTarget } from "../../stores/grid";
+import type { ColumnConfig, EditingCell, FkTarget, HeatmapInfo } from "../../stores/grid";
 import GridRow from "./GridRow";
 import { ROW_HEIGHT } from "../../lib/layout-constants";
 import "./VirtualScroller.css";
@@ -23,6 +23,7 @@ interface VirtualScrollerProps {
 	isRowDeleted?: (rowIndex: number) => boolean;
 	isRowNew?: (rowIndex: number) => boolean;
 	fkMap?: Map<string, FkTarget>;
+	heatmapInfo?: Map<string, HeatmapInfo>;
 	onCellSave?: (rowIndex: number, column: string, value: unknown) => void;
 	onCellCancel?: () => void;
 	onCellMoveNext?: (rowIndex: number, column: string) => void;
@@ -77,6 +78,7 @@ export default function VirtualScroller(props: VirtualScrollerProps) {
 						isDeleted={props.isRowDeleted?.(virtualRow.index)}
 						isNewRow={props.isRowNew?.(virtualRow.index)}
 						fkMap={props.fkMap}
+					heatmapInfo={props.heatmapInfo}
 						onCellSave={(col, val) => props.onCellSave?.(virtualRow.index, col, val)}
 						onCellCancel={props.onCellCancel}
 						onCellMoveNext={(col) => props.onCellMoveNext?.(virtualRow.index, col)}

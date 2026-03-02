@@ -1,6 +1,7 @@
 import { For, Show } from "solid-js";
 import type { GridColumnDef } from "../../../shared/types/grid";
-import type { ColumnConfig, EditingCell, FkTarget } from "../../stores/grid";
+import type { ColumnConfig, EditingCell, FkTarget, HeatmapInfo } from "../../stores/grid";
+import { gridStore } from "../../stores/grid";
 import GridCell from "./GridCell";
 import { DEFAULT_COLUMN_WIDTH } from "../../lib/layout-constants";
 import { getDataTypeLabel } from "../../lib/column-types";
@@ -18,6 +19,7 @@ interface TransposedGridProps {
 	isRowDeleted?: (rowIndex: number) => boolean;
 	isRowNew?: (rowIndex: number) => boolean;
 	fkMap?: Map<string, FkTarget>;
+	heatmapInfo?: Map<string, HeatmapInfo>;
 	onCellSave?: (rowIndex: number, column: string, value: unknown) => void;
 	onCellCancel?: () => void;
 	onCellMoveNext?: (rowIndex: number, column: string) => void;
@@ -93,6 +95,10 @@ export default function TransposedGrid(props: TransposedGridProps) {
 									props.editingCell?.column === col.name;
 								const isChanged = () =>
 									props.getChangedCells?.(rowIdx())?.has(col.name) ?? false;
+								const heatmapColor = () => {
+									const info = props.heatmapInfo?.get(col.name);
+									return info ? gridStore.computeHeatmapColor(row[col.name], info) : undefined;
+								};
 
 								return (
 									<div
@@ -113,6 +119,7 @@ export default function TransposedGrid(props: TransposedGridProps) {
 											deleted={props.isRowDeleted?.(rowIdx())}
 											newRow={props.isRowNew?.(rowIdx())}
 											fkTarget={props.fkMap?.get(col.name)}
+											heatmapColor={heatmapColor()}
 											onSave={(value) => props.onCellSave?.(rowIdx(), col.name, value)}
 											onCancel={() => props.onCellCancel?.()}
 											onMoveNext={() => props.onCellMoveNext?.(rowIdx(), col.name)}

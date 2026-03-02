@@ -1,5 +1,5 @@
 import { createEffect, createMemo, createSignal, For, on, onMount, onCleanup, Show } from "solid-js";
-import type { ColumnFilter } from "../../../shared/types/grid";
+import type { ColumnFilter, GridColumnDef } from "../../../shared/types/grid";
 import type { ForeignKeyInfo } from "../../../shared/types/database";
 import type { SavedViewConfig } from "../../../shared/types/rpc";
 import type { FkTarget } from "../../stores/grid";
@@ -30,6 +30,7 @@ import Save from "lucide-solid/icons/save";
 import Pencil from "lucide-solid/icons/pencil";
 import ArrowLeftRight from "lucide-solid/icons/arrow-left-right";
 import PanelRightOpen from "lucide-solid/icons/panel-right-open";
+import { isNumericType } from "../../lib/column-types";
 import { HEADER_HEIGHT } from "../../lib/layout-constants";
 import "./DataGrid.css";
 
@@ -168,6 +169,12 @@ export default function DataGrid(props: DataGridProps) {
 		if (!t) return new Map<string, Record<string, string>>();
 		return gridStore.computePinStyles(visibleColumns(), t.columnConfig);
 	};
+
+	const heatmapInfo = createMemo(() => {
+		const t = tab();
+		if (!t) return new Map();
+		return gridStore.computeHeatmapStats(t);
+	});
 
 	onMount(async () => {
 		const existing = gridStore.getTab(props.tabId);
@@ -755,8 +762,11 @@ export default function DataGrid(props: DataGridProps) {
 		const { column } = ctx;
 		const t = tab();
 		const pinned = t?.columnConfig[column]?.pinned;
+		const colDef = t?.columns.find((c: GridColumnDef) => c.name === column);
+		const isNumeric = colDef ? isNumericType(colDef.dataType) : false;
+		const currentHeatmap = t?.heatmapColumns[column];
 
-		return [
+		const items: ContextMenuEntry[] = [
 			{
 				label: "Sort Ascending",
 				action: () => gridStore.toggleSort(props.tabId, column, false),
@@ -807,6 +817,28 @@ export default function DataGrid(props: DataGridProps) {
 				},
 			},
 		];
+
+		if (isNumeric) {
+			items.push("separator");
+			items.push({
+				label: "Heatmap: Sequential",
+				action: () => gridStore.setHeatmap(props.tabId, column, "sequential"),
+				disabled: currentHeatmap === "sequential",
+			});
+			items.push({
+				label: "Heatmap: Diverging",
+				action: () => gridStore.setHeatmap(props.tabId, column, "diverging"),
+				disabled: currentHeatmap === "diverging",
+			});
+			if (currentHeatmap) {
+				items.push({
+					label: "Remove Heatmap",
+					action: () => gridStore.removeHeatmap(props.tabId, column),
+				});
+			}
+		}
+
+		return items;
 	};
 
 	return (
@@ -1076,6 +1108,7 @@ export default function DataGrid(props: DataGridProps) {
 													isRowDeleted={(idx) => gridStore.isRowDeleted(props.tabId, idx)}
 													isRowNew={(idx) => gridStore.isRowNew(props.tabId, idx)}
 													fkMap={fkMap()}
+													heatmapInfo={heatmapInfo()}
 													onCellSave={handleCellSave}
 													onCellCancel={handleCellCancel}
 													onCellMoveNext={handleCellMoveNext}
@@ -1097,6 +1130,7 @@ export default function DataGrid(props: DataGridProps) {
 											isRowDeleted={(idx) => gridStore.isRowDeleted(props.tabId, idx)}
 											isRowNew={(idx) => gridStore.isRowNew(props.tabId, idx)}
 											fkMap={fkMap()}
+											heatmapInfo={heatmapInfo()}
 											onCellSave={handleCellSave}
 											onCellCancel={handleCellCancel}
 											onCellMoveNext={handleCellMoveNext}
