@@ -7,6 +7,7 @@ interface SidebarProps {
 	collapsed: boolean;
 	onToggleCollapse: () => void;
 	onAdd?: () => void;
+	onOpenSettings?: () => void;
 	children?: JSX.Element;
 }
 
@@ -41,6 +42,16 @@ export default function Sidebar(props: SidebarProps) {
 				</div>
 				<div class="sidebar-content">
 					{props.children}
+				</div>
+				<div class="sidebar-footer">
+					<button
+						class="sidebar-footer__btn"
+						onClick={props.onOpenSettings}
+						title="Settings"
+					>
+						<Icon name="settings" size={14} />
+						<span>Settings</span>
+					</button>
 				</div>
 			</Show>
 		</aside>

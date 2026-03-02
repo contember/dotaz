@@ -61,6 +61,31 @@
 	overflow-y: auto;
 }
 
+.sidebar-footer {
+	flex-shrink: 0;
+	border-top: 1px solid var(--edge);
+	padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.sidebar-footer__btn {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-sm);
+	width: 100%;
+	padding: var(--spacing-xs) var(--spacing-sm);
+	background: none;
+	border: none;
+	color: var(--ink-secondary);
+	font-size: var(--font-size-sm);
+	cursor: pointer;
+	border-radius: var(--radius-sm);
+}
+
+.sidebar-footer__btn:hover {
+	background: var(--surface-hover);
+	color: var(--ink);
+}
+
 .sidebar-expand-btn {
 	position: absolute;
 	top: var(--spacing-sm);

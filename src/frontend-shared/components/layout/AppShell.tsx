@@ -26,9 +26,8 @@ import RowDetailTab from "../edit/RowDetailTab";
 import ComparisonView from "../comparison/ComparisonView";
 import ComparisonDialog from "../comparison/ComparisonDialog";
 import DatabaseSearchDialog from "../search/DatabaseSearchDialog";
-import FormatSettingsDialog from "../common/FormatSettingsDialog";
-import AiSettingsDialog from "../common/AiSettingsDialog";
-import SessionSettingsDialog from "../common/SessionSettingsDialog";
+import SettingsDialog from "../common/SettingsDialog";
+import type { SettingsSection } from "../common/SettingsDialog";
 import type { ComparisonSource, ComparisonColumnMapping } from "../../../shared/types/comparison";
 import type { ConnectionInfo } from "../../../shared/types/connection";
 import type { SearchScope } from "../../../shared/types/rpc";
@@ -83,9 +82,8 @@ export default function AppShell() {
 	const [searchInitialSchema, setSearchInitialSchema] = createSignal<string | undefined>(undefined);
 	const [searchInitialTable, setSearchInitialTable] = createSignal<string | undefined>(undefined);
 	const [searchInitialDatabase, setSearchInitialDatabase] = createSignal<string | undefined>(undefined);
-	const [formatSettingsOpen, setFormatSettingsOpen] = createSignal(false);
-	const [aiSettingsOpen, setAiSettingsOpen] = createSignal(false);
-	const [sessionSettingsOpen, setSessionSettingsOpen] = createSignal(false);
+	const [settingsOpen, setSettingsOpen] = createSignal(false);
+	const [settingsSection, setSettingsSection] = createSignal<SettingsSection>("data-format");
 	const [txLogOpen, setTxLogOpen] = createSignal(false);
 	const [txWarningOpen, setTxWarningOpen] = createSignal(false);
 	const [txWarningTabId, setTxWarningTabId] = createSignal<string | null>(null);
@@ -838,10 +836,21 @@ export default function AppShell() {
 
 		commandRegistry.register({
 			id: "settings",
-			label: "Data Format Settings",
+			label: "Settings",
 			category: "View",
 			handler: () => {
-				setFormatSettingsOpen(true);
+				setSettingsSection("data-format");
+				setSettingsOpen(true);
+			},
+		});
+
+		commandRegistry.register({
+			id: "settings-data-format",
+			label: "Settings: Data Format",
+			category: "View",
+			handler: () => {
+				setSettingsSection("data-format");
+				setSettingsOpen(true);
 			},
 		});
 
@@ -860,19 +869,21 @@ export default function AppShell() {
 
 		commandRegistry.register({
 			id: "ai-settings",
-			label: "AI Settings",
+			label: "Settings: AI",
 			category: "View",
 			handler: () => {
-				setAiSettingsOpen(true);
+				setSettingsSection("ai");
+				setSettingsOpen(true);
 			},
 		});
 
 		commandRegistry.register({
 			id: "session-settings",
-			label: "Session Settings",
+			label: "Settings: Session",
 			category: "View",
 			handler: () => {
-				setSessionSettingsOpen(true);
+				setSettingsSection("session");
+				setSettingsOpen(true);
 			},
 		});
 	}
@@ -920,6 +931,7 @@ export default function AppShell() {
 					collapsed={sidebarCollapsed()}
 					onToggleCollapse={toggleCollapse}
 					onAdd={openAddConnectionDialog}
+					onOpenSettings={() => { setSettingsSection("data-format"); setSettingsOpen(true); }}
 				>
 					<ConnectionTree onAddConnection={openAddConnectionDialog} onEditConnection={openEditConnectionDialog} onManageDatabases={openManageDatabases} />
 				</Sidebar>
@@ -1175,19 +1187,10 @@ export default function AppShell() {
 				initialDatabase={searchInitialDatabase()}
 			/>
 
-			<FormatSettingsDialog
-				open={formatSettingsOpen()}
-				onClose={() => setFormatSettingsOpen(false)}
-			/>
-
-			<AiSettingsDialog
-				open={aiSettingsOpen()}
-				onClose={() => setAiSettingsOpen(false)}
-			/>
-
-			<SessionSettingsDialog
-				open={sessionSettingsOpen()}
-				onClose={() => setSessionSettingsOpen(false)}
+			<SettingsDialog
+				open={settingsOpen()}
+				onClose={() => setSettingsOpen(false)}
+				initialSection={settingsSection()}
 			/>
 
 			<ToastContainer />

@@ -7,6 +7,7 @@ interface DialogProps {
 	title: string;
 	onClose: () => void;
 	children: JSX.Element;
+	class?: string;
 }
 
 /** Focusable element selector for focus trapping. */
@@ -71,7 +72,7 @@ export default function Dialog(props: DialogProps) {
 	return (
 		<Show when={props.open}>
 			<div class="dialog-overlay" onClick={handleOverlayClick}>
-				<div class="dialog" ref={dialogRef}>
+				<div class={`dialog${props.class ? ` ${props.class}` : ""}`} ref={dialogRef}>
 					<div class="dialog__header">
 						<span class="dialog__title">{props.title}</span>
 						<button
