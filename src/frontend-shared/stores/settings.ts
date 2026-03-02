@@ -1,12 +1,15 @@
 import { createStore } from "solid-js/store";
-import type { FormatProfile, AiConfig } from "../../shared/types/settings";
+import type { FormatProfile, AiConfig, ConsoleConfig } from "../../shared/types/settings";
 import {
 	DEFAULT_FORMAT_PROFILE,
 	DEFAULT_AI_CONFIG,
+	DEFAULT_CONSOLE_CONFIG,
 	settingsToFormatProfile,
 	formatProfileToSettings,
 	settingsToAiConfig,
 	aiConfigToSettings,
+	settingsToConsoleConfig,
+	consoleConfigToSettings,
 } from "../../shared/types/settings";
 import { rpc } from "../lib/rpc";
 import type { ConnectionMode, AutoPin, AutoUnpin } from "./session";
@@ -66,6 +69,7 @@ interface SettingsState {
 	formatProfile: FormatProfile;
 	aiConfig: AiConfig;
 	sessionConfig: SessionConfig;
+	consoleConfig: ConsoleConfig;
 	loaded: boolean;
 }
 
@@ -73,6 +77,7 @@ const [state, setState] = createStore<SettingsState>({
 	formatProfile: { ...DEFAULT_FORMAT_PROFILE },
 	aiConfig: { ...DEFAULT_AI_CONFIG },
 	sessionConfig: { ...DEFAULT_SESSION_CONFIG },
+	consoleConfig: { ...DEFAULT_CONSOLE_CONFIG },
 	loaded: false,
 });
 
@@ -82,6 +87,7 @@ async function loadSettings() {
 		setState("formatProfile", settingsToFormatProfile(all));
 		setState("aiConfig", settingsToAiConfig(all));
 		setState("sessionConfig", settingsToSessionConfig(all));
+		setState("consoleConfig", settingsToConsoleConfig(all));
 		setState("loaded", true);
 	} catch {
 		// Silently use defaults
@@ -125,6 +131,18 @@ async function saveSessionConfig(config: SessionConfig) {
 	}
 }
 
+async function saveConsoleConfig(config: ConsoleConfig) {
+	setState("consoleConfig", config);
+	const entries = consoleConfigToSettings(config);
+	for (const [key, value] of Object.entries(entries)) {
+		try {
+			await rpc.settings.set({ key, value });
+		} catch {
+			console.debug("Failed to save setting", key);
+		}
+	}
+}
+
 export const settingsStore = {
 	get formatProfile() {
 		return state.formatProfile;
@@ -135,6 +153,9 @@ export const settingsStore = {
 	get sessionConfig() {
 		return state.sessionConfig;
 	},
+	get consoleConfig() {
+		return state.consoleConfig;
+	},
 	get loaded() {
 		return state.loaded;
 	},
@@ -142,4 +163,5 @@ export const settingsStore = {
 	saveFormatProfile,
 	saveAiConfig,
 	saveSessionConfig,
+	saveConsoleConfig,
 };

@@ -3,6 +3,7 @@ import type { QueryResult, QueryResultColumn, QueryEditability } from "../../../
 import type { GridColumnDef } from "../../../shared/types/grid";
 import type { ColumnConfig } from "../../stores/grid";
 import { editorStore, type PinnedResultSet } from "../../stores/editor";
+import { settingsStore } from "../../stores/settings";
 import { connectionsStore } from "../../stores/connections";
 import ChevronUp from "lucide-solid/icons/chevron-up";
 import ChevronDown from "lucide-solid/icons/chevron-down";
@@ -14,6 +15,7 @@ import Check from "lucide-solid/icons/check";
 import Code from "lucide-solid/icons/code";
 import RotateCcw from "lucide-solid/icons/rotate-ccw";
 import Lock from "lucide-solid/icons/lock";
+import TriangleAlert from "lucide-solid/icons/triangle-alert";
 import GridHeader from "../grid/GridHeader";
 import VirtualScroller from "../grid/VirtualScroller";
 import ExplainPanel from "./ExplainPanel";
@@ -106,6 +108,22 @@ export default function SqlResultPanel(props: SqlResultPanelProps) {
 		return pinned ? pinned.explainResult : currentExplain();
 	};
 	const isRunning = () => tab()?.isRunning ?? false;
+
+	// Truncation state for the active result
+	const isActiveResultTruncated = () => {
+		const idx = activeResultIndex();
+		const pinned = viewedPinned();
+		if (pinned) return pinned.truncated[idx] ?? false;
+		return tab()?.resultTruncated[idx] ?? false;
+	};
+
+	const LIMIT_OPTIONS = [100, 500, 1000, 5000, 0] as const;
+	const currentLimit = () => settingsStore.consoleConfig.defaultResultLimit;
+
+	function handleLimitChange(e: Event) {
+		const value = Number((e.target as HTMLSelectElement).value);
+		settingsStore.saveConsoleConfig({ ...settingsStore.consoleConfig, defaultResultLimit: value });
+	}
 
 	createEffect(() => {
 		results();
@@ -262,8 +280,22 @@ export default function SqlResultPanel(props: SqlResultPanelProps) {
 								activeResult()!.columns.length > 0
 							}
 						>
+							<Show when={isActiveResultTruncated()}>
+								<span class="sql-result-panel__truncated-badge">
+									<TriangleAlert size={10} /> Result limited
+								</span>
+								<Show when={!isViewingPinned()}>
+									<button
+										class="sql-result-panel__fetch-all-btn"
+										onClick={() => editorStore.fetchAllResults(props.tabId)}
+										disabled={isRunning()}
+									>
+										Fetch All
+									</button>
+								</Show>
+							</Show>
 							<span class="sql-result-panel__meta">
-								{activeResult()!.rowCount} rows
+								{activeResult()!.rowCount}{isActiveResultTruncated() ? "+" : ""} rows
 							</span>
 							<span class="sql-result-panel__meta-sep">&middot;</span>
 							<span class="sql-result-panel__meta">
@@ -276,6 +308,20 @@ export default function SqlResultPanel(props: SqlResultPanelProps) {
 								{formatDuration(duration())}
 							</span>
 						</Show>
+						<select
+							class="sql-result-panel__limit-select"
+							value={currentLimit()}
+							onChange={handleLimitChange}
+							title="Default result limit"
+						>
+							<For each={[...LIMIT_OPTIONS]}>
+								{(opt) => (
+									<option value={opt}>
+										{opt === 0 ? "No limit" : `Limit ${opt}`}
+									</option>
+								)}
+							</For>
+						</select>
 						{/* Pin button for current results */}
 						<Show when={!isViewingPinned() && currentHasContent()}>
 							<button

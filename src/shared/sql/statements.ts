@@ -257,6 +257,27 @@ export function detectDestructiveWithoutWhere(sql: string): boolean {
 }
 
 /**
+ * Detect if a single SQL statement is a SELECT without a user-specified
+ * LIMIT, FETCH, or TOP clause (i.e. it would benefit from an auto-limit).
+ * Returns true when the statement is an unlimited SELECT.
+ * Handles CTEs (`WITH ... SELECT`) and UNION/INTERSECT/EXCEPT.
+ */
+export function isUnlimitedSelect(sql: string): boolean {
+	const stripped = stripLiteralsAndComments(sql);
+	const normalized = stripped.replace(/\s+/g, " ").trim().toUpperCase();
+
+	// Must start with SELECT or WITH (CTE)
+	if (!/^(SELECT|WITH)\b/.test(normalized)) return false;
+
+	// Already has LIMIT, FETCH FIRST/NEXT, or TOP
+	if (/\bLIMIT\b/.test(normalized)) return false;
+	if (/\bFETCH\s+(FIRST|NEXT)\b/.test(normalized)) return false;
+	if (/\bTOP\b/.test(normalized)) return false;
+
+	return true;
+}
+
+/**
  * Extract error position from database error objects.
  * PostgreSQL errors include a `position` field (1-based character offset).
  * SQLite errors may include offset info in the message.

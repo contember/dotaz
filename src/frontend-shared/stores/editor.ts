@@ -7,12 +7,13 @@ import { rpc, friendlyErrorMessage } from "../lib/rpc";
 import { storage } from "../lib/storage";
 import { createTabHelpers } from "../lib/tab-store-helpers";
 import { getStatementAtCursor } from "../lib/sql-utils";
-import { splitStatements, detectDestructiveWithoutWhere } from "../../shared/sql/statements";
+import { splitStatements, detectDestructiveWithoutWhere, isUnlimitedSelect } from "../../shared/sql/statements";
 import { analyzeSelectSource } from "../../shared/sql/editability";
 import { generateChangeSql, generateChangesPreview } from "../../shared/sql/builders";
 import { connectionsStore } from "./connections";
 import { uiStore } from "./ui";
 import { sessionStore } from "./session";
+import { settingsStore } from "./settings";
 import { scheduleWorkspaceSave } from "../lib/workspace";
 
 // ── Types ─────────────────────────────────────────────────
@@ -25,6 +26,7 @@ export interface PinnedResultSet {
 	error: string | null;
 	duration: number;
 	explainResult: ExplainResult | null;
+	truncated: Record<number, boolean>;
 }
 
 /** Pending changes for editable query results. */
@@ -67,6 +69,8 @@ export interface TabEditorState {
 	resultEditingCell: EditingCell | null;
 	/** Which result index is being edited */
 	resultEditingIndex: number | null;
+	/** Whether each result set was truncated by the auto-limit (keyed by result index) */
+	resultTruncated: Record<number, boolean>;
 	/** Whether the AI prompt input is open */
 	aiPromptOpen: boolean;
 	/** Whether AI generation is in progress */
@@ -100,6 +104,7 @@ function createDefaultEditorState(connectionId: string, database?: string): TabE
 		resultPendingChanges: {},
 		resultEditingCell: null,
 		resultEditingIndex: null,
+		resultTruncated: {},
 		aiPromptOpen: false,
 		aiGenerating: false,
 		aiError: null,
@@ -200,7 +205,7 @@ function recordHistory(connectionId: string, sql: string, results: QueryResult[]
 	});
 }
 
-async function runQuery(tabId: string, sql: string, baseOffset = 0) {
+async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit = true) {
 	const tab = ensureTab(tabId);
 	const queryId = crypto.randomUUID();
 
@@ -219,19 +224,52 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0) {
 		resultPendingChanges: {},
 		resultEditingCell: null,
 		resultEditingIndex: null,
+		resultTruncated: {},
 	});
+
+	// Apply auto-limit to unlimited SELECT statements
+	const limit = settingsStore.consoleConfig.defaultResultLimit;
+	let executeSql = sql;
+	const limitedStatementIndices = new Set<number>();
+
+	if (applyLimit && limit > 0) {
+		const statements = splitStatements(sql);
+		const modified: string[] = [];
+		for (let i = 0; i < statements.length; i++) {
+			if (isUnlimitedSelect(statements[i])) {
+				modified.push(`${statements[i]} LIMIT ${limit + 1}`);
+				limitedStatementIndices.add(i);
+			} else {
+				modified.push(statements[i]);
+			}
+		}
+		executeSql = modified.join(";\n");
+	}
 
 	const startTime = performance.now();
 
 	try {
 		// Resolve session (auto-pin if configured)
 		const sessionId = await sessionStore.resolveSessionForExecution(tabId, tab.connectionId, sql, tab.database);
-		const results = await rpc.query.execute({ connectionId: tab.connectionId, sql, queryId, database: tab.database, sessionId });
+		const results = await rpc.query.execute({ connectionId: tab.connectionId, sql: executeSql, queryId, database: tab.database, sessionId });
 
 		// Discard stale results if a newer query was started
 		if (state.tabs[tabId]?.queryId !== queryId) return;
 
 		const duration = Math.round(performance.now() - startTime);
+
+		// Detect and apply truncation for auto-limited results
+		const truncated: Record<number, boolean> = {};
+		for (let i = 0; i < results.length; i++) {
+			if (limitedStatementIndices.has(i) && results[i].rows.length > limit) {
+				results[i] = {
+					...results[i],
+					rows: results[i].rows.slice(0, limit),
+					rowCount: limit,
+				};
+				truncated[i] = true;
+			}
+		}
 
 		// Extract error position from the first result that has an error
 		const errorResult = results.find((r) => r.error && r.errorPosition);
@@ -246,9 +284,10 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0) {
 			error: null,
 			queryId: null,
 			errorOffset,
+			resultTruncated: truncated,
 		});
 
-		// Compute editability for each result set
+		// Compute editability using original SQL (not the modified one)
 		computeResultEditability(tabId, sql, results);
 
 		recordHistory(tab.connectionId, sql, results);
@@ -459,6 +498,13 @@ async function explainQuery(tabId: string, analyze = false) {
 	}
 }
 
+async function fetchAllResults(tabId: string) {
+	const tab = ensureTab(tabId);
+	const sql = tab.lastExecutedSql;
+	if (!sql) return;
+	await runQuery(tabId, sql, 0, false);
+}
+
 function pinCurrentResult(tabId: string) {
 	const tab = ensureTab(tabId);
 	if (tab.results.length === 0 && !tab.error && !tab.explainResult) return;
@@ -469,6 +515,7 @@ function pinCurrentResult(tabId: string) {
 		error: tab.error,
 		duration: tab.duration,
 		explainResult: tab.explainResult,
+		truncated: { ...tab.resultTruncated },
 	};
 
 	setState("tabs", tabId, "pinnedResults", [...tab.pinnedResults, pinned]);
@@ -921,6 +968,7 @@ export const editorStore = {
 	pinCurrentResult,
 	unpinResult,
 	setActiveResultView,
+	fetchAllResults,
 	get pendingDestructiveQuery() {
 		return pendingDestructiveQuery();
 	},

@@ -88,6 +88,35 @@ export function settingsToAiConfig(settings: Record<string, string>): AiConfig {
 	};
 }
 
+// ---- Console configuration ----
+
+export interface ConsoleConfig {
+	defaultResultLimit: number; // 0 = unlimited
+}
+
+export const DEFAULT_CONSOLE_CONFIG: ConsoleConfig = {
+	defaultResultLimit: 500,
+};
+
+/** Setting key prefix for console configuration entries. */
+export const CONSOLE_PREFIX = "console.";
+
+/** Convert a ConsoleConfig to a Record<string, string> for storage. */
+export function consoleConfigToSettings(config: ConsoleConfig): Record<string, string> {
+	return {
+		[`${CONSOLE_PREFIX}defaultResultLimit`]: String(config.defaultResultLimit),
+	};
+}
+
+/** Reconstruct a ConsoleConfig from stored settings, falling back to defaults. */
+export function settingsToConsoleConfig(settings: Record<string, string>): ConsoleConfig {
+	const raw = settings[`${CONSOLE_PREFIX}defaultResultLimit`];
+	const parsed = raw !== undefined ? Number(raw) : NaN;
+	return {
+		defaultResultLimit: !Number.isNaN(parsed) && parsed >= 0 ? parsed : DEFAULT_CONSOLE_CONFIG.defaultResultLimit,
+	};
+}
+
 /** Setting key prefix for format profile entries. */
 export const FORMAT_PREFIX = "format.";
 

@@ -213,6 +213,63 @@
 	margin-right: 4px;
 }
 
+/* Truncation badge */
+.sql-result-panel__truncated-badge {
+	display: flex;
+	align-items: center;
+	gap: 3px;
+	padding: 1px 6px;
+	border-radius: 3px;
+	font-size: var(--font-size-xs);
+	font-weight: 500;
+	color: var(--warning, #f59e0b);
+	background: rgba(245, 158, 11, 0.1);
+	user-select: none;
+}
+
+/* Fetch All button */
+.sql-result-panel__fetch-all-btn {
+	padding: 1px 6px;
+	border: 1px solid var(--edge);
+	background: transparent;
+	color: var(--ink-secondary);
+	font-size: var(--font-size-xs);
+	font-family: var(--font-ui);
+	border-radius: 3px;
+	cursor: pointer;
+}
+
+.sql-result-panel__fetch-all-btn:hover {
+	background: var(--surface-hover);
+	color: var(--ink);
+}
+
+.sql-result-panel__fetch-all-btn:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+/* Limit selector */
+.sql-result-panel__limit-select {
+	padding: 1px 4px;
+	border: 1px solid var(--edge);
+	background: var(--surface);
+	color: var(--ink-secondary);
+	font-size: var(--font-size-xs);
+	font-family: var(--font-ui);
+	border-radius: 3px;
+	cursor: pointer;
+	outline: none;
+}
+
+.sql-result-panel__limit-select:hover {
+	border-color: var(--ink-muted);
+}
+
+.sql-result-panel__limit-select:focus {
+	border-color: var(--accent, #82aaff);
+}
+
 /* Editability badge */
 .sql-result-panel__editable-badge {
 	display: flex;
