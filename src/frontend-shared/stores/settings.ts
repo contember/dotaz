@@ -1,15 +1,18 @@
 import { createStore } from "solid-js/store";
-import type { FormatProfile, AiConfig, ConsoleConfig } from "../../shared/types/settings";
+import type { FormatProfile, AiConfig, ConsoleConfig, AppearanceConfig, ColorTheme } from "../../shared/types/settings";
 import {
 	DEFAULT_FORMAT_PROFILE,
 	DEFAULT_AI_CONFIG,
 	DEFAULT_CONSOLE_CONFIG,
+	DEFAULT_APPEARANCE_CONFIG,
 	settingsToFormatProfile,
 	formatProfileToSettings,
 	settingsToAiConfig,
 	aiConfigToSettings,
 	settingsToConsoleConfig,
 	consoleConfigToSettings,
+	settingsToAppearanceConfig,
+	appearanceConfigToSettings,
 } from "../../shared/types/settings";
 import { rpc } from "../lib/rpc";
 import type { ConnectionMode, AutoPin, AutoUnpin } from "./session";
@@ -63,6 +66,16 @@ function sessionConfigToSettings(config: SessionConfig): Record<string, string> 
 	};
 }
 
+// ── Theme application ─────────────────────────────────────
+
+function applyTheme(theme: ColorTheme) {
+	if (theme === "dark") {
+		delete document.documentElement.dataset.theme;
+	} else {
+		document.documentElement.dataset.theme = theme;
+	}
+}
+
 // ── Store ─────────────────────────────────────────────────
 
 interface SettingsState {
@@ -70,6 +83,7 @@ interface SettingsState {
 	aiConfig: AiConfig;
 	sessionConfig: SessionConfig;
 	consoleConfig: ConsoleConfig;
+	appearanceConfig: AppearanceConfig;
 	loaded: boolean;
 }
 
@@ -78,6 +92,7 @@ const [state, setState] = createStore<SettingsState>({
 	aiConfig: { ...DEFAULT_AI_CONFIG },
 	sessionConfig: { ...DEFAULT_SESSION_CONFIG },
 	consoleConfig: { ...DEFAULT_CONSOLE_CONFIG },
+	appearanceConfig: { ...DEFAULT_APPEARANCE_CONFIG },
 	loaded: false,
 });
 
@@ -88,6 +103,9 @@ async function loadSettings() {
 		setState("aiConfig", settingsToAiConfig(all));
 		setState("sessionConfig", settingsToSessionConfig(all));
 		setState("consoleConfig", settingsToConsoleConfig(all));
+		const appearance = settingsToAppearanceConfig(all);
+		setState("appearanceConfig", appearance);
+		applyTheme(appearance.colorTheme);
 		setState("loaded", true);
 	} catch {
 		// Silently use defaults
@@ -143,6 +161,19 @@ async function saveConsoleConfig(config: ConsoleConfig) {
 	}
 }
 
+async function saveAppearanceConfig(config: AppearanceConfig) {
+	setState("appearanceConfig", config);
+	applyTheme(config.colorTheme);
+	const entries = appearanceConfigToSettings(config);
+	for (const [key, value] of Object.entries(entries)) {
+		try {
+			await rpc.settings.set({ key, value });
+		} catch {
+			console.debug("Failed to save setting", key);
+		}
+	}
+}
+
 export const settingsStore = {
 	get formatProfile() {
 		return state.formatProfile;
@@ -156,6 +187,9 @@ export const settingsStore = {
 	get consoleConfig() {
 		return state.consoleConfig;
 	},
+	get appearanceConfig() {
+		return state.appearanceConfig;
+	},
 	get loaded() {
 		return state.loaded;
 	},
@@ -164,4 +198,6 @@ export const settingsStore = {
 	saveAiConfig,
 	saveSessionConfig,
 	saveConsoleConfig,
+	saveAppearanceConfig,
+	applyTheme,
 };

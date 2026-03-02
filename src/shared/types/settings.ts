@@ -37,6 +37,42 @@ export const DEFAULT_FORMAT_PROFILE: FormatProfile = {
 	binaryDisplay: "size",
 };
 
+// ---- Appearance configuration ----
+
+export type ColorTheme = "dark" | "light" | "high-contrast" | "nord" | "solarized-dark" | "monokai";
+
+export interface AppearanceConfig {
+	colorTheme: ColorTheme;
+}
+
+export const DEFAULT_APPEARANCE_CONFIG: AppearanceConfig = {
+	colorTheme: "dark",
+};
+
+/** Setting key prefix for appearance configuration entries. */
+export const APPEARANCE_PREFIX = "appearance.";
+
+/** Convert an AppearanceConfig to a Record<string, string> for storage. */
+export function appearanceConfigToSettings(config: AppearanceConfig): Record<string, string> {
+	return {
+		[`${APPEARANCE_PREFIX}colorTheme`]: config.colorTheme,
+	};
+}
+
+const COLOR_THEMES: readonly ColorTheme[] = ["dark", "light", "high-contrast", "nord", "solarized-dark", "monokai"];
+
+function isColorTheme(v: string | undefined): v is ColorTheme {
+	return COLOR_THEMES.includes(v as ColorTheme);
+}
+
+/** Reconstruct an AppearanceConfig from stored settings, falling back to defaults. */
+export function settingsToAppearanceConfig(settings: Record<string, string>): AppearanceConfig {
+	const theme = settings[`${APPEARANCE_PREFIX}colorTheme`];
+	return {
+		colorTheme: isColorTheme(theme) ? theme : DEFAULT_APPEARANCE_CONFIG.colorTheme,
+	};
+}
+
 // ---- AI provider configuration ----
 
 export type AiProvider = "anthropic" | "openai" | "custom";

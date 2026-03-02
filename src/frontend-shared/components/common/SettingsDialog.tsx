@@ -11,11 +11,12 @@ import type {
 	BooleanDisplay,
 	BinaryDisplay,
 	AiProvider,
+	ColorTheme,
 } from "../../../shared/types/settings";
 import type { ConnectionMode, AutoPin, AutoUnpin } from "../../stores/session";
 import "./SettingsDialog.css";
 
-export type SettingsSection = "data-format" | "ai" | "session";
+export type SettingsSection = "appearance" | "data-format" | "ai" | "session";
 
 interface SettingsDialogProps {
 	open: boolean;
@@ -24,7 +25,11 @@ interface SettingsDialogProps {
 }
 
 export default function SettingsDialog(props: SettingsDialogProps) {
-	const [section, setSection] = createSignal<SettingsSection>("data-format");
+	const [section, setSection] = createSignal<SettingsSection>("appearance");
+
+	// ── Appearance signals ──
+	const [colorTheme, setColorTheme] = createSignal<ColorTheme>("dark");
+	let savedTheme: ColorTheme = "dark";
 
 	// ── Data Format signals ──
 	const [dateFormat, setDateFormat] = createSignal<DateFormat>("YYYY-MM-DD HH:mm:ss");
@@ -50,7 +55,12 @@ export default function SettingsDialog(props: SettingsDialogProps) {
 	createEffect(() => {
 		if (props.open) {
 			// Set initial section
-			setSection(props.initialSection ?? "data-format");
+			setSection(props.initialSection ?? "appearance");
+
+			// Appearance
+			const appearance = settingsStore.appearanceConfig;
+			setColorTheme(appearance.colorTheme);
+			savedTheme = appearance.colorTheme;
 
 			// Data Format
 			const p = settingsStore.formatProfile;
@@ -95,7 +105,22 @@ export default function SettingsDialog(props: SettingsDialogProps) {
 		}
 	}
 
+	function handleCancel() {
+		// Revert theme to saved value
+		settingsStore.applyTheme(savedTheme);
+		props.onClose();
+	}
+
+	function handleThemeChange(theme: ColorTheme) {
+		setColorTheme(theme);
+		// Live preview
+		settingsStore.applyTheme(theme);
+	}
+
 	function handleSave() {
+		// Save Appearance
+		settingsStore.saveAppearanceConfig({ colorTheme: colorTheme() });
+
 		// Save Data Format
 		const profile: FormatProfile = {
 			dateFormat: dateFormat(),
@@ -128,9 +153,16 @@ export default function SettingsDialog(props: SettingsDialogProps) {
 	}
 
 	return (
-		<Dialog open={props.open} title="Settings" onClose={props.onClose} class="settings-dialog">
+		<Dialog open={props.open} title="Settings" onClose={handleCancel} class="settings-dialog">
 			<div class="settings-layout">
 				<nav class="settings-nav">
+					<button
+						class="settings-nav__item"
+						classList={{ "settings-nav__item--active": section() === "appearance" }}
+						onClick={() => setSection("appearance")}
+					>
+						Appearance
+					</button>
 					<button
 						class="settings-nav__item"
 						classList={{ "settings-nav__item--active": section() === "data-format" }}
@@ -155,6 +187,12 @@ export default function SettingsDialog(props: SettingsDialogProps) {
 				</nav>
 
 				<div class="settings-content">
+					<Show when={section() === "appearance"}>
+						<AppearanceSection
+							colorTheme={colorTheme()}
+							setColorTheme={handleThemeChange}
+						/>
+					</Show>
 					<Show when={section() === "data-format"}>
 						<DataFormatSection
 							dateFormat={dateFormat()} setDateFormat={setDateFormat}
@@ -187,10 +225,40 @@ export default function SettingsDialog(props: SettingsDialogProps) {
 			</div>
 
 			<div class="settings-actions">
-				<button class="btn btn--secondary" onClick={props.onClose}>Cancel</button>
+				<button class="btn btn--secondary" onClick={handleCancel}>Cancel</button>
 				<button class="btn btn--primary" onClick={handleSave}>Save</button>
 			</div>
 		</Dialog>
+	);
+}
+
+// ── Appearance Section ───────────────────────────────────
+
+function AppearanceSection(props: {
+	colorTheme: ColorTheme;
+	setColorTheme: (v: ColorTheme) => void;
+}) {
+	return (
+		<div class="settings-form">
+			<div class="settings-form__section">
+				<h4 class="settings-form__section-title">Color Theme</h4>
+				<div class="settings-form__field settings-form__field--inline">
+					<label class="settings-form__label">Theme</label>
+					<select
+						class="settings-form__select"
+						value={props.colorTheme}
+						onChange={(e) => props.setColorTheme(e.currentTarget.value as ColorTheme)}
+					>
+						<option value="dark">Dark</option>
+						<option value="light">Light</option>
+						<option value="high-contrast">High Contrast</option>
+						<option value="nord">Nord</option>
+						<option value="solarized-dark">Solarized Dark</option>
+						<option value="monokai">Monokai</option>
+					</select>
+				</div>
+			</div>
+		</div>
 	);
 }
 
