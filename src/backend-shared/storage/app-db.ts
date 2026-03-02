@@ -20,6 +20,10 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
 	maxHistoryEntries: "1000",
 	clipboardIncludeHeaders: "true",
 	exportDefaultFormat: "csv",
+	defaultConnectionMode: "pool",
+	autoPin: "on-begin",
+	autoUnpin: "never",
+	maxSessionsPerConnection: "5",
 };
 
 let instance: AppDatabase | null = null;
