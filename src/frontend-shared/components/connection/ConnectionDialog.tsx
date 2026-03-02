@@ -4,6 +4,8 @@ import type {
 	ConnectionInfo,
 	ConnectionType,
 	SSLMode,
+	SshAuthMethod,
+	SshTunnelConfig,
 } from "../../../shared/types/connection";
 import { CONNECTION_TYPE_META, CONNECTION_COLORS, SSL_MODES } from "../../../shared/types/connection";
 import { connectionsStore } from "../../stores/connections";
@@ -11,6 +13,8 @@ import { storage } from "../../lib/storage";
 import { rpc } from "../../lib/rpc";
 import { siPostgresql, siSqlite, siMysql } from "simple-icons";
 import FolderOpen from "lucide-solid/icons/folder-open";
+import ChevronDown from "lucide-solid/icons/chevron-down";
+import ChevronRight from "lucide-solid/icons/chevron-right";
 import Plug from "lucide-solid/icons/plug";
 import Dialog from "../common/Dialog";
 import "./ConnectionDialog.css";
@@ -38,6 +42,20 @@ function defaultSqliteFields() {
 	return {
 		name: "",
 		path: "",
+	};
+}
+
+function defaultSshFields() {
+	return {
+		enabled: false,
+		host: "",
+		port: "22",
+		username: "",
+		authMethod: "password" as SshAuthMethod,
+		password: "",
+		keyPath: "",
+		keyPassphrase: "",
+		localPort: "",
 	};
 }
 
@@ -75,6 +93,9 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 	const [pgFields, setPgFields] = createSignal(defaultPgFields());
 	const [sqliteFields, setSqliteFields] = createSignal(defaultSqliteFields());
 	const [connectionUrl, setConnectionUrl] = createSignal("");
+
+	const [sshFields, setSshFields] = createSignal(defaultSshFields());
+	const [sshExpanded, setSshExpanded] = createSignal(false);
 
 	const [readOnly, setReadOnly] = createSignal(false);
 	const [connectionColor, setConnectionColor] = createSignal<string | undefined>(undefined);
@@ -116,11 +137,32 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 					password: conn.config.password,
 					ssl,
 				});
+				// Load SSH tunnel config if present
+				if (conn.config.type === "postgresql" && conn.config.sshTunnel) {
+					const t = conn.config.sshTunnel;
+					setSshFields({
+						enabled: t.enabled,
+						host: t.host ?? "",
+						port: String(t.port ?? 22),
+						username: t.username ?? "",
+						authMethod: t.authMethod ?? "password",
+						password: t.password ?? "",
+						keyPath: t.keyPath ?? "",
+						keyPassphrase: t.keyPassphrase ?? "",
+						localPort: t.localPort ? String(t.localPort) : "",
+					});
+					setSshExpanded(t.enabled);
+				} else {
+					setSshFields(defaultSshFields());
+					setSshExpanded(false);
+				}
 			} else {
 				setSqliteFields({
 					name: conn.name,
 					path: conn.config.path,
 				});
+				setSshFields(defaultSshFields());
+				setSshExpanded(false);
 			}
 		} else {
 			setDbType("postgresql");
@@ -129,6 +171,8 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 			setRememberPassword(true);
 			setPgFields(defaultPgFields());
 			setSqliteFields(defaultSqliteFields());
+			setSshFields(defaultSshFields());
+			setSshExpanded(false);
 		}
 	}
 
@@ -149,6 +193,20 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 					ssl: f.ssl !== "disable",
 				};
 			}
+			const ssh = sshFields();
+			const sshTunnel: SshTunnelConfig | undefined = ssh.enabled
+				? {
+					enabled: true,
+					host: ssh.host,
+					port: Number(ssh.port) || 22,
+					username: ssh.username,
+					authMethod: ssh.authMethod,
+					password: ssh.authMethod === "password" ? ssh.password : undefined,
+					keyPath: ssh.authMethod === "key" ? ssh.keyPath : undefined,
+					keyPassphrase: ssh.authMethod === "key" && ssh.keyPassphrase ? ssh.keyPassphrase : undefined,
+					localPort: ssh.localPort ? Number(ssh.localPort) : undefined,
+				}
+				: undefined;
 			return {
 				type,
 				host: f.host,
@@ -157,6 +215,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 				user: f.user,
 				password: f.password,
 				ssl: f.ssl,
+				sshTunnel,
 			};
 		} else {
 			return {
@@ -185,6 +244,17 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 			if (!f.port.trim() || isNaN(Number(f.port))) errs.port = "Valid port is required";
 			if (!f.database.trim()) errs.database = "Database is required";
 			if (!f.user.trim()) errs.user = "Username is required";
+
+			// Validate SSH tunnel fields
+			if (dbType() === "postgresql") {
+				const ssh = sshFields();
+				if (ssh.enabled) {
+					if (!ssh.host.trim()) errs.sshHost = "SSH host is required";
+					if (!ssh.port.trim() || isNaN(Number(ssh.port))) errs.sshPort = "Valid SSH port is required";
+					if (!ssh.username.trim()) errs.sshUsername = "SSH username is required";
+					if (ssh.authMethod === "key" && !ssh.keyPath.trim()) errs.sshKeyPath = "SSH key path is required";
+				}
+			}
 		} else {
 			const f = sqliteFields();
 			if (!f.path.trim()) errs.path = "File path is required";
@@ -266,6 +336,34 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 			delete next[field];
 			return next;
 		});
+	}
+
+	function updateSshField(field: string, value: string | boolean) {
+		setSshFields((f) => ({ ...f, [field]: value }));
+		setErrors((e) => {
+			const next = { ...e };
+			// Map SSH field names to error keys
+			const errorKey = field === "host" ? "sshHost"
+				: field === "port" ? "sshPort"
+				: field === "username" ? "sshUsername"
+				: field === "keyPath" ? "sshKeyPath"
+				: undefined;
+			if (errorKey) delete next[errorKey];
+			return next;
+		});
+	}
+
+	async function handleBrowseSshKey() {
+		const result = await rpc.system.showOpenDialog({
+			title: "Select SSH Private Key",
+			filters: [
+				{ name: "All Files", extensions: ["*"] },
+			],
+		});
+
+		if (!result.cancelled && result.paths.length > 0) {
+			updateSshField("keyPath", result.paths[0]);
+		}
 	}
 
 	function updateName(value: string) {
@@ -451,6 +549,172 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 							<span class="conn-dialog__hint">Password will be encrypted and stored in your browser</span>
 						</div>
 					</Show>
+				</Show>
+
+				{/* SSH Tunnel (PostgreSQL only) */}
+				<Show when={dbType() === "postgresql"}>
+					<div class="conn-dialog__ssh-section">
+						<button
+							class="conn-dialog__ssh-toggle"
+							onClick={() => {
+								const expanding = !sshExpanded();
+								setSshExpanded(expanding);
+								if (!expanding && !sshFields().enabled) return;
+							}}
+							type="button"
+						>
+							{sshExpanded() ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+							SSH Tunnel
+							<Show when={sshFields().enabled}>
+								<span class="conn-dialog__ssh-badge">ON</span>
+							</Show>
+						</button>
+
+						<Show when={sshExpanded()}>
+							<div class="conn-dialog__ssh-fields">
+								<div class="conn-dialog__field conn-dialog__field--inline">
+									<label class="conn-dialog__label conn-dialog__label--checkbox">
+										<input
+											type="checkbox"
+											checked={sshFields().enabled}
+											onChange={(e) => updateSshField("enabled", e.currentTarget.checked)}
+										/>
+										Use SSH Tunnel
+									</label>
+								</div>
+
+								<Show when={sshFields().enabled}>
+									<div class="conn-dialog__field">
+										<label class="conn-dialog__label">SSH Host</label>
+										<input
+											class="conn-dialog__input"
+											classList={{ "conn-dialog__input--error": !!errors().sshHost }}
+											type="text"
+											value={sshFields().host}
+											onInput={(e) => updateSshField("host", e.currentTarget.value)}
+											placeholder="bastion.example.com"
+										/>
+										<Show when={errors().sshHost}>
+											<span class="conn-dialog__error">{errors().sshHost}</span>
+										</Show>
+									</div>
+
+									<div class="conn-dialog__field">
+										<label class="conn-dialog__label">SSH Port</label>
+										<input
+											class="conn-dialog__input"
+											classList={{ "conn-dialog__input--error": !!errors().sshPort }}
+											type="text"
+											value={sshFields().port}
+											onInput={(e) => updateSshField("port", e.currentTarget.value)}
+											placeholder="22"
+										/>
+										<Show when={errors().sshPort}>
+											<span class="conn-dialog__error">{errors().sshPort}</span>
+										</Show>
+									</div>
+
+									<div class="conn-dialog__field">
+										<label class="conn-dialog__label">SSH Username</label>
+										<input
+											class="conn-dialog__input"
+											classList={{ "conn-dialog__input--error": !!errors().sshUsername }}
+											type="text"
+											value={sshFields().username}
+											onInput={(e) => updateSshField("username", e.currentTarget.value)}
+											placeholder="ubuntu"
+										/>
+										<Show when={errors().sshUsername}>
+											<span class="conn-dialog__error">{errors().sshUsername}</span>
+										</Show>
+									</div>
+
+									<div class="conn-dialog__field">
+										<label class="conn-dialog__label">Authentication</label>
+										<div class="conn-dialog__ssh-auth-switcher">
+											<button
+												class="conn-dialog__ssh-auth-btn"
+												classList={{ "conn-dialog__ssh-auth-btn--active": sshFields().authMethod === "password" }}
+												onClick={() => updateSshField("authMethod", "password")}
+												type="button"
+											>
+												Password
+											</button>
+											<button
+												class="conn-dialog__ssh-auth-btn"
+												classList={{ "conn-dialog__ssh-auth-btn--active": sshFields().authMethod === "key" }}
+												onClick={() => updateSshField("authMethod", "key")}
+												type="button"
+											>
+												SSH Key
+											</button>
+										</div>
+									</div>
+
+									<Show when={sshFields().authMethod === "password"}>
+										<div class="conn-dialog__field">
+											<label class="conn-dialog__label">SSH Password</label>
+											<input
+												class="conn-dialog__input"
+												type="password"
+												value={sshFields().password}
+												onInput={(e) => updateSshField("password", e.currentTarget.value)}
+											/>
+										</div>
+									</Show>
+
+									<Show when={sshFields().authMethod === "key"}>
+										<div class="conn-dialog__field">
+											<label class="conn-dialog__label">Private Key</label>
+											<div class="conn-dialog__browse-row">
+												<input
+													class="conn-dialog__input"
+													classList={{ "conn-dialog__input--error": !!errors().sshKeyPath }}
+													type="text"
+													value={sshFields().keyPath}
+													onInput={(e) => updateSshField("keyPath", e.currentTarget.value)}
+													placeholder="~/.ssh/id_rsa"
+												/>
+												<button
+													class="conn-dialog__browse-btn"
+													onClick={handleBrowseSshKey}
+													type="button"
+												>
+													<FolderOpen size={14} /> Browse
+												</button>
+											</div>
+											<Show when={errors().sshKeyPath}>
+												<span class="conn-dialog__error">{errors().sshKeyPath}</span>
+											</Show>
+										</div>
+
+										<div class="conn-dialog__field">
+											<label class="conn-dialog__label">Passphrase</label>
+											<input
+												class="conn-dialog__input"
+												type="password"
+												value={sshFields().keyPassphrase}
+												onInput={(e) => updateSshField("keyPassphrase", e.currentTarget.value)}
+												placeholder="Optional"
+											/>
+										</div>
+									</Show>
+
+									<div class="conn-dialog__field">
+										<label class="conn-dialog__label">Local Port</label>
+										<input
+											class="conn-dialog__input"
+											type="text"
+											value={sshFields().localPort}
+											onInput={(e) => updateSshField("localPort", e.currentTarget.value)}
+											placeholder="Auto"
+										/>
+										<span class="conn-dialog__hint">Leave empty for automatic assignment</span>
+									</div>
+								</Show>
+							</div>
+						</Show>
+					</div>
 				</Show>
 
 				{/* SQLite fields */}

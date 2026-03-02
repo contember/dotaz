@@ -92,7 +92,14 @@ export class AppDatabase {
 
 	private encryptConfigJson(config: ConnectionConfig): string {
 		if (this.localKey && isServerConfig(config)) {
-			const encrypted = { ...config, password: encryptLocalPassword(config.password, this.localKey) };
+			let encrypted: ConnectionConfig = { ...config, password: encryptLocalPassword(config.password, this.localKey) };
+			// Encrypt SSH tunnel secrets if present
+			if (config.type === "postgresql" && config.sshTunnel) {
+				const tunnel = { ...config.sshTunnel };
+				if (tunnel.password) tunnel.password = encryptLocalPassword(tunnel.password, this.localKey!);
+				if (tunnel.keyPassphrase) tunnel.keyPassphrase = encryptLocalPassword(tunnel.keyPassphrase, this.localKey!);
+				encrypted = { ...encrypted, sshTunnel: tunnel } as ConnectionConfig;
+			}
 			return JSON.stringify(encrypted);
 		}
 		return JSON.stringify(config);
@@ -100,7 +107,19 @@ export class AppDatabase {
 
 	private decryptConfig(config: ConnectionConfig): ConnectionConfig {
 		if (this.localKey && isServerConfig(config) && isEncryptedPassword(config.password)) {
-			return { ...config, password: decryptLocalPassword(config.password, this.localKey) };
+			let decrypted: ConnectionConfig = { ...config, password: decryptLocalPassword(config.password, this.localKey) };
+			// Decrypt SSH tunnel secrets if present
+			if (config.type === "postgresql" && config.sshTunnel) {
+				const tunnel = { ...config.sshTunnel };
+				if (tunnel.password && isEncryptedPassword(tunnel.password)) {
+					tunnel.password = decryptLocalPassword(tunnel.password, this.localKey!);
+				}
+				if (tunnel.keyPassphrase && isEncryptedPassword(tunnel.keyPassphrase)) {
+					tunnel.keyPassphrase = decryptLocalPassword(tunnel.keyPassphrase, this.localKey!);
+				}
+				decrypted = { ...decrypted, sshTunnel: tunnel } as ConnectionConfig;
+			}
+			return decrypted;
 		}
 		return config;
 	}
@@ -113,9 +132,29 @@ export class AppDatabase {
 			for (const row of rows) {
 				try {
 					const config = JSON.parse(row.config) as ConnectionConfig;
-					if (isServerConfig(config) && !isEncryptedPassword(config.password)) {
-						const encrypted = { ...config, password: encryptLocalPassword(config.password, this.localKey!) };
-						update.run(JSON.stringify(encrypted), row.id);
+					if (isServerConfig(config)) {
+						let changed = false;
+						let encrypted = { ...config };
+						if (!isEncryptedPassword(config.password)) {
+							encrypted = { ...encrypted, password: encryptLocalPassword(config.password, this.localKey!) };
+							changed = true;
+						}
+						// Also migrate SSH tunnel secrets
+						if (config.type === "postgresql" && config.sshTunnel) {
+							const tunnel = { ...config.sshTunnel };
+							if (tunnel.password && !isEncryptedPassword(tunnel.password)) {
+								tunnel.password = encryptLocalPassword(tunnel.password, this.localKey!);
+								changed = true;
+							}
+							if (tunnel.keyPassphrase && !isEncryptedPassword(tunnel.keyPassphrase)) {
+								tunnel.keyPassphrase = encryptLocalPassword(tunnel.keyPassphrase, this.localKey!);
+								changed = true;
+							}
+							if (changed) encrypted = { ...encrypted, sshTunnel: tunnel } as typeof encrypted;
+						}
+						if (changed) {
+							update.run(JSON.stringify(encrypted), row.id);
+						}
 					}
 				} catch {
 					// Skip corrupted configs

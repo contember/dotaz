@@ -89,7 +89,7 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 
 | Issue | Title | Status | Notes |
 |-------|-------|--------|-------|
-| DOTAZ-087 | SSH tunnel for PostgreSQL connections | not started | SSH port forwarding via bastion host |
+| DOTAZ-087 | SSH tunnel for PostgreSQL connections | in progress | SSH port forwarding via bastion host |
 | DOTAZ-088 | Navigator search/filter in connection tree | not started | Filter tables/views by name |
 | DOTAZ-089 | Advanced Copy with configurable format | not started | Ctrl+Shift+C — delimiter, headers, format |
 | DOTAZ-090 | Transaction log and pending transaction viewer | not started | Session statement log + uncommitted TX warning |

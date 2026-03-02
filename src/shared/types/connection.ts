@@ -6,6 +6,20 @@ export type SSLMode = "disable" | "allow" | "prefer" | "require" | "verify-ca" |
 
 export const SSL_MODES: SSLMode[] = ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"];
 
+export type SshAuthMethod = "password" | "key";
+
+export interface SshTunnelConfig {
+	enabled: boolean;
+	host: string;
+	port: number;
+	username: string;
+	authMethod: SshAuthMethod;
+	password?: string;
+	keyPath?: string;
+	keyPassphrase?: string;
+	localPort?: number;
+}
+
 export interface PostgresConnectionConfig {
 	type: "postgresql";
 	host: string;
@@ -14,6 +28,7 @@ export interface PostgresConnectionConfig {
 	user: string;
 	password: string;
 	ssl?: SSLMode;
+	sshTunnel?: SshTunnelConfig;
 	activeDatabases?: string[];
 }
 

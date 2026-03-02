@@ -17,6 +17,7 @@ import {
 import type { DatabaseInfo } from "../../shared/types/database";
 import type { DatabaseErrorCode } from "../../shared/types/errors";
 import { DatabaseError } from "../../shared/types/errors";
+import { createSshTunnel, type SshTunnel } from "./ssh-tunnel";
 
 export interface StatusChangeEvent {
 	connectionId: string;
@@ -63,6 +64,8 @@ export class ConnectionManager {
 	private appDb: AppDatabase;
 	private opts: Required<ConnectionManagerOptions>;
 
+	// SSH tunnels keyed by connectionId
+	private tunnels = new Map<string, SshTunnel>();
 	// Health check timers keyed by connectionId
 	private healthTimers = new Map<string, ReturnType<typeof setInterval>>();
 	// Active auto-reconnect state keyed by connectionId
@@ -88,11 +91,13 @@ export class ConnectionManager {
 		if (this.drivers.has(connectionId)) {
 			await this.disconnectAllDrivers(connectionId);
 		}
+		// Close any existing tunnel
+		await this.closeTunnel(connectionId);
 
 		this.setConnectionState(connectionId, "connecting");
 
 		try {
-			const config = configOverride
+			let config = configOverride
 				? { ...connInfo.config, ...configOverride }
 				: connInfo.config;
 			validateConfig(config);
@@ -101,6 +106,9 @@ export class ConnectionManager {
 			if (isServerConfig(config)) {
 				this.passwords.set(connectionId, config.password);
 			}
+
+			// Create SSH tunnel if configured (PostgreSQL only)
+			config = await this.setupSshTunnel(connectionId, config);
 
 			const defaultDb = getDefaultDatabase(config);
 			const driver = createDriver(config);
@@ -114,13 +122,15 @@ export class ConnectionManager {
 			if (CONNECTION_TYPE_META[config.type].supportsMultiDatabase && 'activeDatabases' in config && config.activeDatabases) {
 				const activations = config.activeDatabases
 					.filter((db) => db !== config.database)
-					.map((db) => this.connectDatabase(connectionId, config, db));
+					.map((db) => this.connectDatabase(connectionId, config as PostgresConnectionConfig, db));
 				await Promise.allSettled(activations);
 			}
 
 			this.setConnectionState(connectionId, "connected");
 			this.startHealthCheck(connectionId);
 		} catch (err) {
+			// Clean up tunnel on connection failure
+			await this.closeTunnel(connectionId);
 			const message =
 				err instanceof Error ? err.message : "Unknown connection error";
 			const errorCode = err instanceof DatabaseError ? err.code : undefined;
@@ -133,6 +143,7 @@ export class ConnectionManager {
 		this.cancelAutoReconnect(connectionId);
 		this.stopHealthCheck(connectionId);
 		await this.gracefulDisconnect(connectionId);
+		await this.closeTunnel(connectionId);
 		this.passwords.delete(connectionId);
 		this.setConnectionState(connectionId, "disconnected");
 	}
@@ -331,6 +342,7 @@ export class ConnectionManager {
 		if (this.drivers.has(id)) {
 			await this.disconnectAllDrivers(id);
 		}
+		await this.closeTunnel(id);
 		this.passwords.delete(id);
 		this.states.delete(id);
 		this.appDb.deleteConnection(id);
@@ -340,15 +352,27 @@ export class ConnectionManager {
 		config: ConnectionConfig,
 	): Promise<{ success: boolean; error?: string }> {
 		validateConfig(config);
-		const driver = createDriver(config);
+		let tunnel: SshTunnel | null = null;
+		let effectiveConfig = config;
 		try {
-			await driver.connect(config);
+			// Set up SSH tunnel if configured
+			if (config.type === "postgresql" && config.sshTunnel?.enabled) {
+				tunnel = await createSshTunnel(config.sshTunnel, config.host, config.port);
+				effectiveConfig = { ...config, host: "127.0.0.1", port: tunnel.localPort };
+			}
+
+			const driver = createDriver(effectiveConfig);
+			await driver.connect(effectiveConfig);
 			await driver.disconnect();
 			return { success: true };
 		} catch (err) {
 			const message =
 				err instanceof Error ? err.message : "Unknown connection error";
 			return { success: false, error: message };
+		} finally {
+			if (tunnel) {
+				await tunnel.close();
+			}
 		}
 	}
 
@@ -373,8 +397,8 @@ export class ConnectionManager {
 		for (const id of [...this.healthTimers.keys()]) {
 			this.stopHealthCheck(id);
 		}
-		// Disconnect all active drivers
-		const ids = [...this.drivers.keys()];
+		// Disconnect all active drivers (also closes tunnels)
+		const ids = [...new Set([...this.drivers.keys(), ...this.tunnels.keys()])];
 		for (const id of ids) {
 			await this.disconnect(id);
 		}
@@ -472,11 +496,17 @@ export class ConnectionManager {
 		this.setConnectionState(connectionId, "reconnecting");
 
 		try {
+			// Close existing tunnel before reconnecting
+			await this.closeTunnel(connectionId);
+
 			// Use cached password if available
-			const cachedPassword = this.passwords.get(connectionId);
-			const config = cachedPassword
-				? { ...connInfo.config, password: cachedPassword } as ConnectionConfig
+			const cachedPw = this.passwords.get(connectionId);
+			let config: ConnectionConfig = cachedPw
+				? { ...connInfo.config, password: cachedPw } as ConnectionConfig
 				: connInfo.config;
+
+			// Set up SSH tunnel if configured
+			config = await this.setupSshTunnel(connectionId, config);
 
 			const defaultDb = getDefaultDatabase(config);
 			const driver = createDriver(config);
@@ -484,6 +514,7 @@ export class ConnectionManager {
 
 			if (rs.cancelled) {
 				await driver.disconnect();
+				await this.closeTunnel(connectionId);
 				return;
 			}
 
@@ -504,6 +535,7 @@ export class ConnectionManager {
 			this.startHealthCheck(connectionId);
 		} catch {
 			if (rs.cancelled) return;
+			await this.closeTunnel(connectionId);
 			this.scheduleReconnectAttempt(connectionId, rs);
 		}
 	}
@@ -565,10 +597,39 @@ export class ConnectionManager {
 			throw new Error(`No active connection for id: ${connectionId}`);
 		}
 
-		const config: PostgresConnectionConfig = { ...baseConfig, database };
+		// Use the tunnel-rewritten host/port if a tunnel is active
+		const tunnel = this.tunnels.get(connectionId);
+		const tunnelOverride = tunnel
+			? { host: "127.0.0.1", port: tunnel.localPort }
+			: {};
+
+		const config: PostgresConnectionConfig = { ...baseConfig, ...tunnelOverride, database };
 		const driver = createDriver(config);
 		await driver.connect(config);
 		driverMap.set(database, driver);
+	}
+
+	/**
+	 * If the connection config has an SSH tunnel configured,
+	 * create the tunnel and return a modified config pointing at localhost.
+	 */
+	private async setupSshTunnel(connectionId: string, config: ConnectionConfig): Promise<ConnectionConfig> {
+		if (config.type !== "postgresql" || !config.sshTunnel?.enabled) {
+			return config;
+		}
+
+		const tunnel = await createSshTunnel(config.sshTunnel, config.host, config.port);
+		this.tunnels.set(connectionId, tunnel);
+
+		return { ...config, host: "127.0.0.1", port: tunnel.localPort };
+	}
+
+	private async closeTunnel(connectionId: string): Promise<void> {
+		const tunnel = this.tunnels.get(connectionId);
+		if (tunnel) {
+			await tunnel.close();
+			this.tunnels.delete(connectionId);
+		}
 	}
 
 	private getActiveDatabaseCount(): number {
