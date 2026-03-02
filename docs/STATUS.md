@@ -132,7 +132,7 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 
 | Issue | Title | Status | Notes |
 |-------|-------|--------|-------|
-| DOTAZ-109 | Driver session management methods | not started | reserveSession/releaseSession, sessionId on execute/tx/schema, PG multi-session Map, SQLite/MySQL/WASM no-op |
+| DOTAZ-109 | Driver session management methods | done | reserveSession/releaseSession/getSessionIds, sessionId on execute/cancel/tx/schema/iterate/importBatch, PG multi-session Map with SessionState, __default__ session for backward compat, SQLite/MySQL/WASM no-op Set, 17 new tests |
 | DOTAZ-110 | Per-Run connection affinity in QueryExecutor | not started | Ephemeral session for multi-statement batches; depends on DOTAZ-109 |
 | DOTAZ-111 | SessionManager service | not started | Session lifecycle, TransactionManager sessionId, settings defaults; depends on DOTAZ-109 |
 | DOTAZ-112 | Session RPC endpoints and adapter wiring | not started | RpcAdapter + BackendAdapter + DemoAdapter + handlers, session.changed message; depends on DOTAZ-110, DOTAZ-111 |
@@ -140,5 +140,5 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 
 ---
 
-*Last updated: 2026-03-02 — DOTAZ-108 done*
+*Last updated: 2026-03-02 — DOTAZ-109 done*
 

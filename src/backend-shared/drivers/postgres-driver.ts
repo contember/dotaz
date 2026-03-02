@@ -68,6 +68,15 @@ interface PgTableRow {
 	table_type: string;
 }
 
+interface SessionState {
+	conn: ReservedSQL;
+	txActive: boolean;
+	activeQuery: ReturnType<SQL["unsafe"]> | null;
+}
+
+/** Internal session ID used for backward-compatible beginTransaction() without sessionId */
+const DEFAULT_SESSION = "__default__";
+
 /** Map PostgreSQL information_schema data_type to DatabaseDataType. */
 function mapPgDataType(dataType: string): DatabaseDataType {
 	switch (dataType.toLowerCase()) {
@@ -119,9 +128,8 @@ function mapPgDataType(dataType: string): DatabaseDataType {
 export class PostgresDriver implements DatabaseDriver {
 	private db: SQL | null = null;
 	private connected = false;
-	private txActive = false;
-	private reservedConn: ReservedSQL | null = null;
-	private activeQuery: ReturnType<SQL["unsafe"]> | null = null;
+	private sessions = new Map<string, SessionState>();
+	private poolActiveQuery: ReturnType<SQL["unsafe"]> | null = null;
 
 	async connect(config: ConnectionConfig): Promise<void> {
 		if (config.type !== "postgresql") {
@@ -143,15 +151,19 @@ export class PostgresDriver implements DatabaseDriver {
 	}
 
 	async disconnect(): Promise<void> {
-		if (this.reservedConn) {
-			this.reservedConn.release();
-			this.reservedConn = null;
+		// Release all sessions
+		for (const [, session] of this.sessions) {
+			if (session.txActive) {
+				try { await session.conn.unsafe("ROLLBACK"); } catch { /* ignore */ }
+			}
+			session.conn.release();
 		}
+		this.sessions.clear();
+
 		if (this.db) {
 			await this.db.close();
 			this.db = null;
 			this.connected = false;
-			this.txActive = false;
 		}
 	}
 
@@ -159,12 +171,46 @@ export class PostgresDriver implements DatabaseDriver {
 		return this.connected;
 	}
 
-	async execute(sql: string, params?: unknown[]): Promise<QueryResult> {
+	// --- Session management ---
+
+	async reserveSession(sessionId: string): Promise<void> {
 		this.ensureConnected();
-		const conn = this.reservedConn ?? this.db!;
+		if (this.sessions.has(sessionId)) {
+			throw new Error(`Session "${sessionId}" already exists`);
+		}
+		const conn = await this.db!.reserve();
+		this.sessions.set(sessionId, { conn, txActive: false, activeQuery: null });
+	}
+
+	async releaseSession(sessionId: string): Promise<void> {
+		const session = this.sessions.get(sessionId);
+		if (!session) {
+			throw new Error(`Session "${sessionId}" not found`);
+		}
+		if (session.txActive) {
+			try { await session.conn.unsafe("ROLLBACK"); } catch { /* ignore */ }
+		}
+		session.conn.release();
+		this.sessions.delete(sessionId);
+	}
+
+	getSessionIds(): string[] {
+		return [...this.sessions.keys()].filter((id) => id !== DEFAULT_SESSION);
+	}
+
+	// --- Query execution ---
+
+	async execute(sql: string, params?: unknown[], sessionId?: string): Promise<QueryResult> {
+		this.ensureConnected();
+		const session = this.resolveSession(sessionId);
+		const conn = session ? session.conn : this.db!;
 		const start = performance.now();
 		const query = conn.unsafe(sql, params ?? []);
-		this.activeQuery = query;
+		if (session) {
+			session.activeQuery = query;
+		} else {
+			this.poolActiveQuery = query;
+		}
 		try {
 			const result = await query;
 			const durationMs = Math.round(performance.now() - start);
@@ -188,29 +234,42 @@ export class PostgresDriver implements DatabaseDriver {
 		} catch (err) {
 			throw err instanceof DatabaseError ? err : mapPostgresError(err);
 		} finally {
-			this.activeQuery = null;
+			if (session) {
+				session.activeQuery = null;
+			} else {
+				this.poolActiveQuery = null;
+			}
 		}
 	}
 
-	async cancel(): Promise<void> {
-		if (this.activeQuery) {
-			this.activeQuery.cancel();
-			this.activeQuery = null;
+	async cancel(sessionId?: string): Promise<void> {
+		if (sessionId) {
+			const session = this.sessions.get(sessionId);
+			if (session?.activeQuery) {
+				session.activeQuery.cancel();
+				session.activeQuery = null;
+			}
+		} else {
+			if (this.poolActiveQuery) {
+				this.poolActiveQuery.cancel();
+				this.poolActiveQuery = null;
+			}
 		}
 	}
 
-	async loadSchema(): Promise<SchemaData> {
+	async loadSchema(sessionId?: string): Promise<SchemaData> {
 		this.ensureConnected();
-		const conn = this.reservedConn ?? this.db!;
+		const session = this.resolveSession(sessionId);
+		const conn = session ? session.conn : this.db!;
 
-		const schemas = await this.getSchemas();
+		const schemas = await this.getSchemas(conn);
 		const schemaNames = schemas.map((s) => s.name);
 		// Format as PG array literal for use with ANY($1)
 		const pgArray = `{${schemaNames.join(",")}}`;
 
 		const tables: SchemaData["tables"] = {};
 		for (const schema of schemas) {
-			tables[schema.name] = await this.getTables(schema.name);
+			tables[schema.name] = await this.getTables(conn, schema.name);
 		}
 
 		const [allColumns, allIndexes, allForeignKeys, allReferencingForeignKeys] = await Promise.all([
@@ -422,9 +481,8 @@ export class PostgresDriver implements DatabaseDriver {
 		return { schemas, tables, columns, indexes, foreignKeys, referencingForeignKeys };
 	}
 
-	private async getSchemas(): Promise<SchemaInfo[]> {
+	private async getSchemas(conn: SQL | ReservedSQL): Promise<SchemaInfo[]> {
 		this.ensureConnected();
-		const conn = this.reservedConn ?? this.db!;
 		const rows = await conn.unsafe(
 			`SELECT schema_name AS name
 			FROM information_schema.schemata
@@ -434,9 +492,8 @@ export class PostgresDriver implements DatabaseDriver {
 		return [...rows] as SchemaInfo[];
 	}
 
-	private async getTables(schema: string): Promise<TableInfo[]> {
+	private async getTables(conn: SQL | ReservedSQL, schema: string): Promise<TableInfo[]> {
 		this.ensureConnected();
-		const conn = this.reservedConn ?? this.db!;
 		const rows = await conn.unsafe(
 			`SELECT table_name AS name, table_type
 			FROM information_schema.tables
@@ -451,43 +508,60 @@ export class PostgresDriver implements DatabaseDriver {
 		}));
 	}
 
-	async beginTransaction(): Promise<void> {
+	// --- Transactions ---
+
+	async beginTransaction(sessionId?: string): Promise<void> {
 		this.ensureConnected();
-		const conn = await this.db!.reserve();
-		try {
-			await conn.unsafe("BEGIN");
-		} catch (err) {
-			conn.release();
-			throw err;
+		if (sessionId) {
+			const session = this.sessions.get(sessionId);
+			if (!session) throw new Error(`Session "${sessionId}" not found`);
+			await session.conn.unsafe("BEGIN");
+			session.txActive = true;
+		} else {
+			// Backward compat: reserve into __default__ session
+			const conn = await this.db!.reserve();
+			try {
+				await conn.unsafe("BEGIN");
+			} catch (err) {
+				conn.release();
+				throw err;
+			}
+			this.sessions.set(DEFAULT_SESSION, { conn, txActive: true, activeQuery: null });
 		}
-		this.reservedConn = conn;
-		this.txActive = true;
 	}
 
-	async commit(): Promise<void> {
+	async commit(sessionId?: string): Promise<void> {
 		this.ensureConnected();
-		if (!this.reservedConn) {
-			throw new Error("No active transaction");
+		const id = sessionId ?? DEFAULT_SESSION;
+		const session = this.sessions.get(id);
+		if (!session) throw new Error("No active transaction");
+		await session.conn.unsafe("COMMIT");
+		session.txActive = false;
+		// If __default__ session, release it after commit
+		if (id === DEFAULT_SESSION) {
+			session.conn.release();
+			this.sessions.delete(DEFAULT_SESSION);
 		}
-		await this.reservedConn.unsafe("COMMIT");
-		this.reservedConn.release();
-		this.reservedConn = null;
-		this.txActive = false;
 	}
 
-	async rollback(): Promise<void> {
+	async rollback(sessionId?: string): Promise<void> {
 		this.ensureConnected();
-		if (!this.reservedConn) {
-			throw new Error("No active transaction");
+		const id = sessionId ?? DEFAULT_SESSION;
+		const session = this.sessions.get(id);
+		if (!session) throw new Error("No active transaction");
+		await session.conn.unsafe("ROLLBACK");
+		session.txActive = false;
+		// If __default__ session, release it after rollback
+		if (id === DEFAULT_SESSION) {
+			session.conn.release();
+			this.sessions.delete(DEFAULT_SESSION);
 		}
-		await this.reservedConn.unsafe("ROLLBACK");
-		this.reservedConn.release();
-		this.reservedConn = null;
-		this.txActive = false;
 	}
 
-	inTransaction(): boolean {
-		return this.txActive;
+	inTransaction(sessionId?: string): boolean {
+		const id = sessionId ?? DEFAULT_SESSION;
+		const session = this.sessions.get(id);
+		return session?.txActive ?? false;
 	}
 
 	getDriverType(): "postgresql" {
@@ -515,10 +589,17 @@ export class PostgresDriver implements DatabaseDriver {
 		params?: unknown[],
 		batchSize = 1000,
 		signal?: AbortSignal,
+		sessionId?: string,
 	): AsyncGenerator<Record<string, unknown>[]> {
 		this.ensureConnected();
 		const cursorId = `dotaz_iter_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-		const conn = await this.db!.reserve();
+
+		// If sessionId provided, use that session's conn (no separate reserve)
+		const session = sessionId ? this.sessions.get(sessionId) : undefined;
+		if (sessionId && !session) throw new Error(`Session "${sessionId}" not found`);
+
+		const conn = session ? session.conn : await this.db!.reserve();
+		const ownConn = !session; // we own the connection if not using a session
 		try {
 			await conn.unsafe("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
 			await conn.unsafe(
@@ -546,7 +627,9 @@ export class PostgresDriver implements DatabaseDriver {
 			try { await conn.unsafe("ROLLBACK"); } catch { /* ignore rollback errors */ }
 			throw err;
 		} finally {
-			conn.release();
+			if (ownConn) {
+				(conn as ReservedSQL).release();
+			}
 		}
 	}
 
@@ -554,6 +637,7 @@ export class PostgresDriver implements DatabaseDriver {
 		qualifiedTable: string,
 		columns: string[],
 		rows: Record<string, unknown>[],
+		sessionId?: string,
 	): Promise<number> {
 		this.ensureConnected();
 		if (rows.length === 0) return 0;
@@ -569,7 +653,7 @@ export class PostgresDriver implements DatabaseDriver {
 			valueTuples.push(`(${placeholders.join(", ")})`);
 		}
 		const sql = `INSERT INTO ${qualifiedTable} (${quotedCols}) VALUES ${valueTuples.join(", ")}`;
-		const result = await this.execute(sql, allParams);
+		const result = await this.execute(sql, allParams, sessionId);
 		return result.affectedRows ?? rows.length;
 	}
 
@@ -577,6 +661,16 @@ export class PostgresDriver implements DatabaseDriver {
 		if (!this.db || !this.connected) {
 			throw new Error("Not connected. Call connect() first.");
 		}
+	}
+
+	private resolveSession(sessionId?: string): SessionState | undefined {
+		if (!sessionId) {
+			// Check for __default__ session (backward compat for tx without sessionId)
+			return this.sessions.get(DEFAULT_SESSION);
+		}
+		const session = this.sessions.get(sessionId);
+		if (!session) throw new Error(`Session "${sessionId}" not found`);
+		return session;
 	}
 
 	private mapDataType(dataType: string, udtName: string): DatabaseDataType {

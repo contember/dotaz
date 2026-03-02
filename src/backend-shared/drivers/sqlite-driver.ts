@@ -77,6 +77,7 @@ export class SqliteDriver implements DatabaseDriver {
 	private db: SQL | null = null;
 	private connected = false;
 	private txActive = false;
+	private sessionIds = new Set<string>();
 
 	async connect(config: ConnectionConfig): Promise<void> {
 		if (config.type !== "sqlite") {
@@ -99,6 +100,7 @@ export class SqliteDriver implements DatabaseDriver {
 			this.db = null;
 			this.connected = false;
 			this.txActive = false;
+			this.sessionIds.clear();
 		}
 	}
 
@@ -106,7 +108,19 @@ export class SqliteDriver implements DatabaseDriver {
 		return this.connected;
 	}
 
-	async execute(sql: string, params?: unknown[]): Promise<QueryResult> {
+	async reserveSession(sessionId: string): Promise<void> {
+		this.sessionIds.add(sessionId);
+	}
+
+	async releaseSession(sessionId: string): Promise<void> {
+		this.sessionIds.delete(sessionId);
+	}
+
+	getSessionIds(): string[] {
+		return [...this.sessionIds];
+	}
+
+	async execute(sql: string, params?: unknown[], _sessionId?: string): Promise<QueryResult> {
 		this.ensureConnected();
 		const start = performance.now();
 		try {
@@ -131,12 +145,12 @@ export class SqliteDriver implements DatabaseDriver {
 		}
 	}
 
-	async cancel(): Promise<void> {
+	async cancel(_sessionId?: string): Promise<void> {
 		// SQLite operations are synchronous under the hood;
 		// cancellation is not supported.
 	}
 
-	async loadSchema(): Promise<SchemaData> {
+	async loadSchema(_sessionId?: string): Promise<SchemaData> {
 		this.ensureConnected();
 
 		const schemas = await this.getSchemas();
@@ -287,6 +301,7 @@ export class SqliteDriver implements DatabaseDriver {
 		params?: unknown[],
 		batchSize = 1000,
 		signal?: AbortSignal,
+		_sessionId?: string,
 	): AsyncGenerator<Record<string, unknown>[]> {
 		this.ensureConnected();
 		let offset = 0;
@@ -308,6 +323,7 @@ export class SqliteDriver implements DatabaseDriver {
 		qualifiedTable: string,
 		columns: string[],
 		rows: Record<string, unknown>[],
+		_sessionId?: string,
 	): Promise<number> {
 		this.ensureConnected();
 		if (rows.length === 0) return 0;
@@ -327,25 +343,25 @@ export class SqliteDriver implements DatabaseDriver {
 		return result.affectedRows ?? rows.length;
 	}
 
-	async beginTransaction(): Promise<void> {
+	async beginTransaction(_sessionId?: string): Promise<void> {
 		this.ensureConnected();
 		await this.db!.unsafe("BEGIN");
 		this.txActive = true;
 	}
 
-	async commit(): Promise<void> {
+	async commit(_sessionId?: string): Promise<void> {
 		this.ensureConnected();
 		await this.db!.unsafe("COMMIT");
 		this.txActive = false;
 	}
 
-	async rollback(): Promise<void> {
+	async rollback(_sessionId?: string): Promise<void> {
 		this.ensureConnected();
 		await this.db!.unsafe("ROLLBACK");
 		this.txActive = false;
 	}
 
-	inTransaction(): boolean {
+	inTransaction(_sessionId?: string): boolean {
 		return this.txActive;
 	}
 

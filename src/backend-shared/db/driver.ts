@@ -9,9 +9,14 @@ export interface DatabaseDriver extends SqlDialect {
 	disconnect(): Promise<void>;
 	isConnected(): boolean;
 
+	// Session management
+	reserveSession(sessionId: string): Promise<void>;
+	releaseSession(sessionId: string): Promise<void>;
+	getSessionIds(): string[];
+
 	// Query execution
-	execute(sql: string, params?: unknown[]): Promise<QueryResult>;
-	cancel(): Promise<void>;
+	execute(sql: string, params?: unknown[], sessionId?: string): Promise<QueryResult>;
+	cancel(sessionId?: string): Promise<void>;
 
 	// Streaming iteration — yields batches of rows from a query
 	iterate(
@@ -19,6 +24,7 @@ export interface DatabaseDriver extends SqlDialect {
 		params?: unknown[],
 		batchSize?: number,
 		signal?: AbortSignal,
+		sessionId?: string,
 	): AsyncIterable<Record<string, unknown>[]>;
 
 	// Bulk insert — inserts rows using multi-row VALUES, returns affected count
@@ -26,14 +32,15 @@ export interface DatabaseDriver extends SqlDialect {
 		qualifiedTable: string,
 		columns: string[],
 		rows: Record<string, unknown>[],
+		sessionId?: string,
 	): Promise<number>;
 
 	// Schema introspection
-	loadSchema(): Promise<SchemaData>;
+	loadSchema(sessionId?: string): Promise<SchemaData>;
 
 	// Transactions
-	beginTransaction(): Promise<void>;
-	commit(): Promise<void>;
-	rollback(): Promise<void>;
-	inTransaction(): boolean;
+	beginTransaction(sessionId?: string): Promise<void>;
+	commit(sessionId?: string): Promise<void>;
+	rollback(sessionId?: string): Promise<void>;
+	inTransaction(sessionId?: string): boolean;
 }

@@ -127,6 +127,7 @@ export class MysqlDriver implements DatabaseDriver {
 	private txActive = false;
 	private reservedConn: ReservedSQL | null = null;
 	private activeQuery: ReturnType<SQL["unsafe"]> | null = null;
+	private sessionIds = new Set<string>();
 
 	async connect(config: ConnectionConfig): Promise<void> {
 		if (config.type !== "mysql") {
@@ -156,6 +157,7 @@ export class MysqlDriver implements DatabaseDriver {
 			this.db = null;
 			this.connected = false;
 			this.txActive = false;
+			this.sessionIds.clear();
 		}
 	}
 
@@ -163,7 +165,19 @@ export class MysqlDriver implements DatabaseDriver {
 		return this.connected;
 	}
 
-	async execute(sql: string, params?: unknown[]): Promise<QueryResult> {
+	async reserveSession(sessionId: string): Promise<void> {
+		this.sessionIds.add(sessionId);
+	}
+
+	async releaseSession(sessionId: string): Promise<void> {
+		this.sessionIds.delete(sessionId);
+	}
+
+	getSessionIds(): string[] {
+		return [...this.sessionIds];
+	}
+
+	async execute(sql: string, params?: unknown[], _sessionId?: string): Promise<QueryResult> {
 		this.ensureConnected();
 		const conn = this.reservedConn ?? this.db!;
 		const start = performance.now();
@@ -196,14 +210,14 @@ export class MysqlDriver implements DatabaseDriver {
 		}
 	}
 
-	async cancel(): Promise<void> {
+	async cancel(_sessionId?: string): Promise<void> {
 		if (this.activeQuery) {
 			this.activeQuery.cancel();
 			this.activeQuery = null;
 		}
 	}
 
-	async loadSchema(): Promise<SchemaData> {
+	async loadSchema(_sessionId?: string): Promise<SchemaData> {
 		this.ensureConnected();
 		const conn = this.reservedConn ?? this.db!;
 
@@ -400,6 +414,7 @@ export class MysqlDriver implements DatabaseDriver {
 		params?: unknown[],
 		batchSize = 1000,
 		signal?: AbortSignal,
+		_sessionId?: string,
 	): AsyncGenerator<Record<string, unknown>[]> {
 		this.ensureConnected();
 		let offset = 0;
@@ -422,6 +437,7 @@ export class MysqlDriver implements DatabaseDriver {
 		qualifiedTable: string,
 		columns: string[],
 		rows: Record<string, unknown>[],
+		_sessionId?: string,
 	): Promise<number> {
 		this.ensureConnected();
 		if (rows.length === 0) return 0;
@@ -441,7 +457,7 @@ export class MysqlDriver implements DatabaseDriver {
 		return result.affectedRows ?? rows.length;
 	}
 
-	async beginTransaction(): Promise<void> {
+	async beginTransaction(_sessionId?: string): Promise<void> {
 		this.ensureConnected();
 		const conn = await this.db!.reserve();
 		try {
@@ -454,7 +470,7 @@ export class MysqlDriver implements DatabaseDriver {
 		this.txActive = true;
 	}
 
-	async commit(): Promise<void> {
+	async commit(_sessionId?: string): Promise<void> {
 		this.ensureConnected();
 		if (!this.reservedConn) {
 			throw new Error("No active transaction");
@@ -465,7 +481,7 @@ export class MysqlDriver implements DatabaseDriver {
 		this.txActive = false;
 	}
 
-	async rollback(): Promise<void> {
+	async rollback(_sessionId?: string): Promise<void> {
 		this.ensureConnected();
 		if (!this.reservedConn) {
 			throw new Error("No active transaction");
@@ -476,7 +492,7 @@ export class MysqlDriver implements DatabaseDriver {
 		this.txActive = false;
 	}
 
-	inTransaction(): boolean {
+	inTransaction(_sessionId?: string): boolean {
 		return this.txActive;
 	}
 
