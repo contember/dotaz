@@ -37,6 +37,11 @@ import { isNumericType } from "../../lib/column-types";
 import { HEADER_HEIGHT } from "../../lib/layout-constants";
 import "./DataGrid.css";
 
+// ── Shared stale-data timer ──────────────────────────────
+// Single module-level signal ticking every 30s instead of one per DataGrid tab.
+const [staleNow, setStaleNow] = createSignal(Date.now());
+setInterval(() => setStaleNow(Date.now()), 30_000);
+
 interface DataGridProps {
 	tabId: string;
 	connectionId: string;
@@ -89,12 +94,10 @@ export default function DataGrid(props: DataGridProps) {
 	} | null>(null);
 	const [saveViewForceNew, setSaveViewForceNew] = createSignal(false);
 	const [savedViewConfig, setSavedViewConfig] = createSignal<SavedViewConfig | null>(null);
-	const [now, setNow] = createSignal(Date.now());
 	const [searchInput, setSearchInput] = createSignal("");
 	let scrollRef: HTMLDivElement | undefined;
 	let gridRef: HTMLDivElement | undefined;
 	let anchorRow = -1;
-	let staleTimer: ReturnType<typeof setInterval> | undefined;
 	let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
 	const tab = () => gridStore.getTab(props.tabId);
@@ -118,7 +121,7 @@ export default function DataGrid(props: DataGridProps) {
 	const staleLabel = createMemo(() => {
 		const t = tab();
 		if (!t?.lastLoadedAt) return null;
-		const elapsed = now() - t.lastLoadedAt;
+		const elapsed = staleNow() - t.lastLoadedAt;
 		if (elapsed < STALE_THRESHOLD_MS) return null;
 		const minutes = Math.floor(elapsed / 60_000);
 		if (minutes < 60) return `Data loaded ${minutes}m ago`;
@@ -126,10 +129,6 @@ export default function DataGrid(props: DataGridProps) {
 		return `Data loaded ${hours}h ago`;
 	});
 
-	// Tick `now` every 30s so stale label updates
-	onMount(() => {
-		staleTimer = setInterval(() => setNow(Date.now()), 30_000);
-	});
 	// Listen for import dialog open events from context menu
 	function handleOpenImport(e: Event) {
 		const detail = (e as CustomEvent).detail;
@@ -143,7 +142,6 @@ export default function DataGrid(props: DataGridProps) {
 		window.addEventListener("dotaz:open-import", handleOpenImport);
 	});
 	onCleanup(() => {
-		if (staleTimer) clearInterval(staleTimer);
 		if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
 		window.removeEventListener("dotaz:open-import", handleOpenImport);
 	});

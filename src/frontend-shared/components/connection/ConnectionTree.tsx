@@ -9,6 +9,7 @@ import { tabsStore } from "../../stores/tabs";
 import { viewsStore } from "../../stores/views";
 import { gridStore } from "../../stores/grid";
 import { editorStore } from "../../stores/editor";
+import { uiStore } from "../../stores/ui";
 import { rpc } from "../../lib/rpc";
 import { siPostgresql, siSqlite, siMysql } from "simple-icons";
 import Eye from "lucide-solid/icons/eye";
@@ -228,6 +229,8 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 			viewsStore.loadViewsForConnection(conn.id).then(() => {
 				// Auto-expand tables that have views
 				autoExpandTablesWithViews(conn.id);
+			}).catch(() => {
+				uiStore.addToast("warning", "Failed to load saved views.");
 			});
 		}
 	}
@@ -298,6 +301,8 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 		gridStore.loadTableData(tabId, connectionId, schema, table, database).then(() => {
 			gridStore.setActiveView(tabId, view.id, view.name);
 			gridStore.applyViewConfig(tabId, view.config);
+		}).catch(() => {
+			uiStore.addToast("warning", "Failed to load table data for saved view.");
 		});
 	}
 

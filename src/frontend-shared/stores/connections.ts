@@ -132,7 +132,9 @@ async function loadConnections() {
 
 async function loadSchemaTreesForConnection(conn: ConnectionInfo) {
 	// Load default database schema tree
-	loadSchemaTree(conn.id);
+	loadSchemaTree(conn.id).catch(() => {
+		uiStore.addToast("warning", `Failed to load schema for "${conn.name}".`);
+	});
 
 	// For multi-database types, load active databases and their schema trees
 	if (CONNECTION_TYPE_META[conn.config.type].supportsMultiDatabase) {
@@ -140,7 +142,9 @@ async function loadSchemaTreesForConnection(conn: ConnectionInfo) {
 		const activeDbs = ('activeDatabases' in conn.config ? conn.config.activeDatabases : undefined) ?? [];
 		for (const db of activeDbs) {
 			if (db !== getDefaultDatabase(conn.config)) {
-				loadSchemaTree(conn.id, db);
+				loadSchemaTree(conn.id, db).catch(() => {
+					uiStore.addToast("warning", `Failed to load schema for "${conn.name}" database "${db}".`);
+				});
 			}
 		}
 	}

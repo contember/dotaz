@@ -124,7 +124,7 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 | DOTAZ-105 | Runtime validation for settings and shared types | done | Type guards for AiProvider/DateFormat/DecimalSeparator/ThousandsSeparator/BooleanDisplay/BinaryDisplay, ImportSource discriminated union, buildRowKey collision-free encoding |
 | DOTAZ-106 | CSV parser memory protection | done | MAX_BUFFER_SIZE 64 MB, configurable via maxBufferSize option, CsvParseError on overflow |
 | DOTAZ-107 | Web streaming and session tests | done | Extracted session.ts from server.ts, 21 tests: token create/consume/expire/wrong-type, session create/destroy/TTL, releaseStream ref counting |
-| DOTAZ-108 | Frontend cleanup and error handling | not started | Global stale timer, catch handlers for non-critical async ops |
+| DOTAZ-108 | Frontend cleanup and error handling | done | Global stale timer, catch handlers for non-critical async ops |
 
 ---
 
@@ -140,5 +140,5 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 
 ---
 
-*Last updated: 2026-03-02 — DOTAZ-107 done*
+*Last updated: 2026-03-02 — DOTAZ-108 done*
 
