@@ -173,6 +173,26 @@ export class QueryExecutor {
 	}
 
 	/**
+	 * Cancel all running queries for a given connection.
+	 * Used during session teardown to prevent orphaned queries.
+	 */
+	async cancelAllForConnection(connectionId: string): Promise<number> {
+		const toCancel: string[] = [];
+		for (const [queryId, entry] of this.runningQueries) {
+			if (entry.connectionId === connectionId) {
+				toCancel.push(queryId);
+			}
+		}
+		let cancelled = 0;
+		for (const queryId of toCancel) {
+			if (await this.cancelQuery(queryId)) {
+				cancelled++;
+			}
+		}
+		return cancelled;
+	}
+
+	/**
 	 * Get the list of currently running query IDs.
 	 */
 	getRunningQueryIds(): string[] {

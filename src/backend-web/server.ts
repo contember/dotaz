@@ -6,6 +6,7 @@ import { resolve } from "path";
 import { AppDatabase } from "../backend-shared/storage/app-db";
 import { ConnectionManager } from "../backend-shared/services/connection-manager";
 import { EncryptionService } from "../backend-shared/services/encryption";
+import { QueryExecutor } from "../backend-shared/services/query-executor";
 import { createHandlers } from "../backend-shared/rpc/rpc-handlers";
 import { DatabaseError } from "../shared/types/errors";
 import { exportToStream } from "../backend-shared/services/export-service";
@@ -25,14 +26,20 @@ if (!ENCRYPTION_KEY) {
 
 // ── Session management ─────────────────────────────────────
 
+const SESSION_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const ZOMBIE_SWEEP_INTERVAL_MS = 60_000; // 60 seconds
+
 interface Session {
 	id: string;
 	appDb: AppDatabase;
 	connectionManager: ConnectionManager;
+	queryExecutor: QueryExecutor;
 	handlers: ReturnType<typeof createHandlers>;
 	unsubscribe: () => void;
 	ws: { send(data: string): void } | null;
 	activeStreams: number;
+	disconnectedAt: number | null;
+	ttlTimer: ReturnType<typeof setTimeout> | null;
 }
 
 const sessions = new Map<string, Session>();
@@ -41,6 +48,7 @@ function createSession(ws: { send(data: string): void }): Session {
 	const id = crypto.randomUUID();
 	const appDb = AppDatabase.create(":memory:");
 	const connectionManager = new ConnectionManager(appDb);
+	const queryExecutor = new QueryExecutor(connectionManager, undefined, appDb);
 	const encryption = new EncryptionService(ENCRYPTION_KEY!);
 
 	const emitMessage = (channel: string, payload: unknown) => {
@@ -49,7 +57,7 @@ function createSession(ws: { send(data: string): void }): Session {
 		}
 	};
 
-	const handlers = createHandlers(connectionManager, undefined, appDb, undefined, {
+	const handlers = createHandlers(connectionManager, queryExecutor, appDb, undefined, {
 		encryption,
 		emitMessage,
 	});
@@ -69,14 +77,25 @@ function createSession(ws: { send(data: string): void }): Session {
 		}
 	});
 
-	const session: Session = { id, appDb, connectionManager, handlers, unsubscribe, ws, activeStreams: 0 };
+	const session: Session = {
+		id, appDb, connectionManager, queryExecutor, handlers, unsubscribe, ws,
+		activeStreams: 0, disconnectedAt: null, ttlTimer: null,
+	};
 	sessions.set(id, session);
 	return session;
 }
 
 async function destroySession(session: Session): Promise<void> {
 	sessions.delete(session.id);
+	if (session.ttlTimer) {
+		clearTimeout(session.ttlTimer);
+		session.ttlTimer = null;
+	}
 	session.unsubscribe();
+	// Cancel all running queries before disconnecting to prevent orphaned queries
+	for (const queryId of session.queryExecutor.getRunningQueryIds()) {
+		await session.queryExecutor.cancelQuery(queryId);
+	}
 	await session.connectionManager.disconnectAll();
 	session.appDb.close();
 }
@@ -84,10 +103,17 @@ async function destroySession(session: Session): Promise<void> {
 /** Delayed session cleanup: only destroy if no active streams reference it. */
 async function maybeDestroySession(session: Session): Promise<void> {
 	session.ws = null;
+	session.disconnectedAt = Date.now();
 	if (session.activeStreams === 0) {
 		await destroySession(session);
+	} else {
+		// Start TTL timer — force-destroy if streams don't finish in time
+		session.ttlTimer = setTimeout(async () => {
+			if (sessions.has(session.id)) {
+				await destroySession(session);
+			}
+		}, SESSION_TTL_MS);
 	}
-	// If activeStreams > 0, the stream completion handlers will call destroySession
 }
 
 async function releaseStream(session: Session): Promise<void> {
@@ -121,6 +147,16 @@ setInterval(() => {
 		}
 	}
 }, 60_000);
+
+// Periodic zombie session sweep — force-destroy sessions stuck with ws=null past TTL
+setInterval(async () => {
+	const now = Date.now();
+	for (const [, session] of sessions) {
+		if (session.disconnectedAt !== null && now - session.disconnectedAt > SESSION_TTL_MS) {
+			await destroySession(session);
+		}
+	}
+}, ZOMBIE_SWEEP_INTERVAL_MS);
 
 function createStreamToken(session: Session, type: "export" | "import", connectionId: string, database: string | undefined, params: ExportParams | ImportStreamParams): string {
 	const token = crypto.randomUUID();

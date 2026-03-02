@@ -838,6 +838,64 @@ describe("QueryExecutor", () => {
 		expect(executor.getRunningQueryIds()).toHaveLength(0);
 	});
 
+	test("cancelAllForConnection cancels all queries for a specific connection", async () => {
+		let resolve1: () => void;
+		let resolve2: () => void;
+		const promise1 = new Promise<void>((r) => { resolve1 = r; });
+		const promise2 = new Promise<void>((r) => { resolve2 = r; });
+
+		const driver1 = makeMockDriver({
+			execute: mock(async () => {
+				await promise1;
+				return makeSuccessResult();
+			}),
+			cancel: mock(async () => { resolve1!(); }),
+		});
+		const driver2 = makeMockDriver({
+			execute: mock(async () => {
+				await promise2;
+				return makeSuccessResult();
+			}),
+			cancel: mock(async () => { resolve2!(); }),
+		});
+
+		const cm = {
+			getDriver: mock((connectionId: string) => connectionId === "conn-1" ? driver1 : driver2),
+		} as unknown as ConnectionManager;
+		const executor = new QueryExecutor(cm, 5000);
+
+		// Start two queries on different connections
+		const result1Promise = executor.executeQuery("conn-1", "SELECT 1");
+		const result2Promise = executor.executeQuery("conn-2", "SELECT 2");
+
+		await new Promise((r) => setTimeout(r, 10));
+
+		expect(executor.getRunningQueryIds()).toHaveLength(2);
+
+		// Cancel only conn-1 queries
+		const cancelled = await executor.cancelAllForConnection("conn-1");
+		expect(cancelled).toBe(1);
+
+		const results1 = await result1Promise;
+		expect(results1[0].error).toBe("Query was cancelled");
+
+		// conn-2 should still be running
+		expect(executor.getRunningQueryIds()).toHaveLength(1);
+
+		// Clean up conn-2
+		resolve2!();
+		await result2Promise;
+	});
+
+	test("cancelAllForConnection returns 0 when no queries match", async () => {
+		const driver = makeMockDriver();
+		const cm = makeMockConnectionManager(driver);
+		const executor = new QueryExecutor(cm);
+
+		const cancelled = await executor.cancelAllForConnection("nonexistent");
+		expect(cancelled).toBe(0);
+	});
+
 	test("empty SQL returns empty results", async () => {
 		const driver = makeMockDriver();
 		const cm = makeMockConnectionManager(driver);
