@@ -97,6 +97,33 @@ export interface SearchDatabaseResult {
 	elapsedMs: number;
 }
 
+// ---- Transaction log types ----
+
+export type TransactionLogStatus = "success" | "error";
+
+export interface TransactionLogEntry {
+	id: string;
+	sql: string;
+	status: TransactionLogStatus;
+	durationMs: number;
+	rowCount: number;
+	errorMessage?: string;
+	executedAt: string;
+}
+
+export interface TransactionLogParams {
+	connectionId: string;
+	database?: string;
+	statusFilter?: TransactionLogStatus;
+	search?: string;
+}
+
+export interface TransactionLogResult {
+	entries: TransactionLogEntry[];
+	pendingStatementCount: number;
+	inTransaction: boolean;
+}
+
 export interface OpenDialogParams {
 	title?: string;
 	filters?: { name: string; extensions: string[] }[];

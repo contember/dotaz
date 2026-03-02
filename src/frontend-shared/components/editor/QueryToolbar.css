@@ -47,6 +47,12 @@
 	color: var(--accent-fg);
 }
 
+/* Active toggle button (e.g. Transaction Log open) */
+.query-toolbar__btn--active {
+	background: var(--surface-active);
+	color: var(--ink);
+}
+
 /* Cancel button */
 .query-toolbar__btn--cancel {
 	background: var(--error);

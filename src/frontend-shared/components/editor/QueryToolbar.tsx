@@ -7,6 +7,7 @@ import AlignLeft from "lucide-solid/icons/text-align-start";
 import PlayCircle from "lucide-solid/icons/circle-play";
 import Check from "lucide-solid/icons/check";
 import RotateCcw from "lucide-solid/icons/rotate-ccw";
+import ScrollText from "lucide-solid/icons/scroll-text";
 import Icon from "../common/Icon";
 import "./QueryToolbar.css";
 
@@ -16,6 +17,8 @@ interface QueryToolbarProps {
 	database?: string;
 	onOpenHistory?: () => void;
 	onOpenBookmarks?: () => void;
+	onToggleTransactionLog?: () => void;
+	transactionLogOpen?: boolean;
 }
 
 export default function QueryToolbar(props: QueryToolbarProps) {
@@ -158,6 +161,17 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 					title="SQL Bookmarks (Ctrl+D)"
 				>
 					<Icon name="bookmark" size={12} /> Bookmarks
+				</button>
+			</Show>
+
+			{/* Transaction Log */}
+			<Show when={props.onToggleTransactionLog}>
+				<button
+					class={`query-toolbar__btn${props.transactionLogOpen ? " query-toolbar__btn--active" : ""}`}
+					onClick={props.onToggleTransactionLog}
+					title="Transaction Log"
+				>
+					<ScrollText size={12} /> Log
 				</button>
 			</Show>
 

@@ -2,6 +2,7 @@ import type { DatabaseDriver } from "../db/driver";
 import type { QueryResult, ExplainResult, ExplainNode } from "../../shared/types/query";
 import type { ConnectionManager } from "./connection-manager";
 import type { AppDatabase } from "../storage/app-db";
+import type { TransactionLogEntry, TransactionLogStatus } from "../../shared/types/rpc";
 import { splitStatements, parseErrorPosition } from "../../shared/sql/statements";
 import { DatabaseError } from "../../shared/types/errors";
 
@@ -22,6 +23,57 @@ export {
 } from "../../shared/sql/builders";
 export { splitStatements, offsetToLineColumn, parseErrorPosition, detectDestructiveWithoutWhere } from "../../shared/sql/statements";
 
+// ── Session Log ───────────────────────────────────────────
+
+/** In-memory, per-connection session log of executed statements. Not persisted. */
+export class SessionLog {
+	/** Map from connectionId (or connectionId:database) to log entries. */
+	private logs = new Map<string, TransactionLogEntry[]>();
+	/** Track statement count since last BEGIN/COMMIT/ROLLBACK per connection. */
+	private pendingCounts = new Map<string, number>();
+
+	private key(connectionId: string, database?: string): string {
+		return database ? `${connectionId}:${database}` : connectionId;
+	}
+
+	add(connectionId: string, sql: string, status: TransactionLogStatus, durationMs: number, rowCount: number, errorMessage?: string, database?: string): void {
+		const k = this.key(connectionId, database);
+		if (!this.logs.has(k)) {
+			this.logs.set(k, []);
+		}
+		this.logs.get(k)!.push({
+			id: crypto.randomUUID(),
+			sql,
+			status,
+			durationMs,
+			rowCount,
+			errorMessage,
+			executedAt: new Date().toISOString(),
+		});
+		// Increment pending count (statements within an active transaction)
+		this.pendingCounts.set(k, (this.pendingCounts.get(k) ?? 0) + 1);
+	}
+
+	getEntries(connectionId: string, database?: string): TransactionLogEntry[] {
+		return this.logs.get(this.key(connectionId, database)) ?? [];
+	}
+
+	getPendingCount(connectionId: string, database?: string): number {
+		return this.pendingCounts.get(this.key(connectionId, database)) ?? 0;
+	}
+
+	/** Reset pending count (called on COMMIT/ROLLBACK). */
+	resetPendingCount(connectionId: string, database?: string): void {
+		this.pendingCounts.set(this.key(connectionId, database), 0);
+	}
+
+	clear(connectionId: string, database?: string): void {
+		const k = this.key(connectionId, database);
+		this.logs.delete(k);
+		this.pendingCounts.delete(k);
+	}
+}
+
 // ── QueryExecutor ──────────────────────────────────────────
 
 interface RunningQuery {
@@ -35,6 +87,7 @@ export class QueryExecutor {
 	private runningQueries = new Map<string, RunningQuery>();
 	private defaultTimeoutMs: number;
 	private appDb?: AppDatabase;
+	readonly sessionLog = new SessionLog();
 
 	constructor(connectionManager: ConnectionManager, defaultTimeoutMs = 30_000, appDb?: AppDatabase) {
 		this.connectionManager = connectionManager;
@@ -92,7 +145,7 @@ export class QueryExecutor {
 			}
 		} finally {
 			this.runningQueries.delete(id);
-			this.logHistory(connectionId, sql, results);
+			this.logHistory(connectionId, sql, results, database);
 		}
 
 		return results;
@@ -247,13 +300,24 @@ export class QueryExecutor {
 		return { promise, cancel: () => clearTimeout(timer!) };
 	}
 
-	private logHistory(connectionId: string, sql: string, results: QueryResult[]): void {
-		if (!this.appDb) return;
-
+	private logHistory(connectionId: string, sql: string, results: QueryResult[], database?: string): void {
 		const hasError = results.some((r) => r.error);
 		const totalDuration = results.reduce((sum, r) => sum + (r.durationMs ?? 0), 0);
 		const totalRows = results.reduce((sum, r) => sum + (r.affectedRows ?? r.rowCount), 0);
 		const errorMessage = results.find((r) => r.error)?.error;
+
+		// Always add to session log (in-memory)
+		this.sessionLog.add(
+			connectionId,
+			sql,
+			hasError ? "error" : "success",
+			Math.round(totalDuration),
+			totalRows,
+			errorMessage,
+			database,
+		);
+
+		if (!this.appDb) return;
 
 		try {
 			this.appDb.addHistory({

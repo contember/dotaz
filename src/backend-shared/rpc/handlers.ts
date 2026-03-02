@@ -8,6 +8,7 @@ import type {
 	OpenDialogParams,
 	SaveDialogParams,
 	SearchDatabaseParams,
+	TransactionLogParams,
 } from "../../shared/types/rpc";
 export function createHandlers(adapter: RpcAdapter) {
 	return {
@@ -86,6 +87,14 @@ export function createHandlers(adapter: RpcAdapter) {
 		},
 		"tx.rollback": async ({ connectionId, database }: { connectionId: string; database?: string }) => {
 			await adapter.rollbackTransaction(connectionId, database);
+		},
+
+		// ── Transaction Log ──────────────────────────────
+		"transaction.getLog": (params: TransactionLogParams) => {
+			return adapter.getTransactionLog(params);
+		},
+		"transaction.clearLog": ({ connectionId, database }: { connectionId: string; database?: string }) => {
+			adapter.clearTransactionLog(connectionId, database);
 		},
 
 		// ── Search ───────────────────────────────────────

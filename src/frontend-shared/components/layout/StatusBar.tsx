@@ -10,6 +10,7 @@ interface StatusBarProps {
 	schema?: string;
 	rowCount?: number;
 	inTransaction?: boolean;
+	pendingStatementCount?: number;
 	readOnly?: boolean;
 }
 
@@ -58,7 +59,9 @@ export default function StatusBar(props: StatusBarProps) {
 				</Show>
 
 				<Show when={props.inTransaction}>
-					<span class="status-bar__item status-bar__item--tx">IN TRANSACTION</span>
+					<span class="status-bar__item status-bar__item--tx">
+						TX{props.pendingStatementCount ? `: ${props.pendingStatementCount} pending` : ""}
+					</span>
 				</Show>
 
 				<Show when={props.rowCount != null}>

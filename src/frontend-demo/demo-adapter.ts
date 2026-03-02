@@ -14,6 +14,9 @@ import type {
 	QueryBookmark,
 	SearchDatabaseParams,
 	SearchDatabaseResult,
+	TransactionLogEntry,
+	TransactionLogParams,
+	TransactionLogResult,
 } from "../shared/types/rpc";
 import { splitStatements } from "../shared/sql/statements";
 import { exportPreview as generateExportPreview } from "../backend-shared/services/export-service";
@@ -25,6 +28,8 @@ type EmitMessage = (channel: string, payload: any) => void;
 
 export class DemoAdapter implements RpcAdapter {
 	private connectedSet = new Set<string>();
+	private sessionLogEntries: TransactionLogEntry[] = [];
+	private pendingCount = 0;
 
 	constructor(
 		private driver: WasmSqliteDriver,
@@ -219,6 +224,7 @@ export class DemoAdapter implements RpcAdapter {
 			throw new Error("No active transaction");
 		}
 		await d.commit();
+		this.pendingCount = 0;
 	}
 
 	async rollbackTransaction(connectionId: string): Promise<void> {
@@ -227,6 +233,31 @@ export class DemoAdapter implements RpcAdapter {
 			throw new Error("No active transaction");
 		}
 		await d.rollback();
+		this.pendingCount = 0;
+	}
+
+	// ── Transaction Log ──────────────────────────────────
+
+	getTransactionLog(params: TransactionLogParams): TransactionLogResult {
+		let entries = [...this.sessionLogEntries];
+		if (params.statusFilter) {
+			entries = entries.filter((e) => e.status === params.statusFilter);
+		}
+		if (params.search) {
+			const term = params.search.toLowerCase();
+			entries = entries.filter((e) => e.sql.toLowerCase().includes(term));
+		}
+		const inTransaction = this.driver.inTransaction();
+		return {
+			entries,
+			pendingStatementCount: inTransaction ? this.pendingCount : 0,
+			inTransaction,
+		};
+	}
+
+	clearTransactionLog(): void {
+		this.sessionLogEntries = [];
+		this.pendingCount = 0;
 	}
 
 	// ── History ───────────────────────────────────────────
@@ -387,6 +418,18 @@ export class DemoAdapter implements RpcAdapter {
 		const totalDuration = results.reduce((sum, r) => sum + (r.durationMs ?? 0), 0);
 		const totalRows = results.reduce((sum, r) => sum + (r.affectedRows ?? r.rowCount), 0);
 		const errorMessage = results.find((r) => r.error)?.error;
+
+		// Add to session log (in-memory)
+		this.sessionLogEntries.push({
+			id: crypto.randomUUID(),
+			sql,
+			status: hasError ? "error" : "success",
+			durationMs: Math.round(totalDuration),
+			rowCount: totalRows,
+			errorMessage,
+			executedAt: new Date().toISOString(),
+		});
+		this.pendingCount++;
 
 		try {
 			this.state.addHistory({

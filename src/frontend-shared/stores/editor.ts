@@ -1,7 +1,7 @@
 import { createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import type { QueryResult, QueryEditability, ExplainResult } from "../../shared/types/query";
-import type { DataChange } from "../../shared/types/rpc";
+import type { DataChange, TransactionLogEntry, TransactionLogStatus } from "../../shared/types/rpc";
 import type { CellChange, EditingCell } from "./grid";
 import { rpc, friendlyErrorMessage } from "../lib/rpc";
 import { storage } from "../lib/storage";
@@ -108,6 +108,9 @@ interface EditorStoreState {
 const [state, setState] = createStore<EditorStoreState>({
 	tabs: {},
 });
+
+/** Bumped after each query execution to trigger TransactionLog refresh. */
+const [txLogVersion, setTxLogVersion] = createSignal(0);
 
 // ── Destructive query confirmation ────────────────────────
 
@@ -235,6 +238,7 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0) {
 		computeResultEditability(tabId, sql, results);
 
 		recordHistory(tab.connectionId, sql, results);
+		setTxLogVersion((v) => v + 1);
 	} catch (err) {
 		// Discard stale errors if a newer query was started
 		if (state.tabs[tabId]?.queryId !== queryId) return;
@@ -257,6 +261,7 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0) {
 			durationMs: duration,
 			error: errorMessage,
 		}]);
+		setTxLogVersion((v) => v + 1);
 	}
 }
 
@@ -738,6 +743,73 @@ function revertResultRowUpdate(tabId: string, resultIndex: number, rowIndex: num
 	setState("tabs", tabId, "resultPendingChanges", resultIndex, "cellEdits", edits);
 }
 
+// ── Transaction Log ───────────────────────────────────────
+
+export interface TransactionLogState {
+	entries: TransactionLogEntry[];
+	pendingStatementCount: number;
+	statusFilter: TransactionLogStatus | undefined;
+	search: string;
+	selectedEntryId: string | null;
+}
+
+const [txLogState, setTxLogState] = createStore<TransactionLogState>({
+	entries: [],
+	pendingStatementCount: 0,
+	statusFilter: undefined,
+	search: "",
+	selectedEntryId: null,
+});
+
+async function fetchTransactionLog(connectionId: string, database?: string) {
+	try {
+		const result = await rpc.transaction.getLog({
+			connectionId,
+			database,
+			statusFilter: txLogState.statusFilter,
+			search: txLogState.search || undefined,
+		});
+		setTxLogState({
+			entries: result.entries,
+			pendingStatementCount: result.pendingStatementCount,
+		});
+	} catch (err) {
+		console.debug("Failed to fetch transaction log:", err instanceof Error ? err.message : err);
+	}
+}
+
+function setTxLogStatusFilter(filter: TransactionLogStatus | undefined) {
+	setTxLogState("statusFilter", filter);
+}
+
+function setTxLogSearch(search: string) {
+	setTxLogState("search", search);
+}
+
+function setTxLogSelectedEntry(id: string | null) {
+	setTxLogState("selectedEntryId", id);
+}
+
+async function clearTransactionLog(connectionId: string, database?: string) {
+	try {
+		await rpc.transaction.clearLog({ connectionId, database });
+		setTxLogState({ entries: [], pendingStatementCount: 0, selectedEntryId: null });
+	} catch (err) {
+		console.debug("Failed to clear transaction log:", err instanceof Error ? err.message : err);
+	}
+}
+
+/** Get the pending TX statement count for the status bar. */
+function getPendingTxCount(connectionId: string): number {
+	// Check if any editor tab on this connection is in a transaction
+	for (const [, tab] of Object.entries(state.tabs)) {
+		if (tab.connectionId === connectionId && tab.inTransaction) {
+			return txLogState.pendingStatementCount;
+		}
+	}
+	return 0;
+}
+
 // ── Export ─────────────────────────────────────────────────
 
 export const editorStore = {
@@ -779,4 +851,13 @@ export const editorStore = {
 	revertResultChanges,
 	clearResultPendingChanges,
 	revertResultRowUpdate,
+	// Transaction log
+	get txLogState() { return txLogState; },
+	get txLogVersion() { return txLogVersion(); },
+	fetchTransactionLog,
+	setTxLogStatusFilter,
+	setTxLogSearch,
+	setTxLogSelectedEntry,
+	clearTransactionLog,
+	getPendingTxCount,
 };

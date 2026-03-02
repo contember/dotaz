@@ -16,6 +16,8 @@ import type {
 	SaveDialogParams,
 	SearchDatabaseParams,
 	SearchDatabaseResult,
+	TransactionLogParams,
+	TransactionLogResult,
 } from "../../shared/types/rpc";
 import type { DatabaseDriver } from "../db/driver";
 import { TransactionManager } from "../services/transaction-manager";
@@ -158,10 +160,37 @@ export class BackendAdapter implements RpcAdapter {
 
 	async commitTransaction(connectionId: string, database?: string): Promise<void> {
 		await this.txManager.commit(connectionId, database);
+		this.queryExecutor.sessionLog.resetPendingCount(connectionId, database);
 	}
 
 	async rollbackTransaction(connectionId: string, database?: string): Promise<void> {
 		await this.txManager.rollback(connectionId, database);
+		this.queryExecutor.sessionLog.resetPendingCount(connectionId, database);
+	}
+
+	// ── Transaction Log ──────────────────────────────────
+
+	getTransactionLog(params: TransactionLogParams): TransactionLogResult {
+		let entries = this.queryExecutor.sessionLog.getEntries(params.connectionId, params.database);
+
+		if (params.statusFilter) {
+			entries = entries.filter((e) => e.status === params.statusFilter);
+		}
+		if (params.search) {
+			const term = params.search.toLowerCase();
+			entries = entries.filter((e) => e.sql.toLowerCase().includes(term));
+		}
+
+		const inTransaction = this.txManager.isActive(params.connectionId, params.database);
+		const pendingStatementCount = inTransaction
+			? this.queryExecutor.sessionLog.getPendingCount(params.connectionId, params.database)
+			: 0;
+
+		return { entries, pendingStatementCount, inTransaction };
+	}
+
+	clearTransactionLog(connectionId: string, database?: string): void {
+		this.queryExecutor.sessionLog.clear(connectionId, database);
 	}
 
 	// ── History ───────────────────────────────────────────

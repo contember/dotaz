@@ -13,6 +13,8 @@ import type {
 	SaveDialogParams,
 	SearchDatabaseParams,
 	SearchDatabaseResult,
+	TransactionLogParams,
+	TransactionLogResult,
 } from "../../shared/types/rpc";
 
 export interface RpcAdapter {
@@ -45,6 +47,10 @@ export interface RpcAdapter {
 	beginTransaction(connectionId: string, database?: string): Promise<void>;
 	commitTransaction(connectionId: string, database?: string): Promise<void>;
 	rollbackTransaction(connectionId: string, database?: string): Promise<void>;
+
+	// ── Transaction Log ──────────────────────────────────
+	getTransactionLog(params: TransactionLogParams): TransactionLogResult;
+	clearTransactionLog(connectionId: string, database?: string): void;
 
 	// ── History ───────────────────────────────────────────
 	listHistory(params: HistoryListParams): QueryHistoryEntry[];

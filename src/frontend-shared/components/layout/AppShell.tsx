@@ -16,6 +16,8 @@ import DataGrid from "../grid/DataGrid";
 import SqlEditor from "../editor/SqlEditor";
 import QueryToolbar from "../editor/QueryToolbar";
 import SqlResultPanel from "../editor/SqlResultPanel";
+import TransactionLog from "../editor/TransactionLog";
+import TransactionWarningDialog from "../editor/TransactionWarningDialog";
 import DestructiveQueryDialog from "../editor/DestructiveQueryDialog";
 import SchemaViewer from "../schema/SchemaViewer";
 import ComparisonView from "../comparison/ComparisonView";
@@ -67,6 +69,11 @@ export default function AppShell() {
 	const [searchInitialSchema, setSearchInitialSchema] = createSignal<string | undefined>(undefined);
 	const [searchInitialTable, setSearchInitialTable] = createSignal<string | undefined>(undefined);
 	const [searchInitialDatabase, setSearchInitialDatabase] = createSignal<string | undefined>(undefined);
+	const [txLogOpen, setTxLogOpen] = createSignal(false);
+	const [txWarningOpen, setTxWarningOpen] = createSignal(false);
+	const [txWarningTabId, setTxWarningTabId] = createSignal<string | null>(null);
+	const [txWarningContext, setTxWarningContext] = createSignal<"close" | "disconnect">("close");
+	const [txWarningConnectionId, setTxWarningConnectionId] = createSignal<string | null>(null);
 
 	function handleResize(deltaX: number) {
 		setSidebarWidth((w) => Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, w + deltaX)));
@@ -209,17 +216,16 @@ export default function AppShell() {
 		mediaQuery.addEventListener("change", handleMediaChange);
 		removeResizeListener = () => mediaQuery.removeEventListener("change", handleMediaChange);
 
-		// Transaction warning on tab close
+		// Transaction warning on tab close — shows Commit/Rollback/Cancel dialog
 		tabsStore.setBeforeCloseHook((tab) => {
 			if (tab.type === "sql-console") {
 				const editorTab = editorStore.getTab(tab.id);
 				if (editorTab?.inTransaction) {
-					const confirmed = window.confirm(
-						"This tab has an uncommitted transaction. Changes will be rolled back. Close anyway?",
-					);
-					if (!confirmed) return false;
-					// Fire-and-forget rollback
-					editorStore.rollbackTransaction(tab.id);
+					setTxWarningTabId(tab.id);
+					setTxWarningConnectionId(tab.connectionId);
+					setTxWarningContext("close");
+					setTxWarningOpen(true);
+					return false; // Prevent close — dialog will handle it
 				}
 			}
 			return true;
@@ -227,18 +233,15 @@ export default function AppShell() {
 
 		// Transaction warning on disconnect
 		connectionsStore.setBeforeDisconnectHook((connectionId) => {
-			// Check if any SQL console tab on this connection has an active transaction
 			for (const openTab of tabsStore.openTabs) {
 				if (openTab.connectionId === connectionId && openTab.type === "sql-console") {
 					const editorTab = editorStore.getTab(openTab.id);
 					if (editorTab?.inTransaction) {
-						const confirmed = window.confirm(
-							"This connection has an active transaction. Changes will be rolled back. Disconnect anyway?",
-						);
-						if (!confirmed) return false;
-						// Fire-and-forget rollback
-						editorStore.rollbackTransaction(openTab.id);
-						return true;
+						setTxWarningTabId(openTab.id);
+						setTxWarningConnectionId(connectionId);
+						setTxWarningContext("disconnect");
+						setTxWarningOpen(true);
+						return false; // Prevent disconnect — dialog will handle it
 					}
 				}
 			}
@@ -750,12 +753,20 @@ export default function AppShell() {
 													setBookmarksInitialConn(tab.connectionId);
 													setBookmarksOpen(true);
 												}}
+												onToggleTransactionLog={() => setTxLogOpen((v) => !v)}
+												transactionLogOpen={txLogOpen()}
 											/>
 											<SqlEditor
 												tabId={tab.id}
 												connectionId={tab.connectionId}
 												database={tab.database}
 											/>
+											<Show when={txLogOpen()}>
+												<TransactionLog
+													connectionId={tab.connectionId}
+													database={tab.database}
+												/>
+											</Show>
 											<SqlResultPanel
 												tabId={tab.id}
 												connectionId={tab.connectionId}
@@ -821,6 +832,7 @@ export default function AppShell() {
 				}
 				return false;
 			})()}
+			pendingStatementCount={editorStore.txLogState.pendingStatementCount}
 		/>
 
 			<ConnectionDialog
@@ -859,6 +871,40 @@ export default function AppShell() {
 				statements={editorStore.pendingDestructiveQuery?.statements ?? []}
 				onConfirm={(suppress) => editorStore.confirmDestructiveQuery(suppress)}
 				onCancel={() => editorStore.cancelDestructiveQuery()}
+			/>
+
+			<TransactionWarningDialog
+				open={txWarningOpen()}
+				context={txWarningContext()}
+				onCommit={async () => {
+					const tabId = txWarningTabId();
+					const connId = txWarningConnectionId();
+					if (tabId) {
+						await editorStore.commitTransaction(tabId);
+					}
+					setTxWarningOpen(false);
+					// Now complete the original action
+					if (txWarningContext() === "close" && tabId) {
+						tabsStore.closeTab(tabId);
+					} else if (txWarningContext() === "disconnect" && connId) {
+						connectionsStore.disconnectFrom(connId);
+					}
+				}}
+				onRollback={async () => {
+					const tabId = txWarningTabId();
+					const connId = txWarningConnectionId();
+					if (tabId) {
+						await editorStore.rollbackTransaction(tabId);
+					}
+					setTxWarningOpen(false);
+					// Now complete the original action
+					if (txWarningContext() === "close" && tabId) {
+						tabsStore.closeTab(tabId);
+					} else if (txWarningContext() === "disconnect" && connId) {
+						connectionsStore.disconnectFrom(connId);
+					}
+				}}
+				onCancel={() => setTxWarningOpen(false)}
 			/>
 
 			<ComparisonDialog
