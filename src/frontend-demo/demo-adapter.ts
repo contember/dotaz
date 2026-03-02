@@ -21,7 +21,8 @@ import type {
 	AiGenerateSqlResult,
 } from "../shared/types/rpc";
 import { splitStatements } from "../shared/sql/statements";
-import { exportPreview as generateExportPreview } from "../backend-shared/services/export-service";
+import { exportPreview as generateExportPreview, exportToStream } from "../backend-shared/services/export-service";
+import type { ExportWriter } from "../backend-shared/services/export-service";
 import { importFromStream, importPreviewFromStream } from "../backend-shared/services/import-service";
 import { searchDatabase } from "../backend-shared/services/search-service";
 import { formatSql } from "../backend-shared/services/sql-formatter";
@@ -335,24 +336,41 @@ export class DemoAdapter implements RpcAdapter {
 
 	async exportData(opts: ExportOptions): Promise<ExportResult> {
 		const d = this.getConnectedDriver(opts.connectionId);
-		const content = await generateExportPreview(d, {
+		const chunks: (string | Uint8Array)[] = [];
+		const writer: ExportWriter = {
+			write(chunk) { chunks.push(chunk); },
+			async end() {},
+		};
+
+		const onProgress = (rowCount: number) => {
+			this.emitMessage("export.progress", { rowCount });
+		};
+
+		const result = await exportToStream(d, {
 			schema: opts.schema,
 			table: opts.table,
 			format: opts.format,
 			columns: opts.columns,
+			includeHeaders: opts.includeHeaders,
 			delimiter: opts.delimiter,
+			encoding: opts.encoding,
+			utf8Bom: opts.utf8Bom,
+			batchSize: opts.batchSize,
 			filters: opts.filters,
 			sort: opts.sort,
 			limit: opts.limit,
-		});
+		}, writer, undefined, onProgress);
 
-		// Trigger browser download
+		// Build blob and trigger browser download
 		const mimeTypes: Record<string, string> = {
 			csv: "text/csv",
 			json: "application/json",
 			sql: "text/sql",
+			markdown: "text/markdown",
+			html: "text/html",
+			xml: "application/xml",
 		};
-		const blob = new Blob([content], { type: mimeTypes[opts.format] ?? "text/plain" });
+		const blob = new Blob(chunks as BlobPart[], { type: mimeTypes[opts.format] ?? "text/plain" });
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement("a");
 		a.href = url;
@@ -362,11 +380,9 @@ export class DemoAdapter implements RpcAdapter {
 		document.body.removeChild(a);
 		URL.revokeObjectURL(url);
 
-		const encoder = new TextEncoder();
 		return {
-			rowCount: content.split("\n").length,
-			filePath: opts.filePath,
-			sizeBytes: encoder.encode(content).length,
+			rowCount: result.rowCount,
+			sizeBytes: blob.size,
 		};
 	}
 
@@ -389,6 +405,9 @@ export class DemoAdapter implements RpcAdapter {
 	async importData(opts: ImportOptions): Promise<ImportResult> {
 		const d = this.getConnectedDriver(opts.connectionId);
 		const stream = this.stringToStream(opts.fileContent ?? "");
+		const onProgress = (rowCount: number) => {
+			this.emitMessage("import.progress", { rowCount });
+		};
 		return importFromStream(d, stream, {
 			schema: opts.schema,
 			table: opts.table,
@@ -397,7 +416,7 @@ export class DemoAdapter implements RpcAdapter {
 			hasHeader: opts.hasHeader,
 			mappings: opts.mappings,
 			batchSize: opts.batchSize,
-		});
+		}, undefined, onProgress);
 	}
 
 	async importPreview(req: ImportPreviewRequest): Promise<ImportPreviewResult> {

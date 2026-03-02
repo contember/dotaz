@@ -325,6 +325,20 @@
 	color: var(--error);
 }
 
+/* Warning */
+
+.import-dialog__warning {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-xs);
+	font-size: var(--font-size-xs);
+	color: var(--warning, #e5a50a);
+	padding: var(--spacing-sm);
+	background: var(--surface);
+	border: 1px solid var(--edge);
+	border-radius: 4px;
+}
+
 /* Info */
 
 .import-dialog__info {

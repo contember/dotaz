@@ -45,11 +45,14 @@ if (localKey) {
 }
 const connectionManager = new ConnectionManager(appDb);
 
-// Create RPC handlers
+// Create RPC handlers with deferred message emitter (set after window creation)
+let emitToFrontend: ((channel: string, payload: unknown) => void) | undefined;
 const rpc = BrowserView.defineRPC<DotazRPC>({
 	maxRequestTime: 30000,
 	handlers: {
-		requests: createHandlers(connectionManager, undefined, appDb, Utils),
+		requests: createHandlers(connectionManager, undefined, appDb, Utils, {
+			emitMessage: (channel, payload) => emitToFrontend?.(channel, payload),
+		}),
 		messages: {},
 	},
 });
@@ -68,9 +71,14 @@ const mainWindow = new BrowserWindow({
 	},
 });
 
+// Wire up BE→FE message emitter after window creation
+emitToFrontend = (channel: string, payload: unknown) => {
+	(mainWindow as any).webview.rpc.send[channel](payload);
+};
+
 // Wire up BE→FE notifications after window creation
 connectionManager.onStatusChanged((event) => {
-	(mainWindow as any).webview.rpc.send["connections.statusChanged"]({
+	emitToFrontend!("connections.statusChanged", {
 		connectionId: event.connectionId,
 		state: event.state,
 		error: event.error,

@@ -8,6 +8,8 @@ import type {
 import type { ColumnFilter, SortColumn } from "../../../shared/types/grid";
 import { gridStore } from "../../stores/grid";
 import { rpc } from "../../lib/rpc";
+import { getCapabilities } from "../../lib/capabilities";
+import { transport } from "../../lib/transport";
 import Download from "lucide-solid/icons/download";
 import Eye from "lucide-solid/icons/eye";
 import Dialog from "../common/Dialog";
@@ -68,13 +70,15 @@ export default function ExportDialog(props: ExportDialogProps) {
 	const [preview, setPreview] = createSignal("");
 	const [previewLoading, setPreviewLoading] = createSignal(false);
 	const [exporting, setExporting] = createSignal(false);
+	const [progressRows, setProgressRows] = createSignal(0);
 	const [exportResult, setExportResult] = createSignal<{
 		rowCount: number;
-		filePath: string;
+		filePath?: string;
 		sizeBytes: number;
 	} | null>(null);
 	const [error, setError] = createSignal<string | null>(null);
 
+	const caps = () => getCapabilities();
 	const tab = () => gridStore.getTab(props.tabId);
 
 	const hasSelection = () => {
@@ -114,6 +118,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 			setPreview("");
 			setPreviewLoading(false);
 			setExporting(false);
+			setProgressRows(0);
 			setExportResult(null);
 			setError(null);
 		}
@@ -191,27 +196,45 @@ export default function ExportDialog(props: ExportDialogProps) {
 	async function handleExport() {
 		setError(null);
 		setExportResult(null);
+		setProgressRows(0);
 
 		const ext = FILE_EXTENSIONS[format()];
 		const defaultName = `${props.table}.${ext}`;
 
+		let exportFilePath: string | undefined;
+
+		// Desktop: use native save dialog to get file path
+		if (caps().hasFileSystem && caps().hasNativeDialogs) {
+			try {
+				const saveResult = await rpc.system.showSaveDialog({
+					title: "Export Data",
+					defaultName,
+					filters: [{ name: FORMAT_LABELS[format()], extensions: [ext] }],
+				});
+
+				if (saveResult.cancelled || !saveResult.path) return;
+				exportFilePath = saveResult.path;
+			} catch (err) {
+				setError(err instanceof Error ? err.message : String(err));
+				return;
+			}
+		}
+
+		setExporting(true);
+
+		// Subscribe to progress events
+		const unsub = transport.addMessageListener<{ rowCount: number }>(
+			"export.progress",
+			(payload) => setProgressRows(payload.rowCount),
+		);
+
 		try {
-			const saveResult = await rpc.system.showSaveDialog({
-				title: "Export Data",
-				defaultName,
-				filters: [{ name: FORMAT_LABELS[format()], extensions: [ext] }],
-			});
-
-			if (saveResult.cancelled || !saveResult.path) return;
-
-			setExporting(true);
-
 			const result = await rpc.export.exportData({
 				connectionId: props.connectionId,
 				schema: props.schema,
 				table: props.table,
 				format: format(),
-				filePath: saveResult.path,
+				filePath: exportFilePath ?? defaultName,
 				delimiter: format() === "csv" ? delimiter() : undefined,
 				encoding: format() === "csv" ? encoding() : undefined,
 				utf8Bom: format() === "csv" && encoding() === "utf-8" ? utf8Bom() : undefined,
@@ -226,6 +249,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 		} catch (err) {
 			setError(err instanceof Error ? err.message : String(err));
 		} finally {
+			unsub();
 			setExporting(false);
 		}
 	}
@@ -234,6 +258,10 @@ export default function ExportDialog(props: ExportDialogProps) {
 		if (bytes < 1024) return `${bytes} B`;
 		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
 		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+	}
+
+	function formatNumber(n: number): string {
+		return n.toLocaleString();
 	}
 
 	return (
@@ -415,7 +443,9 @@ export default function ExportDialog(props: ExportDialogProps) {
 						<div class="export-dialog__progress-bar">
 							<div class="export-dialog__progress-bar-fill" />
 						</div>
-						<span class="export-dialog__progress-text">Exporting...</span>
+						<span class="export-dialog__progress-text">
+							Exporting... {progressRows() > 0 ? `${formatNumber(progressRows())} rows` : ""}
+						</span>
 					</div>
 				</Show>
 
@@ -423,7 +453,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 				<Show when={exportResult()}>
 					{(result) => (
 						<div class="export-dialog__result">
-							Exported {result().rowCount} row{result().rowCount !== 1 ? "s" : ""} ({formatFileSize(result().sizeBytes)})
+							Exported {formatNumber(result().rowCount)} row{result().rowCount !== 1 ? "s" : ""} ({formatFileSize(result().sizeBytes)})
 						</div>
 					)}
 				</Show>

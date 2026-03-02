@@ -7,6 +7,7 @@ import { createHandlers as createSharedHandlers } from "./handlers";
 
 export interface HandlerOptions {
 	encryption?: EncryptionService;
+	emitMessage?: (channel: string, payload: unknown) => void;
 }
 
 function requireAppDb(appDb: AppDatabase | undefined): AppDatabase {
@@ -20,6 +21,7 @@ export function createHandlers(cm: ConnectionManager, qe?: QueryExecutor, appDb?
 	const adapter = new BackendAdapter(cm, queryExecutor, db, {
 		encryption: opts?.encryption,
 		Utils,
+		emitMessage: opts?.emitMessage,
 	});
 	return createSharedHandlers(adapter);
 }

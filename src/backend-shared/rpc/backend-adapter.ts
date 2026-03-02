@@ -31,15 +31,19 @@ import { generateSql, buildSchemaContext } from "../services/ai-sql";
 import { settingsToAiConfig } from "../../shared/types/settings";
 
 
+export type EmitMessage = (channel: string, payload: unknown) => void;
+
 export interface BackendAdapterOptions {
 	encryption?: EncryptionService;
 	Utils?: typeof import("electrobun/bun").Utils;
+	emitMessage?: EmitMessage;
 }
 
 export class BackendAdapter implements RpcAdapter {
 	private txManager: TransactionManager;
 	private encryption?: EncryptionService;
 	private Utils?: typeof import("electrobun/bun").Utils;
+	private emitMessage?: EmitMessage;
 
 	constructor(
 		private cm: ConnectionManager,
@@ -50,6 +54,7 @@ export class BackendAdapter implements RpcAdapter {
 		this.txManager = new TransactionManager(cm);
 		this.encryption = opts?.encryption;
 		this.Utils = opts?.Utils;
+		this.emitMessage = opts?.emitMessage;
 	}
 
 	// ── Connections ────────────────────────────────────────
@@ -268,6 +273,10 @@ export class BackendAdapter implements RpcAdapter {
 
 	async exportData(opts: ExportOptions): Promise<ExportResult> {
 		const driver = this.cm.getDriver(opts.connectionId, opts.database);
+		if (!opts.filePath) throw new Error("Export requires a file path");
+		const onProgress = this.emitMessage
+			? (rowCount: number) => this.emitMessage!("export.progress", { rowCount })
+			: undefined;
 		const result = await exportToFile(driver, {
 			schema: opts.schema,
 			table: opts.table,
@@ -281,7 +290,7 @@ export class BackendAdapter implements RpcAdapter {
 			filters: opts.filters,
 			sort: opts.sort,
 			limit: opts.limit,
-		}, opts.filePath);
+		}, opts.filePath, undefined, onProgress);
 		return { ...result, filePath: opts.filePath };
 	}
 
@@ -304,6 +313,9 @@ export class BackendAdapter implements RpcAdapter {
 	async importData(opts: ImportOptions): Promise<ImportResult> {
 		const driver = this.cm.getDriver(opts.connectionId, opts.database);
 		const stream = this.resolveImportStream(opts.filePath, opts.fileContent);
+		const onProgress = this.emitMessage
+			? (rowCount: number) => this.emitMessage!("import.progress", { rowCount })
+			: undefined;
 		return importFromStream(driver, stream, {
 			schema: opts.schema,
 			table: opts.table,
@@ -312,7 +324,7 @@ export class BackendAdapter implements RpcAdapter {
 			hasHeader: opts.hasHeader,
 			mappings: opts.mappings,
 			batchSize: opts.batchSize,
-		});
+		}, undefined, onProgress);
 	}
 
 	async importPreview(req: ImportPreviewRequest): Promise<ImportPreviewResult> {

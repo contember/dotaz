@@ -14,8 +14,8 @@ export interface ExportOptions {
 	table: string;
 	format: ExportFormat;
 	database?: string;
-	/** Target file path (from save dialog) */
-	filePath: string;
+	/** Target file path (from save dialog). Optional in demo mode. */
+	filePath?: string;
 	/** Column names to export (undefined = all) */
 	columns?: string[];
 	/** Include column headers (CSV only, default true) */
@@ -55,6 +55,6 @@ export interface ExportPreviewRequest {
 
 export interface ExportResult {
 	rowCount: number;
-	filePath: string;
+	filePath?: string;
 	sizeBytes: number;
 }

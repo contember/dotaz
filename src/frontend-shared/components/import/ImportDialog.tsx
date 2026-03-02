@@ -7,8 +7,11 @@ import type {
 } from "../../../shared/types/import";
 import type { ColumnInfo } from "../../../shared/types/database";
 import { rpc } from "../../lib/rpc";
+import { getCapabilities } from "../../lib/capabilities";
+import { transport } from "../../lib/transport";
 import Upload from "lucide-solid/icons/upload";
 import Eye from "lucide-solid/icons/eye";
+import AlertTriangle from "lucide-solid/icons/alert-triangle";
 import Dialog from "../common/Dialog";
 import "./ImportDialog.css";
 
@@ -45,14 +48,18 @@ export default function ImportDialog(props: ImportDialogProps) {
 	const [delimiter, setDelimiter] = createSignal<CsvDelimiter>(",");
 	const [hasHeader, setHasHeader] = createSignal(true);
 	const [fileContent, setFileContent] = createSignal<string | null>(null);
+	const [filePath, setFilePath] = createSignal<string | null>(null);
 	const [fileName, setFileName] = createSignal<string | null>(null);
 	const [preview, setPreview] = createSignal<ImportPreviewResult | null>(null);
 	const [previewLoading, setPreviewLoading] = createSignal(false);
 	const [mappings, setMappings] = createSignal<ColumnMapping[]>([]);
 	const [tableColumns, setTableColumns] = createSignal<ColumnInfo[]>([]);
 	const [importing, setImporting] = createSignal(false);
+	const [progressRows, setProgressRows] = createSignal(0);
 	const [importResult, setImportResult] = createSignal<{ rowCount: number } | null>(null);
 	const [error, setError] = createSignal<string | null>(null);
+
+	const caps = () => getCapabilities();
 
 	// Reset form when dialog opens
 	createEffect(() => {
@@ -61,12 +68,14 @@ export default function ImportDialog(props: ImportDialogProps) {
 			setDelimiter(",");
 			setHasHeader(true);
 			setFileContent(null);
+			setFilePath(null);
 			setFileName(null);
 			setPreview(null);
 			setPreviewLoading(false);
 			setMappings([]);
 			setTableColumns([]);
 			setImporting(false);
+			setProgressRows(0);
 			setImportResult(null);
 			setError(null);
 			if (fileInputRef) fileInputRef.value = "";
@@ -87,10 +96,31 @@ export default function ImportDialog(props: ImportDialogProps) {
 		}
 	}
 
-	function handleBrowseClick() {
-		if (fileInputRef) {
-			fileInputRef.accept = FILE_ACCEPT[format()];
-			fileInputRef.click();
+	async function handleBrowseClick() {
+		if (caps().hasFileSystem && caps().hasNativeDialogs) {
+			// Desktop: use native file dialog -> store file path (not content)
+			try {
+				const exts = FILE_ACCEPT[format()].split(",").map(s => s.replace(".", ""));
+				const result = await rpc.system.showOpenDialog({
+					filters: [{ name: FORMAT_LABELS[format()], extensions: exts }],
+					multiple: false,
+				});
+				if (result.cancelled || result.paths.length === 0) return;
+				const path = result.paths[0];
+				setFilePath(path);
+				setFileName(path.split("/").pop() ?? path);
+				setFileContent(null);
+				setError(null);
+				await loadPreview();
+			} catch (err) {
+				setError(err instanceof Error ? err.message : String(err));
+			}
+		} else {
+			// Demo/Web: use browser file input
+			if (fileInputRef) {
+				fileInputRef.accept = FILE_ACCEPT[format()];
+				fileInputRef.click();
+			}
 		}
 	}
 
@@ -100,6 +130,7 @@ export default function ImportDialog(props: ImportDialogProps) {
 		if (!file) return;
 
 		setFileName(file.name);
+		setFilePath(null);
 		setError(null);
 
 		try {
@@ -112,8 +143,9 @@ export default function ImportDialog(props: ImportDialogProps) {
 	}
 
 	async function loadPreview(content?: string) {
+		const fp = filePath();
 		const fc = content ?? fileContent();
-		if (!fc) return;
+		if (!fp && !fc) return;
 
 		setPreviewLoading(true);
 		setPreview(null);
@@ -125,7 +157,7 @@ export default function ImportDialog(props: ImportDialogProps) {
 				schema: props.schema,
 				table: props.table,
 				database: props.database,
-				fileContent: fc,
+				...(fp ? { filePath: fp } : { fileContent: fc! }),
 				format: format(),
 				delimiter: format() === "csv" ? delimiter() : undefined,
 				hasHeader: format() === "csv" ? hasHeader() : undefined,
@@ -173,12 +205,20 @@ export default function ImportDialog(props: ImportDialogProps) {
 	}
 
 	async function handleImport() {
+		const fp = filePath();
 		const fc = fileContent();
-		if (!fc) return;
+		if (!fp && !fc) return;
 
 		setError(null);
 		setImportResult(null);
+		setProgressRows(0);
 		setImporting(true);
+
+		// Subscribe to progress events
+		const unsub = transport.addMessageListener<{ rowCount: number }>(
+			"import.progress",
+			(payload) => setProgressRows(payload.rowCount),
+		);
 
 		try {
 			const result = await rpc.import.importData({
@@ -186,7 +226,7 @@ export default function ImportDialog(props: ImportDialogProps) {
 				schema: props.schema,
 				table: props.table,
 				database: props.database,
-				fileContent: fc,
+				...(fp ? { filePath: fp } : { fileContent: fc! }),
 				format: format(),
 				delimiter: format() === "csv" ? delimiter() : undefined,
 				hasHeader: format() === "csv" ? hasHeader() : undefined,
@@ -198,6 +238,7 @@ export default function ImportDialog(props: ImportDialogProps) {
 		} catch (err) {
 			setError(err instanceof Error ? err.message : String(err));
 		} finally {
+			unsub();
 			setImporting(false);
 		}
 	}
@@ -208,11 +249,23 @@ export default function ImportDialog(props: ImportDialogProps) {
 		return String(value);
 	}
 
+	function formatNumber(n: number): string {
+		return n.toLocaleString();
+	}
+
+	const hasFile = () => filePath() !== null || fileContent() !== null;
+
 	const canImport = () =>
-		fileContent() !== null &&
+		hasFile() &&
 		activeMappingCount() > 0 &&
 		!importing() &&
 		!importResult();
+
+	/** Whether preview was from a 64KB prefix (streaming mode without totalRows) */
+	const isPartialPreview = () => {
+		const p = preview();
+		return p !== null && p.totalRows === undefined && p.rows.length >= 20;
+	};
 
 	return (
 		<Dialog
@@ -221,14 +274,16 @@ export default function ImportDialog(props: ImportDialogProps) {
 			onClose={props.onClose}
 		>
 			<div class="import-dialog">
-				{/* Hidden file input */}
-				<input
-					ref={fileInputRef}
-					type="file"
-					style={{ display: "none" }}
-					accept={FILE_ACCEPT[format()]}
-					onChange={handleFileChange}
-				/>
+				{/* Hidden file input (for demo/web mode) */}
+				<Show when={!caps().hasNativeDialogs}>
+					<input
+						ref={fileInputRef}
+						type="file"
+						style={{ display: "none" }}
+						accept={FILE_ACCEPT[format()]}
+						onChange={handleFileChange}
+					/>
+				</Show>
 
 				{/* Format selection */}
 				<div class="import-dialog__section">
@@ -242,6 +297,7 @@ export default function ImportDialog(props: ImportDialogProps) {
 									onClick={() => {
 										setFormat(fmt);
 										setFileContent(null);
+										setFilePath(null);
 										setFileName(null);
 										setPreview(null);
 										setMappings([]);
@@ -289,7 +345,7 @@ export default function ImportDialog(props: ImportDialogProps) {
 									value={delimiter()}
 									onChange={(e) => {
 										setDelimiter(e.currentTarget.value as CsvDelimiter);
-										if (fileContent()) loadPreview();
+										if (hasFile()) loadPreview();
 									}}
 								>
 									<For each={Object.entries(DELIMITER_LABELS)}>
@@ -305,7 +361,7 @@ export default function ImportDialog(props: ImportDialogProps) {
 									checked={hasHeader()}
 									onChange={(e) => {
 										setHasHeader(e.currentTarget.checked);
-										if (fileContent()) loadPreview();
+										if (hasFile()) loadPreview();
 									}}
 								/>
 								First row is header
@@ -361,12 +417,12 @@ export default function ImportDialog(props: ImportDialogProps) {
 						<div class="import-dialog__section">
 							<div class="import-dialog__preview-header">
 								<label class="import-dialog__label">
-									Preview (first {Math.min(p().rows.length, 20)}{p().totalRows !== undefined ? ` of ${p().totalRows}` : ""} rows)
+									Preview (first {Math.min(p().rows.length, 20)}{p().totalRows !== undefined ? ` of ${formatNumber(p().totalRows!)}` : ""} rows)
 								</label>
 								<button
 									class="import-dialog__browse-btn"
 									onClick={() => loadPreview()}
-									disabled={previewLoading() || !fileContent()}
+									disabled={previewLoading() || !hasFile()}
 								>
 									<Eye size={12} /> Reload
 								</button>
@@ -412,13 +468,22 @@ export default function ImportDialog(props: ImportDialogProps) {
 					</div>
 				</Show>
 
+				{/* Partial preview warning */}
+				<Show when={isPartialPreview()}>
+					<div class="import-dialog__warning">
+						<AlertTriangle size={14} /> Preview based on first 64KB of file. Actual row count may differ.
+					</div>
+				</Show>
+
 				{/* Import progress */}
 				<Show when={importing()}>
 					<div class="import-dialog__progress">
 						<div class="import-dialog__progress-bar">
 							<div class="import-dialog__progress-bar-fill" />
 						</div>
-						<span class="import-dialog__progress-text">Importing...</span>
+						<span class="import-dialog__progress-text">
+							Importing... {progressRows() > 0 ? `${formatNumber(progressRows())} rows` : ""}
+						</span>
 					</div>
 				</Show>
 
@@ -426,7 +491,7 @@ export default function ImportDialog(props: ImportDialogProps) {
 				<Show when={importResult()}>
 					{(result) => (
 						<div class="import-dialog__result">
-							Successfully imported {result().rowCount} row{result().rowCount !== 1 ? "s" : ""}
+							Successfully imported {formatNumber(result().rowCount)} row{result().rowCount !== 1 ? "s" : ""}
 						</div>
 					)}
 				</Show>
@@ -440,7 +505,7 @@ export default function ImportDialog(props: ImportDialogProps) {
 				<Show when={preview() && !importResult()}>
 					<div class="import-dialog__info">
 						{preview()!.totalRows !== undefined
-							? `${preview()!.totalRows} row${preview()!.totalRows !== 1 ? "s" : ""}`
+							? `${formatNumber(preview()!.totalRows!)} row${preview()!.totalRows !== 1 ? "s" : ""}`
 							: `${preview()!.rows.length}+ rows`} to import
 						{activeMappingCount() > 0
 							? ` into ${activeMappingCount()} column${activeMappingCount() !== 1 ? "s" : ""}`
