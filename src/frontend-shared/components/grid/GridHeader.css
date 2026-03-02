@@ -5,6 +5,8 @@
 	z-index: 2;
 	background: var(--surface-raised);
 	border-bottom: 2px solid var(--edge-strong);
+	width: max-content;
+	min-width: 100%;
 }
 
 .grid-header__cell {

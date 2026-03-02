@@ -88,7 +88,6 @@ export default function VirtualScroller(props: VirtualScrollerProps) {
 							position: "absolute",
 							top: `${virtualRow.start - virtualizer.options.scrollMargin}px`,
 							left: "0",
-							width: "100%",
 							height: `${virtualRow.size}px`,
 						}}
 					/>
