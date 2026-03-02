@@ -33,6 +33,7 @@ import Save from "lucide-solid/icons/save";
 import Pencil from "lucide-solid/icons/pencil";
 import ArrowLeftRight from "lucide-solid/icons/arrow-left-right";
 import PanelRightOpen from "lucide-solid/icons/panel-right-open";
+import EllipsisVertical from "lucide-solid/icons/ellipsis-vertical";
 import { isNumericType } from "../../lib/column-types";
 import { HEADER_HEIGHT } from "../../lib/layout-constants";
 import "./DataGrid.css";
@@ -90,7 +91,10 @@ export default function DataGrid(props: DataGridProps) {
 	const [saveViewForceNew, setSaveViewForceNew] = createSignal(false);
 	const [savedViewConfig, setSavedViewConfig] = createSignal<SavedViewConfig | null>(null);
 	const [searchInput, setSearchInput] = createSignal("");
+	const [moreMenuOpen, setMoreMenuOpen] = createSignal(false);
 	let scrollRef: HTMLDivElement | undefined;
+	let moreMenuRef: HTMLDivElement | undefined;
+	let moreMenuTriggerRef: HTMLButtonElement | undefined;
 	let gridRef: HTMLDivElement | undefined;
 	let anchorRow = -1;
 	let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined;
@@ -125,6 +129,23 @@ export default function DataGrid(props: DataGridProps) {
 	onCleanup(() => {
 		if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
 		window.removeEventListener("dotaz:open-import", handleOpenImport);
+	});
+
+	// Close more menu on click outside
+	createEffect(() => {
+		if (moreMenuOpen()) {
+			const handler = (e: MouseEvent) => {
+				const target = e.target as HTMLElement;
+				if (
+					moreMenuRef && !moreMenuRef.contains(target) &&
+					moreMenuTriggerRef && !moreMenuTriggerRef.contains(target)
+				) {
+					setMoreMenuOpen(false);
+				}
+			};
+			document.addEventListener("mousedown", handler);
+			onCleanup(() => document.removeEventListener("mousedown", handler));
+		}
 	});
 
 	// Sync tab dirty flag with pending changes state
@@ -1031,76 +1052,88 @@ export default function DataGrid(props: DataGridProps) {
 							/>
 							<button
 								class="data-grid__toolbar-btn"
-								onClick={() => setExportOpen(true)}
-								title="Export data"
-							>
-								<Icon name="export" size={12} /> Export
-							</button>
-							<Show when={!isReadOnly()}>
-								<button
-									class="data-grid__toolbar-btn"
-									onClick={() => setImportOpen(true)}
-									title="Import data"
-								>
-									<Icon name="import" size={12} /> Import
-								</button>
-							</Show>
-							<button
-								class="data-grid__toolbar-btn"
-								onClick={() => {
-									window.dispatchEvent(new CustomEvent("dotaz:open-compare", {
-										detail: {
-											connectionId: props.connectionId,
-											schema: currentSchema(),
-											table: currentTable(),
-											database: props.database,
-										},
-									}));
-								}}
-								title="Compare this table with another"
-							>
-								<Icon name="compare" size={12} /> Compare
-							</button>
-							<button
-								class="data-grid__toolbar-btn"
-								onClick={() => {
-									tabsStore.openTab({
-										type: "schema-viewer",
-										title: `Schema — ${currentTable()}`,
-										connectionId: props.connectionId,
-										schema: currentSchema(),
-										table: currentTable(),
-										database: props.database,
-									});
-								}}
-								title="View table schema"
-							>
-								<Icon name="schema" size={12} /> Schema
-							</button>
-							<button
-								class="data-grid__toolbar-btn"
-								classList={{ "data-grid__toolbar-btn--active": !!tabState().transposed }}
-								onClick={() => gridStore.toggleTranspose(props.tabId)}
-								title="Transpose view (Ctrl+Shift+T)"
-							>
-								<ArrowLeftRight size={12} /> Transpose
-							</button>
-							<button
-								class="data-grid__toolbar-btn"
-								classList={{ "data-grid__toolbar-btn--active": !!tabState().valueEditorOpen }}
-								onClick={() => gridStore.toggleValueEditor(props.tabId)}
-								title="Value editor panel (Ctrl+Shift+E)"
-							>
-								<PanelRightOpen size={12} /> Value
-							</button>
-							<button
-								class="data-grid__toolbar-btn"
 								onClick={handleRefresh}
 								disabled={tabState().loading}
 								title="Refresh data (F5)"
 							>
 								<Icon name={tabState().loading ? "spinner" : "refresh"} size={12} /> Refresh
 							</button>
+							<div class="data-grid__more-menu">
+								<button
+									ref={moreMenuTriggerRef}
+									class="data-grid__toolbar-btn"
+									classList={{ "data-grid__toolbar-btn--active": moreMenuOpen() }}
+									onClick={() => setMoreMenuOpen(!moreMenuOpen())}
+									title="More actions"
+								>
+									<EllipsisVertical size={14} />
+								</button>
+								<Show when={moreMenuOpen()}>
+									<div ref={moreMenuRef} class="data-grid__more-panel">
+										<button
+											class="data-grid__more-item"
+											onClick={() => { setExportOpen(true); setMoreMenuOpen(false); }}
+										>
+											<Icon name="export" size={12} /> Export
+										</button>
+										<Show when={!isReadOnly()}>
+											<button
+												class="data-grid__more-item"
+												onClick={() => { setImportOpen(true); setMoreMenuOpen(false); }}
+											>
+												<Icon name="import" size={12} /> Import
+											</button>
+										</Show>
+										<button
+											class="data-grid__more-item"
+											onClick={() => {
+												window.dispatchEvent(new CustomEvent("dotaz:open-compare", {
+													detail: {
+														connectionId: props.connectionId,
+														schema: currentSchema(),
+														table: currentTable(),
+														database: props.database,
+													},
+												}));
+												setMoreMenuOpen(false);
+											}}
+										>
+											<Icon name="compare" size={12} /> Compare
+										</button>
+										<button
+											class="data-grid__more-item"
+											onClick={() => {
+												tabsStore.openTab({
+													type: "schema-viewer",
+													title: `Schema — ${currentTable()}`,
+													connectionId: props.connectionId,
+													schema: currentSchema(),
+													table: currentTable(),
+													database: props.database,
+												});
+												setMoreMenuOpen(false);
+											}}
+										>
+											<Icon name="schema" size={12} /> Schema
+										</button>
+										<div class="data-grid__more-separator" />
+										<button
+											class="data-grid__more-item"
+											classList={{ "data-grid__more-item--active": !!tabState().transposed }}
+											onClick={() => { gridStore.toggleTranspose(props.tabId); setMoreMenuOpen(false); }}
+										>
+											<ArrowLeftRight size={12} /> Transpose
+										</button>
+										<button
+											class="data-grid__more-item"
+											classList={{ "data-grid__more-item--active": !!tabState().valueEditorOpen }}
+											onClick={() => { gridStore.toggleValueEditor(props.tabId); setMoreMenuOpen(false); }}
+										>
+											<PanelRightOpen size={12} /> Value Editor
+										</button>
+									</div>
+								</Show>
+							</div>
 						</>
 					)}
 				</Show>
