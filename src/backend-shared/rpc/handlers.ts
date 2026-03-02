@@ -15,11 +15,11 @@ export function createHandlers(adapter: RpcAdapter) {
 		"connections.list": () => {
 			return adapter.listConnections();
 		},
-		"connections.create": ({ name, config, readOnly }: { name: string; config: ConnectionConfig; readOnly?: boolean }) => {
-			return adapter.createConnection({ name, config, readOnly });
+		"connections.create": ({ name, config, readOnly, color }: { name: string; config: ConnectionConfig; readOnly?: boolean; color?: string }) => {
+			return adapter.createConnection({ name, config, readOnly, color });
 		},
-		"connections.update": ({ id, name, config, readOnly }: { id: string; name: string; config: ConnectionConfig; readOnly?: boolean }) => {
-			return adapter.updateConnection({ id, name, config, readOnly });
+		"connections.update": ({ id, name, config, readOnly, color }: { id: string; name: string; config: ConnectionConfig; readOnly?: boolean; color?: string }) => {
+			return adapter.updateConnection({ id, name, config, readOnly, color });
 		},
 		"connections.setReadOnly": ({ id, readOnly }: { id: string; readOnly: boolean }) => {
 			return adapter.setConnectionReadOnly(id, readOnly);

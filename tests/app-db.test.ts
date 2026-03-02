@@ -29,12 +29,12 @@ describe("AppDatabase", () => {
 
 	test("migrations run automatically on initialization", () => {
 		const version = getSchemaVersion(appDb.db);
-		expect(version).toBe(4);
+		expect(version).toBe(5);
 	});
 
 	test("schema_version table tracks current version", () => {
 		const rows = appDb.db.prepare("SELECT version FROM schema_version ORDER BY version").all() as { version: number }[];
-		expect(rows.map(r => r.version)).toEqual([1, 2, 3, 4]);
+		expect(rows.map(r => r.version)).toEqual([1, 2, 3, 4, 5]);
 	});
 
 	test("migration 002 converts boolean SSL to SSLMode string", () => {
@@ -190,6 +190,32 @@ describe("AppDatabase", () => {
 
 		test("setConnectionReadOnly throws for non-existent id", () => {
 			expect(() => appDb.setConnectionReadOnly("nonexistent", true)).toThrow("Connection not found");
+		});
+
+		test("create connection with color", () => {
+			const conn = appDb.createConnection({ name: "Colored PG", config: pgConfig, color: "#ef4444" });
+			expect(conn.color).toBe("#ef4444");
+			const found = appDb.getConnectionById(conn.id)!;
+			expect(found.color).toBe("#ef4444");
+		});
+
+		test("create connection without color defaults to undefined", () => {
+			const conn = appDb.createConnection({ name: "No Color PG", config: pgConfig });
+			expect(conn.color).toBeUndefined();
+		});
+
+		test("update connection color", () => {
+			const conn = appDb.createConnection({ name: "Color Toggle", config: pgConfig });
+			expect(conn.color).toBeUndefined();
+			const updated = appDb.updateConnection({ id: conn.id, name: "Color Toggle", config: pgConfig, color: "#3b82f6" });
+			expect(updated.color).toBe("#3b82f6");
+		});
+
+		test("clear connection color by setting to empty string", () => {
+			const conn = appDb.createConnection({ name: "Clear Color", config: pgConfig, color: "#ef4444" });
+			expect(conn.color).toBe("#ef4444");
+			const updated = appDb.updateConnection({ id: conn.id, name: "Clear Color", config: pgConfig, color: "" });
+			expect(updated.color).toBeUndefined();
 		});
 	});
 

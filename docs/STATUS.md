@@ -80,7 +80,7 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 | DOTAZ-075 | Full-text search across database tables | done | SearchService with sequential LIKE queries, DatabaseSearchDialog with scope selection, grouped results, click-to-navigate with quickSearch, command palette + context menu |
 | DOTAZ-076 | Grid heatmaps for numeric columns | done | HeatmapMode type (sequential/diverging), heatmapColumns in grid store, computeHeatmapStats/computeHeatmapColor, column header context menu entries, works in normal + transposed view |
 | DOTAZ-077 | Multiple cursors in SQL editor | done | Alt+Click adds cursor, Ctrl+D selectNextOccurrence via searchKeymap, keyboard manager defaultPrevented guard |
-| DOTAZ-078 | Connection color coding | not started | Color connections by environment |
+| DOTAZ-078 | Connection color coding | done | 10-color palette in ConnectionDialog, colored left border in tree, 3px colored top border in status bar, migration v5 adds color column, tests for persistence |
 | DOTAZ-079 | Editable query results | not started | Edit cells in SELECT results |
 
 ---
@@ -101,5 +101,5 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 
 ---
 
-*Last updated: 2026-03-02 — DOTAZ-077 done*
+*Last updated: 2026-03-02 — DOTAZ-078 done*
 

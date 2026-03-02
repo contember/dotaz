@@ -23,6 +23,7 @@ interface StoredConnectionRecord {
 	encryptedConfig: string;      // full config encrypted by server
 	rememberPassword: boolean;
 	readOnly?: boolean;
+	color?: string;
 	createdAt: string;
 	updatedAt: string;
 }
@@ -92,12 +93,13 @@ export class IndexedDbAppStateStorage implements AppStateStorage {
 			config: r.config,
 			state: "disconnected" as const,
 			readOnly: r.readOnly || undefined,
+			color: r.color || undefined,
 			createdAt: r.createdAt,
 			updatedAt: r.updatedAt,
 		}));
 	}
 
-	async createConnection(name: string, config: ConnectionConfig, rememberPassword = true, readOnly?: boolean): Promise<ConnectionInfo> {
+	async createConnection(name: string, config: ConnectionConfig, rememberPassword = true, readOnly?: boolean, color?: string): Promise<ConnectionInfo> {
 		const id = crypto.randomUUID();
 		const now = new Date().toISOString();
 
@@ -113,6 +115,7 @@ export class IndexedDbAppStateStorage implements AppStateStorage {
 			encryptedConfig,
 			rememberPassword,
 			readOnly: readOnly || undefined,
+			color: color || undefined,
 			createdAt: now,
 			updatedAt: now,
 		};
@@ -125,12 +128,13 @@ export class IndexedDbAppStateStorage implements AppStateStorage {
 			config: record.config,
 			state: "disconnected",
 			readOnly: readOnly || undefined,
+			color: color || undefined,
 			createdAt: now,
 			updatedAt: now,
 		};
 	}
 
-	async updateConnection(id: string, name: string, config: ConnectionConfig, rememberPassword?: boolean, readOnly?: boolean): Promise<ConnectionInfo> {
+	async updateConnection(id: string, name: string, config: ConnectionConfig, rememberPassword?: boolean, readOnly?: boolean, color?: string): Promise<ConnectionInfo> {
 		const existing = await txOp<StoredConnectionRecord | undefined>(STORES.connections, "readonly", (s) => s.get(id));
 		if (!existing) throw new Error(`Connection not found: ${id}`);
 
@@ -143,6 +147,7 @@ export class IndexedDbAppStateStorage implements AppStateStorage {
 		const { encryptedConfig } = await rpc.storage.encrypt({ config: JSON.stringify(configToEncrypt) });
 
 		const resolvedReadOnly = readOnly ?? existing.readOnly;
+		const resolvedColor = color !== undefined ? (color || undefined) : existing.color;
 		const record: StoredConnectionRecord = {
 			id,
 			name,
@@ -150,6 +155,7 @@ export class IndexedDbAppStateStorage implements AppStateStorage {
 			encryptedConfig,
 			rememberPassword: remember,
 			readOnly: resolvedReadOnly || undefined,
+			color: resolvedColor,
 			createdAt: existing.createdAt,
 			updatedAt: now,
 		};
@@ -162,6 +168,7 @@ export class IndexedDbAppStateStorage implements AppStateStorage {
 			config: record.config,
 			state: "disconnected",
 			readOnly: resolvedReadOnly || undefined,
+			color: resolvedColor,
 			createdAt: record.createdAt,
 			updatedAt: now,
 		};

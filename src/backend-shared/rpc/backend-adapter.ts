@@ -52,11 +52,11 @@ export class BackendAdapter implements RpcAdapter {
 		return this.cm.listConnections();
 	}
 
-	createConnection(params: { name: string; config: ConnectionConfig; readOnly?: boolean }): ConnectionInfo {
+	createConnection(params: { name: string; config: ConnectionConfig; readOnly?: boolean; color?: string }): ConnectionInfo {
 		return this.cm.createConnection(params);
 	}
 
-	updateConnection(params: { id: string; name: string; config: ConnectionConfig; readOnly?: boolean }): ConnectionInfo {
+	updateConnection(params: { id: string; name: string; config: ConnectionConfig; readOnly?: boolean; color?: string }): ConnectionInfo {
 		return this.cm.updateConnection(params);
 	}
 

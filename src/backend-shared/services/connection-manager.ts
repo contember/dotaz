@@ -293,6 +293,7 @@ export class ConnectionManager {
 		name: string;
 		config: ConnectionConfig;
 		readOnly?: boolean;
+		color?: string;
 	}, allowMissingPassword = false): ConnectionInfo {
 		validateConfig(params.config, allowMissingPassword);
 		return this.appDb.createConnection(params);
@@ -303,6 +304,7 @@ export class ConnectionManager {
 		name: string;
 		config: ConnectionConfig;
 		readOnly?: boolean;
+		color?: string;
 	}): ConnectionInfo {
 		validateConfig(params.config);
 		const updated = this.appDb.updateConnection(params);

@@ -6,6 +6,7 @@ export type ConnectionStatus = "connected" | "disconnected" | "connecting" | "er
 interface StatusBarProps {
 	connectionName?: string;
 	connectionStatus?: ConnectionStatus;
+	connectionColor?: string;
 	schema?: string;
 	rowCount?: number;
 	inTransaction?: boolean;
@@ -27,7 +28,11 @@ function statusColor(status: ConnectionStatus): string {
 
 export default function StatusBar(props: StatusBarProps) {
 	return (
-		<footer class="status-bar">
+		<footer
+			class="status-bar"
+			classList={{ "status-bar--colored": !!props.connectionColor }}
+			style={{ "border-top-color": props.connectionColor || undefined }}
+		>
 			<div class="status-bar__left">
 				<Show when={props.connectionName} fallback={
 					<span class="status-bar__item">No connection</span>

@@ -13,6 +13,7 @@ interface ConnectionTreeItemProps {
 	expanded?: boolean;
 	hasChildren?: boolean;
 	statusColor?: string;
+	connectionColor?: string;
 	loading?: boolean;
 	badge?: JSX.Element;
 	onClick?: () => void;
@@ -35,7 +36,10 @@ export default function ConnectionTreeItem(props: ConnectionTreeItemProps) {
 		<div
 			class="tree-item"
 			classList={{ "tree-item--view": props.type === "view" }}
-			style={{ "padding-left": `${props.level * 16 + 4}px` }}
+			style={{
+				"padding-left": `${props.level * 16 + 4}px`,
+				"border-left": props.connectionColor ? `3px solid ${props.connectionColor}` : undefined,
+			}}
 			onClick={handleClick}
 			onContextMenu={props.onContextMenu}
 		>

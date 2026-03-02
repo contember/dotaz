@@ -98,6 +98,13 @@ const migrations: Migration[] = [
 			`);
 		},
 	},
+	{
+		version: 5,
+		description: "Add color column to connections table",
+		up: (db) => {
+			db.run("ALTER TABLE connections ADD COLUMN color TEXT DEFAULT NULL");
+		},
+	},
 ];
 
 /**

@@ -1,11 +1,11 @@
-import { createSignal, Show } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 import type {
 	ConnectionConfig,
 	ConnectionInfo,
 	ConnectionType,
 	SSLMode,
 } from "../../../shared/types/connection";
-import { CONNECTION_TYPE_META, SSL_MODES } from "../../../shared/types/connection";
+import { CONNECTION_TYPE_META, CONNECTION_COLORS, SSL_MODES } from "../../../shared/types/connection";
 import { connectionsStore } from "../../stores/connections";
 import { storage } from "../../lib/storage";
 import { rpc } from "../../lib/rpc";
@@ -77,6 +77,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 	const [connectionUrl, setConnectionUrl] = createSignal("");
 
 	const [readOnly, setReadOnly] = createSignal(false);
+	const [connectionColor, setConnectionColor] = createSignal<string | undefined>(undefined);
 	const [rememberPassword, setRememberPassword] = createSignal(true);
 	const [testResult, setTestResult] = createSignal<{
 		success: boolean;
@@ -98,6 +99,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 		if (conn) {
 			setDbType(conn.config.type);
 			setReadOnly(conn.readOnly === true);
+			setConnectionColor(conn.color);
 			connectionsStore.getRememberPassword(conn.id).then(setRememberPassword);
 			if (conn.config.type === "postgresql" || conn.config.type === "mysql") {
 				const rawSsl = conn.config.ssl;
@@ -123,6 +125,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 		} else {
 			setDbType("postgresql");
 			setReadOnly(false);
+			setConnectionColor(undefined);
 			setRememberPassword(true);
 			setPgFields(defaultPgFields());
 			setSqliteFields(defaultSqliteFields());
@@ -218,9 +221,9 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 			const config = buildConfig();
 
 			if (props.connection) {
-				await connectionsStore.updateConnection(props.connection.id, name, config, rememberPassword(), readOnly());
+				await connectionsStore.updateConnection(props.connection.id, name, config, rememberPassword(), readOnly(), connectionColor());
 			} else {
-				await connectionsStore.createConnection(name, config, rememberPassword(), readOnly());
+				await connectionsStore.createConnection(name, config, rememberPassword(), readOnly(), connectionColor());
 			}
 			props.onClose();
 		} catch (err) {
@@ -487,6 +490,30 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 						Read-only
 					</label>
 					<span class="conn-dialog__hint">Disable editing and warn on DML statements</span>
+				</div>
+
+				{/* Color picker */}
+				<div class="conn-dialog__field">
+					<label class="conn-dialog__label">Color</label>
+					<div class="conn-dialog__color-palette">
+						<button
+							class="conn-dialog__color-swatch conn-dialog__color-swatch--none"
+							classList={{ "conn-dialog__color-swatch--selected": !connectionColor() }}
+							onClick={() => setConnectionColor(undefined)}
+							title="None"
+						/>
+						<For each={CONNECTION_COLORS}>
+							{(c) => (
+								<button
+									class="conn-dialog__color-swatch"
+									classList={{ "conn-dialog__color-swatch--selected": connectionColor() === c.value }}
+									style={{ background: c.value }}
+									onClick={() => setConnectionColor(c.value)}
+									title={c.label}
+								/>
+							)}
+						</For>
+					</div>
 				</div>
 
 				{/* Test result */}

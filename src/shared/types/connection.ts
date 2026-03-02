@@ -73,6 +73,21 @@ export interface ConnectionInfo {
 	state: ConnectionState;
 	error?: string;
 	readOnly?: boolean;
+	color?: string;
 	createdAt: string;
 	updatedAt: string;
 }
+
+/** Predefined palette for connection color coding. */
+export const CONNECTION_COLORS = [
+	{ value: "#ef4444", label: "Red" },
+	{ value: "#f97316", label: "Orange" },
+	{ value: "#eab308", label: "Yellow" },
+	{ value: "#22c55e", label: "Green" },
+	{ value: "#14b8a6", label: "Teal" },
+	{ value: "#3b82f6", label: "Blue" },
+	{ value: "#6366f1", label: "Indigo" },
+	{ value: "#a855f7", label: "Purple" },
+	{ value: "#ec4899", label: "Pink" },
+	{ value: "#6b7280", label: "Gray" },
+] as const;

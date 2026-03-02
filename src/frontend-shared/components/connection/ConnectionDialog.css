@@ -130,6 +130,48 @@
 	background: var(--surface-hover);
 }
 
+/* Color palette */
+.conn-dialog__color-palette {
+	display: flex;
+	gap: var(--spacing-xs);
+	flex-wrap: wrap;
+}
+
+.conn-dialog__color-swatch {
+	width: 24px;
+	height: 24px;
+	border-radius: 50%;
+	border: 2px solid transparent;
+	cursor: pointer;
+	padding: 0;
+	outline: none;
+}
+
+.conn-dialog__color-swatch:hover {
+	border-color: var(--ink-muted);
+}
+
+.conn-dialog__color-swatch--selected {
+	border-color: var(--ink);
+	box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink);
+}
+
+.conn-dialog__color-swatch--none {
+	background: var(--surface-inset);
+	position: relative;
+}
+
+.conn-dialog__color-swatch--none::after {
+	content: "";
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 16px;
+	height: 2px;
+	background: var(--ink-muted);
+	transform: translate(-50%, -50%) rotate(-45deg);
+}
+
 /* Test result */
 .conn-dialog__test-result {
 	padding: var(--spacing-sm) var(--spacing-md);

@@ -13,6 +13,10 @@
 	flex-shrink: 0;
 }
 
+.status-bar--colored {
+	border-top-width: 3px;
+}
+
 .status-bar__left,
 .status-bar__right {
 	display: flex;

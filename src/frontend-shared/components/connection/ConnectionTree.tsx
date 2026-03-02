@@ -587,6 +587,7 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 									expanded={expanded()}
 									hasChildren={true}
 									statusColor={STATUS_COLORS[conn.state]}
+									connectionColor={conn.color}
 									loading={loading()}
 									badge={conn.readOnly ? <Lock size={11} class="tree-item__lock" /> : undefined}
 									onClick={() => toggleConnection(conn)}

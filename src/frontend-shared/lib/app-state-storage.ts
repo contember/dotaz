@@ -5,8 +5,8 @@ import type { SavedView, SavedViewConfig, HistoryListParams } from "../../shared
 export interface AppStateStorage {
 	// Connections
 	listConnections(): Promise<ConnectionInfo[]>;
-	createConnection(name: string, config: ConnectionConfig, rememberPassword?: boolean, readOnly?: boolean): Promise<ConnectionInfo>;
-	updateConnection(id: string, name: string, config: ConnectionConfig, rememberPassword?: boolean, readOnly?: boolean): Promise<ConnectionInfo>;
+	createConnection(name: string, config: ConnectionConfig, rememberPassword?: boolean, readOnly?: boolean, color?: string): Promise<ConnectionInfo>;
+	updateConnection(id: string, name: string, config: ConnectionConfig, rememberPassword?: boolean, readOnly?: boolean, color?: string): Promise<ConnectionInfo>;
 	deleteConnection(id: string): Promise<void>;
 
 	// History

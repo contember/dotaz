@@ -18,8 +18,8 @@ import type {
 export interface RpcAdapter {
 	// ── Connections ────────────────────────────────────────
 	listConnections(): ConnectionInfo[];
-	createConnection(params: { name: string; config: ConnectionConfig; readOnly?: boolean }): ConnectionInfo;
-	updateConnection(params: { id: string; name: string; config: ConnectionConfig; readOnly?: boolean }): ConnectionInfo;
+	createConnection(params: { name: string; config: ConnectionConfig; readOnly?: boolean; color?: string }): ConnectionInfo;
+	updateConnection(params: { id: string; name: string; config: ConnectionConfig; readOnly?: boolean; color?: string }): ConnectionInfo;
 	setConnectionReadOnly(id: string, readOnly: boolean): ConnectionInfo;
 	deleteConnection(id: string): void | Promise<void>;
 	testConnection(config: ConnectionConfig): Promise<{ success: boolean; error?: string }>;

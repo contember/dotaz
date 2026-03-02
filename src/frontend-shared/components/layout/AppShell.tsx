@@ -785,6 +785,12 @@ export default function AppShell() {
 				const conn = connectionsStore.connections.find(c => c.id === tab.connectionId);
 				return conn?.state as any;
 			})()}
+			connectionColor={(() => {
+				const tab = tabsStore.activeTab;
+				if (!tab) return undefined;
+				const conn = connectionsStore.connections.find(c => c.id === tab.connectionId);
+				return conn?.color;
+			})()}
 			readOnly={(() => {
 				const tab = tabsStore.activeTab;
 				if (!tab) return false;

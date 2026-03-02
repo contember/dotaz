@@ -145,9 +145,9 @@ async function loadSchemaTreesForConnection(conn: ConnectionInfo) {
 	}
 }
 
-async function createConnection(name: string, config: ConnectionConfig, rememberPassword = true, readOnly?: boolean): Promise<ConnectionInfo> {
+async function createConnection(name: string, config: ConnectionConfig, rememberPassword = true, readOnly?: boolean, color?: string): Promise<ConnectionInfo> {
 	try {
-		const conn = await storage.createConnection(name, config, rememberPassword, readOnly);
+		const conn = await storage.createConnection(name, config, rememberPassword, readOnly, color);
 		setState("connections", (prev) => [...prev, conn]);
 		return conn;
 	} catch (err) {
@@ -156,9 +156,9 @@ async function createConnection(name: string, config: ConnectionConfig, remember
 	}
 }
 
-async function updateConnection(id: string, name: string, config: ConnectionConfig, rememberPassword?: boolean, readOnly?: boolean): Promise<ConnectionInfo> {
+async function updateConnection(id: string, name: string, config: ConnectionConfig, rememberPassword?: boolean, readOnly?: boolean, color?: string): Promise<ConnectionInfo> {
 	try {
-		const conn = await storage.updateConnection(id, name, config, rememberPassword, readOnly);
+		const conn = await storage.updateConnection(id, name, config, rememberPassword, readOnly, color);
 		setState("connections", (c) => c.id === id, conn);
 		return conn;
 	} catch (err) {

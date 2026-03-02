@@ -11,12 +11,12 @@ export class RpcAppStateStorage implements AppStateStorage {
 		return rpc.connections.list();
 	}
 
-	async createConnection(name: string, config: ConnectionConfig, _rememberPassword?: boolean, readOnly?: boolean): Promise<ConnectionInfo> {
-		return rpc.connections.create({ name, config, readOnly });
+	async createConnection(name: string, config: ConnectionConfig, _rememberPassword?: boolean, readOnly?: boolean, color?: string): Promise<ConnectionInfo> {
+		return rpc.connections.create({ name, config, readOnly, color });
 	}
 
-	async updateConnection(id: string, name: string, config: ConnectionConfig, _rememberPassword?: boolean, readOnly?: boolean): Promise<ConnectionInfo> {
-		return rpc.connections.update({ id, name, config, readOnly });
+	async updateConnection(id: string, name: string, config: ConnectionConfig, _rememberPassword?: boolean, readOnly?: boolean, color?: string): Promise<ConnectionInfo> {
+		return rpc.connections.update({ id, name, config, readOnly, color });
 	}
 
 	async deleteConnection(id: string): Promise<void> {
