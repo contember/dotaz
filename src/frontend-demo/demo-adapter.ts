@@ -11,12 +11,11 @@ import type {
 	SavedView,
 	SavedViewConfig,
 	HistoryListParams,
+	QueryBookmark,
 } from "../shared/types/rpc";
-import type { ComparisonRequest, ComparisonResult } from "../shared/types/comparison";
 import { splitStatements } from "../shared/sql/statements";
 import { exportPreview as generateExportPreview } from "../backend-shared/services/export-service";
 import { parseImportPreview, importData as importDataService } from "../backend-shared/services/import-service";
-import { compareData as compareDataService } from "../backend-shared/services/comparison-service";
 import { formatSql } from "../backend-shared/services/sql-formatter";
 
 type EmitMessage = (channel: string, payload: any) => void;
@@ -263,6 +262,24 @@ export class DemoAdapter implements RpcAdapter {
 		return this.state.getSavedViewById(id);
 	}
 
+	// ── Bookmarks ────────────────────────────────────────
+
+	listBookmarks(connectionId: string, search?: string): QueryBookmark[] {
+		return this.state.listBookmarks(connectionId, search);
+	}
+
+	createBookmark(params: { connectionId: string; name: string; description?: string; sql: string }): QueryBookmark {
+		return this.state.createBookmark(params);
+	}
+
+	updateBookmark(params: { id: string; name: string; description?: string; sql: string }): QueryBookmark {
+		return this.state.updateBookmark(params);
+	}
+
+	deleteBookmark(id: string): void {
+		this.state.deleteBookmark(id);
+	}
+
 	// ── Export ────────────────────────────────────────────
 
 	async exportData(opts: ExportOptions): Promise<ExportResult> {
@@ -339,14 +356,6 @@ export class DemoAdapter implements RpcAdapter {
 			delimiter: req.delimiter,
 			hasHeader: req.hasHeader,
 		}, req.limit);
-	}
-
-	// ── Data comparison ──────────────────────────────────
-
-	async compareData(req: ComparisonRequest): Promise<ComparisonResult> {
-		const leftDriver = this.getConnectedDriver(req.left.connectionId);
-		const rightDriver = this.getConnectedDriver(req.right.connectionId);
-		return compareDataService(leftDriver, rightDriver, req);
 	}
 
 	// ── SQL formatting ───────────────────────────────────

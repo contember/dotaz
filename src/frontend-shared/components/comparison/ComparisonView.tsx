@@ -1,6 +1,8 @@
 import { createSignal, createEffect, createMemo, For, Show } from "solid-js";
 import type { ComparisonSource, ComparisonColumnMapping, ComparisonResult, DiffRowStatus } from "../../../shared/types/comparison";
+import { compareData, MAX_COMPARISON_ROWS } from "../../../shared/comparison";
 import { rpc } from "../../lib/rpc";
+import { connectionsStore } from "../../stores/connections";
 import { uiStore } from "../../stores/ui";
 import Icon from "../common/Icon";
 import "./ComparisonView.css";
@@ -30,17 +32,53 @@ export default function ComparisonView(props: ComparisonViewProps) {
 		}
 	});
 
+	function buildSourceSql(source: ComparisonSource): string {
+		if (source.type === "query") {
+			if (!source.sql) throw new Error("SQL query is required for query source");
+			return source.sql;
+		}
+		if (!source.schema || !source.table) {
+			throw new Error("Schema and table are required for table source");
+		}
+		const dialect = connectionsStore.getDialect(source.connectionId);
+		const qualified = dialect.qualifyTable(source.schema, source.table);
+		return `SELECT * FROM ${qualified} LIMIT ${MAX_COMPARISON_ROWS + 1}`;
+	}
+
 	async function runComparison(params: NonNullable<ComparisonViewProps["initialParams"]>) {
 		setLoading(true);
 		setError(null);
 		setResult(null);
 		try {
-			const res = await rpc.data.compare({
-				left: params.left,
-				right: params.right,
-				keyColumns: params.keyColumns,
-				columnMappings: params.columnMappings.length > 0 ? params.columnMappings : undefined,
-			});
+			const leftSql = buildSourceSql(params.left);
+			const rightSql = buildSourceSql(params.right);
+
+			const [leftResults, rightResults] = await Promise.all([
+				rpc.query.execute({ connectionId: params.left.connectionId, sql: leftSql, queryId: `cmp-left-${Date.now()}`, database: params.left.database }),
+				rpc.query.execute({ connectionId: params.right.connectionId, sql: rightSql, queryId: `cmp-right-${Date.now()}`, database: params.right.database }),
+			]);
+
+			const leftResult = leftResults[0];
+			const rightResult = rightResults[0];
+
+			if (leftResult.error) throw new Error(leftResult.error);
+			if (rightResult.error) throw new Error(rightResult.error);
+
+			const leftData = {
+				columns: leftResult.columns.map((c) => c.name),
+				rows: leftResult.rows.slice(0, MAX_COMPARISON_ROWS) as Record<string, unknown>[],
+			};
+			const rightData = {
+				columns: rightResult.columns.map((c) => c.name),
+				rows: rightResult.rows.slice(0, MAX_COMPARISON_ROWS) as Record<string, unknown>[],
+			};
+
+			const res = compareData(
+				leftData,
+				rightData,
+				params.keyColumns,
+				params.columnMappings.length > 0 ? params.columnMappings : undefined,
+			);
 			setResult(res);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);

@@ -1,16 +1,12 @@
-import type { DatabaseDriver } from "../db/driver";
 import type {
-	ComparisonSource,
-	ComparisonRequest,
-	ComparisonResult,
 	ComparisonColumnMapping,
-	DiffRow,
+	ComparisonResult,
 	ComparisonStats,
-} from "../../shared/types/comparison";
-import type { QueryResult } from "../../shared/types/query";
+	DiffRow,
+} from "./types/comparison";
 
-/** Maximum rows to fetch from each source to prevent OOM. */
-const MAX_ROWS = 10_000;
+/** Maximum rows to compare to prevent OOM. */
+export const MAX_COMPARISON_ROWS = 10_000;
 
 interface SourceData {
 	columns: string[];
@@ -18,39 +14,9 @@ interface SourceData {
 }
 
 /**
- * Fetch all rows from a comparison source.
- */
-async function fetchSourceData(driver: DatabaseDriver, source: ComparisonSource): Promise<SourceData> {
-	let result: QueryResult;
-
-	if (source.type === "table") {
-		if (!source.schema || !source.table) {
-			throw new Error("Schema and table are required for table source");
-		}
-		const qualified = driver.qualifyTable(source.schema, source.table);
-		result = await driver.execute(`SELECT * FROM ${qualified} LIMIT ${MAX_ROWS + 1}`);
-	} else {
-		if (!source.sql) {
-			throw new Error("SQL query is required for query source");
-		}
-		// Wrap in a subquery to enforce limit
-		result = await driver.execute(source.sql);
-	}
-
-	if (result.error) {
-		throw new Error(result.error);
-	}
-
-	const columns = result.columns.map((c) => c.name);
-	const rows = result.rows.slice(0, MAX_ROWS) as Record<string, unknown>[];
-
-	return { columns, rows };
-}
-
-/**
  * Auto-map columns by matching names (case-insensitive).
  */
-function autoMapColumns(leftColumns: string[], rightColumns: string[]): ComparisonColumnMapping[] {
+export function autoMapColumns(leftColumns: string[], rightColumns: string[]): ComparisonColumnMapping[] {
 	const rightLower = new Map(rightColumns.map((c) => [c.toLowerCase(), c]));
 	const mappings: ComparisonColumnMapping[] = [];
 	for (const left of leftColumns) {
@@ -92,46 +58,41 @@ function valuesEqual(a: unknown, b: unknown): boolean {
 }
 
 /**
- * Compare data from two sources and produce a diff result.
+ * Compare pre-fetched data from two sources and produce a diff result.
  */
-export async function compareData(
-	leftDriver: DatabaseDriver,
-	rightDriver: DatabaseDriver,
-	request: ComparisonRequest,
-): Promise<ComparisonResult> {
-	// Fetch data from both sources
-	const [leftData, rightData] = await Promise.all([
-		fetchSourceData(leftDriver, request.left),
-		fetchSourceData(rightDriver, request.right),
-	]);
-
+export function compareData(
+	left: SourceData,
+	right: SourceData,
+	keyColumns: ComparisonColumnMapping[],
+	columnMappings?: ComparisonColumnMapping[],
+): ComparisonResult {
 	// Determine column mappings
-	const columnMappings = request.columnMappings && request.columnMappings.length > 0
-		? request.columnMappings
-		: autoMapColumns(leftData.columns, rightData.columns);
+	const resolvedMappings = columnMappings && columnMappings.length > 0
+		? columnMappings
+		: autoMapColumns(left.columns, right.columns);
 
-	if (request.keyColumns.length === 0) {
+	if (keyColumns.length === 0) {
 		throw new Error("At least one key column is required for matching rows");
 	}
 
 	// Validate key columns exist in data
-	const leftKeyColumns = request.keyColumns.map((k) => k.leftColumn);
-	const rightKeyColumns = request.keyColumns.map((k) => k.rightColumn);
+	const leftKeyColumns = keyColumns.map((k) => k.leftColumn);
+	const rightKeyColumns = keyColumns.map((k) => k.rightColumn);
 
 	for (const col of leftKeyColumns) {
-		if (!leftData.columns.includes(col)) {
+		if (!left.columns.includes(col)) {
 			throw new Error(`Key column "${col}" not found in left source`);
 		}
 	}
 	for (const col of rightKeyColumns) {
-		if (!rightData.columns.includes(col)) {
+		if (!right.columns.includes(col)) {
 			throw new Error(`Key column "${col}" not found in right source`);
 		}
 	}
 
 	// Index right rows by key
 	const rightIndex = new Map<string, Record<string, unknown>>();
-	for (const row of rightData.rows) {
+	for (const row of right.rows) {
 		const key = buildRowKey(row, rightKeyColumns);
 		rightIndex.set(key, row);
 	}
@@ -143,7 +104,7 @@ export async function compareData(
 	const stats: ComparisonStats = { matched: 0, added: 0, removed: 0, changed: 0, total: 0 };
 
 	// Process left rows
-	for (const leftRow of leftData.rows) {
+	for (const leftRow of left.rows) {
 		const key = buildRowKey(leftRow, leftKeyColumns);
 		const rightRow = rightIndex.get(key);
 
@@ -161,7 +122,7 @@ export async function compareData(
 
 			// Compare mapped columns
 			const changedColumns: string[] = [];
-			for (const mapping of columnMappings) {
+			for (const mapping of resolvedMappings) {
 				const leftVal = leftRow[mapping.leftColumn];
 				const rightVal = rightRow[mapping.rightColumn];
 				if (!valuesEqual(leftVal, rightVal)) {
@@ -190,7 +151,7 @@ export async function compareData(
 	}
 
 	// Process right-only rows (added)
-	for (const rightRow of rightData.rows) {
+	for (const rightRow of right.rows) {
 		const key = buildRowKey(rightRow, rightKeyColumns);
 		if (!matchedRightKeys.has(key)) {
 			diffRows.push({
@@ -210,9 +171,9 @@ export async function compareData(
 	diffRows.sort((a, b) => (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99));
 
 	return {
-		leftColumns: leftData.columns,
-		rightColumns: rightData.columns,
-		columnMappings,
+		leftColumns: left.columns,
+		rightColumns: right.columns,
+		columnMappings: resolvedMappings,
 		rows: diffRows,
 		stats,
 	};

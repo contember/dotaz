@@ -1,49 +1,19 @@
-import { describe, test, expect, mock } from "bun:test";
-import { compareData } from "../src/backend-shared/services/comparison-service";
-import type { DatabaseDriver } from "../src/backend-shared/db/driver";
-import type { QueryResult } from "../src/shared/types/query";
-import type { ComparisonRequest } from "../src/shared/types/comparison";
-
-function makeResult(rows: Record<string, unknown>[], columnNames?: string[]): QueryResult {
-	const names = columnNames ?? (rows.length > 0 ? Object.keys(rows[0]) : []);
-	const columns = names.map((name) => ({ name, dataType: "unknown" as any }));
-	return { columns, rows, rowCount: rows.length, durationMs: 0 };
-}
-
-function mockDriver(resultRows: Record<string, unknown>[], columnNames?: string[]): DatabaseDriver {
-	const quoteIdentifier = (name: string) => `"${name.replace(/"/g, '""')}"`;
-	return {
-		execute: mock(async () => makeResult(resultRows, columnNames)),
-		quoteIdentifier,
-		getDriverType: () => "postgresql",
-		qualifyTable: (schema: string, table: string) =>
-			`${quoteIdentifier(schema)}.${quoteIdentifier(table)}`,
-		emptyInsertSql: (qt: string) => `INSERT INTO ${qt} DEFAULT VALUES`,
-		placeholder: (i: number) => `$${i}`,
-		beginTransaction: mock(async () => {}),
-		commit: mock(async () => {}),
-		rollback: mock(async () => {}),
-		inTransaction: () => false,
-	} as unknown as DatabaseDriver;
-}
+import { describe, test, expect } from "bun:test";
+import { compareData, autoMapColumns } from "../src/shared/comparison";
 
 // ── Identical tables ─────────────────────────────────────────
 
 describe("compareData", () => {
-	test("identical tables — all rows matched", async () => {
+	test("identical tables — all rows matched", () => {
 		const rows = [
 			{ id: 1, name: "Alice", age: 30 },
 			{ id: 2, name: "Bob", age: 25 },
 		];
 
-		const result = await compareData(
-			mockDriver(rows),
-			mockDriver(rows),
-			{
-				left: { connectionId: "a", type: "table", schema: "public", table: "users" },
-				right: { connectionId: "b", type: "table", schema: "public", table: "users" },
-				keyColumns: [{ leftColumn: "id", rightColumn: "id" }],
-			},
+		const result = compareData(
+			{ columns: ["id", "name", "age"], rows },
+			{ columns: ["id", "name", "age"], rows },
+			[{ leftColumn: "id", rightColumn: "id" }],
 		);
 
 		expect(result.stats.matched).toBe(2);
@@ -57,7 +27,7 @@ describe("compareData", () => {
 
 	// ── Different values ─────────────────────────────────────
 
-	test("changed rows — detects value differences", async () => {
+	test("changed rows — detects value differences", () => {
 		const leftRows = [
 			{ id: 1, name: "Alice", age: 30 },
 			{ id: 2, name: "Bob", age: 25 },
@@ -67,14 +37,10 @@ describe("compareData", () => {
 			{ id: 2, name: "Bobby", age: 25 },
 		];
 
-		const result = await compareData(
-			mockDriver(leftRows),
-			mockDriver(rightRows),
-			{
-				left: { connectionId: "a", type: "table", schema: "public", table: "users" },
-				right: { connectionId: "b", type: "table", schema: "public", table: "users" },
-				keyColumns: [{ leftColumn: "id", rightColumn: "id" }],
-			},
+		const result = compareData(
+			{ columns: ["id", "name", "age"], rows: leftRows },
+			{ columns: ["id", "name", "age"], rows: rightRows },
+			[{ leftColumn: "id", rightColumn: "id" }],
 		);
 
 		expect(result.stats.changed).toBe(2);
@@ -91,7 +57,7 @@ describe("compareData", () => {
 
 	// ── Added and removed rows ───────────────────────────────
 
-	test("added/removed rows — rows present in only one side", async () => {
+	test("added/removed rows — rows present in only one side", () => {
 		const leftRows = [
 			{ id: 1, name: "Alice" },
 			{ id: 2, name: "Bob" },
@@ -101,14 +67,10 @@ describe("compareData", () => {
 			{ id: 3, name: "Charlie" },
 		];
 
-		const result = await compareData(
-			mockDriver(leftRows),
-			mockDriver(rightRows),
-			{
-				left: { connectionId: "a", type: "table", schema: "public", table: "users" },
-				right: { connectionId: "b", type: "table", schema: "public", table: "users" },
-				keyColumns: [{ leftColumn: "id", rightColumn: "id" }],
-			},
+		const result = compareData(
+			{ columns: ["id", "name"], rows: leftRows },
+			{ columns: ["id", "name"], rows: rightRows },
+			[{ leftColumn: "id", rightColumn: "id" }],
 		);
 
 		expect(result.stats.matched).toBe(1);
@@ -127,18 +89,14 @@ describe("compareData", () => {
 
 	// ── Auto column mapping ──────────────────────────────────
 
-	test("auto column mapping — maps by name case-insensitively", async () => {
+	test("auto column mapping — maps by name case-insensitively", () => {
 		const leftRows = [{ id: 1, Name: "Alice", AGE: 30 }];
 		const rightRows = [{ id: 1, name: "Alice", age: 31 }];
 
-		const result = await compareData(
-			mockDriver(leftRows, ["id", "Name", "AGE"]),
-			mockDriver(rightRows, ["id", "name", "age"]),
-			{
-				left: { connectionId: "a", type: "table", schema: "public", table: "t1" },
-				right: { connectionId: "b", type: "table", schema: "public", table: "t2" },
-				keyColumns: [{ leftColumn: "id", rightColumn: "id" }],
-			},
+		const result = compareData(
+			{ columns: ["id", "Name", "AGE"], rows: leftRows },
+			{ columns: ["id", "name", "age"], rows: rightRows },
+			[{ leftColumn: "id", rightColumn: "id" }],
 		);
 
 		expect(result.columnMappings).toContainEqual({ leftColumn: "id", rightColumn: "id" });
@@ -152,7 +110,7 @@ describe("compareData", () => {
 
 	// ── Composite key ────────────────────────────────────────
 
-	test("composite key — matches on multiple columns", async () => {
+	test("composite key — matches on multiple columns", () => {
 		const leftRows = [
 			{ schema: "public", table: "users", count: 10 },
 			{ schema: "public", table: "posts", count: 5 },
@@ -162,17 +120,13 @@ describe("compareData", () => {
 			{ schema: "public", table: "posts", count: 5 },
 		];
 
-		const result = await compareData(
-			mockDriver(leftRows),
-			mockDriver(rightRows),
-			{
-				left: { connectionId: "a", type: "table", schema: "main", table: "stats" },
-				right: { connectionId: "b", type: "table", schema: "main", table: "stats" },
-				keyColumns: [
-					{ leftColumn: "schema", rightColumn: "schema" },
-					{ leftColumn: "table", rightColumn: "table" },
-				],
-			},
+		const result = compareData(
+			{ columns: ["schema", "table", "count"], rows: leftRows },
+			{ columns: ["schema", "table", "count"], rows: rightRows },
+			[
+				{ leftColumn: "schema", rightColumn: "schema" },
+				{ leftColumn: "table", rightColumn: "table" },
+			],
 		);
 
 		expect(result.stats.matched).toBe(1);
@@ -183,36 +137,28 @@ describe("compareData", () => {
 
 	// ── Null handling ────────────────────────────────────────
 
-	test("null values — treats null/undefined as equal", async () => {
+	test("null values — treats null/undefined as equal", () => {
 		const leftRows = [{ id: 1, val: null }];
 		const rightRows = [{ id: 1, val: null }];
 
-		const result = await compareData(
-			mockDriver(leftRows),
-			mockDriver(rightRows),
-			{
-				left: { connectionId: "a", type: "table", schema: "public", table: "t" },
-				right: { connectionId: "b", type: "table", schema: "public", table: "t" },
-				keyColumns: [{ leftColumn: "id", rightColumn: "id" }],
-			},
+		const result = compareData(
+			{ columns: ["id", "val"], rows: leftRows },
+			{ columns: ["id", "val"], rows: rightRows },
+			[{ leftColumn: "id", rightColumn: "id" }],
 		);
 
 		expect(result.stats.matched).toBe(1);
 		expect(result.stats.changed).toBe(0);
 	});
 
-	test("null vs non-null — detected as changed", async () => {
+	test("null vs non-null — detected as changed", () => {
 		const leftRows = [{ id: 1, val: null }];
 		const rightRows = [{ id: 1, val: "something" }];
 
-		const result = await compareData(
-			mockDriver(leftRows),
-			mockDriver(rightRows),
-			{
-				left: { connectionId: "a", type: "table", schema: "public", table: "t" },
-				right: { connectionId: "b", type: "table", schema: "public", table: "t" },
-				keyColumns: [{ leftColumn: "id", rightColumn: "id" }],
-			},
+		const result = compareData(
+			{ columns: ["id", "val"], rows: leftRows },
+			{ columns: ["id", "val"], rows: rightRows },
+			[{ leftColumn: "id", rightColumn: "id" }],
 		);
 
 		expect(result.stats.changed).toBe(1);
@@ -221,78 +167,46 @@ describe("compareData", () => {
 
 	// ── Validation ───────────────────────────────────────────
 
-	test("throws error when no key columns provided", async () => {
+	test("throws error when no key columns provided", () => {
 		const rows = [{ id: 1, name: "Alice" }];
 
-		await expect(
+		expect(() =>
 			compareData(
-				mockDriver(rows),
-				mockDriver(rows),
-				{
-					left: { connectionId: "a", type: "table", schema: "public", table: "t" },
-					right: { connectionId: "b", type: "table", schema: "public", table: "t" },
-					keyColumns: [],
-				},
+				{ columns: ["id", "name"], rows },
+				{ columns: ["id", "name"], rows },
+				[],
 			),
-		).rejects.toThrow("At least one key column is required");
+		).toThrow("At least one key column is required");
 	});
 
-	test("throws error when key column not found in source", async () => {
+	test("throws error when key column not found in source", () => {
 		const rows = [{ id: 1, name: "Alice" }];
 
-		await expect(
+		expect(() =>
 			compareData(
-				mockDriver(rows),
-				mockDriver(rows),
-				{
-					left: { connectionId: "a", type: "table", schema: "public", table: "t" },
-					right: { connectionId: "b", type: "table", schema: "public", table: "t" },
-					keyColumns: [{ leftColumn: "nonexistent", rightColumn: "id" }],
-				},
+				{ columns: ["id", "name"], rows },
+				{ columns: ["id", "name"], rows },
+				[{ leftColumn: "nonexistent", rightColumn: "id" }],
 			),
-		).rejects.toThrow('Key column "nonexistent" not found in left source');
+		).toThrow('Key column "nonexistent" not found in left source');
 	});
 
 	// ── Empty tables ─────────────────────────────────────────
 
-	test("empty tables — no rows to compare", async () => {
-		const result = await compareData(
-			mockDriver([], ["id", "name"]),
-			mockDriver([], ["id", "name"]),
-			{
-				left: { connectionId: "a", type: "table", schema: "public", table: "t" },
-				right: { connectionId: "b", type: "table", schema: "public", table: "t" },
-				keyColumns: [{ leftColumn: "id", rightColumn: "id" }],
-			},
+	test("empty tables — no rows to compare", () => {
+		const result = compareData(
+			{ columns: ["id", "name"], rows: [] },
+			{ columns: ["id", "name"], rows: [] },
+			[{ leftColumn: "id", rightColumn: "id" }],
 		);
 
 		expect(result.stats.total).toBe(0);
 		expect(result.rows).toHaveLength(0);
 	});
 
-	// ── Query source ─────────────────────────────────────────
-
-	test("query source — uses SQL directly", async () => {
-		const rows = [{ id: 1, name: "Alice" }];
-		const driver = mockDriver(rows);
-
-		await compareData(
-			driver,
-			driver,
-			{
-				left: { connectionId: "a", type: "query", sql: "SELECT * FROM users" },
-				right: { connectionId: "b", type: "query", sql: "SELECT * FROM users" },
-				keyColumns: [{ leftColumn: "id", rightColumn: "id" }],
-			},
-		);
-
-		// Both calls use the SQL query directly
-		expect((driver.execute as any).mock.calls.length).toBe(2);
-	});
-
 	// ── Sort order ───────────────────────────────────────────
 
-	test("result rows sorted by status — removed, changed, added, matched", async () => {
+	test("result rows sorted by status — removed, changed, added, matched", () => {
 		const leftRows = [
 			{ id: 1, name: "Alice" },
 			{ id: 2, name: "Bob" },
@@ -304,14 +218,10 @@ describe("compareData", () => {
 			{ id: 4, name: "Diana" },
 		];
 
-		const result = await compareData(
-			mockDriver(leftRows),
-			mockDriver(rightRows),
-			{
-				left: { connectionId: "a", type: "table", schema: "public", table: "t" },
-				right: { connectionId: "b", type: "table", schema: "public", table: "t" },
-				keyColumns: [{ leftColumn: "id", rightColumn: "id" }],
-			},
+		const result = compareData(
+			{ columns: ["id", "name"], rows: leftRows },
+			{ columns: ["id", "name"], rows: rightRows },
+			[{ leftColumn: "id", rightColumn: "id" }],
 		);
 
 		const statuses = result.rows.map((r) => r.status);
@@ -320,28 +230,42 @@ describe("compareData", () => {
 
 	// ── Explicit column mappings ─────────────────────────────
 
-	test("explicit column mappings — uses provided mappings instead of auto", async () => {
+	test("explicit column mappings — uses provided mappings instead of auto", () => {
 		const leftRows = [{ id: 1, first_name: "Alice", last_name: "Smith" }];
 		const rightRows = [{ id: 1, name: "Alice", surname: "Jones" }];
 
-		const result = await compareData(
-			mockDriver(leftRows, ["id", "first_name", "last_name"]),
-			mockDriver(rightRows, ["id", "name", "surname"]),
-			{
-				left: { connectionId: "a", type: "table", schema: "public", table: "t1" },
-				right: { connectionId: "b", type: "table", schema: "public", table: "t2" },
-				keyColumns: [{ leftColumn: "id", rightColumn: "id" }],
-				columnMappings: [
-					{ leftColumn: "id", rightColumn: "id" },
-					{ leftColumn: "first_name", rightColumn: "name" },
-					{ leftColumn: "last_name", rightColumn: "surname" },
-				],
-			},
+		const result = compareData(
+			{ columns: ["id", "first_name", "last_name"], rows: leftRows },
+			{ columns: ["id", "name", "surname"], rows: rightRows },
+			[{ leftColumn: "id", rightColumn: "id" }],
+			[
+				{ leftColumn: "id", rightColumn: "id" },
+				{ leftColumn: "first_name", rightColumn: "name" },
+				{ leftColumn: "last_name", rightColumn: "surname" },
+			],
 		);
 
 		// first_name=Alice matches name=Alice, but last_name=Smith != surname=Jones
 		expect(result.stats.changed).toBe(1);
 		expect(result.rows[0].changedColumns).toContain("last_name");
 		expect(result.rows[0].changedColumns).not.toContain("first_name");
+	});
+});
+
+// ── autoMapColumns ──────────────────────────────────────────
+
+describe("autoMapColumns", () => {
+	test("maps columns by case-insensitive name match", () => {
+		const mappings = autoMapColumns(["Id", "Name", "AGE"], ["id", "name", "age"]);
+		expect(mappings).toEqual([
+			{ leftColumn: "Id", rightColumn: "id" },
+			{ leftColumn: "Name", rightColumn: "name" },
+			{ leftColumn: "AGE", rightColumn: "age" },
+		]);
+	});
+
+	test("skips unmatched columns", () => {
+		const mappings = autoMapColumns(["id", "extra"], ["id", "other"]);
+		expect(mappings).toEqual([{ leftColumn: "id", rightColumn: "id" }]);
 	});
 });

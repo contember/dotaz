@@ -4,11 +4,11 @@ import type { DatabaseInfo } from "../../shared/types/database";
 import type { QueryResult, QueryHistoryEntry, ExplainResult } from "../../shared/types/query";
 import type { ExportOptions, ExportPreviewRequest, ExportResult } from "../../shared/types/export";
 import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from "../../shared/types/import";
-import type { ComparisonRequest, ComparisonResult } from "../../shared/types/comparison";
 import type {
 	SavedView,
 	SavedViewConfig,
 	HistoryListParams,
+	QueryBookmark,
 	OpenDialogParams,
 	SaveDialogParams,
 } from "../../shared/types/rpc";
@@ -56,6 +56,12 @@ export interface RpcAdapter {
 	listSavedViewsByConnection(connectionId: string): SavedView[];
 	getSavedViewById(id: string): SavedView | null;
 
+	// ── Bookmarks ────────────────────────────────────────
+	listBookmarks(connectionId: string, search?: string): QueryBookmark[];
+	createBookmark(params: { connectionId: string; name: string; description?: string; sql: string }): QueryBookmark;
+	updateBookmark(params: { id: string; name: string; description?: string; sql: string }): QueryBookmark;
+	deleteBookmark(id: string): void;
+
 	// ── Export ────────────────────────────────────────────
 	exportData(opts: ExportOptions): Promise<ExportResult>;
 	exportPreview(req: ExportPreviewRequest): Promise<string>;
@@ -63,9 +69,6 @@ export interface RpcAdapter {
 	// ── Import ────────────────────────────────────────────
 	importData(opts: ImportOptions): Promise<ImportResult>;
 	importPreview(req: ImportPreviewRequest): Promise<ImportPreviewResult>;
-
-	// ── Data comparison ──────────────────────────────────
-	compareData(req: ComparisonRequest): Promise<ComparisonResult>;
 
 	// ── Storage ──────────────────────────────────────────
 	encrypt?(config: string): Promise<string>;

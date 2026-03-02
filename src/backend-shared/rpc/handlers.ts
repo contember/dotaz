@@ -8,8 +8,6 @@ import type {
 	OpenDialogParams,
 	SaveDialogParams,
 } from "../../shared/types/rpc";
-import type { ComparisonRequest } from "../../shared/types/comparison";
-
 export function createHandlers(adapter: RpcAdapter) {
 	return {
 		// ── Connection Management ─────────────────────────
@@ -106,11 +104,6 @@ export function createHandlers(adapter: RpcAdapter) {
 			return adapter.importPreview(req);
 		},
 
-		// ── Data comparison ──────────────────────────────
-		"data.compare": async (req: ComparisonRequest) => {
-			return adapter.compareData(req);
-		},
-
 		// ── History ───────────────────────────────────────
 		"history.list": (params: HistoryListParams) => {
 			return adapter.listHistory(params);
@@ -171,6 +164,33 @@ export function createHandlers(adapter: RpcAdapter) {
 		},
 		"views.listByConnection": ({ connectionId }: { connectionId: string }) => {
 			return adapter.listSavedViewsByConnection(connectionId);
+		},
+
+		// ── Bookmarks ────────────────────────────────────
+		"bookmarks.list": ({ connectionId, search }: { connectionId: string; search?: string }) => {
+			return adapter.listBookmarks(connectionId, search);
+		},
+		"bookmarks.create": ({ connectionId, name, description, sql }: {
+			connectionId: string; name: string; description?: string; sql: string;
+		}) => {
+			if (!name || !name.trim()) {
+				throw new Error("Bookmark name is required");
+			}
+			return adapter.createBookmark({ connectionId, name: name.trim(), description, sql });
+		},
+		"bookmarks.update": ({ id, name, description, sql }: {
+			id: string; name: string; description?: string; sql: string;
+		}) => {
+			if (!id) {
+				throw new Error("Bookmark id is required");
+			}
+			if (!name || !name.trim()) {
+				throw new Error("Bookmark name is required");
+			}
+			return adapter.updateBookmark({ id, name: name.trim(), description, sql });
+		},
+		"bookmarks.delete": ({ id }: { id: string }) => {
+			adapter.deleteBookmark(id);
 		},
 
 		// ── Storage ──────────────────────────────────────
