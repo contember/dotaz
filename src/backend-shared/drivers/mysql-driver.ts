@@ -407,9 +407,9 @@ export class MysqlDriver implements DatabaseDriver {
 			if (signal?.aborted) {
 				throw new DOMException("Aborted", "AbortError");
 			}
-			const pagedSql = `${sql} LIMIT ${batchSize} OFFSET ${offset}`;
+			const pagedSql = `${sql} LIMIT ? OFFSET ?`;
 			const conn = this.reservedConn ?? this.db!;
-			const result = await conn.unsafe(pagedSql, params ?? []);
+			const result = await conn.unsafe(pagedSql, [...(params ?? []), batchSize, offset]);
 			const rows = [...result] as Record<string, unknown>[];
 			if (rows.length === 0) break;
 			yield rows;

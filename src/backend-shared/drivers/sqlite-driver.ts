@@ -294,8 +294,8 @@ export class SqliteDriver implements DatabaseDriver {
 			if (signal?.aborted) {
 				throw new DOMException("Aborted", "AbortError");
 			}
-			const pagedSql = `${sql} LIMIT ${batchSize} OFFSET ${offset}`;
-			const result = await this.db!.unsafe(pagedSql, params ?? []);
+			const pagedSql = `${sql} LIMIT ? OFFSET ?`;
+			const result = await this.db!.unsafe(pagedSql, [...(params ?? []), batchSize, offset]);
 			const rows = [...result] as Record<string, unknown>[];
 			if (rows.length === 0) break;
 			yield rows;
