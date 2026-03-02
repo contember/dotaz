@@ -14,6 +14,7 @@ export interface ExportOptions {
 	table: string;
 	format: ExportFormat;
 	database?: string;
+	sessionId?: string;
 	/** Target file path (from save dialog). Optional in demo mode. */
 	filePath?: string;
 	/** Column names to export (undefined = all) */
@@ -42,6 +43,7 @@ export interface ExportPreviewRequest {
 	table: string;
 	format: ExportFormat;
 	database?: string;
+	sessionId?: string;
 	limit: number;
 	/** Column names to preview (undefined = all) */
 	columns?: string[];

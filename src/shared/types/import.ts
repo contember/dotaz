@@ -46,6 +46,7 @@ export type ImportOptions = ImportSource & {
 	schema: string;
 	table: string;
 	database?: string;
+	sessionId?: string;
 	format: ImportFormat;
 	/** CSV delimiter (default: comma) */
 	delimiter?: CsvDelimiter;

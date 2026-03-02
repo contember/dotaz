@@ -1,15 +1,9 @@
 import type { ConnectionManager } from "./connection-manager";
 import type { AppDatabase } from "../storage/app-db";
 import { DEFAULT_SETTINGS } from "../storage/app-db";
+import type { SessionInfo } from "../../shared/types/rpc";
 
-export interface SessionInfo {
-	sessionId: string;
-	connectionId: string;
-	database?: string;
-	label: string;
-	inTransaction: boolean;
-	createdAt: number;
-}
+export type { SessionInfo };
 
 /**
  * Manages the lifecycle of pinned sessions — reserved database connections

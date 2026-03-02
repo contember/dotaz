@@ -5,6 +5,7 @@ import type { QueryResult, QueryHistoryEntry, ExplainResult } from "../../shared
 import type { ExportOptions, ExportPreviewRequest, ExportResult } from "../../shared/types/export";
 import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from "../../shared/types/import";
 import type {
+	SessionInfo,
 	SavedView,
 	SavedViewConfig,
 	HistoryListParams,
@@ -30,6 +31,11 @@ export interface RpcAdapter {
 	connect(connectionId: string, password?: string, encryptedConfig?: string, name?: string): Promise<void>;
 	disconnect(connectionId: string): Promise<void>;
 
+	// ── Sessions ──────────────────────────────────────────
+	createSession(connectionId: string, database?: string): Promise<SessionInfo>;
+	destroySession(sessionId: string): Promise<void>;
+	listSessions(connectionId: string): SessionInfo[];
+
 	// ── Driver access ─────────────────────────────────────
 	getDriver(connectionId: string, database?: string): DatabaseDriver;
 
@@ -39,20 +45,20 @@ export interface RpcAdapter {
 	deactivateDatabase(connectionId: string, database: string): Promise<void>;
 
 	// ── Query execution ───────────────────────────────────
-	executeQuery(connectionId: string, sql: string, params?: unknown[], queryId?: string, database?: string): Promise<QueryResult[]>;
+	executeQuery(connectionId: string, sql: string, params?: unknown[], queryId?: string, database?: string, sessionId?: string): Promise<QueryResult[]>;
 	/** Execute a batch of parameterized statements sequentially, auto-wrapped in transaction. */
-	executeStatements(connectionId: string, statements: { sql: string; params?: unknown[] }[], database?: string): Promise<QueryResult[]>;
+	executeStatements(connectionId: string, statements: { sql: string; params?: unknown[] }[], database?: string, sessionId?: string): Promise<QueryResult[]>;
 	cancelQuery(queryId: string): Promise<void>;
-	explainQuery(connectionId: string, sql: string, analyze: boolean, database?: string): Promise<ExplainResult>;
+	explainQuery(connectionId: string, sql: string, analyze: boolean, database?: string, sessionId?: string): Promise<ExplainResult>;
 
 	// ── Transactions ──────────────────────────────────────
-	beginTransaction(connectionId: string, database?: string): Promise<void>;
-	commitTransaction(connectionId: string, database?: string): Promise<void>;
-	rollbackTransaction(connectionId: string, database?: string): Promise<void>;
+	beginTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void>;
+	commitTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void>;
+	rollbackTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void>;
 
 	// ── Transaction Log ──────────────────────────────────
 	getTransactionLog(params: TransactionLogParams): TransactionLogResult;
-	clearTransactionLog(connectionId: string, database?: string): void;
+	clearTransactionLog(connectionId: string, database?: string, sessionId?: string): void;
 
 	// ── History ───────────────────────────────────────────
 	listHistory(params: HistoryListParams): QueryHistoryEntry[];

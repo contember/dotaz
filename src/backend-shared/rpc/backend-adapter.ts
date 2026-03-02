@@ -1,6 +1,7 @@
 import type { RpcAdapter } from "./adapter";
 import type { ConnectionManager } from "../services/connection-manager";
 import type { QueryExecutor } from "../services/query-executor";
+import type { SessionManager } from "../services/session-manager";
 import type { AppDatabase } from "../storage/app-db";
 import type { EncryptionService } from "../services/encryption";
 import type { ConnectionConfig, ConnectionInfo } from "../../shared/types/connection";
@@ -9,6 +10,7 @@ import type { QueryResult, QueryHistoryEntry, ExplainResult } from "../../shared
 import type { ExportOptions, ExportPreviewRequest, ExportResult } from "../../shared/types/export";
 import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from "../../shared/types/import";
 import type {
+	SessionInfo,
 	SavedView,
 	SavedViewConfig,
 	HistoryListParams,
@@ -37,6 +39,7 @@ export interface BackendAdapterOptions {
 	encryption?: EncryptionService;
 	Utils?: typeof import("electrobun/bun").Utils;
 	emitMessage?: EmitMessage;
+	sessionManager?: SessionManager;
 }
 
 export class BackendAdapter implements RpcAdapter {
@@ -44,6 +47,7 @@ export class BackendAdapter implements RpcAdapter {
 	private encryption?: EncryptionService;
 	private Utils?: typeof import("electrobun/bun").Utils;
 	private emitMessage?: EmitMessage;
+	private sessionManager?: SessionManager;
 
 	constructor(
 		private cm: ConnectionManager,
@@ -55,6 +59,7 @@ export class BackendAdapter implements RpcAdapter {
 		this.encryption = opts?.encryption;
 		this.Utils = opts?.Utils;
 		this.emitMessage = opts?.emitMessage;
+		this.sessionManager = opts?.sessionManager;
 	}
 
 	// ── Connections ────────────────────────────────────────
@@ -102,6 +107,29 @@ export class BackendAdapter implements RpcAdapter {
 		await this.cm.disconnect(connectionId);
 	}
 
+	// ── Sessions ──────────────────────────────────────────
+
+	async createSession(connectionId: string, database?: string): Promise<SessionInfo> {
+		if (!this.sessionManager) throw new Error("SessionManager not available");
+		const info = await this.sessionManager.createSession(connectionId, database);
+		this.emitMessage?.("session.changed", { connectionId, sessions: this.sessionManager.listSessions(connectionId) });
+		return info;
+	}
+
+	async destroySession(sessionId: string): Promise<void> {
+		if (!this.sessionManager) throw new Error("SessionManager not available");
+		const info = this.sessionManager.getSession(sessionId);
+		await this.sessionManager.destroySession(sessionId);
+		if (info) {
+			this.emitMessage?.("session.changed", { connectionId: info.connectionId, sessions: this.sessionManager.listSessions(info.connectionId) });
+		}
+	}
+
+	listSessions(connectionId: string): SessionInfo[] {
+		if (!this.sessionManager) return [];
+		return this.sessionManager.listSessions(connectionId);
+	}
+
 	// ── Driver access ─────────────────────────────────────
 
 	getDriver(connectionId: string, database?: string): DatabaseDriver {
@@ -124,30 +152,32 @@ export class BackendAdapter implements RpcAdapter {
 
 	// ── Query execution ───────────────────────────────────
 
-	async executeQuery(connectionId: string, sql: string, params?: unknown[], queryId?: string, database?: string): Promise<QueryResult[]> {
-		return this.queryExecutor.executeQuery(connectionId, sql, params, undefined, queryId, database);
+	async executeQuery(connectionId: string, sql: string, params?: unknown[], queryId?: string, database?: string, sessionId?: string): Promise<QueryResult[]> {
+		return this.queryExecutor.executeQuery(connectionId, sql, params, undefined, queryId, database, sessionId);
 	}
 
-	async executeStatements(connectionId: string, statements: { sql: string; params?: unknown[] }[], database?: string): Promise<QueryResult[]> {
+	async executeStatements(connectionId: string, statements: { sql: string; params?: unknown[] }[], database?: string, sessionId?: string): Promise<QueryResult[]> {
 		const driver = this.cm.getDriver(connectionId, database);
-		const inExistingTx = driver.inTransaction();
+		const inExistingTx = driver.inTransaction(sessionId);
 		if (!inExistingTx) {
-			await driver.beginTransaction();
+			await driver.beginTransaction(sessionId);
 		}
 		try {
 			const results: QueryResult[] = [];
 			for (const stmt of statements) {
 				const start = performance.now();
-				const result = await driver.execute(stmt.sql, stmt.params);
+				const result = sessionId !== undefined
+					? await driver.execute(stmt.sql, stmt.params, sessionId)
+					: await driver.execute(stmt.sql, stmt.params);
 				results.push({ ...result, durationMs: Math.round(performance.now() - start) });
 			}
 			if (!inExistingTx) {
-				await driver.commit();
+				await driver.commit(sessionId);
 			}
 			return results;
 		} catch (err) {
 			if (!inExistingTx) {
-				try { await driver.rollback(); } catch (rbErr) { console.debug("Rollback after error failed:", rbErr instanceof Error ? rbErr.message : rbErr); }
+				try { await driver.rollback(sessionId); } catch (rbErr) { console.debug("Rollback after error failed:", rbErr instanceof Error ? rbErr.message : rbErr); }
 			}
 			throw err;
 		}
@@ -157,23 +187,23 @@ export class BackendAdapter implements RpcAdapter {
 		await this.queryExecutor.cancelQuery(queryId);
 	}
 
-	async explainQuery(connectionId: string, sql: string, analyze: boolean, database?: string): Promise<ExplainResult> {
-		return this.queryExecutor.explainQuery(connectionId, sql, analyze, database);
+	async explainQuery(connectionId: string, sql: string, analyze: boolean, database?: string, sessionId?: string): Promise<ExplainResult> {
+		return this.queryExecutor.explainQuery(connectionId, sql, analyze, database, sessionId);
 	}
 
 	// ── Transactions ──────────────────────────────────────
 
-	async beginTransaction(connectionId: string, database?: string): Promise<void> {
-		await this.txManager.begin(connectionId, database);
+	async beginTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void> {
+		await this.txManager.begin(connectionId, database, sessionId);
 	}
 
-	async commitTransaction(connectionId: string, database?: string): Promise<void> {
-		await this.txManager.commit(connectionId, database);
+	async commitTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void> {
+		await this.txManager.commit(connectionId, database, sessionId);
 		this.queryExecutor.sessionLog.resetPendingCount(connectionId, database);
 	}
 
-	async rollbackTransaction(connectionId: string, database?: string): Promise<void> {
-		await this.txManager.rollback(connectionId, database);
+	async rollbackTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void> {
+		await this.txManager.rollback(connectionId, database, sessionId);
 		this.queryExecutor.sessionLog.resetPendingCount(connectionId, database);
 	}
 
@@ -190,7 +220,7 @@ export class BackendAdapter implements RpcAdapter {
 			entries = entries.filter((e) => e.sql.toLowerCase().includes(term));
 		}
 
-		const inTransaction = this.txManager.isActive(params.connectionId, params.database);
+		const inTransaction = this.txManager.isActive(params.connectionId, params.database, params.sessionId);
 		const pendingStatementCount = inTransaction
 			? this.queryExecutor.sessionLog.getPendingCount(params.connectionId, params.database)
 			: 0;
@@ -198,7 +228,7 @@ export class BackendAdapter implements RpcAdapter {
 		return { entries, pendingStatementCount, inTransaction };
 	}
 
-	clearTransactionLog(connectionId: string, database?: string): void {
+	clearTransactionLog(connectionId: string, database?: string, _sessionId?: string): void {
 		this.queryExecutor.sessionLog.clear(connectionId, database);
 	}
 
@@ -485,5 +515,11 @@ export class BackendAdapter implements RpcAdapter {
 
 	loadWorkspace(): string | null {
 		return this.appDb.loadWorkspace();
+	}
+
+	// ── Session Manager access ────────────────────────────
+
+	getSessionManager(): SessionManager | undefined {
+		return this.sessionManager;
 	}
 }

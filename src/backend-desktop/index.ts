@@ -47,12 +47,13 @@ const connectionManager = new ConnectionManager(appDb);
 
 // Create RPC handlers with deferred message emitter (set after window creation)
 let emitToFrontend: ((channel: string, payload: unknown) => void) | undefined;
+const { handlers, sessionManager } = createHandlers(connectionManager, undefined, appDb, Utils, {
+	emitMessage: (channel, payload) => emitToFrontend?.(channel, payload),
+});
 const rpc = BrowserView.defineRPC<DotazRPC>({
 	maxRequestTime: 30000,
 	handlers: {
-		requests: createHandlers(connectionManager, undefined, appDb, Utils, {
-			emitMessage: (channel, payload) => emitToFrontend?.(channel, payload),
-		}),
+		requests: handlers,
 		messages: {},
 	},
 });
@@ -85,6 +86,15 @@ connectionManager.onStatusChanged((event) => {
 		errorCode: event.errorCode,
 		transactionLost: event.transactionLost,
 	});
+
+	// Clean up sessions on disconnect/error and notify frontend
+	if (event.state === "disconnected" || event.state === "error") {
+		sessionManager.handleConnectionLost(event.connectionId);
+		emitToFrontend!("session.changed", {
+			connectionId: event.connectionId,
+			sessions: [],
+		});
+	}
 });
 
 // ── Application Menu ─────────────────────────────────────

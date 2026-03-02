@@ -15,7 +15,7 @@ function setup() {
 	AppDatabase.resetInstance();
 	const appDb = AppDatabase.getInstance(":memory:");
 	const cm = new ConnectionManager(appDb);
-	const handlers = createHandlers(cm, undefined, appDb);
+	const { handlers } = createHandlers(cm, undefined, appDb);
 	return { appDb, cm, handlers };
 }
 
@@ -23,7 +23,7 @@ function setup() {
 
 describe("RPC Handlers", () => {
 	let cm: ConnectionManager;
-	let handlers: ReturnType<typeof createHandlers>;
+	let handlers: ReturnType<typeof createHandlers>["handlers"];
 
 	beforeEach(() => {
 		({ cm, handlers } = setup());
@@ -468,7 +468,7 @@ describe("RPC Handlers", () => {
 			({ cm, handlers } = setup());
 			appDb = AppDatabase.getInstance(":memory:");
 			// Re-create handlers with appDb
-			handlers = createHandlers(cm, undefined, appDb);
+			handlers = createHandlers(cm, undefined, appDb).handlers;
 			const conn = handlers["connections.create"]({
 				name: "SQLite History Test",
 				config: sqliteConfig,

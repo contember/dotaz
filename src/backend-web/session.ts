@@ -6,6 +6,8 @@ import { ConnectionManager } from "../backend-shared/services/connection-manager
 import { EncryptionService } from "../backend-shared/services/encryption";
 import { QueryExecutor } from "../backend-shared/services/query-executor";
 import { createHandlers } from "../backend-shared/rpc/rpc-handlers";
+import type { SessionManager } from "../backend-shared/services/session-manager";
+import type { createHandlers as createSharedHandlers } from "../backend-shared/rpc/handlers";
 import type { ExportParams } from "../backend-shared/services/export-service";
 import type { ImportStreamParams } from "../backend-shared/services/import-service";
 
@@ -19,7 +21,8 @@ export interface Session {
 	appDb: AppDatabase;
 	connectionManager: ConnectionManager;
 	queryExecutor: QueryExecutor;
-	handlers: ReturnType<typeof createHandlers>;
+	handlers: ReturnType<typeof createSharedHandlers>;
+	sessionManager: SessionManager;
 	unsubscribe: () => void;
 	ws: { send(data: string): void } | null;
 	activeStreams: number;
@@ -49,7 +52,7 @@ export function createSession(
 		}
 	};
 
-	const handlers = createHandlers(connectionManager, queryExecutor, appDb, undefined, {
+	const { handlers, sessionManager } = createHandlers(connectionManager, queryExecutor, appDb, undefined, {
 		encryption,
 		emitMessage,
 	});
@@ -68,10 +71,22 @@ export function createSession(
 				},
 			}));
 		}
+
+		// Clean up sessions on disconnect/error and notify frontend
+		if (event.state === "disconnected" || event.state === "error") {
+			sessionManager.handleConnectionLost(event.connectionId);
+			if (session.ws) {
+				session.ws.send(JSON.stringify({
+					type: "message",
+					channel: "session.changed",
+					payload: { connectionId: event.connectionId, sessions: [] },
+				}));
+			}
+		}
 	});
 
 	const session: Session = {
-		id, appDb, connectionManager, queryExecutor, handlers, unsubscribe, ws,
+		id, appDb, connectionManager, queryExecutor, handlers, sessionManager, unsubscribe, ws,
 		activeStreams: 0, disconnectedAt: null, ttlTimer: null,
 	};
 	sessions.set(id, session);

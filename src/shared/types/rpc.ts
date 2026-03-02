@@ -1,5 +1,16 @@
 import type { SortColumn, ColumnFilter } from "./grid";
 
+// ---- Session types ----
+
+export interface SessionInfo {
+	sessionId: string;
+	connectionId: string;
+	database?: string;
+	label: string;
+	inTransaction: boolean;
+	createdAt: number;
+}
+
 // ---- Domain types used by handlers and adapters ----
 
 interface DataChangeBase {
@@ -75,6 +86,7 @@ export type SearchScope = "database" | "schema" | "tables";
 export interface SearchDatabaseParams {
 	connectionId: string;
 	database?: string;
+	sessionId?: string;
 	searchTerm: string;
 	scope: SearchScope;
 	schemaName?: string;
@@ -114,6 +126,7 @@ export interface TransactionLogEntry {
 export interface TransactionLogParams {
 	connectionId: string;
 	database?: string;
+	sessionId?: string;
 	statusFilter?: TransactionLogStatus;
 	search?: string;
 }

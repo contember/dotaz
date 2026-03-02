@@ -8,6 +8,7 @@ import type { QueryResult, QueryHistoryEntry, QueryHistoryStatus, ExplainResult,
 import type { ExportOptions, ExportPreviewRequest, ExportResult } from "../shared/types/export";
 import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from "../shared/types/import";
 import type {
+	SessionInfo,
 	SavedView,
 	SavedViewConfig,
 	HistoryListParams,
@@ -106,6 +107,26 @@ export class DemoAdapter implements RpcAdapter {
 			connectionId,
 			state: "disconnected",
 		});
+	}
+
+	// ── Sessions (no-op in demo — single WASM connection) ──
+
+	async createSession(connectionId: string, _database?: string): Promise<SessionInfo> {
+		return {
+			sessionId: crypto.randomUUID(),
+			connectionId,
+			label: "Session 1",
+			inTransaction: false,
+			createdAt: Date.now(),
+		};
+	}
+
+	async destroySession(_sessionId: string): Promise<void> {
+		// No-op
+	}
+
+	listSessions(_connectionId: string): SessionInfo[] {
+		return [];
 	}
 
 	// ── Driver access (RpcAdapter interface) ─────────────

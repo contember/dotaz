@@ -39,6 +39,17 @@ export function createHandlers(adapter: RpcAdapter) {
 			await adapter.disconnect(connectionId);
 		},
 
+		// ── Sessions ─────────────────────────────────────
+		"session.create": async ({ connectionId, database }: { connectionId: string; database?: string }) => {
+			return adapter.createSession(connectionId, database);
+		},
+		"session.destroy": async ({ sessionId }: { sessionId: string }) => {
+			await adapter.destroySession(sessionId);
+		},
+		"session.list": ({ connectionId }: { connectionId: string }) => {
+			return adapter.listSessions(connectionId);
+		},
+
 		// ── Databases (multi-database PostgreSQL) ────────
 		"databases.list": async ({ connectionId }: { connectionId: string }) => {
 			return adapter.listDatabases(connectionId);
@@ -51,21 +62,22 @@ export function createHandlers(adapter: RpcAdapter) {
 		},
 
 		// ── Schema ───────────────────────────────────────
-		"schema.load": async ({ connectionId, database }: { connectionId: string; database?: string }) => {
+		"schema.load": async ({ connectionId, database, sessionId }: { connectionId: string; database?: string; sessionId?: string }) => {
 			const driver = adapter.getDriver(connectionId, database);
-			return driver.loadSchema();
+			return driver.loadSchema(sessionId);
 		},
 
 		// ── Query Execution ──────────────────────────────
-		"query.execute": async ({ connectionId, sql, queryId, params, database, statements }: {
+		"query.execute": async ({ connectionId, sql, queryId, params, database, statements, sessionId }: {
 			connectionId: string; sql: string; queryId: string;
 			params?: unknown[]; database?: string;
 			statements?: { sql: string; params?: unknown[] }[];
+			sessionId?: string;
 		}) => {
 			if (statements && statements.length > 0) {
-				return adapter.executeStatements(connectionId, statements, database);
+				return adapter.executeStatements(connectionId, statements, database, sessionId);
 			}
-			return adapter.executeQuery(connectionId, sql, params, queryId, database);
+			return adapter.executeQuery(connectionId, sql, params, queryId, database, sessionId);
 		},
 		"query.cancel": async ({ queryId }: { queryId: string }) => {
 			await adapter.cancelQuery(queryId);
@@ -73,29 +85,29 @@ export function createHandlers(adapter: RpcAdapter) {
 		"query.format": ({ sql }: { sql: string }) => {
 			return { sql: adapter.formatSql(sql) };
 		},
-		"query.explain": async ({ connectionId, sql, analyze, database }: {
-			connectionId: string; sql: string; analyze?: boolean; database?: string;
+		"query.explain": async ({ connectionId, sql, analyze, database, sessionId }: {
+			connectionId: string; sql: string; analyze?: boolean; database?: string; sessionId?: string;
 		}) => {
-			return adapter.explainQuery(connectionId, sql, analyze ?? false, database);
+			return adapter.explainQuery(connectionId, sql, analyze ?? false, database, sessionId);
 		},
 
 		// ── Transactions ─────────────────────────────────
-		"tx.begin": async ({ connectionId, database }: { connectionId: string; database?: string }) => {
-			await adapter.beginTransaction(connectionId, database);
+		"tx.begin": async ({ connectionId, database, sessionId }: { connectionId: string; database?: string; sessionId?: string }) => {
+			await adapter.beginTransaction(connectionId, database, sessionId);
 		},
-		"tx.commit": async ({ connectionId, database }: { connectionId: string; database?: string }) => {
-			await adapter.commitTransaction(connectionId, database);
+		"tx.commit": async ({ connectionId, database, sessionId }: { connectionId: string; database?: string; sessionId?: string }) => {
+			await adapter.commitTransaction(connectionId, database, sessionId);
 		},
-		"tx.rollback": async ({ connectionId, database }: { connectionId: string; database?: string }) => {
-			await adapter.rollbackTransaction(connectionId, database);
+		"tx.rollback": async ({ connectionId, database, sessionId }: { connectionId: string; database?: string; sessionId?: string }) => {
+			await adapter.rollbackTransaction(connectionId, database, sessionId);
 		},
 
 		// ── Transaction Log ──────────────────────────────
 		"transaction.getLog": (params: TransactionLogParams) => {
 			return adapter.getTransactionLog(params);
 		},
-		"transaction.clearLog": ({ connectionId, database }: { connectionId: string; database?: string }) => {
-			adapter.clearTransactionLog(connectionId, database);
+		"transaction.clearLog": ({ connectionId, database, sessionId }: { connectionId: string; database?: string; sessionId?: string }) => {
+			adapter.clearTransactionLog(connectionId, database, sessionId);
 		},
 
 		// ── Search ───────────────────────────────────────
