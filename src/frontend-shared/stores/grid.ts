@@ -456,6 +456,83 @@ function buildClipboardTsv(
 	return { text: [header, ...rows].join("\n"), rowCount: sortedIndices.length };
 }
 
+// ── Advanced copy ─────────────────────────────────────────
+
+export type AdvancedCopyDelimiter = "tab" | "comma" | "semicolon" | "pipe" | "custom";
+export type AdvancedCopyValueFormat = "displayed" | "raw" | "quoted";
+
+export interface AdvancedCopyOptions {
+	delimiter: AdvancedCopyDelimiter;
+	customDelimiter: string;
+	includeHeaders: boolean;
+	includeRowNumbers: boolean;
+	valueFormat: AdvancedCopyValueFormat;
+	nullRepresentation: string;
+}
+
+const DELIMITER_MAP: Record<Exclude<AdvancedCopyDelimiter, "custom">, string> = {
+	tab: "\t",
+	comma: ",",
+	semicolon: ";",
+	pipe: "|",
+};
+
+function getDelimiterChar(options: AdvancedCopyOptions): string {
+	return options.delimiter === "custom"
+		? options.customDelimiter || "\t"
+		: DELIMITER_MAP[options.delimiter];
+}
+
+function formatAdvancedCellValue(value: unknown, options: AdvancedCopyOptions): string {
+	if (value === null || value === undefined) return options.nullRepresentation;
+
+	const str = typeof value === "object" ? JSON.stringify(value) : String(value);
+
+	if (options.valueFormat === "quoted") {
+		// SQL-style quoting: wrap in single quotes, escape internal quotes
+		return `'${str.replace(/'/g, "''")}'`;
+	}
+
+	return str;
+}
+
+/**
+ * Build formatted clipboard text using advanced copy options.
+ * Always copies all selected rows with visible columns (never single-cell mode).
+ */
+function buildAdvancedCopyText(
+	tabId: string,
+	visibleColumns: GridColumnDef[],
+	options: AdvancedCopyOptions,
+): string | null {
+	const tab = ensureTab(tabId);
+	const selected = tab.selectedRows;
+	if (selected.size === 0) return null;
+
+	const delim = getDelimiterChar(options);
+	const colNames = visibleColumns.map((c) => c.name);
+	const sortedIndices = [...selected].sort((a, b) => a - b);
+	const lines: string[] = [];
+
+	if (options.includeHeaders) {
+		const headerParts = options.includeRowNumbers ? ["#", ...colNames] : colNames;
+		lines.push(headerParts.join(delim));
+	}
+
+	for (let i = 0; i < sortedIndices.length; i++) {
+		const rowIdx = sortedIndices[i];
+		const row = tab.rows[rowIdx];
+		if (!row) continue;
+		const values = colNames.map((col) => formatAdvancedCellValue(row[col], options));
+		if (options.includeRowNumbers) {
+			values.unshift(String(i + 1));
+		}
+		lines.push(values.join(delim));
+	}
+
+	return lines.join("\n");
+}
+
 function setColumnWidth(tabId: string, column: string, width: number) {
 	const tab = ensureTab(tabId);
 	const existing = tab.columnConfig[column];
@@ -1233,6 +1310,7 @@ export const gridStore = {
 	getSelectedData,
 	setFocusedCell,
 	buildClipboardTsv,
+	buildAdvancedCopyText,
 	formatCellForClipboard,
 	setColumnWidth,
 	setColumnVisibility,

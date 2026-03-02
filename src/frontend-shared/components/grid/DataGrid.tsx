@@ -22,6 +22,7 @@ import PendingChanges from "../edit/PendingChanges";
 import SaveViewDialog from "../views/SaveViewDialog";
 import ExportDialog from "../export/ExportDialog";
 import ImportDialog from "../import/ImportDialog";
+import AdvancedCopyDialog from "./AdvancedCopyDialog";
 import ContextMenu from "../common/ContextMenu";
 import type { ContextMenuEntry } from "../common/ContextMenu";
 import Icon from "../common/Icon";
@@ -68,6 +69,7 @@ export default function DataGrid(props: DataGridProps) {
 	const [saveViewOpen, setSaveViewOpen] = createSignal(false);
 	const [exportOpen, setExportOpen] = createSignal(false);
 	const [importOpen, setImportOpen] = createSignal(false);
+	const [advancedCopyOpen, setAdvancedCopyOpen] = createSignal(false);
 	const [cellContextMenu, setCellContextMenu] = createSignal<{
 		x: number;
 		y: number;
@@ -567,6 +569,15 @@ export default function DataGrid(props: DataGridProps) {
 		{
 			key: "c",
 			ctrl: true,
+			shift: true,
+			handler(e) {
+				e.preventDefault();
+				setAdvancedCopyOpen(true);
+			},
+		},
+		{
+			key: "c",
+			ctrl: true,
 			handler(e) {
 				e.preventDefault();
 				handleCopy();
@@ -666,6 +677,10 @@ export default function DataGrid(props: DataGridProps) {
 						.join("\t");
 					await navigator.clipboard.writeText(`${header}\n${rowText}`);
 				},
+			},
+			{
+				label: "Advanced Copy...",
+				action: () => setAdvancedCopyOpen(true),
 			},
 			"separator",
 			{
@@ -1298,6 +1313,13 @@ export default function DataGrid(props: DataGridProps) {
 				table={currentTable()}
 				database={props.database}
 				onClose={() => setExportOpen(false)}
+			/>
+
+			<AdvancedCopyDialog
+				open={advancedCopyOpen()}
+				tabId={props.tabId}
+				visibleColumns={visibleColumns()}
+				onClose={() => setAdvancedCopyOpen(false)}
 			/>
 
 			<ImportDialog
