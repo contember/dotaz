@@ -22,7 +22,7 @@ import type {
 } from "../shared/types/rpc";
 import { splitStatements } from "../shared/sql/statements";
 import { exportPreview as generateExportPreview } from "../backend-shared/services/export-service";
-import { parseImportPreview, importData as importDataService } from "../backend-shared/services/import-service";
+import { importFromStream, importPreviewFromStream } from "../backend-shared/services/import-service";
 import { searchDatabase } from "../backend-shared/services/search-service";
 import { formatSql } from "../backend-shared/services/sql-formatter";
 import { generateSql, buildSchemaContext } from "../backend-shared/services/ai-sql";
@@ -388,10 +388,10 @@ export class DemoAdapter implements RpcAdapter {
 
 	async importData(opts: ImportOptions): Promise<ImportResult> {
 		const d = this.getConnectedDriver(opts.connectionId);
-		return importDataService(d, {
+		const stream = this.stringToStream(opts.fileContent ?? "");
+		return importFromStream(d, stream, {
 			schema: opts.schema,
 			table: opts.table,
-			fileContent: opts.fileContent,
 			format: opts.format,
 			delimiter: opts.delimiter,
 			hasHeader: opts.hasHeader,
@@ -401,12 +401,22 @@ export class DemoAdapter implements RpcAdapter {
 	}
 
 	async importPreview(req: ImportPreviewRequest): Promise<ImportPreviewResult> {
-		return parseImportPreview({
-			fileContent: req.fileContent,
+		const stream = this.stringToStream(req.fileContent ?? "");
+		return importPreviewFromStream(stream, {
 			format: req.format,
 			delimiter: req.delimiter,
 			hasHeader: req.hasHeader,
-		}, req.limit);
+			limit: req.limit,
+		});
+	}
+
+	private stringToStream(content: string): ReadableStream<Uint8Array> {
+		return new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(new TextEncoder().encode(content));
+				controller.close();
+			},
+		});
 	}
 
 	// ── Settings ─────────────────────────────────────────

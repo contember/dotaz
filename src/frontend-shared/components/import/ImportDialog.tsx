@@ -361,7 +361,7 @@ export default function ImportDialog(props: ImportDialogProps) {
 						<div class="import-dialog__section">
 							<div class="import-dialog__preview-header">
 								<label class="import-dialog__label">
-									Preview (first {Math.min(p().rows.length, 20)} of {p().totalRows} rows)
+									Preview (first {Math.min(p().rows.length, 20)}{p().totalRows !== undefined ? ` of ${p().totalRows}` : ""} rows)
 								</label>
 								<button
 									class="import-dialog__browse-btn"
@@ -439,7 +439,9 @@ export default function ImportDialog(props: ImportDialogProps) {
 				{/* Info */}
 				<Show when={preview() && !importResult()}>
 					<div class="import-dialog__info">
-						{preview()!.totalRows} row{preview()!.totalRows !== 1 ? "s" : ""} to import
+						{preview()!.totalRows !== undefined
+							? `${preview()!.totalRows} row${preview()!.totalRows !== 1 ? "s" : ""}`
+							: `${preview()!.rows.length}+ rows`} to import
 						{activeMappingCount() > 0
 							? ` into ${activeMappingCount()} column${activeMappingCount() !== 1 ? "s" : ""}`
 							: " (no columns mapped)"}

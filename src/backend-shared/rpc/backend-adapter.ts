@@ -24,7 +24,7 @@ import type {
 import type { DatabaseDriver } from "../db/driver";
 import { TransactionManager } from "../services/transaction-manager";
 import { exportToFile, exportPreview } from "../services/export-service";
-import { parseImportPreview, importData as importDataService } from "../services/import-service";
+import { importFromStream, importPreviewFromStream } from "../services/import-service";
 import { searchDatabase } from "../services/search-service";
 import { formatSql } from "../services/sql-formatter";
 import { generateSql, buildSchemaContext } from "../services/ai-sql";
@@ -303,10 +303,10 @@ export class BackendAdapter implements RpcAdapter {
 
 	async importData(opts: ImportOptions): Promise<ImportResult> {
 		const driver = this.cm.getDriver(opts.connectionId, opts.database);
-		return importDataService(driver, {
+		const stream = this.resolveImportStream(opts.filePath, opts.fileContent);
+		return importFromStream(driver, stream, {
 			schema: opts.schema,
 			table: opts.table,
-			fileContent: opts.fileContent,
 			format: opts.format,
 			delimiter: opts.delimiter,
 			hasHeader: opts.hasHeader,
@@ -316,12 +316,76 @@ export class BackendAdapter implements RpcAdapter {
 	}
 
 	async importPreview(req: ImportPreviewRequest): Promise<ImportPreviewResult> {
-		return parseImportPreview({
-			fileContent: req.fileContent,
+		const stream = this.resolveImportPreviewStream(req.filePath, req.fileContent);
+		const result = await importPreviewFromStream(stream, {
 			format: req.format,
 			delimiter: req.delimiter,
 			hasHeader: req.hasHeader,
-		}, req.limit);
+			limit: req.limit,
+		});
+		if (req.filePath) {
+			try {
+				const file = Bun.file(req.filePath);
+				result.fileSizeBytes = file.size;
+			} catch { /* ignore */ }
+		}
+		return result;
+	}
+
+	private resolveImportStream(filePath?: string, fileContent?: string): ReadableStream<Uint8Array> {
+		if (filePath) {
+			return Bun.file(filePath).stream();
+		}
+		if (fileContent !== undefined) {
+			return new ReadableStream<Uint8Array>({
+				start(controller) {
+					controller.enqueue(new TextEncoder().encode(fileContent));
+					controller.close();
+				},
+			});
+		}
+		throw new Error("Import requires either filePath or fileContent");
+	}
+
+	private resolveImportPreviewStream(filePath?: string, fileContent?: string): ReadableStream<Uint8Array> {
+		if (filePath) {
+			// Read first 64KB from file for preview
+			const file = Bun.file(filePath);
+			const fullStream = file.stream();
+			const reader = fullStream.getReader();
+			const PREVIEW_BYTES = 64 * 1024;
+			let bytesRead = 0;
+			return new ReadableStream<Uint8Array>({
+				async pull(controller) {
+					const { done, value } = await reader.read();
+					if (done) {
+						controller.close();
+						return;
+					}
+					bytesRead += value.byteLength;
+					if (bytesRead >= PREVIEW_BYTES) {
+						// Enqueue what we have and close
+						controller.enqueue(value);
+						controller.close();
+						reader.releaseLock();
+						return;
+					}
+					controller.enqueue(value);
+				},
+				cancel() {
+					reader.releaseLock();
+				},
+			});
+		}
+		if (fileContent !== undefined) {
+			return new ReadableStream<Uint8Array>({
+				start(controller) {
+					controller.enqueue(new TextEncoder().encode(fileContent));
+					controller.close();
+				},
+			});
+		}
+		throw new Error("Import preview requires either filePath or fileContent");
 	}
 
 	// ── Settings ─────────────────────────────────────────

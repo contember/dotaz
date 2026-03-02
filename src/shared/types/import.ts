@@ -16,8 +16,10 @@ export interface ImportPreviewRequest {
 	schema: string;
 	table: string;
 	database?: string;
-	/** Raw file content (text) */
-	fileContent: string;
+	/** Raw file content (text) — used in web/demo mode */
+	fileContent?: string;
+	/** Absolute file path — used in desktop mode */
+	filePath?: string;
 	format: ImportFormat;
 	/** CSV delimiter (default: comma) */
 	delimiter?: CsvDelimiter;
@@ -32,8 +34,10 @@ export interface ImportPreviewResult {
 	fileColumns: string[];
 	/** Preview rows (up to limit) */
 	rows: Record<string, unknown>[];
-	/** Total row count in the file */
-	totalRows: number;
+	/** Total row count in the file (undefined when streaming — total unknown) */
+	totalRows?: number;
+	/** File size in bytes (when available from file path) */
+	fileSizeBytes?: number;
 }
 
 export interface ImportOptions {
@@ -41,8 +45,10 @@ export interface ImportOptions {
 	schema: string;
 	table: string;
 	database?: string;
-	/** Raw file content (text) */
-	fileContent: string;
+	/** Raw file content (text) — used in web/demo mode */
+	fileContent?: string;
+	/** Absolute file path — used in desktop mode */
+	filePath?: string;
 	format: ImportFormat;
 	/** CSV delimiter (default: comma) */
 	delimiter?: CsvDelimiter;
