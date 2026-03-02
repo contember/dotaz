@@ -84,6 +84,10 @@ export class WasmSqliteDriver implements DatabaseDriver {
 				rowMode: "object",
 				resultRows,
 			});
+
+			// Simulate network latency so the UI behaves like a real DB connection
+			await new Promise(resolve => setTimeout(resolve, 100));
+
 			const durationMs = Math.round(performance.now() - start);
 
 			const columns: QueryResultColumn[] =

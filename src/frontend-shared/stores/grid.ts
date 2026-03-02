@@ -180,8 +180,6 @@ let fetchSequence = 0;
 
 const { getTab, ensureTab } = createTabHelpers(() => state.tabs, "Grid");
 
-const MIN_LOADING_MS = 200;
-
 async function fetchData(tabId: string) {
 	const tab = ensureTab(tabId);
 	const requestId = ++fetchSequence;
@@ -237,14 +235,6 @@ async function fetchData(tabId: string) {
 		const totalRows = Number(countResults[0]?.rows[0]?.count ?? 0);
 
 		const fetchDuration = Date.now() - fetchStart;
-
-		// Ensure minimum visible loading duration for fast queries (e.g. demo mode)
-		if (fetchDuration < MIN_LOADING_MS) {
-			await new Promise(resolve => setTimeout(resolve, MIN_LOADING_MS - fetchDuration));
-		}
-
-		// Ignore stale responses — a newer request may have been issued during the delay
-		if (latestFetchId.get(tabId) !== requestId) return;
 
 		setState("tabs", tabId, {
 			columns: gridColumns,
