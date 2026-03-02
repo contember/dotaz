@@ -201,6 +201,11 @@ export default function ExportDialog(props: ExportDialogProps) {
 		const ext = FILE_EXTENSIONS[format()];
 		const defaultName = `${props.table}.${ext}`;
 
+		// Web mode: use HTTP streaming via token
+		if (caps().hasHttpStreaming && !caps().hasFileSystem) {
+			return handleWebExport(defaultName);
+		}
+
 		let exportFilePath: string | undefined;
 
 		// Desktop: use native save dialog to get file path
@@ -251,6 +256,83 @@ export default function ExportDialog(props: ExportDialogProps) {
 		} finally {
 			unsub();
 			setExporting(false);
+		}
+	}
+
+	async function handleWebExport(defaultName: string) {
+		setExporting(true);
+
+		// Subscribe to progress and completion events
+		const unsub = transport.addMessageListener<{ rowCount: number }>(
+			"export.progress",
+			(payload) => setProgressRows(payload.rowCount),
+		);
+
+		let completionReceived = false;
+		const unsubComplete = transport.addMessageListener<{ rowCount: number }>(
+			"export.complete",
+			(payload) => {
+				completionReceived = true;
+				setExportResult({ rowCount: payload.rowCount, sizeBytes: 0 });
+				setExporting(false);
+			},
+		);
+
+		try {
+			// Get a stream token via WS RPC
+			const { token } = await transport.call<{ token: string }>("stream.createExportToken", {
+				connectionId: props.connectionId,
+				database: props.database,
+				schema: props.schema,
+				table: props.table,
+				format: format(),
+				delimiter: format() === "csv" ? delimiter() : undefined,
+				encoding: format() === "csv" ? encoding() : undefined,
+				utf8Bom: format() === "csv" && encoding() === "utf-8" ? utf8Bom() : undefined,
+				includeHeaders: format() === "csv" ? includeHeaders() : undefined,
+				batchSize: format() === "sql" ? batchSize() : undefined,
+				filters: getExportFilters(),
+				sort: getExportSort(),
+			});
+
+			// Trigger browser download via hidden anchor tag
+			const a = document.createElement("a");
+			a.href = `/api/stream/export/${token}`;
+			a.download = defaultName;
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+
+			// Wait for completion signal with a timeout
+			// If no completion after 500ms and no progress, show as started
+			await new Promise<void>((resolve) => {
+				const check = () => {
+					if (completionReceived) {
+						resolve();
+						return;
+					}
+					// Keep waiting while we're getting progress
+					setTimeout(check, 1000);
+				};
+				// For anchor-based downloads, we can't detect stream end precisely.
+				// Show the download as started after a brief delay if no completion yet.
+				setTimeout(() => {
+					if (!completionReceived && !error()) {
+						setExporting(false);
+						setExportResult({ rowCount: progressRows(), sizeBytes: 0 });
+					}
+					resolve();
+				}, 3000);
+			});
+		} catch (err) {
+			setError(err instanceof Error ? err.message : String(err));
+			setExporting(false);
+		} finally {
+			// Clean up listeners after a delay to catch late messages
+			setTimeout(() => {
+				unsub();
+				unsubComplete();
+			}, 5000);
 		}
 	}
 
@@ -453,7 +535,8 @@ export default function ExportDialog(props: ExportDialogProps) {
 				<Show when={exportResult()}>
 					{(result) => (
 						<div class="export-dialog__result">
-							Exported {formatNumber(result().rowCount)} row{result().rowCount !== 1 ? "s" : ""} ({formatFileSize(result().sizeBytes)})
+							Exported {formatNumber(result().rowCount)} row{result().rowCount !== 1 ? "s" : ""}
+							{result().sizeBytes > 0 ? ` (${formatFileSize(result().sizeBytes)})` : ""}
 						</div>
 					)}
 				</Show>

@@ -50,6 +50,7 @@ export default function ImportDialog(props: ImportDialogProps) {
 	const [fileContent, setFileContent] = createSignal<string | null>(null);
 	const [filePath, setFilePath] = createSignal<string | null>(null);
 	const [fileName, setFileName] = createSignal<string | null>(null);
+	const [selectedFile, setSelectedFile] = createSignal<File | null>(null);
 	const [preview, setPreview] = createSignal<ImportPreviewResult | null>(null);
 	const [previewLoading, setPreviewLoading] = createSignal(false);
 	const [mappings, setMappings] = createSignal<ColumnMapping[]>([]);
@@ -70,6 +71,7 @@ export default function ImportDialog(props: ImportDialogProps) {
 			setFileContent(null);
 			setFilePath(null);
 			setFileName(null);
+			setSelectedFile(null);
 			setPreview(null);
 			setPreviewLoading(false);
 			setMappings([]);
@@ -134,9 +136,18 @@ export default function ImportDialog(props: ImportDialogProps) {
 		setError(null);
 
 		try {
-			const content = await file.text();
-			setFileContent(content);
-			await loadPreview(content);
+			if (caps().hasHttpStreaming) {
+				// Web mode: store File object for HTTP upload, read 64KB prefix for preview
+				setSelectedFile(file);
+				const prefix = await file.slice(0, 65536).text();
+				setFileContent(prefix);
+				await loadPreview(prefix);
+			} else {
+				// Demo mode: read entire file content via WS
+				const content = await file.text();
+				setFileContent(content);
+				await loadPreview(content);
+			}
 		} catch (err) {
 			setError(err instanceof Error ? err.message : String(err));
 		}
@@ -207,7 +218,13 @@ export default function ImportDialog(props: ImportDialogProps) {
 	async function handleImport() {
 		const fp = filePath();
 		const fc = fileContent();
-		if (!fp && !fc) return;
+		const sf = selectedFile();
+		if (!fp && !fc && !sf) return;
+
+		// Web mode: use HTTP streaming
+		if (caps().hasHttpStreaming && sf) {
+			return handleWebImport(sf);
+		}
 
 		setError(null);
 		setImportResult(null);
@@ -243,6 +260,59 @@ export default function ImportDialog(props: ImportDialogProps) {
 		}
 	}
 
+	async function handleWebImport(file: File) {
+		setError(null);
+		setImportResult(null);
+		setProgressRows(0);
+		setImporting(true);
+
+		// Subscribe to progress events
+		const unsub = transport.addMessageListener<{ rowCount: number }>(
+			"import.progress",
+			(payload) => setProgressRows(payload.rowCount),
+		);
+
+		const abortController = new AbortController();
+
+		try {
+			// Get a stream token via WS
+			const { token } = await transport.call<{ token: string }>("stream.createImportToken", {
+				connectionId: props.connectionId,
+				database: props.database,
+				schema: props.schema,
+				table: props.table,
+				format: format(),
+				delimiter: format() === "csv" ? delimiter() : undefined,
+				hasHeader: format() === "csv" ? hasHeader() : undefined,
+				mappings: mappings(),
+			});
+
+			// POST the file to the HTTP endpoint
+			const response = await fetch(`/api/stream/import/${token}`, {
+				method: "POST",
+				body: file,
+				signal: abortController.signal,
+			});
+
+			const result = await response.json();
+			if (!response.ok) {
+				throw new Error(result.error ?? "Import failed");
+			}
+
+			setImportResult({ rowCount: result.rowCount });
+			props.onImported?.();
+		} catch (err) {
+			if (err instanceof DOMException && err.name === "AbortError") {
+				setError("Import cancelled");
+			} else {
+				setError(err instanceof Error ? err.message : String(err));
+			}
+		} finally {
+			unsub();
+			setImporting(false);
+		}
+	}
+
 	function formatValue(value: unknown): string {
 		if (value === null || value === undefined) return "NULL";
 		if (typeof value === "object") return JSON.stringify(value);
@@ -253,7 +323,7 @@ export default function ImportDialog(props: ImportDialogProps) {
 		return n.toLocaleString();
 	}
 
-	const hasFile = () => filePath() !== null || fileContent() !== null;
+	const hasFile = () => filePath() !== null || fileContent() !== null || selectedFile() !== null;
 
 	const canImport = () =>
 		hasFile() &&
@@ -299,6 +369,7 @@ export default function ImportDialog(props: ImportDialogProps) {
 										setFileContent(null);
 										setFilePath(null);
 										setFileName(null);
+										setSelectedFile(null);
 										setPreview(null);
 										setMappings([]);
 										setImportResult(null);
