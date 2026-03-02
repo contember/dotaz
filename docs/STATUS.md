@@ -119,7 +119,7 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 | Issue | Title | Status | Notes |
 |-------|-------|--------|-------|
 | DOTAZ-102 | Web session lifecycle management | done | disconnectedAt field, 5-min TTL timer in maybeDestroySession, 60s zombie sweep, cancelAllForConnection on QueryExecutor, destroySession cancels running queries |
-| DOTAZ-103 | Transaction state notification on reconnect | not started | Detect lost tx, emit event, frontend toast |
+| DOTAZ-103 | Transaction state notification on reconnect | done | hadTransaction on ReconnectState, transactionLost in StatusChangeEvent, frontend resets editor tx state + warning toast |
 | DOTAZ-104 | Parameterize LIMIT/OFFSET in driver iterate() | not started | SQLite + MySQL iterate — use ? params instead of interpolation |
 | DOTAZ-105 | Runtime validation for settings and shared types | not started | Settings type guards, import source union, comparison key fix |
 | DOTAZ-106 | CSV parser memory protection | not started | Max buffer size limit to prevent OOM on malformed input |
@@ -128,5 +128,17 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 
 ---
 
-*Last updated: 2026-03-02 — DOTAZ-102 done*
+## Phase 15 — Session Management
+
+| Issue | Title | Status | Notes |
+|-------|-------|--------|-------|
+| DOTAZ-109 | Driver session management methods | not started | reserveSession/releaseSession, sessionId on execute/tx/schema, PG multi-session Map, SQLite/MySQL/WASM no-op |
+| DOTAZ-110 | Per-Run connection affinity in QueryExecutor | not started | Ephemeral session for multi-statement batches; depends on DOTAZ-109 |
+| DOTAZ-111 | SessionManager service | not started | Session lifecycle, TransactionManager sessionId, settings defaults; depends on DOTAZ-109 |
+| DOTAZ-112 | Session RPC endpoints and adapter wiring | not started | RpcAdapter + BackendAdapter + DemoAdapter + handlers, session.changed message; depends on DOTAZ-110, DOTAZ-111 |
+| DOTAZ-113 | Frontend session management and UI | not started | Session store, editor/grid integration, pin/unpin UI, auto-pin, settings; depends on DOTAZ-112 |
+
+---
+
+*Last updated: 2026-03-02 — DOTAZ-103 done*
 
