@@ -8,6 +8,7 @@ import "./TabBar.css";
 interface TabBarProps {
 	tabs: TabInfo[];
 	activeTabId: string | null;
+	pinnedTabIds?: Set<string>;
 	onSelectTab: (id: string) => void;
 	onCloseTab: (id: string) => void;
 	onCloseOtherTabs?: (id: string) => void;
@@ -120,6 +121,7 @@ export default function TabBar(props: TabBarProps) {
 							classList={{
 								"tab-bar__tab--active": tab.id === props.activeTabId,
 								"tab-bar__tab--dirty": tab.dirty,
+								"tab-bar__tab--pinned": props.pinnedTabIds?.has(tab.id),
 							}}
 							onClick={() => props.onSelectTab(tab.id)}
 							onMouseDown={(e) => {
@@ -161,6 +163,9 @@ export default function TabBar(props: TabBarProps) {
 							</Show>
 							<Show when={tab.dirty}>
 								<span class="tab-bar__tab-dirty">&bull;</span>
+							</Show>
+							<Show when={props.pinnedTabIds?.has(tab.id)}>
+								<Icon name="pin" size={10} class="tab-bar__tab-pin" />
 							</Show>
 							<button
 								class="tab-bar__tab-close"

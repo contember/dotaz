@@ -17,6 +17,7 @@ import {
 import { rpc } from "../lib/rpc";
 import { createTabHelpers } from "../lib/tab-store-helpers";
 import { connectionsStore } from "./connections";
+import { sessionStore } from "./session";
 
 // ── Heatmap ───────────────────────────────────────────────
 
@@ -218,9 +219,10 @@ async function fetchData(tabId: string) {
 
 		// Execute both queries
 		const queryId = `grid-${tabId}-${requestId}`;
+		const sessionId = sessionStore.getSessionForTab(tabId);
 		const [dataResults, countResults] = await Promise.all([
-			rpc.query.execute({ connectionId: tab.connectionId, sql: selectQuery.sql, queryId, params: selectQuery.params, database: tab.database }),
-			rpc.query.execute({ connectionId: tab.connectionId, sql: countQuery.sql, queryId: `${queryId}-count`, params: countQuery.params, database: tab.database }),
+			rpc.query.execute({ connectionId: tab.connectionId, sql: selectQuery.sql, queryId, params: selectQuery.params, database: tab.database, sessionId }),
+			rpc.query.execute({ connectionId: tab.connectionId, sql: countQuery.sql, queryId: `${queryId}-count`, params: countQuery.params, database: tab.database, sessionId }),
 		]);
 
 		// Ignore stale responses — a newer request has been issued
@@ -987,7 +989,8 @@ async function applyChanges(tabId: string, database?: string) {
 
 	const dialect = connectionsStore.getDialect(tab.connectionId);
 	const statements = changes.map((change) => generateChangeSql(change, dialect));
-	await rpc.query.execute({ connectionId: tab.connectionId, sql: "", queryId: "", statements, database });
+	const sessionId = sessionStore.getSessionForTab(tabId);
+	await rpc.query.execute({ connectionId: tab.connectionId, sql: "", queryId: "", statements, database, sessionId });
 }
 
 function generateSqlPreview(tabId: string): string {

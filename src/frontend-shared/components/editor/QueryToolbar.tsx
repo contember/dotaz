@@ -1,6 +1,7 @@
 import { Show } from "solid-js";
 import { editorStore, type TxMode } from "../../stores/editor";
 import { connectionsStore } from "../../stores/connections";
+import { sessionStore } from "../../stores/session";
 import Play from "lucide-solid/icons/play";
 import ListTree from "lucide-solid/icons/list-tree";
 import AlignLeft from "lucide-solid/icons/text-align-start";
@@ -8,6 +9,8 @@ import PlayCircle from "lucide-solid/icons/circle-play";
 import Check from "lucide-solid/icons/check";
 import RotateCcw from "lucide-solid/icons/rotate-ccw";
 import ScrollText from "lucide-solid/icons/scroll-text";
+import PinIcon from "lucide-solid/icons/pin";
+import PinOff from "lucide-solid/icons/pin-off";
 import Icon from "../common/Icon";
 import "./QueryToolbar.css";
 
@@ -31,6 +34,8 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 	const duration = () => tab()?.duration ?? 0;
 	const txMode = () => tab()?.txMode ?? "auto-commit";
 	const inTransaction = () => tab()?.inTransaction ?? false;
+	const isPinned = () => sessionStore.isTabPinned(props.tabId);
+	const sessionLabel = () => sessionStore.getSessionLabelForTab(props.tabId);
 
 	function handleRun() {
 		editorStore.executeQuery(props.tabId);
@@ -70,6 +75,14 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 
 	function handleRollback() {
 		editorStore.rollbackTransaction(props.tabId);
+	}
+
+	function handleTogglePin() {
+		if (isPinned()) {
+			sessionStore.unpinSession(props.tabId);
+		} else {
+			sessionStore.pinSession(props.connectionId, props.tabId, props.database);
+		}
 	}
 
 	function formatDuration(ms: number): string {
@@ -187,6 +200,17 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 
 			<div class="query-toolbar__separator" />
 
+			{/* Session pin/unpin */}
+			<button
+				class={`query-toolbar__btn${isPinned() ? " query-toolbar__btn--pinned" : ""}`}
+				onClick={handleTogglePin}
+				title={isPinned() ? `Unpin session (${sessionLabel()})` : "Pin to dedicated session"}
+			>
+				<Show when={isPinned()} fallback={<><PinIcon size={12} /> Pool</>}>
+					<PinOff size={12} /> {sessionLabel()}
+				</Show>
+			</button>
+
 			{/* Transaction mode toggle */}
 			<div class="query-toolbar__tx-toggle">
 				<button
@@ -242,7 +266,7 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 			{/* Connection info */}
 			<div class="query-toolbar__connection">
 				<span class="query-toolbar__connection-name">
-					{connection()?.name ?? "—"}
+					{connection()?.name ?? "\u2014"}
 					<Show when={props.database}>
 						<span style={{ color: "var(--ink-muted)" }}> / {props.database}</span>
 					</Show>

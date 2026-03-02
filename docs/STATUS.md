@@ -136,9 +136,9 @@ All initial implementation phases (DOTAZ-001 through DOTAZ-053) are complete.
 | DOTAZ-110 | Per-Run connection affinity in QueryExecutor | done | Ephemeral session for multi-statement batches, sessionId threading through execute/cancel/explain |
 | DOTAZ-111 | SessionManager service | done | SessionManager with create/destroy/list/get/handleConnectionLost, TransactionManager sessionId threading, settings defaults |
 | DOTAZ-112 | Session RPC endpoints and adapter wiring | done | SessionInfo in shared types, session.create/destroy/list handlers, sessionId threaded through all existing handlers, BackendAdapter delegates to SessionManager, DemoAdapter no-ops, session.changed on create/destroy/connection-lost |
-| DOTAZ-113 | Frontend session management and UI | not started | Session store, editor/grid integration, pin/unpin UI, auto-pin, settings; depends on DOTAZ-112 |
+| DOTAZ-113 | Frontend session management and UI | done | Session store with tab↔session bindings, auto-pin (BEGIN/SET/CREATE TEMP), auto-unpin (COMMIT/ROLLBACK), editor/grid sessionId threading, pin/unpin button in QueryToolbar, session indicator in StatusBar, pinned badge in TabBar, SessionSettingsDialog, command palette entry |
 
 ---
 
-*Last updated: 2026-03-02 — DOTAZ-112 done*
+*Last updated: 2026-03-02 — DOTAZ-113 done*
 

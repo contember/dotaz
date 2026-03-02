@@ -4,6 +4,7 @@
 import { transport } from "./transport";
 import type { NamespacedRpcClient } from "../../backend-types";
 import type { ConnectionState } from "../../shared/types/connection";
+import type { SessionInfo } from "../../shared/types/rpc";
 import type { DatabaseErrorCode } from "../../shared/types/errors";
 
 export { RpcError, friendlyErrorMessage } from "./rpc-errors";
@@ -40,5 +41,10 @@ export const messages = {
 		handler: (event: { action: string }) => void,
 	) => {
 		return transport.addMessageListener("menu.action", handler);
+	},
+	onSessionChanged: (
+		handler: (event: { connectionId: string; sessions: SessionInfo[] }) => void,
+	) => {
+		return transport.addMessageListener("session.changed", handler);
 	},
 };

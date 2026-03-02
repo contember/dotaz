@@ -53,6 +53,18 @@
 	color: var(--ink);
 }
 
+/* Pinned session button */
+.query-toolbar__btn--pinned {
+	background: rgba(99, 102, 241, 0.15);
+	color: var(--accent);
+	border: 1px solid var(--accent);
+}
+
+.query-toolbar__btn--pinned:hover:not(:disabled) {
+	background: rgba(99, 102, 241, 0.25);
+	color: var(--accent);
+}
+
 /* Cancel button */
 .query-toolbar__btn--cancel {
 	background: var(--error);

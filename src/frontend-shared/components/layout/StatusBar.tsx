@@ -12,6 +12,7 @@ interface StatusBarProps {
 	inTransaction?: boolean;
 	pendingStatementCount?: number;
 	readOnly?: boolean;
+	sessionLabel?: string;
 }
 
 function statusColor(status: ConnectionStatus): string {
@@ -54,6 +55,13 @@ export default function StatusBar(props: StatusBarProps) {
 			</div>
 
 			<div class="status-bar__right">
+				<Show when={props.sessionLabel}>
+					<span class="status-bar__item status-bar__item--session">{props.sessionLabel}</span>
+				</Show>
+				<Show when={!props.sessionLabel && props.connectionName}>
+					<span class="status-bar__item">Pool</span>
+				</Show>
+
 				<Show when={props.readOnly}>
 					<span class="status-bar__item status-bar__item--readonly">READ-ONLY</span>
 				</Show>

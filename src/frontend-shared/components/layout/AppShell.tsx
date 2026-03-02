@@ -26,6 +26,7 @@ import ComparisonDialog from "../comparison/ComparisonDialog";
 import DatabaseSearchDialog from "../search/DatabaseSearchDialog";
 import FormatSettingsDialog from "../common/FormatSettingsDialog";
 import AiSettingsDialog from "../common/AiSettingsDialog";
+import SessionSettingsDialog from "../common/SessionSettingsDialog";
 import type { ComparisonSource, ComparisonColumnMapping } from "../../../shared/types/comparison";
 import type { ConnectionInfo } from "../../../shared/types/connection";
 import type { SearchScope } from "../../../shared/types/rpc";
@@ -35,6 +36,7 @@ import { editorStore } from "../../stores/editor";
 import { gridStore } from "../../stores/grid";
 import { uiStore } from "../../stores/ui";
 import { settingsStore } from "../../stores/settings";
+import { sessionStore } from "../../stores/session";
 import { friendlyErrorMessage, messages } from "../../lib/rpc";
 import { setComparisonParams, getComparisonParams, removeComparisonParams } from "../../stores/comparison";
 import { commandRegistry } from "../../lib/commands";
@@ -44,11 +46,12 @@ import { setWorkspaceStateCollector, scheduleWorkspaceSave, loadWorkspace, saveW
 import type { WorkspaceState, WorkspaceTab } from "../../../shared/types/workspace";
 import "./AppShell.css";
 
-// Clean up grid/editor/comparison state when tabs are closed to prevent memory leaks
+// Clean up grid/editor/comparison/session state when tabs are closed to prevent memory leaks
 tabsStore.onTabClosed((tabId) => {
 	gridStore.removeTab(tabId);
 	editorStore.removeTab(tabId);
 	removeComparisonParams(tabId);
+	sessionStore.handleTabClosed(tabId);
 });
 
 const MIN_WIDTH = 150;
@@ -77,6 +80,7 @@ export default function AppShell() {
 	const [searchInitialDatabase, setSearchInitialDatabase] = createSignal<string | undefined>(undefined);
 	const [formatSettingsOpen, setFormatSettingsOpen] = createSignal(false);
 	const [aiSettingsOpen, setAiSettingsOpen] = createSignal(false);
+	const [sessionSettingsOpen, setSessionSettingsOpen] = createSignal(false);
 	const [txLogOpen, setTxLogOpen] = createSignal(false);
 	const [txWarningOpen, setTxWarningOpen] = createSignal(false);
 	const [txWarningTabId, setTxWarningTabId] = createSignal<string | null>(null);
@@ -142,6 +146,8 @@ export default function AppShell() {
 	}
 
 	let removeMenuListener: (() => void) | undefined;
+	let removeSessionListener: (() => void) | undefined;
+	let removeStatusListener: (() => void) | undefined;
 	let removeResizeListener: (() => void) | undefined;
 
 	function handleDuplicateTab(tabId: string) {
@@ -215,6 +221,22 @@ export default function AppShell() {
 			commandRegistry.execute(action);
 		});
 
+		// Listen for session changes from backend (e.g. connection lost)
+		removeSessionListener = messages.onSessionChanged((event) => {
+			sessionStore.handleSessionChanged(event);
+		});
+
+		// Listen for connection status changes to clear sessions on disconnect
+		removeStatusListener = messages.onConnectionStatusChanged((event) => {
+			if (event.state === "disconnected" || event.state === "error") {
+				sessionStore.clearSessionsForConnection(event.connectionId);
+			}
+			if (event.transactionLost) {
+				editorStore.resetTransactionStateForConnection(event.connectionId);
+				uiStore.addToast("warning", "Connection was lost. Active transactions have been discarded.");
+			}
+		});
+
 		// Global error catching — prevents app crash on unhandled errors
 		window.addEventListener("error", handleUnhandledError);
 		window.addEventListener("unhandledrejection", handleUnhandledRejection);
@@ -269,6 +291,8 @@ export default function AppShell() {
 		commandRegistry.clear();
 		keyboardManager.destroy();
 		removeMenuListener?.();
+		removeSessionListener?.();
+		removeStatusListener?.();
 		removeResizeListener?.();
 		tabsStore.setBeforeCloseHook(null);
 		connectionsStore.setBeforeDisconnectHook(null);
@@ -797,6 +821,15 @@ export default function AppShell() {
 				setAiSettingsOpen(true);
 			},
 		});
+
+		commandRegistry.register({
+			id: "session-settings",
+			label: "Session Settings",
+			category: "View",
+			handler: () => {
+				setSessionSettingsOpen(true);
+			},
+		});
 	}
 
 	// ── Shortcut registration ──────────────────────────────
@@ -851,6 +884,11 @@ export default function AppShell() {
 					<TabBar
 						tabs={tabsStore.openTabs}
 						activeTabId={tabsStore.activeTabId}
+						pinnedTabIds={new Set(
+							Object.entries(sessionStore.tabSessions)
+								.filter(([, sid]) => sid != null)
+								.map(([tabId]) => tabId),
+						)}
 						onSelectTab={tabsStore.setActiveTab}
 						onCloseTab={tabsStore.closeTab}
 						onCloseOtherTabs={tabsStore.closeOtherTabs}
@@ -978,6 +1016,11 @@ export default function AppShell() {
 				return false;
 			})()}
 			pendingStatementCount={editorStore.txLogState.pendingStatementCount}
+			sessionLabel={(() => {
+				const tab = tabsStore.activeTab;
+				if (!tab) return undefined;
+				return sessionStore.getSessionLabelForTab(tab.id);
+			})()}
 		/>
 
 			<ConnectionDialog
@@ -1077,6 +1120,11 @@ export default function AppShell() {
 			<AiSettingsDialog
 				open={aiSettingsOpen()}
 				onClose={() => setAiSettingsOpen(false)}
+			/>
+
+			<SessionSettingsDialog
+				open={sessionSettingsOpen()}
+				onClose={() => setSessionSettingsOpen(false)}
 			/>
 
 			<ToastContainer />

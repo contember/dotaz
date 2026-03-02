@@ -50,6 +50,16 @@
 	opacity: 1;
 }
 
+.tab-bar__tab--pinned {
+	border-bottom: 2px solid var(--accent);
+}
+
+.tab-bar__tab-pin {
+	flex-shrink: 0;
+	color: var(--accent);
+	opacity: 0.7;
+}
+
 .tab-bar__tab-title {
 	overflow: hidden;
 	text-overflow: ellipsis;

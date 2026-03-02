@@ -12,6 +12,7 @@ import { analyzeSelectSource } from "../../shared/sql/editability";
 import { generateChangeSql, generateChangesPreview } from "../../shared/sql/builders";
 import { connectionsStore } from "./connections";
 import { uiStore } from "./ui";
+import { sessionStore } from "./session";
 import { scheduleWorkspaceSave } from "../lib/workspace";
 
 // ── Types ─────────────────────────────────────────────────
@@ -223,7 +224,9 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0) {
 	const startTime = performance.now();
 
 	try {
-		const results = await rpc.query.execute({ connectionId: tab.connectionId, sql, queryId, database: tab.database });
+		// Resolve session (auto-pin if configured)
+		const sessionId = await sessionStore.resolveSessionForExecution(tabId, tab.connectionId, sql, tab.database);
+		const results = await rpc.query.execute({ connectionId: tab.connectionId, sql, queryId, database: tab.database, sessionId });
 
 		// Discard stale results if a newer query was started
 		if (state.tabs[tabId]?.queryId !== queryId) return;
@@ -250,6 +253,9 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0) {
 
 		recordHistory(tab.connectionId, sql, results);
 		setTxLogVersion((v) => v + 1);
+
+		// Auto-unpin after commit/rollback if configured
+		sessionStore.checkAutoUnpin(tabId, sql).catch(() => {});
 	} catch (err) {
 		// Discard stale errors if a newer query was started
 		if (state.tabs[tabId]?.queryId !== queryId) return;
@@ -369,8 +375,9 @@ function setTxMode(tabId: string, mode: TxMode) {
 
 async function beginTransaction(tabId: string) {
 	const tab = ensureTab(tabId);
+	const sessionId = sessionStore.getSessionForTab(tabId);
 	try {
-		await rpc.tx.begin({ connectionId: tab.connectionId, database: tab.database });
+		await rpc.tx.begin({ connectionId: tab.connectionId, database: tab.database, sessionId });
 		setState("tabs", tabId, "inTransaction", true);
 	} catch (err) {
 		setState("tabs", tabId, "error", friendlyErrorMessage(err));
@@ -381,9 +388,12 @@ async function commitTransaction(tabId: string) {
 	const tab = ensureTab(tabId);
 	if (!tab.inTransaction) return;
 
+	const sessionId = sessionStore.getSessionForTab(tabId);
 	try {
-		await rpc.tx.commit({ connectionId: tab.connectionId, database: tab.database });
+		await rpc.tx.commit({ connectionId: tab.connectionId, database: tab.database, sessionId });
 		setState("tabs", tabId, "inTransaction", false);
+		// Auto-unpin after commit if configured
+		sessionStore.checkAutoUnpin(tabId, "COMMIT").catch(() => {});
 	} catch (err) {
 		setState("tabs", tabId, "error", friendlyErrorMessage(err));
 	}
@@ -393,9 +403,12 @@ async function rollbackTransaction(tabId: string) {
 	const tab = ensureTab(tabId);
 	if (!tab.inTransaction) return;
 
+	const sessionId = sessionStore.getSessionForTab(tabId);
 	try {
-		await rpc.tx.rollback({ connectionId: tab.connectionId, database: tab.database });
+		await rpc.tx.rollback({ connectionId: tab.connectionId, database: tab.database, sessionId });
 		setState("tabs", tabId, "inTransaction", false);
+		// Auto-unpin after rollback if configured
+		sessionStore.checkAutoUnpin(tabId, "ROLLBACK").catch(() => {});
 	} catch (err) {
 		setState("tabs", tabId, "error", friendlyErrorMessage(err));
 	}
@@ -421,11 +434,13 @@ async function explainQuery(tabId: string, analyze = false) {
 	});
 
 	try {
+		const sessionId = sessionStore.getSessionForTab(tabId);
 		const explainResult = await rpc.query.explain({
 			connectionId: tab.connectionId,
 			sql,
 			analyze,
 			database: tab.database,
+			sessionId,
 		});
 
 		setState("tabs", tabId, {
@@ -718,7 +733,8 @@ async function applyResultChanges(tabId: string, resultIndex: number) {
 
 	const dialect = connectionsStore.getDialect(tab.connectionId);
 	const statements = changes.map((change) => generateChangeSql(change, dialect));
-	await rpc.query.execute({ connectionId: tab.connectionId, sql: "", queryId: "", statements, database: tab.database });
+	const sessionId = sessionStore.getSessionForTab(tabId);
+	await rpc.query.execute({ connectionId: tab.connectionId, sql: "", queryId: "", statements, database: tab.database, sessionId });
 }
 
 function generateResultSqlPreview(tabId: string, resultIndex: number): string {
@@ -782,11 +798,12 @@ const [txLogState, setTxLogState] = createStore<TransactionLogState>({
 	selectedEntryId: null,
 });
 
-async function fetchTransactionLog(connectionId: string, database?: string) {
+async function fetchTransactionLog(connectionId: string, database?: string, sessionId?: string) {
 	try {
 		const result = await rpc.transaction.getLog({
 			connectionId,
 			database,
+			sessionId,
 			statusFilter: txLogState.statusFilter,
 			search: txLogState.search || undefined,
 		});
