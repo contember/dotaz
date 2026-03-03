@@ -19,6 +19,7 @@ interface ExportDialogProps {
 	schema: string
 	table: string
 	database?: string
+	initialScope?: ExportScope
 	onClose: () => void
 }
 
@@ -106,7 +107,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 	createEffect(() => {
 		if (props.open) {
 			setFormat('csv')
-			setScope('all')
+			setScope(props.initialScope ?? 'all')
 			setDelimiter(',')
 			setEncoding('utf-8')
 			setUtf8Bom(false)

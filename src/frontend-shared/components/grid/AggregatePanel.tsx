@@ -1,6 +1,6 @@
 import { createMemo, For, Show } from 'solid-js'
 import type { GridColumnDef } from '../../../shared/types/grid'
-import { isDateType, isNumericType, isTextType } from '../../lib/column-types'
+import { isNumericType } from '../../lib/column-types'
 import './AggregatePanel.css'
 
 export interface AggregateResult {
@@ -61,7 +61,7 @@ function computeAggregates(
 				result.min = Math.min(...nums)
 				result.max = Math.max(...nums)
 			}
-		} else if (isDateType(col.dataType) || isTextType(col.dataType)) {
+		} else {
 			const strings = values.map(String).sort()
 			if (strings.length > 0) {
 				result.min = strings[0]
@@ -75,62 +75,75 @@ function computeAggregates(
 	return results
 }
 
+function formatValue(value: number | string | undefined, maxLength?: number): string {
+	if (value === undefined) return ''
+	if (typeof value === 'number') return formatNumber(value)
+	if (maxLength && value.length > maxLength) return `${value.slice(0, maxLength)}…`
+	return value
+}
+
 export default function AggregatePanel(props: AggregatePanelProps) {
 	const aggregates = createMemo(() => computeAggregates(props.rows, props.visibleColumns))
 
 	const hasAnyData = createMemo(() => aggregates().some((a) => a.count > 0))
 
+	const filteredAggregates = createMemo(() => aggregates().filter((agg) => {
+		const col = props.visibleColumns.find((c) => c.name === agg.column)
+		return col && agg.count > 0
+	}))
+
+	const hasNumeric = createMemo(() => filteredAggregates().some((agg) => {
+		const col = props.visibleColumns.find((c) => c.name === agg.column)
+		return col && isNumericType(col.dataType)
+	}))
+
 	return (
 		<Show when={hasAnyData()}>
-			<div class="aggregate-panel">
-				<div class="aggregate-panel__label">
-					{props.rows.length} row{props.rows.length !== 1 ? 's' : ''}
+			<div class="aggregate-table">
+				<div class="aggregate-table__summary">
+					{props.rows.length} row{props.rows.length !== 1 ? 's' : ''} selected
 				</div>
-				<div class="aggregate-panel__items">
-					<For each={aggregates()}>
-						{(agg) => {
-							const col = props.visibleColumns.find((c) => c.name === agg.column)
-							if (!col || agg.count === 0) return null
-							const numeric = isNumericType(col.dataType)
-							const text = isTextType(col.dataType)
-							const date = isDateType(col.dataType)
+				<table class="aggregate-table__table">
+					<thead>
+						<tr>
+							<th>Column</th>
+							<th>Count</th>
+							<th>Distinct</th>
+							<Show when={hasNumeric()}>
+								<th>Sum</th>
+								<th>Avg</th>
+							</Show>
+							<th>Min</th>
+							<th>Max</th>
+						</tr>
+					</thead>
+					<tbody>
+						<For each={filteredAggregates()}>
+							{(agg) => {
+								const col = props.visibleColumns.find((c) => c.name === agg.column)!
+								const numeric = isNumericType(col.dataType)
 
-							return (
-								<div class="aggregate-panel__column">
-									<span class="aggregate-panel__column-name">{agg.column}</span>
-									<span class="aggregate-panel__stat">
-										CNT: <b>{agg.count}</b>
-									</span>
-									<Show when={text || date}>
-										<span class="aggregate-panel__stat">
-											DST: <b>{agg.countDistinct}</b>
-										</span>
-									</Show>
-									<Show when={numeric && agg.sum !== undefined}>
-										<span class="aggregate-panel__stat">
-											SUM: <b>{formatNumber(agg.sum!)}</b>
-										</span>
-									</Show>
-									<Show when={numeric && agg.avg !== undefined}>
-										<span class="aggregate-panel__stat">
-											AVG: <b>{formatNumber(agg.avg!)}</b>
-										</span>
-									</Show>
-									<Show when={agg.min !== undefined}>
-										<span class="aggregate-panel__stat">
-											MIN: <b>{typeof agg.min === 'number' ? formatNumber(agg.min) : agg.min}</b>
-										</span>
-									</Show>
-									<Show when={agg.max !== undefined}>
-										<span class="aggregate-panel__stat">
-											MAX: <b>{typeof agg.max === 'number' ? formatNumber(agg.max) : agg.max}</b>
-										</span>
-									</Show>
-								</div>
-							)
-						}}
-					</For>
-				</div>
+								return (
+									<tr>
+										<td class="aggregate-table__col-name">{agg.column}</td>
+										<td class="aggregate-table__num">{agg.count}</td>
+										<td class="aggregate-table__num">{agg.countDistinct}</td>
+										<Show when={hasNumeric()}>
+											<td class="aggregate-table__num">
+												{numeric ? formatValue(agg.sum) : ''}
+											</td>
+											<td class="aggregate-table__num">
+												{numeric ? formatValue(agg.avg) : ''}
+											</td>
+										</Show>
+										<td class="aggregate-table__val" title={typeof agg.min === 'string' ? agg.min : undefined}>{formatValue(agg.min, 30)}</td>
+										<td class="aggregate-table__val" title={typeof agg.max === 'string' ? agg.max : undefined}>{formatValue(agg.max, 30)}</td>
+									</tr>
+								)
+							}}
+						</For>
+					</tbody>
+				</table>
 			</div>
 		</Show>
 	)

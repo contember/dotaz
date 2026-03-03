@@ -27,8 +27,10 @@ import RowDetailDialog from '../edit/RowDetailDialog'
 import ExportDialog from '../export/ExportDialog'
 import ImportDialog from '../import/ImportDialog'
 import SaveViewDialog from '../views/SaveViewDialog'
+import Dialog from '../common/Dialog'
 import AdvancedCopyDialog from './AdvancedCopyDialog'
 import AggregatePanel from './AggregatePanel'
+import BatchEditDialog from './BatchEditDialog'
 import ColumnManager from './ColumnManager'
 import FilterBar from './FilterBar'
 import GridHeader from './GridHeader'
@@ -97,6 +99,9 @@ export default function DataGrid(props: DataGridProps) {
 			column: string
 		} | null
 	>(null)
+	const [showStatsModal, setShowStatsModal] = createSignal(false)
+	const [showBatchEdit, setShowBatchEdit] = createSignal(false)
+	const [exportInitialScope, setExportInitialScope] = createSignal<'selected' | undefined>(undefined)
 	const [saveViewForceNew, setSaveViewForceNew] = createSignal(false)
 	const [savedViewConfig, setSavedViewConfig] = createSignal<SavedViewConfig | null>(null)
 	const [searchInput, setSearchInput] = createSignal('')
@@ -1118,6 +1123,7 @@ export default function DataGrid(props: DataGridProps) {
 										<button
 											class="data-grid__more-item"
 											onClick={() => {
+												setExportInitialScope(undefined)
 												setExportOpen(true)
 												setMoreMenuOpen(false)
 											}}
@@ -1336,20 +1342,45 @@ export default function DataGrid(props: DataGridProps) {
 						</div>
 
 						<Show when={tabState().selectedRows.size >= 2}>
-							{(_) => {
-								const cellData = () => gridStore.getSelectedCellData(props.tabId)
-								return (
-									<Show when={cellData()}>
-										{(data) => (
-											<AggregatePanel
-												rows={data().rows}
-												columns={data().columns}
-												visibleColumns={visibleColumns()}
-											/>
-										)}
+							<div class="data-grid__selection-bar">
+								<div class="data-grid__selection-bar-info">
+									<Check size={12} />
+									<span>{tabState().selectedRows.size} rows selected</span>
+								</div>
+								<div class="data-grid__selection-bar-actions">
+									<Show when={!isReadOnly()}>
+										<button
+											class="data-grid__pending-bar-btn"
+											onClick={() => gridStore.deleteSelectedRows(props.tabId)}
+										>
+											Delete
+										</button>
 									</Show>
-								)
-							}}
+									<button
+										class="data-grid__pending-bar-btn"
+										onClick={() => setShowStatsModal(true)}
+									>
+										Stats
+									</button>
+									<button
+										class="data-grid__pending-bar-btn"
+										onClick={() => {
+											setExportInitialScope('selected')
+											setExportOpen(true)
+										}}
+									>
+										Export
+									</button>
+									<Show when={!isReadOnly()}>
+										<button
+											class="data-grid__pending-bar-btn"
+											onClick={() => setShowBatchEdit(true)}
+										>
+											Batch Edit
+										</button>
+									</Show>
+								</div>
+							</div>
 						</Show>
 
 						<Show when={gridStore.hasPendingChanges(props.tabId)}>
@@ -1476,6 +1507,7 @@ export default function DataGrid(props: DataGridProps) {
 				schema={currentSchema()}
 				table={currentTable()}
 				database={props.database}
+				initialScope={exportInitialScope()}
 				onClose={() => setExportOpen(false)}
 			/>
 
@@ -1497,6 +1529,44 @@ export default function DataGrid(props: DataGridProps) {
 					gridStore.refreshData(props.tabId)
 				}}
 			/>
+
+			<Show when={showStatsModal()}>
+				{(_) => {
+					const cellData = () => gridStore.getSelectedCellData(props.tabId)
+					return (
+						<Show when={cellData()}>
+							{(data) => (
+								<Dialog
+									open={true}
+									title="Selection Statistics"
+									onClose={() => setShowStatsModal(false)}
+								>
+									<AggregatePanel
+										rows={data().rows}
+										columns={data().columns}
+										visibleColumns={visibleColumns()}
+									/>
+								</Dialog>
+							)}
+						</Show>
+					)
+				}}
+			</Show>
+
+			<Show when={showBatchEdit()}>
+				{(_) => {
+					const t = tab()!
+					return (
+						<BatchEditDialog
+							open={true}
+							tabId={props.tabId}
+							columns={t.columns}
+							selectedRows={t.selectedRows}
+							onClose={() => setShowBatchEdit(false)}
+						/>
+					)
+				}}
+			</Show>
 
 			<Show when={pastePreview()}>
 				{(preview) => {
