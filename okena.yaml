@@ -1,0 +1,3 @@
+services:
+  - name: "demo"
+    command: "bun run dev:demo"
