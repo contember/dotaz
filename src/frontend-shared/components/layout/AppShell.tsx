@@ -381,10 +381,13 @@ export default function AppShell() {
 		if (!workspace || workspace.tabs.length === 0) return
 
 		const connectionIds = new Set(connectionsStore.connections.map((c) => c.id))
+		const tabConnectionIds = new Set<string>()
 
 		for (const wsTab of workspace.tabs) {
 			// Skip tabs referencing deleted connections
 			if (!connectionIds.has(wsTab.connectionId)) continue
+
+			tabConnectionIds.add(wsTab.connectionId)
 
 			tabsStore.restoreTab({
 				id: wsTab.id,
@@ -411,6 +414,14 @@ export default function AppShell() {
 				if (wsTab.editorTxMode === 'manual') {
 					editorStore.setTxMode(wsTab.id, 'manual')
 				}
+			}
+		}
+
+		// Auto-reconnect disconnected connections that have open tabs
+		for (const connId of tabConnectionIds) {
+			const conn = connectionsStore.connections.find((c) => c.id === connId)
+			if (conn && conn.state !== 'connected' && conn.state !== 'connecting') {
+				connectionsStore.connectTo(connId)
 			}
 		}
 
