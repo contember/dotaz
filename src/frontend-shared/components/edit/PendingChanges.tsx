@@ -9,12 +9,15 @@ import { createSignal, For, type JSX, Show } from 'solid-js'
 import { isSqlDefault } from '../../../shared/types/database'
 import type { GridColumnDef } from '../../../shared/types/grid'
 import { gridStore } from '../../stores/grid'
+import Dialog from '../common/Dialog'
 import './PendingChanges.css'
 
 interface PendingChangesProps {
+	open: boolean
 	tabId: string
 	connectionId: string
 	database?: string
+	onClose: () => void
 	onApplied: () => void
 }
 
@@ -144,6 +147,7 @@ export default function PendingChanges(props: PendingChangesProps) {
 		gridStore.revertChanges(props.tabId)
 		setError(null)
 		setPreviewSql(null)
+		props.onClose()
 	}
 
 	async function handleApplyAll() {
@@ -156,6 +160,7 @@ export default function PendingChanges(props: PendingChangesProps) {
 			gridStore.clearPendingChanges(props.tabId)
 			setPreviewSql(null)
 			props.onApplied()
+			props.onClose()
 		} catch (err) {
 			setError(err instanceof Error ? err.message : String(err))
 		} finally {
@@ -174,18 +179,57 @@ export default function PendingChanges(props: PendingChangesProps) {
 	}
 
 	return (
-		<div class="pending-changes">
-			<div class="pending-changes__header">
-				<span class="pending-changes__title">Pending Changes</span>
-				<div class="pending-changes__actions">
-					<button
-						class="pending-changes__btn pending-changes__btn--preview"
-						onClick={handlePreviewSql}
-						disabled={applying()}
-						title="Preview SQL"
-					>
-						<Code size={12} /> SQL
-					</button>
+		<Dialog open={props.open} title="Pending Changes" onClose={props.onClose} class="pending-changes-dialog">
+			<div class="pending-changes">
+				<Show when={error()}>
+					<div class="pending-changes__error">
+						{error()}
+					</div>
+				</Show>
+
+				<div class="pending-changes__list">
+					<For each={buildChangeList()}>
+						{(item) => (
+							<div class={`pending-changes__item pending-changes__item--${item.type}`}>
+								<span class={`pending-changes__item-icon pending-changes__item-icon--${item.type}`}>
+									{typeIcon(item.type)}
+								</span>
+								<span class="pending-changes__item-type">
+									{typeLabel(item.type)}
+								</span>
+								<span class="pending-changes__item-desc" title={item.description}>
+									{item.description}
+								</span>
+								<button
+									class="pending-changes__item-revert"
+									onClick={() => handleRevertItem(item)}
+									disabled={applying()}
+									title="Revert this change"
+								>
+									<X size={14} />
+								</button>
+							</div>
+						)}
+					</For>
+				</div>
+
+				<Show when={previewSql()}>
+					<div class="pending-changes__preview">
+						<div class="pending-changes__preview-header">
+							<span>SQL Preview</span>
+							<button
+								class="pending-changes__preview-close"
+								onClick={() => setPreviewSql(null)}
+								title="Close preview"
+							>
+								<X size={14} />
+							</button>
+						</div>
+						<pre class="pending-changes__preview-sql">{previewSql()}</pre>
+					</div>
+				</Show>
+
+				<div class="pending-changes__footer">
 					<button
 						class="pending-changes__btn pending-changes__btn--revert"
 						onClick={handleRevertAll}
@@ -194,64 +238,26 @@ export default function PendingChanges(props: PendingChangesProps) {
 					>
 						<RotateCcw size={12} /> Revert All
 					</button>
-					<button
-						class="pending-changes__btn pending-changes__btn--apply"
-						onClick={handleApplyAll}
-						disabled={applying()}
-						title="Apply all changes"
-					>
-						<Check size={12} /> {applying() ? 'Applying...' : 'Apply All'}
-					</button>
-				</div>
-			</div>
-
-			<Show when={error()}>
-				<div class="pending-changes__error">
-					{error()}
-				</div>
-			</Show>
-
-			<Show when={previewSql()}>
-				<div class="pending-changes__preview">
-					<div class="pending-changes__preview-header">
-						<span>SQL Preview</span>
+					<div class="pending-changes__footer-right">
 						<button
-							class="pending-changes__preview-close"
-							onClick={() => setPreviewSql(null)}
-							title="Close preview"
+							class="pending-changes__btn pending-changes__btn--preview"
+							onClick={handlePreviewSql}
+							disabled={applying()}
+							title="Preview SQL"
 						>
-							<X size={14} />
+							<Code size={12} /> Preview SQL
+						</button>
+						<button
+							class="pending-changes__btn pending-changes__btn--apply"
+							onClick={handleApplyAll}
+							disabled={applying()}
+							title="Save all changes"
+						>
+							<Check size={12} /> {applying() ? 'Saving...' : 'Save'}
 						</button>
 					</div>
-					<pre class="pending-changes__preview-sql">{previewSql()}</pre>
 				</div>
-			</Show>
-
-			<div class="pending-changes__list">
-				<For each={buildChangeList()}>
-					{(item) => (
-						<div class={`pending-changes__item pending-changes__item--${item.type}`}>
-							<span class={`pending-changes__item-icon pending-changes__item-icon--${item.type}`}>
-								{typeIcon(item.type)}
-							</span>
-							<span class="pending-changes__item-type">
-								{typeLabel(item.type)}
-							</span>
-							<span class="pending-changes__item-desc" title={item.description}>
-								{item.description}
-							</span>
-							<button
-								class="pending-changes__item-revert"
-								onClick={() => handleRevertItem(item)}
-								disabled={applying()}
-								title="Revert this change"
-							>
-								<X size={14} />
-							</button>
-						</div>
-					)}
-				</For>
 			</div>
-		</div>
+		</Dialog>
 	)
 }

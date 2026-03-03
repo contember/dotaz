@@ -296,20 +296,74 @@
 	font-size: var(--font-size-xs);
 }
 
-.data-grid__pending-badge {
-	margin-left: auto;
-	padding: 2px var(--spacing-sm);
-	color: var(--warning);
+/* ── Pending changes bar ───────────────────────────── */
+
+.data-grid__pending-bar {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-sm);
+	padding: var(--spacing-xs) var(--spacing-md);
+	border-top: 1px solid var(--warning);
+	background: rgba(245, 158, 11, 0.06);
 	font-size: var(--font-size-xs);
-	font-weight: 500;
-	background: rgba(245, 158, 11, 0.15);
-	border: 1px solid var(--warning);
-	border-radius: var(--radius-sm);
-	cursor: pointer;
 }
 
-.data-grid__pending-badge:hover {
-	background: rgba(245, 158, 11, 0.25);
+.data-grid__pending-bar-info {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-xs);
+	color: var(--warning);
+	font-weight: 500;
+}
+
+.data-grid__pending-bar-error {
+	color: var(--error);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 300px;
+}
+
+.data-grid__pending-bar-actions {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-xs);
+	margin-left: auto;
+}
+
+.data-grid__pending-bar-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	padding: 2px var(--spacing-sm);
+	border: 1px solid var(--edge);
+	border-radius: var(--radius-sm);
+	font-size: var(--font-size-xs);
+	cursor: pointer;
+	background: transparent;
+	color: var(--ink-secondary);
+}
+
+.data-grid__pending-bar-btn:hover:not(:disabled) {
+	background: var(--surface-hover);
+	color: var(--ink);
+}
+
+.data-grid__pending-bar-btn:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.data-grid__pending-bar-btn--save {
+	background: var(--accent);
+	color: var(--accent-fg);
+	border-color: var(--accent);
+}
+
+.data-grid__pending-bar-btn--save:hover:not(:disabled) {
+	background: var(--accent-hover);
+	color: var(--accent-fg);
 }
 
 .data-grid__copy-toast {

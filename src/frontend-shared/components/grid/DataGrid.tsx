@@ -1,6 +1,7 @@
 import ArrowLeftRight from 'lucide-solid/icons/arrow-left-right'
 import EllipsisVertical from 'lucide-solid/icons/ellipsis-vertical'
 import PanelRightOpen from 'lucide-solid/icons/panel-right-open'
+import Check from 'lucide-solid/icons/check'
 import Pencil from 'lucide-solid/icons/pencil'
 import RotateCcw from 'lucide-solid/icons/rotate-ccw'
 import Save from 'lucide-solid/icons/save'
@@ -69,6 +70,8 @@ export default function DataGrid(props: DataGridProps) {
 	const [copyFeedback, setCopyFeedback] = createSignal<string | null>(null)
 	const [rowDetailIndex, setRowDetailIndex] = createSignal<number | null>(null)
 	const [showPendingPanel, setShowPendingPanel] = createSignal(false)
+	const [savingChanges, setSavingChanges] = createSignal(false)
+	const [saveError, setSaveError] = createSignal<string | null>(null)
 	const [saveViewOpen, setSaveViewOpen] = createSignal(false)
 	const [exportOpen, setExportOpen] = createSignal(false)
 	const [importOpen, setImportOpen] = createSignal(false)
@@ -410,6 +413,26 @@ export default function DataGrid(props: DataGridProps) {
 	function handleChangesApplied() {
 		// Reload data from server after successful apply
 		gridStore.refreshData(props.tabId)
+	}
+
+	async function handleImmediateSave() {
+		if (!gridStore.hasPendingChanges(props.tabId)) return
+		setSavingChanges(true)
+		setSaveError(null)
+		try {
+			await gridStore.applyChanges(props.tabId, props.database)
+			gridStore.clearPendingChanges(props.tabId)
+			handleChangesApplied()
+		} catch (err) {
+			setSaveError(err instanceof Error ? err.message : String(err))
+		} finally {
+			setSavingChanges(false)
+		}
+	}
+
+	function handleRevertAll() {
+		gridStore.revertChanges(props.tabId)
+		setSaveError(null)
 	}
 
 	// ── Saved views ────────────────────────────────────────
@@ -1329,13 +1352,41 @@ export default function DataGrid(props: DataGridProps) {
 							}}
 						</Show>
 
-						<Show when={showPendingPanel() && gridStore.hasPendingChanges(props.tabId)}>
-							<PendingChanges
-								tabId={props.tabId}
-								connectionId={props.connectionId}
-								database={props.database}
-								onApplied={handleChangesApplied}
-							/>
+						<Show when={gridStore.hasPendingChanges(props.tabId)}>
+							<div class="data-grid__pending-bar">
+								<div class="data-grid__pending-bar-info">
+									<Pencil size={12} />
+									<span>{gridStore.pendingChangesCount(props.tabId)} pending change{gridStore.pendingChangesCount(props.tabId) !== 1 ? 's' : ''}</span>
+								</div>
+								<Show when={saveError()}>
+									<span class="data-grid__pending-bar-error" title={saveError()!}>{saveError()}</span>
+								</Show>
+								<div class="data-grid__pending-bar-actions">
+									<button
+										class="data-grid__pending-bar-btn"
+										onClick={handleRevertAll}
+										disabled={savingChanges()}
+										title="Revert all changes"
+									>
+										<RotateCcw size={12} /> Revert
+									</button>
+									<button
+										class="data-grid__pending-bar-btn"
+										onClick={() => setShowPendingPanel(true)}
+										title="Review changes and preview SQL"
+									>
+										Review
+									</button>
+									<button
+										class="data-grid__pending-bar-btn data-grid__pending-bar-btn--save"
+										onClick={handleImmediateSave}
+										disabled={savingChanges()}
+										title="Save all changes"
+									>
+										<Check size={12} /> {savingChanges() ? 'Saving...' : 'Save'}
+									</button>
+								</div>
+							</div>
 						</Show>
 
 						<div class="data-grid__footer">
@@ -1349,16 +1400,16 @@ export default function DataGrid(props: DataGridProps) {
 								onPageChange={(page) => gridStore.setPage(props.tabId, page)}
 								onPageSizeChange={(size) => gridStore.setPageSize(props.tabId, size)}
 							/>
-							<Show when={gridStore.hasPendingChanges(props.tabId)}>
-								<button
-									class="data-grid__pending-badge"
-									onClick={() => setShowPendingPanel((prev) => !prev)}
-									title="Toggle pending changes panel"
-								>
-									<Pencil size={12} /> {gridStore.pendingChangesCount(props.tabId)} pending change{gridStore.pendingChangesCount(props.tabId) !== 1 ? 's' : ''}
-								</button>
-							</Show>
 						</div>
+
+						<PendingChanges
+							open={showPendingPanel() && gridStore.hasPendingChanges(props.tabId)}
+							tabId={props.tabId}
+							connectionId={props.connectionId}
+							database={props.database}
+							onClose={() => setShowPendingPanel(false)}
+							onApplied={handleChangesApplied}
+						/>
 					</>
 				)}
 			</Show>
