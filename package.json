@@ -2,12 +2,13 @@
 	"name": "dotaz",
 	"version": "0.0.1",
 	"type": "module",
+	"main": "dist-electron/main.mjs",
 	"description": "Desktop database client built on Electrobun",
 	"scripts": {
-		"start": "vite build && electrobun dev",
-		"dev": "electrobun dev --watch",
+		"start": "vite build && WEBKIT_DISABLE_COMPOSITING_MODE=1 electrobun dev",
+		"dev": "WEBKIT_DISABLE_COMPOSITING_MODE=1 electrobun dev --watch",
 		"dev:hmr": "concurrently \"bun run hmr\" \"bun run start\"",
-		"hmr": "vite --port 5173",
+		"hmr": "vite --port 6400",
 		"build:canary": "vite build && electrobun build --env=canary",
 		"test": "bun test",
 		"test:sqlite": "bun test tests/sqlite-smoke.test.ts",
@@ -20,6 +21,9 @@
 		"seed:postgres": "bun scripts/seed/seed-postgres.ts",
 		"dev:demo": "vite --mode demo",
 		"build:demo": "bun run seed:sqlite && vite build --mode demo",
+		"build:electron-main": "bun build src/electron/main.ts --outfile dist-electron/main.mjs --target node --format esm --external electron --bundle",
+		"dev:electron": "bun run build:electron-main && concurrently \"DOTAZ_PORT=6405 DOTAZ_ENCRYPTION_KEY=$(openssl rand -hex 32) bun --watch src/backend-web/server.ts\" \"vite --mode electron\" \"wait-on http://localhost:6404 && ELECTRON_DISABLE_SANDBOX=1 electron .\"",
+		"build:electron": "bun run build:electron-main && vite build --mode electron && electron-builder",
 		"lint": "biome lint .",
 		"lint:fix": "biome lint . --write",
 		"format": "dprint fmt",
@@ -41,10 +45,13 @@
 		"@faker-js/faker": "^10.3.0",
 		"@types/bun": "latest",
 		"concurrently": "^9.1.0",
+		"electron": "^34.0.0",
+		"electron-builder": "^26.0.0",
 		"dprint": "^0.51.1",
 		"solid-js": "^1.9.3",
 		"typescript": "^5.9.3",
 		"vite": "^6.0.3",
-		"vite-plugin-solid": "^2.11.0"
+		"vite-plugin-solid": "^2.11.0",
+		"wait-on": "^8.0.0"
 	}
 }

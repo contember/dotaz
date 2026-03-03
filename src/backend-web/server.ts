@@ -23,7 +23,7 @@ import {
 	SESSION_TTL_MS,
 } from './session'
 
-const PORT = Number(process.env.DOTAZ_PORT) || 4200
+const PORT = Number(process.env.DOTAZ_PORT) || 6401
 const DIST_DIR = resolve(import.meta.dir, '../../dist')
 
 const ENCRYPTION_KEY = process.env.DOTAZ_ENCRYPTION_KEY
@@ -253,6 +253,38 @@ const server = Bun.serve<Session>({
 		const importMatch = url.pathname.match(/^\/api\/stream\/import\/([a-f0-9-]+)$/)
 		if (importMatch && req.method === 'POST') {
 			return handleImportStream(req, importMatch[1])
+		}
+
+		// ── Menu action endpoint (Electron → frontend) ──
+		if (url.pathname === '/api/menu-action' && req.method === 'POST') {
+			try {
+				const body = await req.json() as { action?: string }
+				const action = body?.action
+				if (!action) {
+					return new Response(JSON.stringify({ error: 'Missing action' }), {
+						status: 400,
+						headers: { 'Content-Type': 'application/json' },
+					})
+				}
+				// Broadcast to all connected WebSocket sessions
+				for (const [, session] of getSessions()) {
+					if (session.ws) {
+						session.ws.send(JSON.stringify({
+							type: 'message',
+							channel: 'menu.action',
+							payload: { action },
+						}))
+					}
+				}
+				return new Response(JSON.stringify({ ok: true }), {
+					headers: { 'Content-Type': 'application/json' },
+				})
+			} catch {
+				return new Response(JSON.stringify({ error: 'Invalid JSON' }), {
+					status: 400,
+					headers: { 'Content-Type': 'application/json' },
+				})
+			}
 		}
 
 		// Static file serving from dist/
