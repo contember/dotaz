@@ -1,117 +1,123 @@
-import type { AppStateStorage } from "../app-state-storage";
-import type { ConnectionConfig, ConnectionInfo } from "../../../shared/types/connection";
-import type { QueryHistoryEntry } from "../../../shared/types/query";
-import type { SavedView, SavedViewConfig, HistoryListParams } from "../../../shared/types/rpc";
-import type { WorkspaceState } from "../../../shared/types/workspace";
-import { isServerConfig } from "../../../shared/types/connection";
-import { rpc } from "../rpc";
+import type { ConnectionConfig, ConnectionInfo } from '../../../shared/types/connection'
+import { isServerConfig } from '../../../shared/types/connection'
+import type { QueryHistoryEntry } from '../../../shared/types/query'
+import type { HistoryListParams, SavedView, SavedViewConfig } from '../../../shared/types/rpc'
+import type { WorkspaceState } from '../../../shared/types/workspace'
+import type { AppStateStorage } from '../app-state-storage'
+import { rpc } from '../rpc'
 
 // ── IndexedDB helpers ────────────────────────────────────
 
-const DB_NAME = "dotaz";
-const DB_VERSION = 2;
+const DB_NAME = 'dotaz'
+const DB_VERSION = 2
 
 const STORES = {
-	connections: "connections",
-	history: "history",
-	views: "views",
-	workspace: "workspace",
-} as const;
+	connections: 'connections',
+	history: 'history',
+	views: 'views',
+	workspace: 'workspace',
+} as const
 
 interface StoredConnectionRecord {
-	id: string;
-	name: string;
-	config: ConnectionConfig;     // display config — password stripped
-	encryptedConfig: string;      // full config encrypted by server
-	rememberPassword: boolean;
-	readOnly?: boolean;
-	color?: string;
-	createdAt: string;
-	updatedAt: string;
+	id: string
+	name: string
+	config: ConnectionConfig // display config — password stripped
+	encryptedConfig: string // full config encrypted by server
+	rememberPassword: boolean
+	readOnly?: boolean
+	color?: string
+	createdAt: string
+	updatedAt: string
 }
 
-let dbPromise: Promise<IDBDatabase> | null = null;
+let dbPromise: Promise<IDBDatabase> | null = null
 
 function openDb(): Promise<IDBDatabase> {
-	if (dbPromise) return dbPromise;
+	if (dbPromise) return dbPromise
 
 	dbPromise = new Promise((resolve, reject) => {
-		const request = indexedDB.open(DB_NAME, DB_VERSION);
+		const request = indexedDB.open(DB_NAME, DB_VERSION)
 
 		request.onupgradeneeded = () => {
-			const db = request.result;
+			const db = request.result
 			if (!db.objectStoreNames.contains(STORES.connections)) {
-				db.createObjectStore(STORES.connections, { keyPath: "id" });
+				db.createObjectStore(STORES.connections, { keyPath: 'id' })
 			}
 			if (!db.objectStoreNames.contains(STORES.history)) {
-				const store = db.createObjectStore(STORES.history, { keyPath: "id", autoIncrement: true });
-				store.createIndex("connectionId", "connectionId", { unique: false });
-				store.createIndex("executedAt", "executedAt", { unique: false });
+				const store = db.createObjectStore(STORES.history, { keyPath: 'id', autoIncrement: true })
+				store.createIndex('connectionId', 'connectionId', { unique: false })
+				store.createIndex('executedAt', 'executedAt', { unique: false })
 			}
 			if (!db.objectStoreNames.contains(STORES.views)) {
-				const store = db.createObjectStore(STORES.views, { keyPath: "id" });
-				store.createIndex("connectionId", "connectionId", { unique: false });
+				const store = db.createObjectStore(STORES.views, { keyPath: 'id' })
+				store.createIndex('connectionId', 'connectionId', { unique: false })
 			}
 			if (!db.objectStoreNames.contains(STORES.workspace)) {
-				db.createObjectStore(STORES.workspace, { keyPath: "id" });
+				db.createObjectStore(STORES.workspace, { keyPath: 'id' })
 			}
-		};
+		}
 
-		request.onsuccess = () => resolve(request.result);
-		request.onerror = () => reject(request.error);
-	});
+		request.onsuccess = () => resolve(request.result)
+		request.onerror = () => reject(request.error)
+	})
 
-	return dbPromise;
+	return dbPromise
 }
 
 function txOp<T>(storeName: string, mode: IDBTransactionMode, op: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
 	return openDb().then((db) => {
 		return new Promise<T>((resolve, reject) => {
-			const tx = db.transaction(storeName, mode);
-			const store = tx.objectStore(storeName);
-			const request = op(store);
-			request.onsuccess = () => resolve(request.result);
-			request.onerror = () => reject(request.error);
-		});
-	});
+			const tx = db.transaction(storeName, mode)
+			const store = tx.objectStore(storeName)
+			const request = op(store)
+			request.onsuccess = () => resolve(request.result)
+			request.onerror = () => reject(request.error)
+		})
+	})
 }
 
 function stripPassword(config: ConnectionConfig): ConnectionConfig {
 	if (isServerConfig(config)) {
-		return { ...config, password: "" };
+		return { ...config, password: '' }
 	}
-	return config;
+	return config
 }
 
 // ── IndexedDbAppStateStorage ─────────────────────────────
 
 export class IndexedDbAppStateStorage implements AppStateStorage {
-	readonly passConfigOnConnect = true;
+	readonly passConfigOnConnect = true
 
 	// ── Connections ──────────────────────────────────────
 
 	async listConnections(): Promise<ConnectionInfo[]> {
-		const records = await txOp<StoredConnectionRecord[]>(STORES.connections, "readonly", (s) => s.getAll());
+		const records = await txOp<StoredConnectionRecord[]>(STORES.connections, 'readonly', (s) => s.getAll())
 		return records.map((r) => ({
 			id: r.id,
 			name: r.name,
 			config: r.config,
-			state: "disconnected" as const,
+			state: 'disconnected' as const,
 			readOnly: r.readOnly || undefined,
 			color: r.color || undefined,
 			createdAt: r.createdAt,
 			updatedAt: r.updatedAt,
-		}));
+		}))
 	}
 
-	async createConnection(name: string, config: ConnectionConfig, rememberPassword = true, readOnly?: boolean, color?: string): Promise<ConnectionInfo> {
-		const id = crypto.randomUUID();
-		const now = new Date().toISOString();
+	async createConnection(
+		name: string,
+		config: ConnectionConfig,
+		rememberPassword = true,
+		readOnly?: boolean,
+		color?: string,
+	): Promise<ConnectionInfo> {
+		const id = crypto.randomUUID()
+		const now = new Date().toISOString()
 
 		const configToEncrypt = !rememberPassword && isServerConfig(config)
-			? { ...config, password: "" }
-			: config;
-		const { encryptedConfig } = await rpc.storage.encrypt({ config: JSON.stringify(configToEncrypt) });
+			? { ...config, password: '' }
+			: config
+		const { encryptedConfig } = await rpc.storage.encrypt({ config: JSON.stringify(configToEncrypt) })
 
 		const record: StoredConnectionRecord = {
 			id,
@@ -123,36 +129,43 @@ export class IndexedDbAppStateStorage implements AppStateStorage {
 			color: color || undefined,
 			createdAt: now,
 			updatedAt: now,
-		};
+		}
 
-		await txOp(STORES.connections, "readwrite", (s) => s.put(record));
+		await txOp(STORES.connections, 'readwrite', (s) => s.put(record))
 
 		return {
 			id,
 			name,
 			config: record.config,
-			state: "disconnected",
+			state: 'disconnected',
 			readOnly: readOnly || undefined,
 			color: color || undefined,
 			createdAt: now,
 			updatedAt: now,
-		};
+		}
 	}
 
-	async updateConnection(id: string, name: string, config: ConnectionConfig, rememberPassword?: boolean, readOnly?: boolean, color?: string): Promise<ConnectionInfo> {
-		const existing = await txOp<StoredConnectionRecord | undefined>(STORES.connections, "readonly", (s) => s.get(id));
-		if (!existing) throw new Error(`Connection not found: ${id}`);
+	async updateConnection(
+		id: string,
+		name: string,
+		config: ConnectionConfig,
+		rememberPassword?: boolean,
+		readOnly?: boolean,
+		color?: string,
+	): Promise<ConnectionInfo> {
+		const existing = await txOp<StoredConnectionRecord | undefined>(STORES.connections, 'readonly', (s) => s.get(id))
+		if (!existing) throw new Error(`Connection not found: ${id}`)
 
-		const remember = rememberPassword ?? existing.rememberPassword;
-		const now = new Date().toISOString();
+		const remember = rememberPassword ?? existing.rememberPassword
+		const now = new Date().toISOString()
 
 		const configToEncrypt = !remember && isServerConfig(config)
-			? { ...config, password: "" }
-			: config;
-		const { encryptedConfig } = await rpc.storage.encrypt({ config: JSON.stringify(configToEncrypt) });
+			? { ...config, password: '' }
+			: config
+		const { encryptedConfig } = await rpc.storage.encrypt({ config: JSON.stringify(configToEncrypt) })
 
-		const resolvedReadOnly = readOnly ?? existing.readOnly;
-		const resolvedColor = color !== undefined ? (color || undefined) : existing.color;
+		const resolvedReadOnly = readOnly ?? existing.readOnly
+		const resolvedColor = color !== undefined ? (color || undefined) : existing.color
 		const record: StoredConnectionRecord = {
 			id,
 			name,
@@ -163,111 +176,111 @@ export class IndexedDbAppStateStorage implements AppStateStorage {
 			color: resolvedColor,
 			createdAt: existing.createdAt,
 			updatedAt: now,
-		};
+		}
 
-		await txOp(STORES.connections, "readwrite", (s) => s.put(record));
+		await txOp(STORES.connections, 'readwrite', (s) => s.put(record))
 
 		return {
 			id,
 			name,
 			config: record.config,
-			state: "disconnected",
+			state: 'disconnected',
 			readOnly: resolvedReadOnly || undefined,
 			color: resolvedColor,
 			createdAt: record.createdAt,
 			updatedAt: now,
-		};
+		}
 	}
 
 	async deleteConnection(id: string): Promise<void> {
-		await txOp(STORES.connections, "readwrite", (s) => s.delete(id));
+		await txOp(STORES.connections, 'readwrite', (s) => s.delete(id))
 		// Cascade delete history and views for this connection
-		await this.clearHistory(id);
-		await this.deleteViewsByConnection(id);
+		await this.clearHistory(id)
+		await this.deleteViewsByConnection(id)
 	}
 
 	// ── History ──────────────────────────────────────────
 
 	async listHistory(params: HistoryListParams): Promise<QueryHistoryEntry[]> {
-		const all = await txOp<any[]>(STORES.history, "readonly", (s) => s.getAll());
-		let entries = all as QueryHistoryEntry[];
+		const all = await txOp<any[]>(STORES.history, 'readonly', (s) => s.getAll())
+		let entries = all as QueryHistoryEntry[]
 
 		// Filter
 		if (params.connectionId) {
-			entries = entries.filter((e) => e.connectionId === params.connectionId);
+			entries = entries.filter((e) => e.connectionId === params.connectionId)
 		}
 		if (params.search) {
-			const search = params.search.toLowerCase();
-			entries = entries.filter((e) => e.sql.toLowerCase().includes(search));
+			const search = params.search.toLowerCase()
+			entries = entries.filter((e) => e.sql.toLowerCase().includes(search))
 		}
 		if (params.startDate) {
-			const start = params.startDate + "T00:00:00.000Z";
-			entries = entries.filter((e) => e.executedAt >= start);
+			const start = params.startDate + 'T00:00:00.000Z'
+			entries = entries.filter((e) => e.executedAt >= start)
 		}
 		if (params.endDate) {
-			const nextDay = new Date(params.endDate + "T00:00:00.000Z");
-			nextDay.setUTCDate(nextDay.getUTCDate() + 1);
-			const end = nextDay.toISOString();
-			entries = entries.filter((e) => e.executedAt < end);
+			const nextDay = new Date(params.endDate + 'T00:00:00.000Z')
+			nextDay.setUTCDate(nextDay.getUTCDate() + 1)
+			const end = nextDay.toISOString()
+			entries = entries.filter((e) => e.executedAt < end)
 		}
 
 		// Sort by executedAt descending
-		entries.sort((a, b) => b.executedAt.localeCompare(a.executedAt));
+		entries.sort((a, b) => b.executedAt.localeCompare(a.executedAt))
 
 		// Paginate
-		const offset = params.offset ?? 0;
-		const limit = params.limit ?? 100;
-		return entries.slice(offset, offset + limit);
+		const offset = params.offset ?? 0
+		const limit = params.limit ?? 100
+		return entries.slice(offset, offset + limit)
 	}
 
-	async addHistoryEntry(entry: Omit<QueryHistoryEntry, "id">): Promise<void> {
-		await txOp(STORES.history, "readwrite", (s) => s.add(entry));
+	async addHistoryEntry(entry: Omit<QueryHistoryEntry, 'id'>): Promise<void> {
+		await txOp(STORES.history, 'readwrite', (s) => s.add(entry))
 	}
 
 	async clearHistory(connectionId?: string): Promise<void> {
 		if (!connectionId) {
-			await txOp(STORES.history, "readwrite", (s) => s.clear());
-			return;
+			await txOp(STORES.history, 'readwrite', (s) => s.clear())
+			return
 		}
-		const db = await openDb();
+		const db = await openDb()
 		return new Promise((resolve, reject) => {
-			const tx = db.transaction(STORES.history, "readwrite");
-			const store = tx.objectStore(STORES.history);
-			const request = store.openCursor();
+			const tx = db.transaction(STORES.history, 'readwrite')
+			const store = tx.objectStore(STORES.history)
+			const request = store.openCursor()
 			request.onsuccess = () => {
-				const cursor = request.result;
+				const cursor = request.result
 				if (cursor) {
-					const entry = cursor.value as QueryHistoryEntry;
+					const entry = cursor.value as QueryHistoryEntry
 					if (entry.connectionId === connectionId) {
-						cursor.delete();
+						cursor.delete()
 					}
-					cursor.continue();
+					cursor.continue()
 				}
-			};
-			tx.oncomplete = () => resolve();
-			tx.onerror = () => reject(tx.error);
-		});
+			}
+			tx.oncomplete = () => resolve()
+			tx.onerror = () => reject(tx.error)
+		})
 	}
 
 	// ── Saved Views ──────────────────────────────────────
 
 	async listViewsByConnection(connectionId: string): Promise<SavedView[]> {
-		const all = await txOp<SavedView[]>(STORES.views, "readonly", (s) => s.getAll());
-		return all.filter((v) => v.connectionId === connectionId);
+		const all = await txOp<SavedView[]>(STORES.views, 'readonly', (s) => s.getAll())
+		return all.filter((v) => v.connectionId === connectionId)
 	}
 
 	async saveView(params: { connectionId: string; schemaName: string; tableName: string; name: string; config: SavedViewConfig }): Promise<SavedView> {
 		if (!params.name || !params.name.trim()) {
-			throw new Error("View name is required");
+			throw new Error('View name is required')
 		}
 		// Check name uniqueness within the table
-		const existing = await this.listViewsByConnection(params.connectionId);
-		const sameTable = existing.filter((v) => v.schemaName === params.schemaName && v.tableName === params.tableName);
+		const existing = await this.listViewsByConnection(params.connectionId)
+		const sameTable = existing.filter((v) => v.schemaName === params.schemaName && v.tableName === params.tableName)
 		if (sameTable.some((v) => v.name === params.name.trim())) {
-			throw new Error(`A view named "${params.name.trim()}" already exists for this table`);
+			throw new Error(`A view named "${params.name.trim()}" already exists for this table`)
 		}
 
-		const now = new Date().toISOString();
+		const now = new Date().toISOString()
 		const view: SavedView = {
 			id: crypto.randomUUID(),
 			connectionId: params.connectionId,
@@ -277,86 +290,85 @@ export class IndexedDbAppStateStorage implements AppStateStorage {
 			config: params.config,
 			createdAt: now,
 			updatedAt: now,
-		};
+		}
 
-		await txOp(STORES.views, "readwrite", (s) => s.put(view));
-		return view;
+		await txOp(STORES.views, 'readwrite', (s) => s.put(view))
+		return view
 	}
 
 	async updateView(params: { id: string; name: string; config: SavedViewConfig }): Promise<SavedView> {
 		if (!params.name || !params.name.trim()) {
-			throw new Error("View name is required");
+			throw new Error('View name is required')
 		}
-		const current = await txOp<SavedView | undefined>(STORES.views, "readonly", (s) => s.get(params.id));
-		if (!current) throw new Error(`Saved view not found: ${params.id}`);
+		const current = await txOp<SavedView | undefined>(STORES.views, 'readonly', (s) => s.get(params.id))
+		if (!current) throw new Error(`Saved view not found: ${params.id}`)
 
 		// Check name uniqueness (excluding this view)
-		const existing = await this.listViewsByConnection(current.connectionId);
-		const sameTable = existing.filter((v) => v.schemaName === current.schemaName && v.tableName === current.tableName);
+		const existing = await this.listViewsByConnection(current.connectionId)
+		const sameTable = existing.filter((v) => v.schemaName === current.schemaName && v.tableName === current.tableName)
 		if (sameTable.some((v) => v.id !== params.id && v.name === params.name.trim())) {
-			throw new Error(`A view named "${params.name.trim()}" already exists for this table`);
+			throw new Error(`A view named "${params.name.trim()}" already exists for this table`)
 		}
 
-		const now = new Date().toISOString();
+		const now = new Date().toISOString()
 		const updated: SavedView = {
 			...current,
 			name: params.name.trim(),
 			config: params.config,
 			updatedAt: now,
-		};
+		}
 
-		await txOp(STORES.views, "readwrite", (s) => s.put(updated));
-		return updated;
+		await txOp(STORES.views, 'readwrite', (s) => s.put(updated))
+		return updated
 	}
 
 	async deleteView(id: string): Promise<void> {
-		await txOp(STORES.views, "readwrite", (s) => s.delete(id));
+		await txOp(STORES.views, 'readwrite', (s) => s.delete(id))
 	}
 
 	// ── Config access ────────────────────────────────────
 
 	async getEncryptedConfig(id: string): Promise<string | undefined> {
-		const record = await txOp<StoredConnectionRecord | undefined>(STORES.connections, "readonly", (s) => s.get(id));
-		return record?.encryptedConfig;
+		const record = await txOp<StoredConnectionRecord | undefined>(STORES.connections, 'readonly', (s) => s.get(id))
+		return record?.encryptedConfig
 	}
 
 	async getRememberPassword(id: string): Promise<boolean> {
-		const record = await txOp<StoredConnectionRecord | undefined>(STORES.connections, "readonly", (s) => s.get(id));
-		return record?.rememberPassword ?? true;
+		const record = await txOp<StoredConnectionRecord | undefined>(STORES.connections, 'readonly', (s) => s.get(id))
+		return record?.rememberPassword ?? true
 	}
 
 	// ── Workspace ────────────────────────────────────────
 
 	async saveWorkspace(state: WorkspaceState): Promise<void> {
-		await txOp(STORES.workspace, "readwrite", (s) => s.put({ id: "default", state }));
+		await txOp(STORES.workspace, 'readwrite', (s) => s.put({ id: 'default', state }))
 	}
 
 	async loadWorkspace(): Promise<WorkspaceState | null> {
-		const record = await txOp<{ id: string; state: WorkspaceState } | undefined>(STORES.workspace, "readonly", (s) => s.get("default"));
-		return record?.state ?? null;
+		const record = await txOp<{ id: string; state: WorkspaceState } | undefined>(STORES.workspace, 'readonly', (s) => s.get('default'))
+		return record?.state ?? null
 	}
 
 	// ── Private helpers ──────────────────────────────────
 
 	private async deleteViewsByConnection(connectionId: string): Promise<void> {
-		const db = await openDb();
+		const db = await openDb()
 		return new Promise((resolve, reject) => {
-			const tx = db.transaction(STORES.views, "readwrite");
-			const store = tx.objectStore(STORES.views);
-			const request = store.openCursor();
+			const tx = db.transaction(STORES.views, 'readwrite')
+			const store = tx.objectStore(STORES.views)
+			const request = store.openCursor()
 			request.onsuccess = () => {
-				const cursor = request.result;
+				const cursor = request.result
 				if (cursor) {
-					const view = cursor.value as SavedView;
+					const view = cursor.value as SavedView
 					if (view.connectionId === connectionId) {
-						cursor.delete();
+						cursor.delete()
 					}
-					cursor.continue();
+					cursor.continue()
 				}
-			};
-			tx.oncomplete = () => resolve();
-			tx.onerror = () => reject(tx.error);
-		});
+			}
+			tx.oncomplete = () => resolve()
+			tx.onerror = () => reject(tx.error)
+		})
 	}
 }
-

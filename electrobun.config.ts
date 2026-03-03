@@ -1,20 +1,20 @@
-import type { ElectrobunConfig } from "electrobun";
+import type { ElectrobunConfig } from 'electrobun'
 
 export default {
 	app: {
-		name: "Dotaz",
-		identifier: "dotaz.electrobun.dev",
-		version: "0.0.1",
+		name: 'Dotaz',
+		identifier: 'dotaz.electrobun.dev',
+		version: '0.0.1',
 	},
 	bun: {
-		entrypoint: "src/backend-desktop/index.ts",
+		entrypoint: 'src/backend-desktop/index.ts',
 	},
 	build: {
 		copy: {
-			"dist/index.html": "views/mainview/index.html",
-			"dist/assets": "views/mainview/assets",
+			'dist/index.html': 'views/mainview/index.html',
+			'dist/assets': 'views/mainview/assets',
 		},
-		watchIgnore: ["dist/**"],
+		watchIgnore: ['dist/**'],
 		mac: {
 			bundleCEF: false,
 		},
@@ -25,4 +25,4 @@ export default {
 			bundleCEF: false,
 		},
 	},
-} satisfies ElectrobunConfig;
+} satisfies ElectrobunConfig

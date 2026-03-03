@@ -1,161 +1,161 @@
-import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
-import type { QueryBookmark } from "../../../shared/types/rpc";
-import { rpc } from "../../lib/rpc";
-import { connectionsStore } from "../../stores/connections";
-import { tabsStore } from "../../stores/tabs";
-import { editorStore } from "../../stores/editor";
-import Pencil from "lucide-solid/icons/pencil";
-import Trash2 from "lucide-solid/icons/trash-2";
-import Play from "lucide-solid/icons/play";
-import Copy from "lucide-solid/icons/copy";
-import Dialog from "../common/Dialog";
-import Icon from "../common/Icon";
-import "./BookmarksDialog.css";
+import Copy from 'lucide-solid/icons/copy'
+import Pencil from 'lucide-solid/icons/pencil'
+import Play from 'lucide-solid/icons/play'
+import Trash2 from 'lucide-solid/icons/trash-2'
+import { createEffect, createSignal, For, onCleanup, Show } from 'solid-js'
+import type { QueryBookmark } from '../../../shared/types/rpc'
+import { rpc } from '../../lib/rpc'
+import { connectionsStore } from '../../stores/connections'
+import { editorStore } from '../../stores/editor'
+import { tabsStore } from '../../stores/tabs'
+import Dialog from '../common/Dialog'
+import Icon from '../common/Icon'
+import './BookmarksDialog.css'
 
 interface BookmarksDialogProps {
-	open: boolean;
-	onClose: () => void;
+	open: boolean
+	onClose: () => void
 	/** Pre-fill with SQL from the active editor */
-	initialSql?: string;
+	initialSql?: string
 	/** Pre-fill connection from the active editor */
-	initialConnectionId?: string;
+	initialConnectionId?: string
 }
 
-const SQL_TRUNCATE_LENGTH = 100;
-const TOAST_DURATION = 1500;
+const SQL_TRUNCATE_LENGTH = 100
+const TOAST_DURATION = 1500
 
 export default function BookmarksDialog(props: BookmarksDialogProps) {
-	const [bookmarks, setBookmarks] = createSignal<QueryBookmark[]>([]);
-	const [search, setSearch] = createSignal("");
-	const [connectionFilter, setConnectionFilter] = createSignal("");
-	const [loading, setLoading] = createSignal(false);
-	const [toast, setToast] = createSignal<string | null>(null);
+	const [bookmarks, setBookmarks] = createSignal<QueryBookmark[]>([])
+	const [search, setSearch] = createSignal('')
+	const [connectionFilter, setConnectionFilter] = createSignal('')
+	const [loading, setLoading] = createSignal(false)
+	const [toast, setToast] = createSignal<string | null>(null)
 
 	// Edit/create form state
-	const [editing, setEditing] = createSignal<QueryBookmark | null>(null);
-	const [creating, setCreating] = createSignal(false);
-	const [formName, setFormName] = createSignal("");
-	const [formDescription, setFormDescription] = createSignal("");
-	const [formSql, setFormSql] = createSignal("");
-	const [formError, setFormError] = createSignal<string | null>(null);
-	const [saving, setSaving] = createSignal(false);
+	const [editing, setEditing] = createSignal<QueryBookmark | null>(null)
+	const [creating, setCreating] = createSignal(false)
+	const [formName, setFormName] = createSignal('')
+	const [formDescription, setFormDescription] = createSignal('')
+	const [formSql, setFormSql] = createSignal('')
+	const [formError, setFormError] = createSignal<string | null>(null)
+	const [saving, setSaving] = createSignal(false)
 
-	let searchDebounce: ReturnType<typeof setTimeout> | undefined;
+	let searchDebounce: ReturnType<typeof setTimeout> | undefined
 
 	createEffect(() => {
 		if (props.open) {
-			const connId = props.initialConnectionId || "";
-			setConnectionFilter(connId);
-			setSearch("");
-			setEditing(null);
-			setCreating(false);
-			resetForm();
+			const connId = props.initialConnectionId || ''
+			setConnectionFilter(connId)
+			setSearch('')
+			setEditing(null)
+			setCreating(false)
+			resetForm()
 
 			// If we have initial SQL, go directly to create mode
 			if (props.initialSql && connId) {
-				setCreating(true);
-				setFormSql(props.initialSql);
+				setCreating(true)
+				setFormSql(props.initialSql)
 			}
 
-			loadBookmarks(connId);
+			loadBookmarks(connId)
 		}
-	});
+	})
 
 	onCleanup(() => {
-		if (searchDebounce) clearTimeout(searchDebounce);
-	});
+		if (searchDebounce) clearTimeout(searchDebounce)
+	})
 
 	function resetForm() {
-		setFormName("");
-		setFormDescription("");
-		setFormSql("");
-		setFormError(null);
-		setSaving(false);
+		setFormName('')
+		setFormDescription('')
+		setFormSql('')
+		setFormError(null)
+		setSaving(false)
 	}
 
 	async function loadBookmarks(connId?: string) {
-		const connectionId = connId ?? connectionFilter();
+		const connectionId = connId ?? connectionFilter()
 		if (!connectionId) {
-			setBookmarks([]);
-			return;
+			setBookmarks([])
+			return
 		}
-		setLoading(true);
+		setLoading(true)
 		try {
-			const result = await rpc.bookmarks.list({ connectionId, search: search() || undefined });
-			setBookmarks(result);
+			const result = await rpc.bookmarks.list({ connectionId, search: search() || undefined })
+			setBookmarks(result)
 		} catch {
 			// Non-critical
 		} finally {
-			setLoading(false);
+			setLoading(false)
 		}
 	}
 
 	function handleSearchInput(value: string) {
-		setSearch(value);
-		if (searchDebounce) clearTimeout(searchDebounce);
-		searchDebounce = setTimeout(() => loadBookmarks(), 300);
+		setSearch(value)
+		if (searchDebounce) clearTimeout(searchDebounce)
+		searchDebounce = setTimeout(() => loadBookmarks(), 300)
 	}
 
 	function handleConnectionFilterChange(value: string) {
-		setConnectionFilter(value);
-		loadBookmarks(value);
+		setConnectionFilter(value)
+		loadBookmarks(value)
 	}
 
 	function showToast(message: string) {
-		setToast(message);
-		setTimeout(() => setToast(null), TOAST_DURATION);
+		setToast(message)
+		setTimeout(() => setToast(null), TOAST_DURATION)
 	}
 
 	function truncateSql(sql: string): string {
-		const oneLine = sql.replace(/\s+/g, " ").trim();
-		if (oneLine.length <= SQL_TRUNCATE_LENGTH) return oneLine;
-		return oneLine.slice(0, SQL_TRUNCATE_LENGTH) + "...";
+		const oneLine = sql.replace(/\s+/g, ' ').trim()
+		if (oneLine.length <= SQL_TRUNCATE_LENGTH) return oneLine
+		return oneLine.slice(0, SQL_TRUNCATE_LENGTH) + '...'
 	}
 
 	function startCreate() {
-		setEditing(null);
-		setCreating(true);
-		resetForm();
+		setEditing(null)
+		setCreating(true)
+		resetForm()
 		// Pre-fill SQL from active editor
-		const activeTab = tabsStore.activeTab;
-		if (activeTab?.type === "sql-console") {
-			const tab = editorStore.getTab(activeTab.id);
+		const activeTab = tabsStore.activeTab
+		if (activeTab?.type === 'sql-console') {
+			const tab = editorStore.getTab(activeTab.id)
 			if (tab?.content.trim()) {
-				setFormSql(tab.content);
+				setFormSql(tab.content)
 			}
 		}
 	}
 
 	function startEdit(bookmark: QueryBookmark) {
-		setCreating(false);
-		setEditing(bookmark);
-		setFormName(bookmark.name);
-		setFormDescription(bookmark.description);
-		setFormSql(bookmark.sql);
-		setFormError(null);
-		setSaving(false);
+		setCreating(false)
+		setEditing(bookmark)
+		setFormName(bookmark.name)
+		setFormDescription(bookmark.description)
+		setFormSql(bookmark.sql)
+		setFormError(null)
+		setSaving(false)
 	}
 
 	function cancelForm() {
-		setEditing(null);
-		setCreating(false);
-		resetForm();
+		setEditing(null)
+		setCreating(false)
+		resetForm()
 	}
 
 	async function handleSave() {
-		const name = formName().trim();
+		const name = formName().trim()
 		if (!name) {
-			setFormError("Name is required");
-			return;
+			setFormError('Name is required')
+			return
 		}
-		const sqlText = formSql().trim();
+		const sqlText = formSql().trim()
 		if (!sqlText) {
-			setFormError("SQL is required");
-			return;
+			setFormError('SQL is required')
+			return
 		}
 
-		setSaving(true);
-		setFormError(null);
+		setSaving(true)
+		setFormError(null)
 
 		try {
 			if (editing()) {
@@ -164,86 +164,85 @@ export default function BookmarksDialog(props: BookmarksDialogProps) {
 					name,
 					description: formDescription().trim(),
 					sql: sqlText,
-				});
-				showToast("Bookmark updated");
+				})
+				showToast('Bookmark updated')
 			} else {
-				const connId = connectionFilter();
+				const connId = connectionFilter()
 				if (!connId) {
-					setFormError("Select a connection first");
-					setSaving(false);
-					return;
+					setFormError('Select a connection first')
+					setSaving(false)
+					return
 				}
 				await rpc.bookmarks.create({
 					connectionId: connId,
 					name,
 					description: formDescription().trim(),
 					sql: sqlText,
-				});
-				showToast("Bookmark saved");
+				})
+				showToast('Bookmark saved')
 			}
-			setEditing(null);
-			setCreating(false);
-			resetForm();
-			loadBookmarks();
+			setEditing(null)
+			setCreating(false)
+			resetForm()
+			loadBookmarks()
 		} catch (err) {
-			setFormError(err instanceof Error ? err.message : String(err));
+			setFormError(err instanceof Error ? err.message : String(err))
 		} finally {
-			setSaving(false);
+			setSaving(false)
 		}
 	}
 
 	async function handleDelete(bookmark: QueryBookmark) {
-		const confirmed = window.confirm(`Delete bookmark "${bookmark.name}"?`);
-		if (!confirmed) return;
+		const confirmed = window.confirm(`Delete bookmark "${bookmark.name}"?`)
+		if (!confirmed) return
 
 		try {
-			await rpc.bookmarks.delete({ id: bookmark.id });
-			loadBookmarks();
-			showToast("Bookmark deleted");
+			await rpc.bookmarks.delete({ id: bookmark.id })
+			loadBookmarks()
+			showToast('Bookmark deleted')
 		} catch {
 			// Non-critical
 		}
 	}
 
 	function handleUseBookmark(bookmark: QueryBookmark) {
-		const activeTab = tabsStore.activeTab;
-		if (activeTab?.type === "sql-console") {
-			editorStore.setContent(activeTab.id, bookmark.sql);
-			showToast("SQL loaded");
-			props.onClose();
-			return;
+		const activeTab = tabsStore.activeTab
+		if (activeTab?.type === 'sql-console') {
+			editorStore.setContent(activeTab.id, bookmark.sql)
+			showToast('SQL loaded')
+			props.onClose()
+			return
 		}
 		// Open a new SQL console with the bookmark's SQL
 		const tabId = tabsStore.openTab({
-			type: "sql-console",
+			type: 'sql-console',
 			title: bookmark.name,
 			connectionId: bookmark.connectionId,
-		});
-		editorStore.initTab(tabId, bookmark.connectionId);
-		editorStore.setContent(tabId, bookmark.sql);
-		props.onClose();
+		})
+		editorStore.initTab(tabId, bookmark.connectionId)
+		editorStore.setContent(tabId, bookmark.sql)
+		props.onClose()
 	}
 
 	async function handleCopy(bookmark: QueryBookmark) {
 		try {
-			await navigator.clipboard.writeText(bookmark.sql);
-			showToast("Copied to clipboard");
+			await navigator.clipboard.writeText(bookmark.sql)
+			showToast('Copied to clipboard')
 		} catch {
 			// Clipboard access denied
 		}
 	}
 
 	function handleFormKeyDown(e: KeyboardEvent) {
-		if (e.key === "Enter" && e.ctrlKey && !saving()) {
-			e.preventDefault();
-			handleSave();
+		if (e.key === 'Enter' && e.ctrlKey && !saving()) {
+			e.preventDefault()
+			handleSave()
 		}
 	}
 
-	const connectedConnections = () =>
-		connectionsStore.connections.filter((c) => c.state === "connected");
+	const connectedConnections = () => connectionsStore.connections.filter((c) => c.state === 'connected')
 
-	const isFormOpen = () => creating() || editing() !== null;
+	const isFormOpen = () => creating() || editing() !== null
 
 	return (
 		<Dialog
@@ -267,7 +266,9 @@ export default function BookmarksDialog(props: BookmarksDialogProps) {
 							/>
 						</div>
 						<div class="bookmarks-dialog__field">
-							<label class="bookmarks-dialog__label">Description <span class="bookmarks-dialog__optional">(optional)</span></label>
+							<label class="bookmarks-dialog__label">
+								Description <span class="bookmarks-dialog__optional">(optional)</span>
+							</label>
 							<input
 								class="bookmarks-dialog__input"
 								type="text"
@@ -296,7 +297,7 @@ export default function BookmarksDialog(props: BookmarksDialogProps) {
 								onClick={handleSave}
 								disabled={saving() || !formName().trim() || !formSql().trim()}
 							>
-								{saving() ? "Saving..." : editing() ? "Update" : "Save"}
+								{saving() ? 'Saving...' : editing() ? 'Update' : 'Save'}
 							</button>
 						</div>
 					</div>
@@ -319,9 +320,7 @@ export default function BookmarksDialog(props: BookmarksDialogProps) {
 						>
 							<option value="">Select connection</option>
 							<For each={connectedConnections()}>
-								{(conn) => (
-									<option value={conn.id}>{conn.name}</option>
-								)}
+								{(conn) => <option value={conn.id}>{conn.name}</option>}
 							</For>
 						</select>
 						<button
@@ -347,12 +346,12 @@ export default function BookmarksDialog(props: BookmarksDialogProps) {
 							<div class="empty-state">
 								<Icon name="bookmark" size={28} class="empty-state__icon" />
 								<div class="empty-state__title">
-									{search() ? "No matching bookmarks" : "No bookmarks yet"}
+									{search() ? 'No matching bookmarks' : 'No bookmarks yet'}
 								</div>
 								<div class="empty-state__subtitle">
 									{search()
-										? "Try different search terms."
-										: "Save your favorite queries for quick access."}
+										? 'Try different search terms.'
+										: 'Save your favorite queries for quick access.'}
 								</div>
 							</div>
 						</Show>
@@ -423,5 +422,5 @@ export default function BookmarksDialog(props: BookmarksDialogProps) {
 				</Show>
 			</div>
 		</Dialog>
-	);
+	)
 }

@@ -1,89 +1,89 @@
-import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
-import ChevronsLeft from "lucide-solid/icons/chevrons-left";
-import ChevronLeft from "lucide-solid/icons/chevron-left";
-import ChevronRight from "lucide-solid/icons/chevron-right";
-import ChevronsRight from "lucide-solid/icons/chevrons-right";
-import "./Pagination.css";
+import ChevronLeft from 'lucide-solid/icons/chevron-left'
+import ChevronRight from 'lucide-solid/icons/chevron-right'
+import ChevronsLeft from 'lucide-solid/icons/chevrons-left'
+import ChevronsRight from 'lucide-solid/icons/chevrons-right'
+import { createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
+import './Pagination.css'
 
 interface PaginationProps {
-	currentPage: number;
-	pageSize: number;
-	totalCount: number;
-	loading: boolean;
-	lastLoadedAt?: number | null;
-	fetchDuration?: number | null;
-	onPageChange: (page: number) => void;
-	onPageSizeChange: (size: number) => void;
+	currentPage: number
+	pageSize: number
+	totalCount: number
+	loading: boolean
+	lastLoadedAt?: number | null
+	fetchDuration?: number | null
+	onPageChange: (page: number) => void
+	onPageSizeChange: (size: number) => void
 }
 
-const PAGE_SIZES = [25, 50, 100, 250, 500];
+const PAGE_SIZES = [25, 50, 100, 250, 500]
 
 function formatNumber(n: number): string {
-	return n.toLocaleString();
+	return n.toLocaleString()
 }
 
-function getPageNumbers(current: number, total: number): (number | "...")[] {
+function getPageNumbers(current: number, total: number): (number | '...')[] {
 	if (total <= 7) {
-		return Array.from({ length: total }, (_, i) => i + 1);
+		return Array.from({ length: total }, (_, i) => i + 1)
 	}
 
-	const pages: (number | "...")[] = [1];
+	const pages: (number | '...')[] = [1]
 
 	if (current > 3) {
-		pages.push("...");
+		pages.push('...')
 	}
 
-	const start = Math.max(2, current - 1);
-	const end = Math.min(total - 1, current + 1);
+	const start = Math.max(2, current - 1)
+	const end = Math.min(total - 1, current + 1)
 
 	for (let i = start; i <= end; i++) {
-		pages.push(i);
+		pages.push(i)
 	}
 
 	if (current < total - 2) {
-		pages.push("...");
+		pages.push('...')
 	}
 
 	if (total > 1) {
-		pages.push(total);
+		pages.push(total)
 	}
 
-	return pages;
+	return pages
 }
 
 function formatAgo(elapsedMs: number): string {
-	if (elapsedMs < 5_000) return "just now";
-	if (elapsedMs < 60_000) return `${Math.floor(elapsedMs / 1000)}s ago`;
-	if (elapsedMs < 3600_000) return `${Math.floor(elapsedMs / 60_000)}m ago`;
-	return `${Math.floor(elapsedMs / 3600_000)}h ago`;
+	if (elapsedMs < 5_000) return 'just now'
+	if (elapsedMs < 60_000) return `${Math.floor(elapsedMs / 1000)}s ago`
+	if (elapsedMs < 3600_000) return `${Math.floor(elapsedMs / 60_000)}m ago`
+	return `${Math.floor(elapsedMs / 3600_000)}h ago`
 }
 
 function formatDuration(ms: number): string {
-	if (ms < 1000) return `${ms}ms`;
-	return `${(ms / 1000).toFixed(1)}s`;
+	if (ms < 1000) return `${ms}ms`
+	return `${(ms / 1000).toFixed(1)}s`
 }
 
 export default function Pagination(props: PaginationProps) {
-	const totalPages = () => Math.max(1, Math.ceil(props.totalCount / props.pageSize));
-	const rangeStart = () => props.totalCount === 0 ? 0 : (props.currentPage - 1) * props.pageSize + 1;
-	const rangeEnd = () => Math.min(props.currentPage * props.pageSize, props.totalCount);
-	const isFirst = () => props.currentPage <= 1;
-	const isLast = () => props.currentPage >= totalPages();
+	const totalPages = () => Math.max(1, Math.ceil(props.totalCount / props.pageSize))
+	const rangeStart = () => props.totalCount === 0 ? 0 : (props.currentPage - 1) * props.pageSize + 1
+	const rangeEnd = () => Math.min(props.currentPage * props.pageSize, props.totalCount)
+	const isFirst = () => props.currentPage <= 1
+	const isLast = () => props.currentPage >= totalPages()
 
 	// Live-updating "fetched ago" timer
-	const [now, setNow] = createSignal(Date.now());
-	const timer = setInterval(() => setNow(Date.now()), 1000);
-	onCleanup(() => clearInterval(timer));
+	const [now, setNow] = createSignal(Date.now())
+	const timer = setInterval(() => setNow(Date.now()), 1000)
+	onCleanup(() => clearInterval(timer))
 
 	const fetchedAgo = createMemo(() => {
-		if (props.lastLoadedAt == null) return null;
-		return formatAgo(now() - props.lastLoadedAt);
-	});
+		if (props.lastLoadedAt == null) return null
+		return formatAgo(now() - props.lastLoadedAt)
+	})
 
 	const duration = createMemo(() => {
-		if (props.fetchDuration == null) return null;
-		return formatDuration(props.fetchDuration);
-	});
+		if (props.fetchDuration == null) return null
+		return formatDuration(props.fetchDuration)
+	})
 
 	return (
 		<div class="pagination">
@@ -96,9 +96,9 @@ export default function Pagination(props: PaginationProps) {
 				</Show>
 				<Show when={fetchedAgo() && !props.loading}>
 					<span class="pagination__fetch-info">
-						{" · "}fetched {fetchedAgo()}
+						{' · '}fetched {fetchedAgo()}
 						<Show when={duration()}>
-							{" "}({duration()})
+							{' '}({duration()})
 						</Show>
 					</span>
 				</Show>
@@ -125,12 +125,12 @@ export default function Pagination(props: PaginationProps) {
 				<For each={getPageNumbers(props.currentPage, totalPages())}>
 					{(page) => (
 						<Show
-							when={typeof page === "number"}
-							fallback={<span class="pagination__btn" style={{ cursor: "default" }}>…</span>}
+							when={typeof page === 'number'}
+							fallback={<span class="pagination__btn" style={{ cursor: 'default' }}>…</span>}
 						>
 							<button
 								class="pagination__btn"
-								classList={{ "pagination__btn--active": page === props.currentPage }}
+								classList={{ 'pagination__btn--active': page === props.currentPage }}
 								onClick={() => props.onPageChange(page as number)}
 							>
 								{page}
@@ -169,5 +169,5 @@ export default function Pagination(props: PaginationProps) {
 				</select>
 			</div>
 		</div>
-	);
+	)
 }

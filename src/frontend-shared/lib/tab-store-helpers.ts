@@ -7,16 +7,16 @@ export function createTabHelpers<T>(
 	storeName: string,
 ) {
 	function getTab(tabId: string): T | undefined {
-		return getTabs()[tabId];
+		return getTabs()[tabId]
 	}
 
 	function ensureTab(tabId: string): T {
-		const tab = getTab(tabId);
+		const tab = getTab(tabId)
 		if (!tab) {
-			throw new Error(`${storeName} state not found for tab ${tabId}`);
+			throw new Error(`${storeName} state not found for tab ${tabId}`)
 		}
-		return tab;
+		return tab
 	}
 
-	return { getTab, ensureTab };
+	return { getTab, ensureTab }
 }

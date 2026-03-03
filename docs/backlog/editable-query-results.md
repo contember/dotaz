@@ -9,6 +9,7 @@
 Umožnit editaci buněk přímo ve výsledcích SELECT dotazu (nejen v table data view). Aktuálně jsou výsledky SQL dotazů read-only — editace funguje jen při otevření tabulky přes schema browser.
 
 ### Požadavky
+
 - Dotaz musí obsahovat PK sloupce pro identifikaci řádků
 - Systém detekuje zdrojovou tabulku z dotazu
 - Po editaci buňky se vygeneruje UPDATE příkaz
@@ -16,6 +17,7 @@ Umožnit editaci buněk přímo ve výsledcích SELECT dotazu (nejen v table dat
 - Pro JOIN dotazy: editace buněk z jednoznačně identifikovatelné tabulky
 
 ### Omezení
+
 - Nefunguje pro agregační dotazy (GROUP BY, HAVING)
 - Nefunguje pro UNION dotazy
 - Nefunguje pro subquery v SELECT

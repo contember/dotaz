@@ -9,10 +9,12 @@
 Barevné škály na numerických sloupcích v data gridu pro rychlou vizuální analýzu rozložení dat. Uživatel zapne heatmap per sloupec nebo pro celou tabulku.
 
 ### Režimy
+
 - **Sequential** — od světlé po tmavou (pro hodnoty od minima po maximum)
 - **Diverging** — od modré přes bílou po červenou (pro hodnoty s neutrálním středem)
 
 ### Chování
+
 - Barva pozadí buňky dle relativní hodnoty v rámci sloupce
 - Min/max se počítají z aktuálně zobrazených dat
 - Přepínač v context menu hlavičky sloupce

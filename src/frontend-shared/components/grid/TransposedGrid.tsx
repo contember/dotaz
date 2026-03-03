@@ -1,34 +1,34 @@
-import { For, Show } from "solid-js";
-import type { GridColumnDef } from "../../../shared/types/grid";
-import type { ColumnConfig, EditingCell, FkTarget, HeatmapInfo } from "../../stores/grid";
-import { gridStore } from "../../stores/grid";
-import GridCell from "./GridCell";
-import { DEFAULT_COLUMN_WIDTH } from "../../lib/layout-constants";
-import { getDataTypeLabel } from "../../lib/column-types";
-import "./TransposedGrid.css";
+import { For, Show } from 'solid-js'
+import type { GridColumnDef } from '../../../shared/types/grid'
+import { getDataTypeLabel } from '../../lib/column-types'
+import { DEFAULT_COLUMN_WIDTH } from '../../lib/layout-constants'
+import type { ColumnConfig, EditingCell, FkTarget, HeatmapInfo } from '../../stores/grid'
+import { gridStore } from '../../stores/grid'
+import GridCell from './GridCell'
+import './TransposedGrid.css'
 
 interface TransposedGridProps {
-	rows: Record<string, unknown>[];
-	columns: GridColumnDef[];
-	columnConfig: Record<string, ColumnConfig>;
-	selectedRows: Set<number>;
-	onRowClick: (index: number, e: MouseEvent) => void;
-	onRowDblClick?: (index: number, e: MouseEvent) => void;
-	editingCell?: EditingCell | null;
-	getChangedCells?: (rowIndex: number) => Set<string>;
-	isRowDeleted?: (rowIndex: number) => boolean;
-	isRowNew?: (rowIndex: number) => boolean;
-	fkMap?: Map<string, FkTarget>;
-	heatmapInfo?: Map<string, HeatmapInfo>;
-	onCellSave?: (rowIndex: number, column: string, value: unknown) => void;
-	onCellCancel?: () => void;
-	onCellMoveNext?: (rowIndex: number, column: string) => void;
-	onCellMoveDown?: (rowIndex: number, column: string) => void;
-	onFkClick?: (rowIndex: number, column: string) => void;
+	rows: Record<string, unknown>[]
+	columns: GridColumnDef[]
+	columnConfig: Record<string, ColumnConfig>
+	selectedRows: Set<number>
+	onRowClick: (index: number, e: MouseEvent) => void
+	onRowDblClick?: (index: number, e: MouseEvent) => void
+	editingCell?: EditingCell | null
+	getChangedCells?: (rowIndex: number) => Set<string>
+	isRowDeleted?: (rowIndex: number) => boolean
+	isRowNew?: (rowIndex: number) => boolean
+	fkMap?: Map<string, FkTarget>
+	heatmapInfo?: Map<string, HeatmapInfo>
+	onCellSave?: (rowIndex: number, column: string, value: unknown) => void
+	onCellCancel?: () => void
+	onCellMoveNext?: (rowIndex: number, column: string) => void
+	onCellMoveDown?: (rowIndex: number, column: string) => void
+	onFkClick?: (rowIndex: number, column: string) => void
 }
 
 /** Width of the row-header (column name) column in transposed view. */
-const HEADER_COL_WIDTH = 180;
+const HEADER_COL_WIDTH = 180
 
 export default function TransposedGrid(props: TransposedGridProps) {
 	return (
@@ -46,7 +46,7 @@ export default function TransposedGrid(props: TransposedGridProps) {
 						<div
 							class="transposed-grid__col-header"
 							classList={{
-								"transposed-grid__col-header--selected": props.selectedRows.has(rowIdx()),
+								'transposed-grid__col-header--selected': props.selectedRows.has(rowIdx()),
 							}}
 							style={{ width: `${DEFAULT_COLUMN_WIDTH}px` }}
 							onClick={(e) => props.onRowClick(rowIdx(), e)}
@@ -63,8 +63,8 @@ export default function TransposedGrid(props: TransposedGridProps) {
 					<div
 						class="transposed-grid__row"
 						classList={{
-							"transposed-grid__row--even": props.columns.indexOf(col) % 2 === 0,
-							"transposed-grid__row--odd": props.columns.indexOf(col) % 2 !== 0,
+							'transposed-grid__row--even': props.columns.indexOf(col) % 2 === 0,
+							'transposed-grid__row--odd': props.columns.indexOf(col) % 2 !== 0,
 						}}
 					>
 						{/* Sticky row header with column name + type badge */}
@@ -91,20 +91,19 @@ export default function TransposedGrid(props: TransposedGridProps) {
 						<For each={props.rows}>
 							{(row, rowIdx) => {
 								const isEditing = () =>
-									props.editingCell?.row === rowIdx() &&
-									props.editingCell?.column === col.name;
-								const isChanged = () =>
-									props.getChangedCells?.(rowIdx())?.has(col.name) ?? false;
+									props.editingCell?.row === rowIdx()
+									&& props.editingCell?.column === col.name
+								const isChanged = () => props.getChangedCells?.(rowIdx())?.has(col.name) ?? false
 								const heatmapColor = () => {
-									const info = props.heatmapInfo?.get(col.name);
-									return info ? gridStore.computeHeatmapColor(row[col.name], info) : undefined;
-								};
+									const info = props.heatmapInfo?.get(col.name)
+									return info ? gridStore.computeHeatmapColor(row[col.name], info) : undefined
+								}
 
 								return (
 									<div
 										class="transposed-grid__cell-wrapper"
 										classList={{
-											"transposed-grid__cell-wrapper--selected": props.selectedRows.has(rowIdx()),
+											'transposed-grid__cell-wrapper--selected': props.selectedRows.has(rowIdx()),
 										}}
 										data-column={col.name}
 										onClick={(e) => props.onRowClick(rowIdx(), e)}
@@ -127,12 +126,12 @@ export default function TransposedGrid(props: TransposedGridProps) {
 											onFkClick={props.fkMap?.has(col.name) ? () => props.onFkClick?.(rowIdx(), col.name) : undefined}
 										/>
 									</div>
-								);
+								)
 							}}
 						</For>
 					</div>
 				)}
 			</For>
 		</div>
-	);
+	)
 }

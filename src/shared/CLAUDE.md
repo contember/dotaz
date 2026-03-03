@@ -12,15 +12,15 @@ src/shared/
 
 ## Types (`src/shared/types/`)
 
-| File | Purpose |
-|---|---|
-| `rpc.ts` | Domain types: `SavedView`, `DataChange`, `HistoryListParams`, `SavedViewConfig`, dialog params |
-| `connection.ts` | `ConnectionConfig`, `ConnectionInfo`, `ConnectionState` |
-| `database.ts` | `SchemaInfo`, `TableInfo`, `ColumnInfo`, `IndexInfo`, `ForeignKeyInfo`, `SchemaData` |
-| `grid.ts` | `GridDataRequest`, `GridDataResponse`, `SortColumn`, `ColumnFilter`, `FilterOperator` |
-| `query.ts` | `QueryResult`, `QueryHistoryEntry` |
-| `tab.ts` | Tab types (data grid, SQL console, schema viewer) |
-| `export.ts` | `ExportOptions`, `ExportResult`, export format definitions |
+| File            | Purpose                                                                                        |
+| --------------- | ---------------------------------------------------------------------------------------------- |
+| `rpc.ts`        | Domain types: `SavedView`, `DataChange`, `HistoryListParams`, `SavedViewConfig`, dialog params |
+| `connection.ts` | `ConnectionConfig`, `ConnectionInfo`, `ConnectionState`                                        |
+| `database.ts`   | `SchemaInfo`, `TableInfo`, `ColumnInfo`, `IndexInfo`, `ForeignKeyInfo`, `SchemaData`           |
+| `grid.ts`       | `GridDataRequest`, `GridDataResponse`, `SortColumn`, `ColumnFilter`, `FilterOperator`          |
+| `query.ts`      | `QueryResult`, `QueryHistoryEntry`                                                             |
+| `tab.ts`        | Tab types (data grid, SQL console, schema viewer)                                              |
+| `export.ts`     | `ExportOptions`, `ExportResult`, export format definitions                                     |
 
 ### Adding a new RPC method
 
@@ -32,11 +32,11 @@ src/shared/
 
 ## SQL Building (`src/shared/sql/`)
 
-| File | Purpose |
-|---|---|
-| `dialect.ts` | `SqlDialect` interface — `quoteIdentifier()`, `qualifyTable()` |
-| `dialects.ts` | `PostgresDialect`, `SqliteDialect`, `MysqlDialect` implementations |
-| `builders.ts` | `buildSelectQuery()`, `buildCountQuery()`, `generateChangeSql()`, etc. |
+| File            | Purpose                                                                   |
+| --------------- | ------------------------------------------------------------------------- |
+| `dialect.ts`    | `SqlDialect` interface — `quoteIdentifier()`, `qualifyTable()`            |
+| `dialects.ts`   | `PostgresDialect`, `SqliteDialect`, `MysqlDialect` implementations        |
+| `builders.ts`   | `buildSelectQuery()`, `buildCountQuery()`, `generateChangeSql()`, etc.    |
 | `statements.ts` | `splitStatements()`, `parseErrorPosition()` — zero-dependency SQL parsing |
 
 ## Conventions

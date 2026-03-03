@@ -9,16 +9,18 @@
 Rozšířit stávající export (CSV, JSON, SQL INSERT) o další užitečné formáty:
 
 ### Nové formáty
+
 - **Markdown tabulka** — pro vkládání do dokumentace, GitHub issues, README
 - **SQL UPDATE** — generuje UPDATE příkazy místo INSERT (užitečné pro migraci dat)
 - **HTML tabulka** — pro sdílení v emailech, prezentacích
 - **XML** — strukturovaný XML výstup
 
 ### Priorita formátů
+
 1. Markdown — jednoduchá implementace, vysoká užitečnost
 2. SQL UPDATE — logické doplnění k SQL INSERT
 3. HTML — jednoduché
-5. XML — méně časté, ale kompletní
+4. XML — méně časté, ale kompletní
 
 ## Acceptance Criteria
 

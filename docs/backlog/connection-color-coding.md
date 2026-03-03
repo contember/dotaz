@@ -14,11 +14,13 @@ Přiřazení barvy k connection pro vizuální odlišení prostředí. Typické 
 - **Modrá** — testing
 
 Barva se projeví jako:
+
 - Barevný proužek ve status baru
 - Barevný indikátor v connection tree
 - Volitelně: obarvení rámečku celého okna
 
 ### Výběr barvy
+
 - Předdefinovaná paleta (8–12 barev)
 - Nastavení v Connection dialogu
 

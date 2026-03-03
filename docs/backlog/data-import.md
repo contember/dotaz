@@ -9,6 +9,7 @@
 Import dat ze souboru (CSV, JSON) do existující tabulky. Přirozený protějšek k existujícímu exportu.
 
 ### Flow
+
 1. Uživatel vybere cílovou tabulku a klikne "Import"
 2. Vybere soubor (CSV nebo JSON)
 3. Dotaz zobrazí náhled dat a mapping sloupců: sloupce ze souboru → sloupce tabulky
@@ -16,10 +17,12 @@ Import dat ze souboru (CSV, JSON) do existující tabulky. Přirozený protějš
 5. Kliknutím na "Import" se data vloží pomocí batched INSERT příkazů
 
 ### Podporované formáty
+
 - **CSV**: konfigurovatelný delimiter (comma, semicolon, tab), header row on/off
 - **JSON**: pole objektů (`[{col: val}, ...]`)
 
 ### Bezpečnost
+
 - Import probíhá v transakci — při chybě se provede rollback
 - Preview prvních N řádků před samotným importem
 - Zobrazení počtu importovaných řádků po dokončení

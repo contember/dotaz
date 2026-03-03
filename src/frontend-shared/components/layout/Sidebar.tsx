@@ -1,22 +1,22 @@
-import { type JSX, Show } from "solid-js";
-import Icon from "../common/Icon";
-import "./Sidebar.css";
+import { type JSX, Show } from 'solid-js'
+import Icon from '../common/Icon'
+import './Sidebar.css'
 
 interface SidebarProps {
-	width: number;
-	collapsed: boolean;
-	onToggleCollapse: () => void;
-	onAdd?: () => void;
-	onOpenSettings?: () => void;
-	children?: JSX.Element;
+	width: number
+	collapsed: boolean
+	onToggleCollapse: () => void
+	onAdd?: () => void
+	onOpenSettings?: () => void
+	children?: JSX.Element
 }
 
 export default function Sidebar(props: SidebarProps) {
 	return (
 		<aside
 			class="sidebar"
-			classList={{ "sidebar--collapsed": props.collapsed }}
-			style={{ width: props.collapsed ? "0px" : `${props.width}px` }}
+			classList={{ 'sidebar--collapsed': props.collapsed }}
+			style={{ width: props.collapsed ? '0px' : `${props.width}px` }}
 		>
 			<Show when={!props.collapsed}>
 				<div class="sidebar-header">
@@ -55,7 +55,7 @@ export default function Sidebar(props: SidebarProps) {
 				</div>
 			</Show>
 		</aside>
-	);
+	)
 }
 
 export function SidebarExpandButton(props: { onClick: () => void }) {
@@ -67,5 +67,5 @@ export function SidebarExpandButton(props: { onClick: () => void }) {
 		>
 			<Icon name="chevron-right" size={14} />
 		</button>
-	);
+	)
 }

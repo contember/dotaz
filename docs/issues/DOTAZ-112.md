@@ -18,6 +18,7 @@ listSessions(connectionId: string): SessionInfo[];
 ```
 
 Add `sessionId?: string` to existing adapter methods:
+
 - `executeQuery`, `executeStatements`, `cancelQuery`, `explainQuery`
 - `beginTransaction`, `commitTransaction`, `rollbackTransaction`
 - `getTransactionLog`, `clearTransactionLog`
@@ -37,6 +38,7 @@ Add `sessionId?: string` to existing adapter methods:
 ### Existing handlers — thread sessionId
 
 All handlers that currently accept `connectionId` and/or `database` also accept optional `sessionId` and pass it through:
+
 - `query.execute`, `query.explain`, `query.cancel`
 - `tx.begin`, `tx.commit`, `tx.rollback`
 - `schema.load`
@@ -69,6 +71,7 @@ All handlers that currently accept `connectionId` and/or `database` also accept 
 ### Session change notification
 
 Add backend→frontend message `"session.changed"` emitted on:
+
 - Session created
 - Session destroyed
 - Connection lost (all sessions for that connection)

@@ -14,6 +14,7 @@ Dedicovaný boční panel pro prohlížení a editaci hodnoty vybrané buňky. A
 - **Binární data** — hex view nebo image preview
 
 ### Chování
+
 - Panel se zobrazí na pravé straně gridu
 - Obsah se aktualizuje při navigaci mezi buňkami
 - Editace v panelu se propaguje zpět do gridu (pending changes)

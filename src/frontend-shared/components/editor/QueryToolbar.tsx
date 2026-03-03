@@ -1,93 +1,92 @@
-import { Show } from "solid-js";
-import { editorStore, type TxMode } from "../../stores/editor";
-import { connectionsStore } from "../../stores/connections";
-import { sessionStore } from "../../stores/session";
-import Play from "lucide-solid/icons/play";
-import ListTree from "lucide-solid/icons/list-tree";
-import AlignLeft from "lucide-solid/icons/text-align-start";
-import PlayCircle from "lucide-solid/icons/circle-play";
-import Check from "lucide-solid/icons/check";
-import RotateCcw from "lucide-solid/icons/rotate-ccw";
-import ScrollText from "lucide-solid/icons/scroll-text";
-import PinIcon from "lucide-solid/icons/pin";
-import PinOff from "lucide-solid/icons/pin-off";
-import Icon from "../common/Icon";
-import "./QueryToolbar.css";
+import Check from 'lucide-solid/icons/check'
+import PlayCircle from 'lucide-solid/icons/circle-play'
+import ListTree from 'lucide-solid/icons/list-tree'
+import PinIcon from 'lucide-solid/icons/pin'
+import PinOff from 'lucide-solid/icons/pin-off'
+import Play from 'lucide-solid/icons/play'
+import RotateCcw from 'lucide-solid/icons/rotate-ccw'
+import ScrollText from 'lucide-solid/icons/scroll-text'
+import AlignLeft from 'lucide-solid/icons/text-align-start'
+import { Show } from 'solid-js'
+import { connectionsStore } from '../../stores/connections'
+import { editorStore, type TxMode } from '../../stores/editor'
+import { sessionStore } from '../../stores/session'
+import Icon from '../common/Icon'
+import './QueryToolbar.css'
 
 interface QueryToolbarProps {
-	tabId: string;
-	connectionId: string;
-	database?: string;
-	onOpenHistory?: () => void;
-	onOpenBookmarks?: () => void;
-	onToggleTransactionLog?: () => void;
-	transactionLogOpen?: boolean;
+	tabId: string
+	connectionId: string
+	database?: string
+	onOpenHistory?: () => void
+	onOpenBookmarks?: () => void
+	onToggleTransactionLog?: () => void
+	transactionLogOpen?: boolean
 }
 
 export default function QueryToolbar(props: QueryToolbarProps) {
-	const tab = () => editorStore.getTab(props.tabId);
-	const connection = () =>
-		connectionsStore.connections.find((c) => c.id === props.connectionId);
+	const tab = () => editorStore.getTab(props.tabId)
+	const connection = () => connectionsStore.connections.find((c) => c.id === props.connectionId)
 
-	const isRunning = () => tab()?.isRunning ?? false;
-	const hasContent = () => (tab()?.content.trim().length ?? 0) > 0;
-	const duration = () => tab()?.duration ?? 0;
-	const txMode = () => tab()?.txMode ?? "auto-commit";
-	const inTransaction = () => tab()?.inTransaction ?? false;
-	const isPinned = () => sessionStore.isTabPinned(props.tabId);
-	const sessionLabel = () => sessionStore.getSessionLabelForTab(props.tabId);
+	const isRunning = () => tab()?.isRunning ?? false
+	const hasContent = () => (tab()?.content.trim().length ?? 0) > 0
+	const duration = () => tab()?.duration ?? 0
+	const txMode = () => tab()?.txMode ?? 'auto-commit'
+	const inTransaction = () => tab()?.inTransaction ?? false
+	const isPinned = () => sessionStore.isTabPinned(props.tabId)
+	const sessionLabel = () => sessionStore.getSessionLabelForTab(props.tabId)
 
 	function handleRun() {
-		editorStore.executeQuery(props.tabId);
+		editorStore.executeQuery(props.tabId)
 	}
 
 	function handleRunStatement() {
-		editorStore.executeStatement(props.tabId);
+		editorStore.executeStatement(props.tabId)
 	}
 
 	function handleCancel() {
-		editorStore.cancelQuery(props.tabId);
+		editorStore.cancelQuery(props.tabId)
 	}
 
 	function handleExplain() {
-		editorStore.explainQuery(props.tabId, false);
+		editorStore.explainQuery(props.tabId, false)
 	}
 
 	function handleExplainAnalyze() {
-		editorStore.explainQuery(props.tabId, true);
+		editorStore.explainQuery(props.tabId, true)
 	}
 
 	function handleFormat() {
-		editorStore.formatSql(props.tabId);
+		editorStore.formatSql(props.tabId)
 	}
 
 	function handleTxModeChange(mode: TxMode) {
-		editorStore.setTxMode(props.tabId, mode);
+		editorStore.setTxMode(props.tabId, mode)
 	}
 
 	function handleBeginTx() {
-		editorStore.beginTransaction(props.tabId);
+		editorStore.beginTransaction(props.tabId)
 	}
 
 	function handleCommit() {
-		editorStore.commitTransaction(props.tabId);
+		editorStore.commitTransaction(props.tabId)
 	}
 
 	function handleRollback() {
-		editorStore.rollbackTransaction(props.tabId);
+		editorStore.rollbackTransaction(props.tabId)
 	}
 
 	function handleTogglePin() {
 		if (isPinned()) {
-			sessionStore.unpinSession(props.tabId);
+			sessionStore.unpinSession(props.tabId)
 		} else {
-			sessionStore.pinSession(props.connectionId, props.tabId, props.database);
+			sessionStore.pinSession(props.connectionId, props.tabId, props.database)
 		}
 	}
 
 	function formatDuration(ms: number): string {
-		if (ms < 1000) return `${ms} ms`;
-		return `${(ms / 1000).toFixed(1)} s`;
+		if (ms < 1000) return `${ms} ms`
+		return `${(ms / 1000).toFixed(1)} s`
 	}
 
 	return (
@@ -179,7 +178,7 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 
 			{/* AI Generate */}
 			<button
-				class={`query-toolbar__btn${tab()?.aiPromptOpen ? " query-toolbar__btn--active" : ""}`}
+				class={`query-toolbar__btn${tab()?.aiPromptOpen ? ' query-toolbar__btn--active' : ''}`}
 				onClick={() => editorStore.toggleAiPrompt(props.tabId)}
 				disabled={isRunning()}
 				title="Generate SQL with AI (Ctrl+G)"
@@ -190,7 +189,7 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 			{/* Transaction Log */}
 			<Show when={props.onToggleTransactionLog}>
 				<button
-					class={`query-toolbar__btn${props.transactionLogOpen ? " query-toolbar__btn--active" : ""}`}
+					class={`query-toolbar__btn${props.transactionLogOpen ? ' query-toolbar__btn--active' : ''}`}
 					onClick={props.onToggleTransactionLog}
 					title="Transaction Log"
 				>
@@ -202,11 +201,18 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 
 			{/* Session pin/unpin */}
 			<button
-				class={`query-toolbar__btn${isPinned() ? " query-toolbar__btn--pinned" : ""}`}
+				class={`query-toolbar__btn${isPinned() ? ' query-toolbar__btn--pinned' : ''}`}
 				onClick={handleTogglePin}
-				title={isPinned() ? `Unpin session (${sessionLabel()})` : "Pin to dedicated session"}
+				title={isPinned() ? `Unpin session (${sessionLabel()})` : 'Pin to dedicated session'}
 			>
-				<Show when={isPinned()} fallback={<><PinIcon size={12} /> Pool</>}>
+				<Show
+					when={isPinned()}
+					fallback={
+						<>
+							<PinIcon size={12} /> Pool
+						</>
+					}
+				>
 					<PinOff size={12} /> {sessionLabel()}
 				</Show>
 			</button>
@@ -214,15 +220,15 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 			{/* Transaction mode toggle */}
 			<div class="query-toolbar__tx-toggle">
 				<button
-					class={`query-toolbar__tx-option${txMode() === "auto-commit" ? " query-toolbar__tx-option--active" : ""}`}
-					onClick={() => handleTxModeChange("auto-commit")}
+					class={`query-toolbar__tx-option${txMode() === 'auto-commit' ? ' query-toolbar__tx-option--active' : ''}`}
+					onClick={() => handleTxModeChange('auto-commit')}
 					title="Auto-commit mode"
 				>
 					Auto
 				</button>
 				<button
-					class={`query-toolbar__tx-option${txMode() === "manual" ? " query-toolbar__tx-option--active" : ""}`}
-					onClick={() => handleTxModeChange("manual")}
+					class={`query-toolbar__tx-option${txMode() === 'manual' ? ' query-toolbar__tx-option--active' : ''}`}
+					onClick={() => handleTxModeChange('manual')}
 					title="Manual transaction mode"
 				>
 					Manual
@@ -230,7 +236,7 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 			</div>
 
 			{/* Manual transaction controls */}
-			<Show when={txMode() === "manual"}>
+			<Show when={txMode() === 'manual'}>
 				<Show
 					when={inTransaction()}
 					fallback={
@@ -266,9 +272,9 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 			{/* Connection info */}
 			<div class="query-toolbar__connection">
 				<span class="query-toolbar__connection-name">
-					{connection()?.name ?? "\u2014"}
+					{connection()?.name ?? '\u2014'}
 					<Show when={props.database}>
-						<span style={{ color: "var(--ink-muted)" }}> / {props.database}</span>
+						<span style={{ color: 'var(--ink-muted)' }}>/ {props.database}</span>
 					</Show>
 				</span>
 			</div>
@@ -282,5 +288,5 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 				</div>
 			</Show>
 		</div>
-	);
+	)
 }

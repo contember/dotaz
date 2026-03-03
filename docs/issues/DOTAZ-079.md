@@ -9,6 +9,7 @@
 Allow editing cells directly in SELECT query results (not just in the table data view). Currently query results are read-only — editing only works when opening a table via the schema browser.
 
 ### Requirements
+
 - Query must contain PK columns for row identification
 - System detects source table from the query
 - After editing a cell, an UPDATE statement is generated
@@ -16,6 +17,7 @@ Allow editing cells directly in SELECT query results (not just in the table data
 - For JOIN queries: editing cells from an unambiguously identifiable table
 
 ### Limitations
+
 - Does not work for aggregation queries (GROUP BY, HAVING)
 - Does not work for UNION queries
 - Does not work for subqueries in SELECT

@@ -1,27 +1,27 @@
-import { For, Show } from "solid-js";
-import KeyRound from "lucide-solid/icons/key-round";
-import ArrowRight from "lucide-solid/icons/arrow-right";
-import type { ColumnInfo, ForeignKeyInfo } from "../../../shared/types/database";
+import ArrowRight from 'lucide-solid/icons/arrow-right'
+import KeyRound from 'lucide-solid/icons/key-round'
+import { For, Show } from 'solid-js'
+import type { ColumnInfo, ForeignKeyInfo } from '../../../shared/types/database'
 
 interface ColumnListProps {
-	columns: ColumnInfo[];
-	foreignKeys: ForeignKeyInfo[];
-	onFkClick: (schema: string, table: string) => void;
+	columns: ColumnInfo[]
+	foreignKeys: ForeignKeyInfo[]
+	onFkClick: (schema: string, table: string) => void
 }
 
 /** Build a map from source column name → FK info for single-column FKs. */
 function buildFkLookup(foreignKeys: ForeignKeyInfo[]): Map<string, ForeignKeyInfo> {
-	const map = new Map<string, ForeignKeyInfo>();
+	const map = new Map<string, ForeignKeyInfo>()
 	for (const fk of foreignKeys) {
 		if (fk.columns.length === 1) {
-			map.set(fk.columns[0], fk);
+			map.set(fk.columns[0], fk)
 		}
 	}
-	return map;
+	return map
 }
 
 export default function ColumnList(props: ColumnListProps) {
-	const fkLookup = () => buildFkLookup(props.foreignKeys);
+	const fkLookup = () => buildFkLookup(props.foreignKeys)
 
 	return (
 		<div class="schema-viewer__section">
@@ -40,15 +40,19 @@ export default function ColumnList(props: ColumnListProps) {
 				<tbody>
 					<For each={props.columns}>
 						{(col) => {
-							const fk = () => fkLookup().get(col.name);
+							const fk = () => fkLookup().get(col.name)
 							return (
 								<tr class="schema-viewer__row">
 									<td class="schema-viewer__td schema-viewer__td--icon">
 										<Show when={col.isPrimaryKey}>
-											<span class="schema-viewer__pk-icon" title="Primary Key"><KeyRound size={14} /></span>
+											<span class="schema-viewer__pk-icon" title="Primary Key">
+												<KeyRound size={14} />
+											</span>
 										</Show>
 										<Show when={fk()}>
-											<span class="schema-viewer__fk-icon" title="Foreign Key"><ArrowRight size={14} /></span>
+											<span class="schema-viewer__fk-icon" title="Foreign Key">
+												<ArrowRight size={14} />
+											</span>
 										</Show>
 									</td>
 									<td class="schema-viewer__td schema-viewer__td--name">
@@ -78,9 +82,7 @@ export default function ColumnList(props: ColumnListProps) {
 											{(fkInfo) => (
 												<button
 													class="schema-viewer__fk-link"
-													onClick={() =>
-														props.onFkClick(fkInfo().referencedSchema, fkInfo().referencedTable)
-													}
+													onClick={() => props.onFkClick(fkInfo().referencedSchema, fkInfo().referencedTable)}
 													title={`${fkInfo().referencedTable}.${fkInfo().referencedColumns[0]}`}
 												>
 													{fkInfo().referencedTable}.{fkInfo().referencedColumns[0]}
@@ -89,11 +91,11 @@ export default function ColumnList(props: ColumnListProps) {
 										</Show>
 									</td>
 								</tr>
-							);
+							)
 						}}
 					</For>
 				</tbody>
 			</table>
 		</div>
-	);
+	)
 }

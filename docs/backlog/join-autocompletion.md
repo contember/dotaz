@@ -8,12 +8,14 @@
 
 Při psaní JOIN klauzule v SQL editoru automaticky nabídnout celou JOIN podmínku na základě foreign key vztahů. Například:
 
-Uživatel napíše `SELECT * FROM orders JOIN ` a autocompletion nabídne:
+Uživatel napíše `SELECT * FROM orders JOIN` a autocompletion nabídne:
+
 ```sql
 customers ON orders.customer_id = customers.id
 ```
 
 ### Chování
+
 - Po napsání `JOIN` nabídnout tabulky, které mají FK vztah s tabulkami v FROM
 - Po výběru tabulky automaticky doplnit ON klauzuli dle FK
 - Pokud existuje více FK mezi tabulkami, nabídnout výběr

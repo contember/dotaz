@@ -9,6 +9,7 @@
 In the RowDetailDialog, display records from tables that reference the current row via foreign keys (FR-FK-03). Currently only forward FK navigation is supported (this row → referenced row). The reverse direction (which rows in other tables reference this row) is missing.
 
 Implementation:
+
 1. Add a `getReferencingForeignKeys(schema, table)` method to DatabaseDriver that finds all FKs pointing TO this table
 2. Add corresponding RPC handler
 3. In RowDetailDialog, show a "Referenced By" section listing child tables with counts

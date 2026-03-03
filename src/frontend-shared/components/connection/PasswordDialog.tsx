@@ -1,24 +1,24 @@
-import { createSignal, Show } from "solid-js";
-import { connectionsStore } from "../../stores/connections";
-import Dialog from "../common/Dialog";
+import { createSignal, Show } from 'solid-js'
+import { connectionsStore } from '../../stores/connections'
+import Dialog from '../common/Dialog'
 
 export default function PasswordDialog() {
-	const [password, setPassword] = createSignal("");
+	const [password, setPassword] = createSignal('')
 
 	function handleSubmit() {
-		connectionsStore.resolvePasswordPrompt(password());
-		setPassword("");
+		connectionsStore.resolvePasswordPrompt(password())
+		setPassword('')
 	}
 
 	function handleCancel() {
-		connectionsStore.resolvePasswordPrompt(null);
-		setPassword("");
+		connectionsStore.resolvePasswordPrompt(null)
+		setPassword('')
 	}
 
 	function handleKeyDown(e: KeyboardEvent) {
-		if (e.key === "Enter") {
-			e.preventDefault();
-			handleSubmit();
+		if (e.key === 'Enter') {
+			e.preventDefault()
+			handleSubmit()
 		}
 	}
 
@@ -64,5 +64,5 @@ export default function PasswordDialog() {
 				</Dialog>
 			)}
 		</Show>
-	);
+	)
 }

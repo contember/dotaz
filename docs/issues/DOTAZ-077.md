@@ -9,6 +9,7 @@
 Enable multiple cursors support in the CodeMirror editor. CodeMirror 6 supports this natively — just enable the appropriate extension.
 
 ### Operations
+
 - **Alt+Click** — add another cursor
 - **Ctrl+D** — select next occurrence of current word
 - **Alt+Shift+I** — cursor at end of each selected line

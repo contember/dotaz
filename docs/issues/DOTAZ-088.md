@@ -9,6 +9,7 @@
 Add a search/filter input above the connection tree sidebar. Typing filters visible tables, views, and other objects by name — essential for databases with dozens or hundreds of tables.
 
 ### Behavior
+
 - Search input always visible at the top of the sidebar connection tree
 - Filters as you type (debounced, ~150ms)
 - Matches against table/view names (case-insensitive, substring match)

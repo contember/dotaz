@@ -19,7 +19,11 @@
 		"seed:sqlite": "bun scripts/seed/seed-sqlite.ts",
 		"seed:postgres": "bun scripts/seed/seed-postgres.ts",
 		"dev:demo": "vite --mode demo",
-		"build:demo": "bun run seed:sqlite && vite build --mode demo"
+		"build:demo": "bun run seed:sqlite && vite build --mode demo",
+		"lint": "biome lint .",
+		"lint:fix": "biome lint . --write",
+		"format": "dprint fmt",
+		"format:check": "dprint check"
 	},
 	"dependencies": {
 		"@codemirror/lang-sql": "^6.8.0",
@@ -33,11 +37,13 @@
 		"simple-icons": "^16.10.0"
 	},
 	"devDependencies": {
+		"@biomejs/biome": "^2.3.13",
 		"@faker-js/faker": "^10.3.0",
 		"@types/bun": "latest",
 		"concurrently": "^9.1.0",
+		"dprint": "^0.51.1",
 		"solid-js": "^1.9.3",
-		"typescript": "^5.7.2",
+		"typescript": "^5.9.3",
 		"vite": "^6.0.3",
 		"vite-plugin-solid": "^2.11.0"
 	}

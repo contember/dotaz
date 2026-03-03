@@ -9,10 +9,12 @@
 Color scales on numeric columns in the data grid for quick visual analysis of data distribution. User enables heatmap per column or for the entire table.
 
 ### Modes
+
 - **Sequential** — light to dark (for values from min to max)
 - **Diverging** — blue through white to red (for values with neutral center)
 
 ### Behavior
+
 - Cell background color based on relative value within the column
 - Min/max computed from currently displayed data
 - Toggle in column header context menu

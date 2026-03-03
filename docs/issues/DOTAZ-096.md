@@ -20,6 +20,7 @@ iterate(
 ```
 
 **PostgreSQL implementation**: Server-side cursor in a REPEATABLE READ read-only transaction. Reserves its **own dedicated connection** from the pool via `db.reserve()` (independent of the driver's main transaction state). Cursor lifecycle:
+
 ```
 [on own reserved connection]
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY
@@ -49,6 +50,7 @@ importBatch(
 ```
 
 Receives pre-parsed row objects. Internally builds multi-row VALUES INSERT:
+
 ```sql
 INSERT INTO <table> (<col1>, <col2>) VALUES ($1,$2), ($3,$4), ...
 ```

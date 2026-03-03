@@ -14,18 +14,19 @@ Global registry in `src/backend-web/server.ts`:
 
 ```typescript
 interface StreamToken {
-  session: Session;
-  connectionId: string;
-  database?: string;
-  params: ExportStreamParams | ImportStreamParams;
-  type: "export" | "import";
-  createdAt: number;
+	session: Session
+	connectionId: string
+	database?: string
+	params: ExportStreamParams | ImportStreamParams
+	type: 'export' | 'import'
+	createdAt: number
 }
 
-const streamTokens = new Map<string, StreamToken>();
+const streamTokens = new Map<string, StreamToken>()
 ```
 
 **Lifecycle**:
+
 - Created via WS RPC (`stream.createExportToken` / `stream.createImportToken`) — web-server-specific handlers added directly in `server.ts` WS message handler (not in shared BackendAdapter)
 - One-time use: consumed and deleted on first HTTP request
 - Auto-expire after 5 minutes (periodic `setInterval` cleanup)
@@ -38,6 +39,7 @@ const streamTokens = new Map<string, StreamToken>();
 ### HTTP Endpoints
 
 **`GET /api/stream/export/:token`**:
+
 - Look up token → validate → get driver from session's ConnectionManager
 - `exportToStream(driver, params, httpResponseWriter, signal)`
 - Headers: `Content-Type` (csv: `text/csv`, json: `application/json`, etc.), `Content-Disposition: attachment; filename="..."`
@@ -45,6 +47,7 @@ const streamTokens = new Map<string, StreamToken>();
 - On error mid-stream: close response, client detects broken stream
 
 **`POST /api/stream/import/:token`**:
+
 - Look up token → validate → get driver from session's ConnectionManager
 - `importFromStream(driver, request.body, params, signal, onProgress)`
 - `onProgress` sends WS messages to the session's websocket (progress reporting via parallel channel)
@@ -53,12 +56,14 @@ const streamTokens = new Map<string, StreamToken>();
 ### WS Token Handlers
 
 Intercepted in `server.ts` message handler before passing to shared handlers:
+
 - `stream.createExportToken` → generate UUID token, store in registry, return `{ token }`
 - `stream.createImportToken` → generate UUID token, store in registry, return `{ token }`
 
 ### Frontend: Web Export (StreamSaver.js pattern)
 
 After user configures export in ExportDialog:
+
 1. `rpc.stream.createExportToken(params)` via WS → `{ token }`
 2. Create writable file stream via Service Worker (StreamSaver.js pattern):
    - Register SW that intercepts fetch to a special URL
@@ -69,6 +74,7 @@ After user configures export in ExportDialog:
 ### Frontend: Web Import
 
 After user configures import in ImportDialog:
+
 1. `rpc.stream.createImportToken(params)` via WS → `{ token }`
 2. `fetch('/api/stream/import/' + token, { method: 'POST', body: file })` where `file` is the File object from `<input type="file">`
 3. Await response JSON `{ rowCount }`

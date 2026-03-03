@@ -12,23 +12,24 @@ Replace the current `exportToFile()` (LIMIT/OFFSET batching) with `exportToStrea
 
 ```typescript
 async function exportToStream(
-  driver: DatabaseDriver,
-  params: ExportParams,
-  writer: { write(chunk: string | Uint8Array): void; end(): Promise<void> },
-  signal?: AbortSignal,
-  onProgress?: (rowCount: number) => void,
+	driver: DatabaseDriver,
+	params: ExportParams,
+	writer: { write(chunk: string | Uint8Array): void; end(): Promise<void> },
+	signal?: AbortSignal,
+	onProgress?: (rowCount: number) => void,
 ): Promise<{ rowCount: number }>
 ```
 
 Core loop:
+
 ```typescript
-const selectSql = buildExportSelectQuery(params, driver); // no LIMIT/OFFSET
-const iterator = driver.iterate(selectSql, queryParams, BATCH_SIZE, signal);
+const selectSql = buildExportSelectQuery(params, driver) // no LIMIT/OFFSET
+const iterator = driver.iterate(selectSql, queryParams, BATCH_SIZE, signal)
 for await (const batch of iterator) {
-  writer.write(encode(formatter.formatBatch(batch, isFirst)));
-  totalRows += batch.length;
-  onProgress?.(totalRows);
-  isFirst = false;
+	writer.write(encode(formatter.formatBatch(batch, isFirst)))
+	totalRows += batch.length
+	onProgress?.(totalRows)
+	isFirst = false
 }
 ```
 

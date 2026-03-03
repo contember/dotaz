@@ -36,8 +36,8 @@ Add a shared `ImportSource` type:
 
 ```typescript
 type ImportSource =
-    | { fileContent: string; filePath?: undefined }
-    | { filePath: string; fileContent?: undefined };
+	| { fileContent: string; filePath?: undefined }
+	| { filePath: string; fileContent?: undefined }
 ```
 
 Use intersection with this type in `ImportPreviewRequest` and `ImportOptions`.

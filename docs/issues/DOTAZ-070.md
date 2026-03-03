@@ -14,6 +14,7 @@ Extend existing export (CSV, JSON, SQL INSERT) with additional useful formats:
 - **XML** — structured XML output
 
 ### Priority
+
 1. Markdown — simple implementation, high usefulness
 2. SQL UPDATE — logical complement to SQL INSERT
 3. HTML — simple

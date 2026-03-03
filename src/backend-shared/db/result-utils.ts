@@ -4,8 +4,8 @@
  * but these aren't declared in the TypeScript types.
  */
 export function getAffectedRowCount(result: object): number {
-	const r = result as Record<string, unknown>;
-	if (typeof r.affectedRows === "number") return r.affectedRows;
-	if (typeof r.count === "number") return r.count;
-	return 0;
+	const r = result as Record<string, unknown>
+	if (typeof r.affectedRows === 'number') return r.affectedRows
+	if (typeof r.count === 'number') return r.count
+	return 0
 }

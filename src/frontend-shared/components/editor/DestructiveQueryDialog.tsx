@@ -1,17 +1,17 @@
-import { createSignal } from "solid-js";
-import { For } from "solid-js";
-import Dialog from "../common/Dialog";
-import "./DestructiveQueryDialog.css";
+import { createSignal } from 'solid-js'
+import { For } from 'solid-js'
+import Dialog from '../common/Dialog'
+import './DestructiveQueryDialog.css'
 
 interface DestructiveQueryDialogProps {
-	open: boolean;
-	statements: string[];
-	onConfirm: (suppressForSession: boolean) => void;
-	onCancel: () => void;
+	open: boolean
+	statements: string[]
+	onConfirm: (suppressForSession: boolean) => void
+	onCancel: () => void
 }
 
 export default function DestructiveQueryDialog(props: DestructiveQueryDialogProps) {
-	const [suppress, setSuppress] = createSignal(false);
+	const [suppress, setSuppress] = createSignal(false)
 
 	return (
 		<Dialog
@@ -21,14 +21,13 @@ export default function DestructiveQueryDialog(props: DestructiveQueryDialogProp
 		>
 			<div class="destructive-dialog">
 				<p class="destructive-dialog__warning">
-					The following statement{props.statements.length > 1 ? "s" : ""} will affect <strong>all rows</strong> in the table because {props.statements.length > 1 ? "they have" : "it has"} no WHERE clause:
+					The following statement{props.statements.length > 1 ? 's' : ''} will affect <strong>all rows</strong> in the table because{' '}
+					{props.statements.length > 1 ? 'they have' : 'it has'} no WHERE clause:
 				</p>
 
 				<div class="destructive-dialog__statements">
 					<For each={props.statements}>
-						{(stmt) => (
-							<pre class="destructive-dialog__sql">{stmt}</pre>
-						)}
+						{(stmt) => <pre class="destructive-dialog__sql">{stmt}</pre>}
 					</For>
 				</div>
 
@@ -57,5 +56,5 @@ export default function DestructiveQueryDialog(props: DestructiveQueryDialogProp
 				</div>
 			</div>
 		</Dialog>
-	);
+	)
 }

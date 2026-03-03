@@ -11,22 +11,26 @@ Persist and restore the user's workspace across application restarts. Currently 
 ### What to Persist
 
 **Tabs (critical)**
+
 - List of open tabs with their type (table, query, schema)
 - Tab order and which tab is active
 - Per-tab metadata: connection ID, schema, table/database
 - Dirty flag awareness — warn or auto-save unsaved changes
 
 **SQL Editor State (critical)**
+
 - Editor content per query tab (the SQL text)
 - Cursor position and selection
 - Transaction mode setting (auto-commit vs manual) per tab
 
 **Grid State (nice-to-have, lower priority)**
+
 - Current page / scroll position per table tab
 - Active sort and filter (if not already bound to a saved view)
 - Column widths and order
 
 **Layout (nice-to-have)**
+
 - Sidebar width and collapsed state
 - Active connection in sidebar
 

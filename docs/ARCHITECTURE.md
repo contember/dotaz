@@ -5,6 +5,7 @@
 Dotaz is a desktop database client built on **Electrobun** (Bun backend + system webview) with a **Solid.js** frontend. It supports PostgreSQL and SQLite, focused on DML operations (viewing, editing, querying data) — no DDL/schema management.
 
 Runs in three modes:
+
 - **Desktop** (Electrobun) — native window with RPC transport, app state in backend SQLite
 - **Web** — standalone Bun HTTP/WebSocket server, app state in browser IndexedDB
 - **Demo** — browser-only with WASM SQLite, no server needed
@@ -13,16 +14,16 @@ Runs in three modes:
 
 ## Technology Decisions
 
-| Area | Technology | Rationale |
-|---|---|---|
-| Runtime | Bun | Native SQLite support, built-in SQL driver, fast startup |
-| Desktop framework | Electrobun | Bun backend + system webview, low memory footprint |
-| Frontend | Solid.js + Vite | Fine-grained reactivity, fast HMR |
-| DB driver | `Bun.SQL` (`import { SQL } from "bun"`) | Unified API for PostgreSQL and SQLite, tagged template literals, connection pooling, transactions, cancellation. No external dependencies. |
-| App state storage | `bun:sqlite` | Local SQLite for connections, history, settings, saved views. Stored in `Utils.paths.userData/dotaz.db` |
-| Data grid | `@tanstack/solid-virtual` | Virtual scrolling for large datasets, Solid.js integration |
-| SQL editor | CodeMirror 6 + `@codemirror/lang-sql` | Modular, extensible, schema-aware autocomplete |
-| Communication | Pluggable transport | Electrobun RPC (desktop), WebSocket (web), inline calls (demo) |
+| Area              | Technology                              | Rationale                                                                                                                                  |
+| ----------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Runtime           | Bun                                     | Native SQLite support, built-in SQL driver, fast startup                                                                                   |
+| Desktop framework | Electrobun                              | Bun backend + system webview, low memory footprint                                                                                         |
+| Frontend          | Solid.js + Vite                         | Fine-grained reactivity, fast HMR                                                                                                          |
+| DB driver         | `Bun.SQL` (`import { SQL } from "bun"`) | Unified API for PostgreSQL and SQLite, tagged template literals, connection pooling, transactions, cancellation. No external dependencies. |
+| App state storage | `bun:sqlite`                            | Local SQLite for connections, history, settings, saved views. Stored in `Utils.paths.userData/dotaz.db`                                    |
+| Data grid         | `@tanstack/solid-virtual`               | Virtual scrolling for large datasets, Solid.js integration                                                                                 |
+| SQL editor        | CodeMirror 6 + `@codemirror/lang-sql`   | Modular, extensible, schema-aware autocomplete                                                                                             |
+| Communication     | Pluggable transport                     | Electrobun RPC (desktop), WebSocket (web), inline calls (demo)                                                                             |
 
 ---
 
@@ -184,9 +185,9 @@ Entry points register concrete implementations via `setTransport()` / `setStorag
 
 ```typescript
 // frontend-desktop/main.tsx
-setTransport(createElectrobunTransport());
-setStorage(new RpcAppStateStorage());
-render(() => <App />, document.getElementById("app")!);
+setTransport(createElectrobunTransport())
+setStorage(new RpcAppStateStorage())
+render(() => <App />, document.getElementById('app')!)
 ```
 
 ### Dependency Graph (no cycles)
@@ -234,81 +235,91 @@ RPC schema is defined in `src/shared/types/rpc.ts` and shared between backend an
 ### Main RPC Methods
 
 #### Connection Management
-| Method | Direction | Description |
-|---|---|---|
-| `connections.list` | FE→BE | List of saved connections |
-| `connections.create` | FE→BE | Create new connection |
-| `connections.update` | FE→BE | Edit connection |
-| `connections.delete` | FE→BE | Delete connection |
-| `connections.test` | FE→BE | Test connection |
-| `connections.connect` | FE→BE | Connect to DB |
-| `connections.disconnect` | FE→BE | Disconnect from DB |
-| `connections.statusChanged` | BE→FE | Notification of status change |
+
+| Method                      | Direction | Description                   |
+| --------------------------- | --------- | ----------------------------- |
+| `connections.list`          | FE→BE     | List of saved connections     |
+| `connections.create`        | FE→BE     | Create new connection         |
+| `connections.update`        | FE→BE     | Edit connection               |
+| `connections.delete`        | FE→BE     | Delete connection             |
+| `connections.test`          | FE→BE     | Test connection               |
+| `connections.connect`       | FE→BE     | Connect to DB                 |
+| `connections.disconnect`    | FE→BE     | Disconnect from DB            |
+| `connections.statusChanged` | BE→FE     | Notification of status change |
 
 #### Schema
-| Method | Direction | Description |
-|---|---|---|
-| `schema.getSchemas` | FE→BE | List of schemas |
-| `schema.getTables` | FE→BE | List of tables in schema |
-| `schema.getColumns` | FE→BE | Table columns (types, constraints) |
-| `schema.getIndexes` | FE→BE | Table indexes |
-| `schema.getForeignKeys` | FE→BE | FK constraints |
+
+| Method                  | Direction | Description                        |
+| ----------------------- | --------- | ---------------------------------- |
+| `schema.getSchemas`     | FE→BE     | List of schemas                    |
+| `schema.getTables`      | FE→BE     | List of tables in schema           |
+| `schema.getColumns`     | FE→BE     | Table columns (types, constraints) |
+| `schema.getIndexes`     | FE→BE     | Table indexes                      |
+| `schema.getForeignKeys` | FE→BE     | FK constraints                     |
 
 #### Data Grid
-| Method | Direction | Description |
-|---|---|---|
-| `data.getTableData` | FE→BE | Table data with pagination, sort, filter |
-| `data.getRowCount` | FE→BE | Total row count |
-| `data.getColumnStats` | FE→BE | Column statistics (for filtering) |
+
+| Method                | Direction | Description                              |
+| --------------------- | --------- | ---------------------------------------- |
+| `data.getTableData`   | FE→BE     | Table data with pagination, sort, filter |
+| `data.getRowCount`    | FE→BE     | Total row count                          |
+| `data.getColumnStats` | FE→BE     | Column statistics (for filtering)        |
 
 #### Data Editing
-| Method | Direction | Description |
-|---|---|---|
-| `data.applyChanges` | FE→BE | Apply pending changes (INSERT/UPDATE/DELETE) |
-| `data.generateSql` | FE→BE | Generate SQL for pending changes (preview) |
+
+| Method              | Direction | Description                                  |
+| ------------------- | --------- | -------------------------------------------- |
+| `data.applyChanges` | FE→BE     | Apply pending changes (INSERT/UPDATE/DELETE) |
+| `data.generateSql`  | FE→BE     | Generate SQL for pending changes (preview)   |
 
 #### Query Execution
-| Method | Direction | Description |
-|---|---|---|
-| `query.execute` | FE→BE | Execute SQL query |
-| `query.cancel` | FE→BE | Cancel running query |
-| `query.format` | FE→BE | Format SQL |
+
+| Method          | Direction | Description          |
+| --------------- | --------- | -------------------- |
+| `query.execute` | FE→BE     | Execute SQL query    |
+| `query.cancel`  | FE→BE     | Cancel running query |
+| `query.format`  | FE→BE     | Format SQL           |
 
 #### Transactions
-| Method | Direction | Description |
-|---|---|---|
-| `tx.begin` | FE→BE | Begin transaction |
-| `tx.commit` | FE→BE | Commit transaction |
-| `tx.rollback` | FE→BE | Rollback transaction |
-| `tx.status` | FE→BE | Transaction status |
+
+| Method        | Direction | Description          |
+| ------------- | --------- | -------------------- |
+| `tx.begin`    | FE→BE     | Begin transaction    |
+| `tx.commit`   | FE→BE     | Commit transaction   |
+| `tx.rollback` | FE→BE     | Rollback transaction |
+| `tx.status`   | FE→BE     | Transaction status   |
 
 #### Export
-| Method | Direction | Description |
-|---|---|---|
-| `export.exportData` | FE→BE | Export data to file |
-| `export.preview` | FE→BE | Export preview (first N rows) |
+
+| Method              | Direction | Description                   |
+| ------------------- | --------- | ----------------------------- |
+| `export.exportData` | FE→BE     | Export data to file           |
+| `export.preview`    | FE→BE     | Export preview (first N rows) |
 
 #### History
-| Method | Direction | Description |
-|---|---|---|
-| `history.list` | FE→BE | List of query history |
-| `history.clear` | FE→BE | Clear history |
+
+| Method          | Direction | Description           |
+| --------------- | --------- | --------------------- |
+| `history.list`  | FE→BE     | List of query history |
+| `history.clear` | FE→BE     | Clear history         |
 
 #### Saved Views
-| Method | Direction | Description |
-|---|---|---|
-| `views.list` | FE→BE | List of saved views for table |
-| `views.save` | FE→BE | Save view |
-| `views.update` | FE→BE | Edit view |
-| `views.delete` | FE→BE | Delete view |
+
+| Method         | Direction | Description                   |
+| -------------- | --------- | ----------------------------- |
+| `views.list`   | FE→BE     | List of saved views for table |
+| `views.save`   | FE→BE     | Save view                     |
+| `views.update` | FE→BE     | Edit view                     |
+| `views.delete` | FE→BE     | Delete view                   |
 
 #### System
-| Method | Direction | Description |
-|---|---|---|
-| `system.showOpenDialog` | FE→BE | Open native file picker dialog |
-| `system.showSaveDialog` | FE→BE | Open native save dialog |
-| `settings.get` | FE→BE | Load settings |
-| `settings.set` | FE→BE | Save settings |
+
+| Method                  | Direction | Description                    |
+| ----------------------- | --------- | ------------------------------ |
+| `system.showOpenDialog` | FE→BE     | Open native file picker dialog |
+| `system.showSaveDialog` | FE→BE     | Open native save dialog        |
+| `settings.get`          | FE→BE     | Load settings                  |
+| `settings.set`          | FE→BE     | Save settings                  |
 
 ---
 
@@ -318,32 +329,32 @@ Abstraction for database operations. Each driver implements the same interface.
 
 ```typescript
 interface DatabaseDriver {
-  // Lifecycle
-  connect(config: ConnectionConfig): Promise<void>;
-  disconnect(): Promise<void>;
-  isConnected(): boolean;
+	// Lifecycle
+	connect(config: ConnectionConfig): Promise<void>
+	disconnect(): Promise<void>
+	isConnected(): boolean
 
-  // Query execution
-  execute(sql: string, params?: unknown[]): Promise<QueryResult>;
-  cancel(): Promise<void>;
+	// Query execution
+	execute(sql: string, params?: unknown[]): Promise<QueryResult>
+	cancel(): Promise<void>
 
-  // Schema introspection
-  getSchemas(): Promise<SchemaInfo[]>;
-  getTables(schema: string): Promise<TableInfo[]>;
-  getColumns(schema: string, table: string): Promise<ColumnInfo[]>;
-  getIndexes(schema: string, table: string): Promise<IndexInfo[]>;
-  getForeignKeys(schema: string, table: string): Promise<ForeignKeyInfo[]>;
-  getPrimaryKey(schema: string, table: string): Promise<string[]>;
+	// Schema introspection
+	getSchemas(): Promise<SchemaInfo[]>
+	getTables(schema: string): Promise<TableInfo[]>
+	getColumns(schema: string, table: string): Promise<ColumnInfo[]>
+	getIndexes(schema: string, table: string): Promise<IndexInfo[]>
+	getForeignKeys(schema: string, table: string): Promise<ForeignKeyInfo[]>
+	getPrimaryKey(schema: string, table: string): Promise<string[]>
 
-  // Transactions
-  beginTransaction(): Promise<void>;
-  commit(): Promise<void>;
-  rollback(): Promise<void>;
-  inTransaction(): boolean;
+	// Transactions
+	beginTransaction(): Promise<void>
+	commit(): Promise<void>
+	rollback(): Promise<void>
+	inTransaction(): boolean
 
-  // Metadata
-  getDriverType(): "postgresql" | "sqlite";
-  quoteIdentifier(name: string): string;
+	// Metadata
+	getDriverType(): 'postgresql' | 'sqlite'
+	quoteIdentifier(name: string): string
 }
 ```
 
@@ -352,13 +363,14 @@ interface DatabaseDriver {
 Uses `Bun.SQL` with tagged template literals:
 
 ```typescript
-import { SQL } from "bun";
+import { SQL } from 'bun'
 
-const db = new SQL({ url: connectionString });
-const results = await db`SELECT * FROM ${SQL.id(table)} LIMIT ${limit}`;
+const db = new SQL({ url: connectionString })
+const results = await db`SELECT * FROM ${SQL.id(table)} LIMIT ${limit}`
 ```
 
 Properties:
+
 - Connection pooling (built-in in Bun.SQL)
 - Query cancellation via `AbortController`
 - Schema introspection via `information_schema` and `pg_catalog`
@@ -369,13 +381,14 @@ Properties:
 Uses `Bun.SQL` with unified API:
 
 ```typescript
-import { SQL } from "bun";
+import { SQL } from 'bun'
 
-const db = new SQL({ url: `sqlite:${filePath}` });
-const results = await db`SELECT * FROM ${SQL.id(table)} LIMIT ${limit}`;
+const db = new SQL({ url: `sqlite:${filePath}` })
+const results = await db`SELECT * FROM ${SQL.id(table)} LIMIT ${limit}`
 ```
 
 Properties:
+
 - Direct file access
 - Schema introspection via `sqlite_master` and `PRAGMA` commands
 - Simple transaction model
@@ -448,13 +461,13 @@ Application state is managed via Solid.js stores with `createStore` / `createSig
 
 ### Stores
 
-| Store | Responsibility |
-|---|---|
-| `connections` | List of connections, connection state, active connection |
-| `tabs` | Open tabs, active tab, tab metadata |
-| `grid` | Grid data: rows, columns, pagination, sort, filter, selection, pending changes |
-| `editor` | SQL console: editor content, results, tx state, running state |
-| `ui` | UI state: sidebar width, dialogs, toasts, command palette |
+| Store         | Responsibility                                                                 |
+| ------------- | ------------------------------------------------------------------------------ |
+| `connections` | List of connections, connection state, active connection                       |
+| `tabs`        | Open tabs, active tab, tab metadata                                            |
+| `grid`        | Grid data: rows, columns, pagination, sort, filter, selection, pending changes |
+| `editor`      | SQL console: editor content, results, tx state, running state                  |
+| `ui`          | UI state: sidebar width, dialogs, toasts, command palette                      |
 
 ### Reactive Flow
 
@@ -476,15 +489,15 @@ User action → Store update → Automatic re-render (Solid.js fine-grained reac
 
 ## Implementation Phases
 
-| Phase | Name | Issues | Description |
-|---|---|---|---|
-| 0 | Project Setup | DOTAZ-001 – 003 | Project initialization, shared types, app shell |
-| 1 | Foundation | DOTAZ-004 – 011 | App DB, drivers, connection manager, RPC, layout |
-| 2 | Connection Management | DOTAZ-012 – 016 | Connection UI (dialog, tree, context menu) |
-| 3 | Data Grid | DOTAZ-017 – 024 | Data grid with virtual scrolling, filters, pagination |
-| 4 | SQL Editor | DOTAZ-025 – 031 | Query executor, CodeMirror editor, autocomplete |
-| 5 | Data Editing | DOTAZ-032 – 035 | Inline editing, row detail, pending changes |
-| 6 | Advanced Features | DOTAZ-036 – 043 | Saved views, FK navigation, export, history, schema |
-| 7 | Polish | DOTAZ-044 – 053 | Command palette, shortcuts, error handling, UI polish |
+| Phase | Name                  | Issues          | Description                                           |
+| ----- | --------------------- | --------------- | ----------------------------------------------------- |
+| 0     | Project Setup         | DOTAZ-001 – 003 | Project initialization, shared types, app shell       |
+| 1     | Foundation            | DOTAZ-004 – 011 | App DB, drivers, connection manager, RPC, layout      |
+| 2     | Connection Management | DOTAZ-012 – 016 | Connection UI (dialog, tree, context menu)            |
+| 3     | Data Grid             | DOTAZ-017 – 024 | Data grid with virtual scrolling, filters, pagination |
+| 4     | SQL Editor            | DOTAZ-025 – 031 | Query executor, CodeMirror editor, autocomplete       |
+| 5     | Data Editing          | DOTAZ-032 – 035 | Inline editing, row detail, pending changes           |
+| 6     | Advanced Features     | DOTAZ-036 – 043 | Saved views, FK navigation, export, history, schema   |
+| 7     | Polish                | DOTAZ-044 – 053 | Command palette, shortcuts, error handling, UI polish |
 
 The dependency graph is acyclic. Each phase builds on the previous ones.

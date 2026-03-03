@@ -12,37 +12,38 @@ Replace the current in-memory `importData()` (parses entire file, then batches I
 
 ```typescript
 async function importFromStream(
-  driver: DatabaseDriver,
-  stream: ReadableStream<Uint8Array>,
-  params: {
-    schema: string;
-    table: string;
-    format: ImportFormat;
-    delimiter?: CsvDelimiter;
-    hasHeader?: boolean;
-    mappings: ColumnMapping[];
-    batchSize?: number;
-  },
-  signal?: AbortSignal,
-  onProgress?: (rowsInserted: number) => void,
+	driver: DatabaseDriver,
+	stream: ReadableStream<Uint8Array>,
+	params: {
+		schema: string
+		table: string
+		format: ImportFormat
+		delimiter?: CsvDelimiter
+		hasHeader?: boolean
+		mappings: ColumnMapping[]
+		batchSize?: number
+	},
+	signal?: AbortSignal,
+	onProgress?: (rowsInserted: number) => void,
 ): Promise<ImportResult>
 ```
 
 Core loop:
+
 ```typescript
-await driver.beginTransaction();
+await driver.beginTransaction()
 try {
-  for await (const { rows } of parseCsvStream(stream, csvOptions)) {
-    if (signal?.aborted) throw new Error("Import cancelled");
-    const mappedRows = rows.map(row => mapRow(row, activeMappings));
-    await driver.importBatch(qualifiedTable, columns, mappedRows);
-    totalInserted += rows.length;
-    onProgress?.(totalInserted);
-  }
-  await driver.commit();
+	for await (const { rows } of parseCsvStream(stream, csvOptions)) {
+		if (signal?.aborted) throw new Error('Import cancelled')
+		const mappedRows = rows.map(row => mapRow(row, activeMappings))
+		await driver.importBatch(qualifiedTable, columns, mappedRows)
+		totalInserted += rows.length
+		onProgress?.(totalInserted)
+	}
+	await driver.commit()
 } catch (err) {
-  await driver.rollback();
-  throw err;
+	await driver.rollback()
+	throw err
 }
 ```
 
@@ -53,6 +54,7 @@ Always full rollback. Single transaction, all-or-nothing. Parse errors (from CSV
 ### Preview
 
 New `importPreviewFromStream()`:
+
 - Takes a `ReadableStream` (or file path for desktop)
 - Uses `parseCsvStream()` with `maxRows: 20` — stops reading early
 - For desktop: `Bun.file(path).stream()`
@@ -63,6 +65,7 @@ New `importPreviewFromStream()`:
 ### RPC contract changes
 
 `src/shared/types/import.ts`:
+
 - `fileContent` → optional (was required)
 - Add `filePath?: string` to `ImportPreviewRequest` and `ImportOptions`
 - `ImportPreviewResult.totalRows` → `number | undefined`

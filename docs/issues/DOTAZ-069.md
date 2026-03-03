@@ -14,6 +14,7 @@ Dedicated side panel for viewing and editing the value of the selected cell. Aut
 - **Binary data** — hex view or image preview
 
 ### Behavior
+
 - Panel appears on the right side of the grid
 - Content updates when navigating between cells
 - Edits in the panel propagate back to the grid (pending changes)

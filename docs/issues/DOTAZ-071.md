@@ -9,17 +9,20 @@
 Compare data between two tables or two query results. Display differences side-by-side with color highlighting.
 
 ### Use cases
+
 - Compare same table on two different databases (staging vs. production)
 - Compare two tables in same database
 - Compare two query results
 
 ### Display
+
 - Side-by-side grid with color-highlighted differences
 - Rows only on left (red), only on right (green), differing values (yellow)
 - Column mapping (automatic by name, manual adjustment)
 - Statistics: count of matching, added, removed, changed rows
 
 ### Matching
+
 - Match rows by PK or user-selected key columns
 - Tolerance parameter: how many columns may differ
 

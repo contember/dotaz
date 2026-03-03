@@ -1,24 +1,24 @@
-import type { CsvDelimiter } from "../../shared/types/import";
+import type { CsvDelimiter } from '../../shared/types/import'
 
 export interface CsvStreamOptions {
-	delimiter: CsvDelimiter;
-	hasHeader: boolean;
-	batchSize: number;
+	delimiter: CsvDelimiter
+	hasHeader: boolean
+	batchSize: number
 	/** Stop after N data rows (for preview). Does not consume rest of stream. */
-	maxRows?: number;
+	maxRows?: number
 	/** Maximum buffer size in bytes before rejecting input. Defaults to MAX_BUFFER_SIZE (64 MB). */
-	maxBufferSize?: number;
+	maxBufferSize?: number
 }
 
 export interface CsvBatch {
-	columns: string[];
-	rows: Record<string, unknown>[];
+	columns: string[]
+	rows: Record<string, unknown>[]
 }
 
 /** 64 MB — maximum buffer size before rejecting input as malformed. */
-export const MAX_BUFFER_SIZE = 64 * 1024 * 1024;
+export const MAX_BUFFER_SIZE = 64 * 1024 * 1024
 
-const enum RowAction {
+enum RowAction {
 	Continue,
 	Yield,
 	Stop,
@@ -33,20 +33,20 @@ export async function* parseCsvStream(
 	stream: ReadableStream<Uint8Array>,
 	options: CsvStreamOptions,
 ): AsyncGenerator<CsvBatch> {
-	const { delimiter, hasHeader, batchSize, maxRows, maxBufferSize = MAX_BUFFER_SIZE } = options;
-	const decoder = new TextDecoder("utf-8");
-	const reader = stream.getReader();
+	const { delimiter, hasHeader, batchSize, maxRows, maxBufferSize = MAX_BUFFER_SIZE } = options
+	const decoder = new TextDecoder('utf-8')
+	const reader = stream.getReader()
 
-	let buffer = "";
-	let pos = 0;
-	let inQuotes = false;
-	let field = "";
-	let currentRow: string[] = [];
-	let lineNumber = 1;
-	let columns: string[] | null = null;
-	let dataRowCount = 0;
-	let batch: Record<string, unknown>[] = [];
-	let streamDone = false;
+	let buffer = ''
+	let pos = 0
+	let inQuotes = false
+	let field = ''
+	let currentRow: string[] = []
+	let lineNumber = 1
+	let columns: string[] | null = null
+	let dataRowCount = 0
+	let batch: Record<string, unknown>[] = []
+	let streamDone = false
 
 	/**
 	 * Process a completed row. Mutates columns/batch/dataRowCount.
@@ -54,155 +54,155 @@ export async function* parseCsvStream(
 	 */
 	function handleCompletedRow(fields: string[]): RowAction {
 		// Skip empty rows (single empty field from trailing newline)
-		if (fields.length === 1 && fields[0] === "") {
-			return RowAction.Continue;
+		if (fields.length === 1 && fields[0] === '') {
+			return RowAction.Continue
 		}
 
 		if (columns === null) {
 			if (hasHeader) {
-				columns = fields;
-				return RowAction.Continue;
+				columns = fields
+				return RowAction.Continue
 			}
-			columns = fields.map((_, i) => `col${i + 1}`);
+			columns = fields.map((_, i) => `col${i + 1}`)
 		}
 
-		batch.push(buildRecord(fields, columns));
-		dataRowCount++;
+		batch.push(buildRecord(fields, columns))
+		dataRowCount++
 
 		if (maxRows !== undefined && dataRowCount >= maxRows) {
-			return RowAction.Stop;
+			return RowAction.Stop
 		}
 		if (batch.length >= batchSize) {
-			return RowAction.Yield;
+			return RowAction.Yield
 		}
-		return RowAction.Continue;
+		return RowAction.Continue
 	}
 
 	try {
 		while (!streamDone) {
-			const result = await reader.read();
+			const result = await reader.read()
 			if (result.done) {
-				buffer += decoder.decode(new Uint8Array(0), { stream: false });
-				streamDone = true;
+				buffer += decoder.decode(new Uint8Array(0), { stream: false })
+				streamDone = true
 			} else {
-				buffer += decoder.decode(result.value, { stream: true });
+				buffer += decoder.decode(result.value, { stream: true })
 			}
 
 			if (buffer.length > maxBufferSize) {
 				throw new CsvParseError(
 					`buffer size exceeded ${maxBufferSize / (1024 * 1024)}MB — possible malformed input or extremely large field`,
 					lineNumber,
-				);
+				)
 			}
 
 			// Process characters in the buffer
-			outer: while (pos < buffer.length) {
-				const ch = buffer[pos];
+			while (pos < buffer.length) {
+				const ch = buffer[pos]
 
 				if (inQuotes) {
 					if (ch === '"') {
 						if (pos + 1 < buffer.length) {
 							if (buffer[pos + 1] === '"') {
-								field += '"';
-								pos += 2;
+								field += '"'
+								pos += 2
 							} else {
-								inQuotes = false;
-								pos++;
+								inQuotes = false
+								pos++
 							}
 						} else if (streamDone) {
-							inQuotes = false;
-							pos++;
+							inQuotes = false
+							pos++
 						} else {
-							break;
+							break
 						}
 					} else {
-						if (ch === "\n") {
-							lineNumber++;
-						} else if (ch === "\r") {
-							lineNumber++;
+						if (ch === '\n') {
+							lineNumber++
+						} else if (ch === '\r') {
+							lineNumber++
 							if (pos + 1 < buffer.length) {
-								if (buffer[pos + 1] === "\n") {
-									field += "\r\n";
-									pos += 2;
-									continue;
+								if (buffer[pos + 1] === '\n') {
+									field += '\r\n'
+									pos += 2
+									continue
 								}
 							} else if (!streamDone) {
-								break;
+								break
 							}
 						}
-						field += ch;
-						pos++;
+						field += ch
+						pos++
 					}
 				} else {
 					if (ch === '"') {
-						inQuotes = true;
-						pos++;
+						inQuotes = true
+						pos++
 					} else if (ch === delimiter) {
-						currentRow.push(field);
-						field = "";
-						pos++;
-					} else if (ch === "\r" || ch === "\n") {
-						if (ch === "\r") {
+						currentRow.push(field)
+						field = ''
+						pos++
+					} else if (ch === '\r' || ch === '\n') {
+						if (ch === '\r') {
 							if (pos + 1 < buffer.length) {
-								pos++;
-								if (buffer[pos] === "\n") pos++;
+								pos++
+								if (buffer[pos] === '\n') pos++
 							} else if (streamDone) {
-								pos++;
+								pos++
 							} else {
-								break;
+								break
 							}
 						} else {
-							pos++;
+							pos++
 						}
 
-						currentRow.push(field);
-						field = "";
-						lineNumber++;
+						currentRow.push(field)
+						field = ''
+						lineNumber++
 
-						const action = handleCompletedRow(currentRow);
-						currentRow = [];
+						const action = handleCompletedRow(currentRow)
+						currentRow = []
 
 						switch (action) {
 							case RowAction.Stop:
 								if (batch.length > 0) {
-									yield { columns: columns!, rows: batch };
-									batch = [];
+									yield { columns: columns!, rows: batch }
+									batch = []
 								}
-								return;
+								return
 							case RowAction.Yield:
-								yield { columns: columns!, rows: batch };
-								batch = [];
-								break;
+								yield { columns: columns!, rows: batch }
+								batch = []
+								break
 						}
 					} else {
-						field += ch;
-						pos++;
+						field += ch
+						pos++
 					}
 				}
 			}
 
 			// Compact buffer: discard processed portion
 			if (pos > 0) {
-				buffer = buffer.slice(pos);
-				pos = 0;
+				buffer = buffer.slice(pos)
+				pos = 0
 			}
 		}
 
 		if (inQuotes) {
-			throw new CsvParseError("Unclosed quote", lineNumber);
+			throw new CsvParseError('Unclosed quote', lineNumber)
 		}
 
 		// Final row (no trailing newline)
-		if (field !== "" || currentRow.length > 0) {
-			currentRow.push(field);
-			handleCompletedRow(currentRow);
+		if (field !== '' || currentRow.length > 0) {
+			currentRow.push(field)
+			handleCompletedRow(currentRow)
 		}
 
 		if (batch.length > 0) {
-			yield { columns: columns ?? [], rows: batch };
+			yield { columns: columns ?? [], rows: batch }
 		}
 	} finally {
-		reader.releaseLock();
+		reader.releaseLock()
 	}
 }
 
@@ -212,12 +212,12 @@ function buildRecord(
 	fields: string[],
 	columns: string[],
 ): Record<string, unknown> {
-	const row: Record<string, unknown> = {};
+	const row: Record<string, unknown> = {}
 	for (let i = 0; i < columns.length; i++) {
-		const value = i < fields.length ? fields[i] : null;
-		row[columns[i]] = value === "" ? null : coerceValue(value as string);
+		const value = i < fields.length ? fields[i] : null
+		row[columns[i]] = value === '' ? null : coerceValue(value as string)
 	}
-	return row;
+	return row
 }
 
 /**
@@ -225,33 +225,33 @@ function buildRecord(
  * Same logic as the existing in-memory import-service coercion.
  */
 export function coerceValue(value: string | null): unknown {
-	if (value === null || value === "") return null;
+	if (value === null || value === '') return null
 
-	const lower = value.toLowerCase();
-	if (lower === "true") return true;
-	if (lower === "false") return false;
+	const lower = value.toLowerCase()
+	if (lower === 'true') return true
+	if (lower === 'false') return false
 
 	if (/^-?\d+$/.test(value)) {
-		const n = parseInt(value, 10);
-		if (Number.isSafeInteger(n)) return n;
+		const n = parseInt(value, 10)
+		if (Number.isSafeInteger(n)) return n
 	}
 	if (/^-?\d+\.\d+$/.test(value)) {
-		const n = parseFloat(value);
-		if (isFinite(n)) return n;
+		const n = parseFloat(value)
+		if (Number.isFinite(n)) return n
 	}
 
-	return value;
+	return value
 }
 
 /**
  * CSV parse error with line number context.
  */
 export class CsvParseError extends Error {
-	public readonly lineNumber: number;
+	public readonly lineNumber: number
 
 	constructor(message: string, lineNumber: number) {
-		super(`CSV parse error at line ${lineNumber}: ${message}`);
-		this.name = "CsvParseError";
-		this.lineNumber = lineNumber;
+		super(`CSV parse error at line ${lineNumber}: ${message}`)
+		this.name = 'CsvParseError'
+		this.lineNumber = lineNumber
 	}
 }

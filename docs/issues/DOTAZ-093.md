@@ -9,6 +9,7 @@
 Paste tabular data from clipboard into multiple grid rows. Supports pasting from spreadsheets, other database tools, or text editors.
 
 ### Behavior
+
 - Ctrl+V in the grid detects multi-row clipboard content (tab-delimited or CSV)
 - Parses clipboard into rows and columns
 - If pasting into existing rows: overwrites cell values starting from selected cell
@@ -16,6 +17,7 @@ Paste tabular data from clipboard into multiple grid rows. Supports pasting from
 - Each pasted cell becomes a pending change (same as inline editing)
 
 ### Parsing
+
 - Auto-detect delimiter (tab first, then comma, then semicolon)
 - Handle quoted values (`"value with, comma"`)
 - Handle NULL representation: empty string → NULL, "NULL" text → NULL (configurable)
@@ -23,6 +25,7 @@ Paste tabular data from clipboard into multiple grid rows. Supports pasting from
 - Trim whitespace from unquoted values
 
 ### Safety
+
 - Preview dialog for large pastes (>50 rows): show row count, column mapping, sample
 - Undo: all pasted changes can be reverted via existing pending changes panel
 

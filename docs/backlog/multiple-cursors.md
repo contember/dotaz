@@ -9,6 +9,7 @@
 Aktivovat podporu multiple cursors v CodeMirror editoru. CodeMirror 6 toto nativně podporuje, stačí zapnout příslušné rozšíření.
 
 ### Operace
+
 - **Alt+Click** — přidání dalšího kurzoru
 - **Ctrl+D** — vybrat další výskyt aktuálního slova
 - **Alt+Shift+I** — kurzor na konec každého vybraného řádku

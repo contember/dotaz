@@ -1,112 +1,117 @@
-import type { DatabaseDriver } from "../db/driver";
-import type { ConnectionConfig, ConnectionInfo } from "../../shared/types/connection";
-import type { DatabaseInfo } from "../../shared/types/database";
-import type { QueryResult, QueryHistoryEntry, ExplainResult } from "../../shared/types/query";
-import type { ExportOptions, ExportPreviewRequest, ExportResult } from "../../shared/types/export";
-import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from "../../shared/types/import";
+import type { ConnectionConfig, ConnectionInfo } from '../../shared/types/connection'
+import type { DatabaseInfo } from '../../shared/types/database'
+import type { ExportOptions, ExportPreviewRequest, ExportResult } from '../../shared/types/export'
+import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from '../../shared/types/import'
+import type { ExplainResult, QueryHistoryEntry, QueryResult } from '../../shared/types/query'
 import type {
-	SessionInfo,
-	SavedView,
-	SavedViewConfig,
-	HistoryListParams,
-	QueryBookmark,
-	OpenDialogParams,
-	SaveDialogParams,
-	SearchDatabaseParams,
-	SearchDatabaseResult,
-	TransactionLogParams,
-	TransactionLogResult,
 	AiGenerateSqlParams,
 	AiGenerateSqlResult,
-} from "../../shared/types/rpc";
+	HistoryListParams,
+	OpenDialogParams,
+	QueryBookmark,
+	SaveDialogParams,
+	SavedView,
+	SavedViewConfig,
+	SearchDatabaseParams,
+	SearchDatabaseResult,
+	SessionInfo,
+	TransactionLogParams,
+	TransactionLogResult,
+} from '../../shared/types/rpc'
+import type { DatabaseDriver } from '../db/driver'
 
 export interface RpcAdapter {
 	// ── Connections ────────────────────────────────────────
-	listConnections(): ConnectionInfo[];
-	createConnection(params: { name: string; config: ConnectionConfig; readOnly?: boolean; color?: string }): ConnectionInfo;
-	updateConnection(params: { id: string; name: string; config: ConnectionConfig; readOnly?: boolean; color?: string }): ConnectionInfo;
-	setConnectionReadOnly(id: string, readOnly: boolean): ConnectionInfo;
-	deleteConnection(id: string): void | Promise<void>;
-	testConnection(config: ConnectionConfig): Promise<{ success: boolean; error?: string }>;
-	connect(connectionId: string, password?: string, encryptedConfig?: string, name?: string): Promise<void>;
-	disconnect(connectionId: string): Promise<void>;
+	listConnections(): ConnectionInfo[]
+	createConnection(params: { name: string; config: ConnectionConfig; readOnly?: boolean; color?: string }): ConnectionInfo
+	updateConnection(params: { id: string; name: string; config: ConnectionConfig; readOnly?: boolean; color?: string }): ConnectionInfo
+	setConnectionReadOnly(id: string, readOnly: boolean): ConnectionInfo
+	deleteConnection(id: string): void | Promise<void>
+	testConnection(config: ConnectionConfig): Promise<{ success: boolean; error?: string }>
+	connect(connectionId: string, password?: string, encryptedConfig?: string, name?: string): Promise<void>
+	disconnect(connectionId: string): Promise<void>
 
 	// ── Sessions ──────────────────────────────────────────
-	createSession(connectionId: string, database?: string): Promise<SessionInfo>;
-	destroySession(sessionId: string): Promise<void>;
-	listSessions(connectionId: string): SessionInfo[];
+	createSession(connectionId: string, database?: string): Promise<SessionInfo>
+	destroySession(sessionId: string): Promise<void>
+	listSessions(connectionId: string): SessionInfo[]
 
 	// ── Driver access ─────────────────────────────────────
-	getDriver(connectionId: string, database?: string): DatabaseDriver;
+	getDriver(connectionId: string, database?: string): DatabaseDriver
 
 	// ── Multi-database ────────────────────────────────────
-	listDatabases(connectionId: string): Promise<DatabaseInfo[]>;
-	activateDatabase(connectionId: string, database: string): Promise<void>;
-	deactivateDatabase(connectionId: string, database: string): Promise<void>;
+	listDatabases(connectionId: string): Promise<DatabaseInfo[]>
+	activateDatabase(connectionId: string, database: string): Promise<void>
+	deactivateDatabase(connectionId: string, database: string): Promise<void>
 
 	// ── Query execution ───────────────────────────────────
-	executeQuery(connectionId: string, sql: string, params?: unknown[], queryId?: string, database?: string, sessionId?: string): Promise<QueryResult[]>;
+	executeQuery(connectionId: string, sql: string, params?: unknown[], queryId?: string, database?: string, sessionId?: string): Promise<QueryResult[]>
 	/** Execute a batch of parameterized statements sequentially, auto-wrapped in transaction. */
-	executeStatements(connectionId: string, statements: { sql: string; params?: unknown[] }[], database?: string, sessionId?: string): Promise<QueryResult[]>;
-	cancelQuery(queryId: string): Promise<void>;
-	explainQuery(connectionId: string, sql: string, analyze: boolean, database?: string, sessionId?: string): Promise<ExplainResult>;
+	executeStatements(
+		connectionId: string,
+		statements: { sql: string; params?: unknown[] }[],
+		database?: string,
+		sessionId?: string,
+	): Promise<QueryResult[]>
+	cancelQuery(queryId: string): Promise<void>
+	explainQuery(connectionId: string, sql: string, analyze: boolean, database?: string, sessionId?: string): Promise<ExplainResult>
 
 	// ── Transactions ──────────────────────────────────────
-	beginTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void>;
-	commitTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void>;
-	rollbackTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void>;
+	beginTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void>
+	commitTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void>
+	rollbackTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void>
 
 	// ── Transaction Log ──────────────────────────────────
-	getTransactionLog(params: TransactionLogParams): TransactionLogResult;
-	clearTransactionLog(connectionId: string, database?: string, sessionId?: string): void;
+	getTransactionLog(params: TransactionLogParams): TransactionLogResult
+	clearTransactionLog(connectionId: string, database?: string, sessionId?: string): void
 
 	// ── History ───────────────────────────────────────────
-	listHistory(params: HistoryListParams): QueryHistoryEntry[];
-	clearHistory(connectionId?: string): void;
+	listHistory(params: HistoryListParams): QueryHistoryEntry[]
+	clearHistory(connectionId?: string): void
 
 	// ── Saved Views ──────────────────────────────────────
-	listSavedViews(connectionId: string, schemaName: string, tableName: string): SavedView[];
-	createSavedView(params: { connectionId: string; schemaName: string; tableName: string; name: string; config: SavedViewConfig }): SavedView;
-	updateSavedView(params: { id: string; name: string; config: SavedViewConfig }): SavedView;
-	deleteSavedView(id: string): void;
-	listSavedViewsByConnection(connectionId: string): SavedView[];
-	getSavedViewById(id: string): SavedView | null;
+	listSavedViews(connectionId: string, schemaName: string, tableName: string): SavedView[]
+	createSavedView(params: { connectionId: string; schemaName: string; tableName: string; name: string; config: SavedViewConfig }): SavedView
+	updateSavedView(params: { id: string; name: string; config: SavedViewConfig }): SavedView
+	deleteSavedView(id: string): void
+	listSavedViewsByConnection(connectionId: string): SavedView[]
+	getSavedViewById(id: string): SavedView | null
 
 	// ── Bookmarks ────────────────────────────────────────
-	listBookmarks(connectionId: string, search?: string): QueryBookmark[];
-	createBookmark(params: { connectionId: string; name: string; description?: string; sql: string }): QueryBookmark;
-	updateBookmark(params: { id: string; name: string; description?: string; sql: string }): QueryBookmark;
-	deleteBookmark(id: string): void;
+	listBookmarks(connectionId: string, search?: string): QueryBookmark[]
+	createBookmark(params: { connectionId: string; name: string; description?: string; sql: string }): QueryBookmark
+	updateBookmark(params: { id: string; name: string; description?: string; sql: string }): QueryBookmark
+	deleteBookmark(id: string): void
 
 	// ── Search ────────────────────────────────────────────
-	searchDatabase(params: SearchDatabaseParams): Promise<SearchDatabaseResult>;
+	searchDatabase(params: SearchDatabaseParams): Promise<SearchDatabaseResult>
 
 	// ── Export ────────────────────────────────────────────
-	exportData(opts: ExportOptions): Promise<ExportResult>;
-	exportPreview(req: ExportPreviewRequest): Promise<string>;
+	exportData(opts: ExportOptions): Promise<ExportResult>
+	exportPreview(req: ExportPreviewRequest): Promise<string>
 
 	// ── Import ────────────────────────────────────────────
-	importData(opts: ImportOptions): Promise<ImportResult>;
-	importPreview(req: ImportPreviewRequest): Promise<ImportPreviewResult>;
+	importData(opts: ImportOptions): Promise<ImportResult>
+	importPreview(req: ImportPreviewRequest): Promise<ImportPreviewResult>
 
 	// ── Settings ─────────────────────────────────────────
-	getAllSettings(): Record<string, string>;
-	setSetting(key: string, value: string): void;
+	getAllSettings(): Record<string, string>
+	setSetting(key: string, value: string): void
 
 	// ── Storage ──────────────────────────────────────────
-	encrypt?(config: string): Promise<string>;
+	encrypt?(config: string): Promise<string>
 
 	// ── System (optional — unavailable in demo/web) ──────
-	showOpenDialog?(params: OpenDialogParams): Promise<{ paths: string[]; cancelled: boolean }>;
-	showSaveDialog?(params: SaveDialogParams): Promise<{ path: string | null; cancelled: boolean }>;
+	showOpenDialog?(params: OpenDialogParams): Promise<{ paths: string[]; cancelled: boolean }>
+	showSaveDialog?(params: SaveDialogParams): Promise<{ path: string | null; cancelled: boolean }>
 
 	// ── SQL formatting ───────────────────────────────────
-	formatSql(sql: string): string;
+	formatSql(sql: string): string
 
 	// ── AI SQL generation ────────────────────────────────
-	generateSql(params: AiGenerateSqlParams): Promise<AiGenerateSqlResult>;
+	generateSql(params: AiGenerateSqlParams): Promise<AiGenerateSqlResult>
 
 	// ── Workspace persistence ─────────────────────────────
-	saveWorkspace(data: string): void;
-	loadWorkspace(): string | null;
+	saveWorkspace(data: string): void
+	loadWorkspace(): string | null
 }

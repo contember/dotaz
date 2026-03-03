@@ -9,6 +9,7 @@ See also: `src/frontend-shared/CLAUDE.md` (frontend), `src/shared/CLAUDE.md` (sh
 Dotaz is a desktop database client built on **Electrobun** (Bun backend + system webview) with a **Solid.js** frontend. It supports PostgreSQL and SQLite, focused on DML operations (viewing, editing, querying data) — no DDL/schema management.
 
 Runs in three modes:
+
 - **Desktop** (Electrobun) — native window with RPC transport, app state in backend SQLite
 - **Web** — standalone Bun HTTP/WebSocket server (`bun run dev:web`), app state in browser IndexedDB
 - **Demo** — browser-only with WASM SQLite, no server needed (`bun run dev:demo`)
@@ -89,9 +90,9 @@ Entry points register concrete implementations via `setTransport()` / `setStorag
 
 ```typescript
 // frontend-desktop/main.tsx
-setTransport(createElectrobunTransport());
-setStorage(new RpcAppStateStorage());
-render(() => <App />, document.getElementById("app")!);
+setTransport(createElectrobunTransport())
+setStorage(new RpcAppStateStorage())
+render(() => <App />, document.getElementById('app')!)
 ```
 
 ## Implementation Workflow

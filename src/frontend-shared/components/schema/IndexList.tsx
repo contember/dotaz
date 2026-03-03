@@ -1,8 +1,8 @@
-import { For, Show } from "solid-js";
-import type { IndexInfo } from "../../../shared/types/database";
+import { For, Show } from 'solid-js'
+import type { IndexInfo } from '../../../shared/types/database'
 
 interface IndexListProps {
-	indexes: IndexInfo[];
+	indexes: IndexInfo[]
 }
 
 export default function IndexList(props: IndexListProps) {
@@ -27,7 +27,7 @@ export default function IndexList(props: IndexListProps) {
 								<tr class="schema-viewer__row">
 									<td class="schema-viewer__td schema-viewer__td--name">{idx.name}</td>
 									<td class="schema-viewer__td">
-										<code class="schema-viewer__code">{idx.columns.join(", ")}</code>
+										<code class="schema-viewer__code">{idx.columns.join(', ')}</code>
 									</td>
 									<td class="schema-viewer__td">
 										<Show when={idx.isPrimary}>
@@ -47,5 +47,5 @@ export default function IndexList(props: IndexListProps) {
 				</table>
 			</Show>
 		</div>
-	);
+	)
 }

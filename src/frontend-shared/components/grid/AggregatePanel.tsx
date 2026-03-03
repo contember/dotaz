@@ -1,103 +1,99 @@
-import { createMemo, For, Show } from "solid-js";
-import type { GridColumnDef } from "../../../shared/types/grid";
-import { isNumericType, isDateType, isTextType } from "../../lib/column-types";
-import "./AggregatePanel.css";
+import { createMemo, For, Show } from 'solid-js'
+import type { GridColumnDef } from '../../../shared/types/grid'
+import { isDateType, isNumericType, isTextType } from '../../lib/column-types'
+import './AggregatePanel.css'
 
 export interface AggregateResult {
-	column: string;
-	count: number;
-	countDistinct: number;
-	sum?: number;
-	avg?: number;
-	min?: number | string;
-	max?: number | string;
+	column: string
+	count: number
+	countDistinct: number
+	sum?: number
+	avg?: number
+	min?: number | string
+	max?: number | string
 }
 
 interface AggregatePanelProps {
-	rows: Record<string, unknown>[];
-	columns: GridColumnDef[];
-	visibleColumns: GridColumnDef[];
+	rows: Record<string, unknown>[]
+	columns: GridColumnDef[]
+	visibleColumns: GridColumnDef[]
 }
 
 function formatNumber(value: number): string {
 	if (Number.isInteger(value)) {
-		return value.toLocaleString();
+		return value.toLocaleString()
 	}
 	// Up to 4 decimal places, strip trailing zeros
 	return value.toLocaleString(undefined, {
 		minimumFractionDigits: 0,
 		maximumFractionDigits: 4,
-	});
+	})
 }
 
 function computeAggregates(
 	rows: Record<string, unknown>[],
 	columns: GridColumnDef[],
 ): AggregateResult[] {
-	const results: AggregateResult[] = [];
+	const results: AggregateResult[] = []
 
 	for (const col of columns) {
-		const values: unknown[] = [];
+		const values: unknown[] = []
 		for (const row of rows) {
-			const v = row[col.name];
+			const v = row[col.name]
 			if (v !== null && v !== undefined) {
-				values.push(v);
+				values.push(v)
 			}
 		}
 
-		const count = values.length;
-		const distinct = new Set(values.map((v) => String(v))).size;
+		const count = values.length
+		const distinct = new Set(values.map((v) => String(v))).size
 		const result: AggregateResult = {
 			column: col.name,
 			count,
 			countDistinct: distinct,
-		};
+		}
 
 		if (isNumericType(col.dataType)) {
-			const nums = values.map(Number).filter((n) => !Number.isNaN(n));
+			const nums = values.map(Number).filter((n) => !Number.isNaN(n))
 			if (nums.length > 0) {
-				result.sum = nums.reduce((a, b) => a + b, 0);
-				result.avg = result.sum / nums.length;
-				result.min = Math.min(...nums);
-				result.max = Math.max(...nums);
+				result.sum = nums.reduce((a, b) => a + b, 0)
+				result.avg = result.sum / nums.length
+				result.min = Math.min(...nums)
+				result.max = Math.max(...nums)
 			}
 		} else if (isDateType(col.dataType) || isTextType(col.dataType)) {
-			const strings = values.map(String).sort();
+			const strings = values.map(String).sort()
 			if (strings.length > 0) {
-				result.min = strings[0];
-				result.max = strings[strings.length - 1];
+				result.min = strings[0]
+				result.max = strings[strings.length - 1]
 			}
 		}
 
-		results.push(result);
+		results.push(result)
 	}
 
-	return results;
+	return results
 }
 
 export default function AggregatePanel(props: AggregatePanelProps) {
-	const aggregates = createMemo(() =>
-		computeAggregates(props.rows, props.visibleColumns),
-	);
+	const aggregates = createMemo(() => computeAggregates(props.rows, props.visibleColumns))
 
-	const hasAnyData = createMemo(() =>
-		aggregates().some((a) => a.count > 0),
-	);
+	const hasAnyData = createMemo(() => aggregates().some((a) => a.count > 0))
 
 	return (
 		<Show when={hasAnyData()}>
 			<div class="aggregate-panel">
 				<div class="aggregate-panel__label">
-					{props.rows.length} row{props.rows.length !== 1 ? "s" : ""}
+					{props.rows.length} row{props.rows.length !== 1 ? 's' : ''}
 				</div>
 				<div class="aggregate-panel__items">
 					<For each={aggregates()}>
 						{(agg) => {
-							const col = props.visibleColumns.find((c) => c.name === agg.column);
-							if (!col || agg.count === 0) return null;
-							const numeric = isNumericType(col.dataType);
-							const text = isTextType(col.dataType);
-							const date = isDateType(col.dataType);
+							const col = props.visibleColumns.find((c) => c.name === agg.column)
+							if (!col || agg.count === 0) return null
+							const numeric = isNumericType(col.dataType)
+							const text = isTextType(col.dataType)
+							const date = isDateType(col.dataType)
 
 							return (
 								<div class="aggregate-panel__column">
@@ -122,20 +118,20 @@ export default function AggregatePanel(props: AggregatePanelProps) {
 									</Show>
 									<Show when={agg.min !== undefined}>
 										<span class="aggregate-panel__stat">
-											MIN: <b>{typeof agg.min === "number" ? formatNumber(agg.min) : agg.min}</b>
+											MIN: <b>{typeof agg.min === 'number' ? formatNumber(agg.min) : agg.min}</b>
 										</span>
 									</Show>
 									<Show when={agg.max !== undefined}>
 										<span class="aggregate-panel__stat">
-											MAX: <b>{typeof agg.max === "number" ? formatNumber(agg.max) : agg.max}</b>
+											MAX: <b>{typeof agg.max === 'number' ? formatNumber(agg.max) : agg.max}</b>
 										</span>
 									</Show>
 								</div>
-							);
+							)
 						}}
 					</For>
 				</div>
 			</div>
 		</Show>
-	);
+	)
 }

@@ -1,43 +1,43 @@
-import { createSignal, Show } from "solid-js";
-import { editorStore } from "../../stores/editor";
-import Icon from "../common/Icon";
-import "./AiPrompt.css";
+import { createSignal, Show } from 'solid-js'
+import { editorStore } from '../../stores/editor'
+import Icon from '../common/Icon'
+import './AiPrompt.css'
 
 interface AiPromptProps {
-	tabId: string;
+	tabId: string
 }
 
 export default function AiPrompt(props: AiPromptProps) {
-	const [prompt, setPrompt] = createSignal("");
-	let inputRef: HTMLTextAreaElement | undefined;
+	const [prompt, setPrompt] = createSignal('')
+	let inputRef: HTMLTextAreaElement | undefined
 
-	const tab = () => editorStore.getTab(props.tabId);
-	const isGenerating = () => tab()?.aiGenerating ?? false;
-	const aiError = () => tab()?.aiError ?? null;
+	const tab = () => editorStore.getTab(props.tabId)
+	const isGenerating = () => tab()?.aiGenerating ?? false
+	const aiError = () => tab()?.aiError ?? null
 
 	function handleSubmit() {
-		const text = prompt().trim();
-		if (!text || isGenerating()) return;
-		editorStore.generateAiSql(props.tabId, text);
+		const text = prompt().trim()
+		if (!text || isGenerating()) return
+		editorStore.generateAiSql(props.tabId, text)
 	}
 
 	function handleKeyDown(e: KeyboardEvent) {
-		if (e.key === "Enter" && !e.shiftKey) {
-			e.preventDefault();
-			handleSubmit();
+		if (e.key === 'Enter' && !e.shiftKey) {
+			e.preventDefault()
+			handleSubmit()
 		}
-		if (e.key === "Escape") {
-			e.preventDefault();
-			editorStore.closeAiPrompt(props.tabId);
+		if (e.key === 'Escape') {
+			e.preventDefault()
+			editorStore.closeAiPrompt(props.tabId)
 		}
 	}
 
 	function handleClose() {
-		editorStore.closeAiPrompt(props.tabId);
+		editorStore.closeAiPrompt(props.tabId)
 	}
 
 	// Auto-focus input when mounted
-	setTimeout(() => inputRef?.focus(), 0);
+	setTimeout(() => inputRef?.focus(), 0)
 
 	return (
 		<div class="ai-prompt">
@@ -79,5 +79,5 @@ export default function AiPrompt(props: AiPromptProps) {
 				</button>
 			</div>
 		</div>
-	);
+	)
 }

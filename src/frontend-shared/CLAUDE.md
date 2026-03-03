@@ -56,19 +56,21 @@ All state uses **Solid.js `createStore` / `createSignal`** — never React patte
 Data flow: **User action → Component → Store action → Storage adapter / RPC call → Store update → Reactive re-render**
 
 Stores are module-level singletons (not context providers). Import directly:
+
 ```typescript
-import { gridState, loadTableData } from "../stores/grid";
+import { gridState, loadTableData } from '../stores/grid'
 ```
 
 ## RPC Client (`lib/rpc.ts`)
 
 Proxy-based client with types inferred from `createHandlers()` via `NamespacedRpcClient`. All methods use **object params** matching the handler signatures:
-```typescript
-import { rpc } from "../lib/rpc";
 
-await rpc.connections.list();
-await rpc.query.execute({ connectionId, sql, queryId, database });
-await rpc.schema.load({ connectionId, database });
+```typescript
+import { rpc } from '../lib/rpc'
+
+await rpc.connections.list()
+await rpc.query.execute({ connectionId, sql, queryId, database })
+await rpc.schema.load({ connectionId, database })
 ```
 
 Also exports `messages` for backend → frontend notifications (connection status changes, menu actions).
@@ -80,6 +82,7 @@ New RPC methods added to `createHandlers()` are automatically available on the c
 Registration pattern: entry points call `setTransport()` with a concrete implementation. Shared code accesses `transport` via a lazy proxy that throws if not initialized.
 
 Transport factory functions live in their respective entry point directories:
+
 - `frontend-desktop/transport.ts` — `createElectrobunTransport()` (Electrobun RPC)
 - `frontend-web/transport.ts` — `createWebSocketTransport()` (WebSocket)
 - `frontend-demo/transport.ts` — `createInlineTransport()` (direct handler invocation)

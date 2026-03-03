@@ -11,6 +11,7 @@ RPC handlers accept `config: any` despite `ConnectionConfig` being a proper unio
 These gaps at the frontend-backend boundary defeat the purpose of the shared type system and allow runtime errors that TypeScript should catch.
 
 Changes needed:
+
 1. Replace `config: any` with `ConnectionConfig` in all RPC handler parameter types (`connections.create`, `connections.test`, `connections.update`)
 2. Create typed interfaces for database query results (PRAGMA results, introspection queries) and use them instead of `(row: any)` in all 3 drivers
 3. Type `Bun.SQL` result objects — create a wrapper or augment types so `result.count` / `result.affectedRows` are typed without `as any`

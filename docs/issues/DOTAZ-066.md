@@ -9,6 +9,7 @@
 Add a toggle in the grid toolbar for transposing the display: rows become columns and columns become rows. Essential for tables with many columns (50+) where horizontal scrolling is impractical.
 
 In transposed mode:
+
 - Each original table row = one column
 - Column names are in the first column (as row headers)
 - Arrow key navigation works rotated

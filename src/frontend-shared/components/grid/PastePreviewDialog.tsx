@@ -1,63 +1,65 @@
-import { createSignal, createMemo, For, Show } from "solid-js";
-import type { GridColumnDef } from "../../../shared/types/grid";
-import Dialog from "../common/Dialog";
-import "./PastePreviewDialog.css";
+import { createMemo, createSignal, For, Show } from 'solid-js'
+import type { GridColumnDef } from '../../../shared/types/grid'
+import Dialog from '../common/Dialog'
+import './PastePreviewDialog.css'
 
 interface PastePreviewDialogProps {
-	open: boolean;
-	parsedRows: string[][];
-	delimiter: string;
-	columns: GridColumnDef[];
-	startColumn: string;
-	startRow: number;
-	totalExistingRows: number;
-	onConfirm: (treatNullText: boolean) => void;
-	onClose: () => void;
+	open: boolean
+	parsedRows: string[][]
+	delimiter: string
+	columns: GridColumnDef[]
+	startColumn: string
+	startRow: number
+	totalExistingRows: number
+	onConfirm: (treatNullText: boolean) => void
+	onClose: () => void
 }
 
-const MAX_PREVIEW_ROWS = 10;
+const MAX_PREVIEW_ROWS = 10
 
 export default function PastePreviewDialog(props: PastePreviewDialogProps) {
-	const [treatNullText, setTreatNullText] = createSignal(true);
+	const [treatNullText, setTreatNullText] = createSignal(true)
 
 	const delimiterLabel = createMemo(() => {
 		switch (props.delimiter) {
-			case "\t": return "Tab";
-			case ",": return "Comma";
-			case ";": return "Semicolon";
-			default: return props.delimiter;
+			case '\t':
+				return 'Tab'
+			case ',':
+				return 'Comma'
+			case ';':
+				return 'Semicolon'
+			default:
+				return props.delimiter
 		}
-	});
+	})
 
 	const targetColumns = createMemo(() => {
-		const colNames = props.columns.map((c) => c.name);
-		const startIdx = colNames.indexOf(props.startColumn);
-		if (startIdx < 0) return [];
-		const maxCols = props.parsedRows.reduce((max, r) => Math.max(max, r.length), 0);
-		return colNames.slice(startIdx, startIdx + maxCols);
-	});
+		const colNames = props.columns.map((c) => c.name)
+		const startIdx = colNames.indexOf(props.startColumn)
+		if (startIdx < 0) return []
+		const maxCols = props.parsedRows.reduce((max, r) => Math.max(max, r.length), 0)
+		return colNames.slice(startIdx, startIdx + maxCols)
+	})
 
 	const newRowCount = createMemo(() => {
-		const endRow = props.startRow + props.parsedRows.length;
-		return Math.max(0, endRow - props.totalExistingRows);
-	});
+		const endRow = props.startRow + props.parsedRows.length
+		return Math.max(0, endRow - props.totalExistingRows)
+	})
 
-	const previewRows = createMemo(() =>
-		props.parsedRows.slice(0, MAX_PREVIEW_ROWS),
-	);
+	const previewRows = createMemo(() => props.parsedRows.slice(0, MAX_PREVIEW_ROWS))
 
 	return (
 		<Dialog open={props.open} title="Paste Preview" onClose={props.onClose}>
 			<div class="paste-preview">
 				<div class="paste-preview__info">
-					<span>{props.parsedRows.length} row{props.parsedRows.length !== 1 ? "s" : ""}</span>
+					<span>{props.parsedRows.length} row{props.parsedRows.length !== 1 ? 's' : ''}</span>
 					<span class="paste-preview__sep">|</span>
-					<span>{targetColumns().length} column{targetColumns().length !== 1 ? "s" : ""}</span>
+					<span>{targetColumns().length} column{targetColumns().length !== 1 ? 's' : ''}</span>
 					<span class="paste-preview__sep">|</span>
 					<span>Delimiter: {delimiterLabel()}</span>
 					<Show when={newRowCount() > 0}>
 						<span class="paste-preview__sep">|</span>
-						<span class="paste-preview__new-rows">{newRowCount()} new row{newRowCount() !== 1 ? "s" : ""} will be created</span>
+						<span class="paste-preview__new-rows">{newRowCount()} new row{newRowCount() !== 1 ? 's' : ''} will be created</span>
 					</Show>
 				</div>
 
@@ -65,9 +67,7 @@ export default function PastePreviewDialog(props: PastePreviewDialogProps) {
 					<span class="paste-preview__label">Column mapping</span>
 					<div class="paste-preview__mapping">
 						<For each={targetColumns()}>
-							{(col) => (
-								<span class="paste-preview__col">{col}</span>
-							)}
+							{(col) => <span class="paste-preview__col">{col}</span>}
 						</For>
 					</div>
 				</div>
@@ -89,8 +89,8 @@ export default function PastePreviewDialog(props: PastePreviewDialogProps) {
 										<tr>
 											<For each={targetColumns()}>
 												{(_, colIdx) => (
-													<td class={row[colIdx()] === "" ? "paste-preview__null" : ""}>
-														{row[colIdx()] === "" ? "NULL" : (row[colIdx()] ?? "")}
+													<td class={row[colIdx()] === '' ? 'paste-preview__null' : ''}>
+														{row[colIdx()] === '' ? 'NULL' : (row[colIdx()] ?? '')}
 													</td>
 												)}
 											</For>
@@ -100,7 +100,7 @@ export default function PastePreviewDialog(props: PastePreviewDialogProps) {
 								<Show when={props.parsedRows.length > MAX_PREVIEW_ROWS}>
 									<tr class="paste-preview__more">
 										<td colSpan={targetColumns().length}>
-											... {props.parsedRows.length - MAX_PREVIEW_ROWS} more row{props.parsedRows.length - MAX_PREVIEW_ROWS !== 1 ? "s" : ""}
+											... {props.parsedRows.length - MAX_PREVIEW_ROWS} more row{props.parsedRows.length - MAX_PREVIEW_ROWS !== 1 ? 's' : ''}
 										</td>
 									</tr>
 								</Show>
@@ -126,10 +126,10 @@ export default function PastePreviewDialog(props: PastePreviewDialogProps) {
 						class="btn btn--primary"
 						onClick={() => props.onConfirm(treatNullText())}
 					>
-						Paste {props.parsedRows.length} row{props.parsedRows.length !== 1 ? "s" : ""}
+						Paste {props.parsedRows.length} row{props.parsedRows.length !== 1 ? 's' : ''}
 					</button>
 				</div>
 			</div>
 		</Dialog>
-	);
+	)
 }

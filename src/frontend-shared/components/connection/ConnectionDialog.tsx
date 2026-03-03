@@ -1,133 +1,128 @@
-import { createSignal, For, Show } from "solid-js";
-import type {
-	ConnectionConfig,
-	ConnectionInfo,
-	ConnectionType,
-	SSLMode,
-	SshAuthMethod,
-	SshTunnelConfig,
-} from "../../../shared/types/connection";
-import { CONNECTION_TYPE_META, CONNECTION_COLORS, SSL_MODES } from "../../../shared/types/connection";
-import { connectionsStore } from "../../stores/connections";
-import { storage } from "../../lib/storage";
-import { rpc } from "../../lib/rpc";
-import { siPostgresql, siSqlite, siMysql } from "simple-icons";
-import FolderOpen from "lucide-solid/icons/folder-open";
-import ChevronDown from "lucide-solid/icons/chevron-down";
-import ChevronRight from "lucide-solid/icons/chevron-right";
-import Plug from "lucide-solid/icons/plug";
-import Dialog from "../common/Dialog";
-import "./ConnectionDialog.css";
+import ChevronDown from 'lucide-solid/icons/chevron-down'
+import ChevronRight from 'lucide-solid/icons/chevron-right'
+import FolderOpen from 'lucide-solid/icons/folder-open'
+import Plug from 'lucide-solid/icons/plug'
+import { siMysql, siPostgresql, siSqlite } from 'simple-icons'
+import { createSignal, For, Show } from 'solid-js'
+import type { ConnectionConfig, ConnectionInfo, ConnectionType, SshAuthMethod, SshTunnelConfig, SSLMode } from '../../../shared/types/connection'
+import { CONNECTION_COLORS, CONNECTION_TYPE_META, SSL_MODES } from '../../../shared/types/connection'
+import { rpc } from '../../lib/rpc'
+import { storage } from '../../lib/storage'
+import { connectionsStore } from '../../stores/connections'
+import Dialog from '../common/Dialog'
+import './ConnectionDialog.css'
 
 interface ConnectionDialogProps {
-	open: boolean;
+	open: boolean
 	/** Pass a ConnectionInfo to edit, or null for new connection */
-	connection: ConnectionInfo | null;
-	onClose: () => void;
+	connection: ConnectionInfo | null
+	onClose: () => void
 }
 
 function defaultPgFields() {
 	return {
-		name: "",
-		host: "localhost",
-		port: "5432",
-		database: "",
-		user: "",
-		password: "",
-		ssl: "prefer" as SSLMode,
-	};
+		name: '',
+		host: 'localhost',
+		port: '5432',
+		database: '',
+		user: '',
+		password: '',
+		ssl: 'prefer' as SSLMode,
+	}
 }
 
 function defaultSqliteFields() {
 	return {
-		name: "",
-		path: "",
-	};
+		name: '',
+		path: '',
+	}
 }
 
 function defaultSshFields() {
 	return {
 		enabled: false,
-		host: "",
-		port: "22",
-		username: "",
-		authMethod: "password" as SshAuthMethod,
-		password: "",
-		keyPath: "",
-		keyPassphrase: "",
-		localPort: "",
-	};
+		host: '',
+		port: '22',
+		username: '',
+		authMethod: 'password' as SshAuthMethod,
+		password: '',
+		keyPath: '',
+		keyPassphrase: '',
+		localPort: '',
+	}
 }
 
-function parseConnectionString(input: string): { fields: ReturnType<typeof defaultPgFields>; type: "postgresql" | "mysql" } | null {
-	const trimmed = input.trim();
-	let type: "postgresql" | "mysql";
-	let defaultPort: string;
-	if (trimmed.startsWith("postgresql://") || trimmed.startsWith("postgres://")) {
-		type = "postgresql";
-		defaultPort = "5432";
-	} else if (trimmed.startsWith("mysql://")) {
-		type = "mysql";
-		defaultPort = "3306";
+function parseConnectionString(input: string): { fields: ReturnType<typeof defaultPgFields>; type: 'postgresql' | 'mysql' } | null {
+	const trimmed = input.trim()
+	let type: 'postgresql' | 'mysql'
+	let defaultPort: string
+	if (trimmed.startsWith('postgresql://') || trimmed.startsWith('postgres://')) {
+		type = 'postgresql'
+		defaultPort = '5432'
+	} else if (trimmed.startsWith('mysql://')) {
+		type = 'mysql'
+		defaultPort = '3306'
 	} else {
-		return null;
+		return null
 	}
 	try {
-		const url = new URL(trimmed);
-		const user = decodeURIComponent(url.username);
-		const password = decodeURIComponent(url.password);
-		const host = url.hostname;
-		const port = url.port || defaultPort;
-		const database = url.pathname.replace(/^\//, "");
-		const sslmode = url.searchParams.get("sslmode");
-		const ssl: SSLMode = sslmode && SSL_MODES.includes(sslmode as SSLMode) ? sslmode as SSLMode : "prefer";
-		const name = user && host && database ? `${user}@${host}/${database}` : "";
-		return { fields: { name, host, port, database, user, password, ssl }, type };
+		const url = new URL(trimmed)
+		const user = decodeURIComponent(url.username)
+		const password = decodeURIComponent(url.password)
+		const host = url.hostname
+		const port = url.port || defaultPort
+		const database = url.pathname.replace(/^\//, '')
+		const sslmode = url.searchParams.get('sslmode')
+		const ssl: SSLMode = sslmode && SSL_MODES.includes(sslmode as SSLMode) ? sslmode as SSLMode : 'prefer'
+		const name = user && host && database ? `${user}@${host}/${database}` : ''
+		return { fields: { name, host, port, database, user, password, ssl }, type }
 	} catch {
-		return null;
+		return null
 	}
 }
 
 export default function ConnectionDialog(props: ConnectionDialogProps) {
-	const [dbType, setDbType] = createSignal<ConnectionType>("postgresql");
-	const [pgFields, setPgFields] = createSignal(defaultPgFields());
-	const [sqliteFields, setSqliteFields] = createSignal(defaultSqliteFields());
-	const [connectionUrl, setConnectionUrl] = createSignal("");
+	const [dbType, setDbType] = createSignal<ConnectionType>('postgresql')
+	const [pgFields, setPgFields] = createSignal(defaultPgFields())
+	const [sqliteFields, setSqliteFields] = createSignal(defaultSqliteFields())
+	const [connectionUrl, setConnectionUrl] = createSignal('')
 
-	const [sshFields, setSshFields] = createSignal(defaultSshFields());
-	const [sshExpanded, setSshExpanded] = createSignal(false);
+	const [sshFields, setSshFields] = createSignal(defaultSshFields())
+	const [sshExpanded, setSshExpanded] = createSignal(false)
 
-	const [readOnly, setReadOnly] = createSignal(false);
-	const [connectionColor, setConnectionColor] = createSignal<string | undefined>(undefined);
-	const [rememberPassword, setRememberPassword] = createSignal(true);
-	const [testResult, setTestResult] = createSignal<{
-		success: boolean;
-		error?: string;
-	} | null>(null);
-	const [testing, setTesting] = createSignal(false);
-	const [saving, setSaving] = createSignal(false);
-	const [errors, setErrors] = createSignal<Record<string, string>>({});
+	const [readOnly, setReadOnly] = createSignal(false)
+	const [connectionColor, setConnectionColor] = createSignal<string | undefined>(undefined)
+	const [rememberPassword, setRememberPassword] = createSignal(true)
+	const [testResult, setTestResult] = createSignal<
+		{
+			success: boolean
+			error?: string
+		} | null
+	>(null)
+	const [testing, setTesting] = createSignal(false)
+	const [saving, setSaving] = createSignal(false)
+	const [errors, setErrors] = createSignal<Record<string, string>>({})
 
 	// Reset form when dialog opens or connection changes
 	function resetForm() {
-		setTestResult(null);
-		setErrors({});
-		setTesting(false);
-		setSaving(false);
-		setConnectionUrl("");
+		setTestResult(null)
+		setErrors({})
+		setTesting(false)
+		setSaving(false)
+		setConnectionUrl('')
 
-		const conn = props.connection;
+		const conn = props.connection
 		if (conn) {
-			setDbType(conn.config.type);
-			setReadOnly(conn.readOnly === true);
-			setConnectionColor(conn.color);
-			connectionsStore.getRememberPassword(conn.id).then(setRememberPassword);
-			if (conn.config.type === "postgresql" || conn.config.type === "mysql") {
-				const rawSsl = conn.config.ssl;
+			setDbType(conn.config.type)
+			setReadOnly(conn.readOnly === true)
+			setConnectionColor(conn.color)
+			connectionsStore.getRememberPassword(conn.id).then(setRememberPassword)
+			if (conn.config.type === 'postgresql' || conn.config.type === 'mysql') {
+				const rawSsl = conn.config.ssl
 				// Handle legacy boolean values from pre-migration data
-				const ssl: SSLMode = typeof rawSsl === "boolean"
-					? (rawSsl ? "require" : "disable")
-					: (rawSsl ?? "prefer");
+				const ssl: SSLMode = typeof rawSsl === 'boolean'
+					? (rawSsl ? 'require' : 'disable')
+					: (rawSsl ?? 'prefer')
 				setPgFields({
 					name: conn.name,
 					host: conn.config.host,
@@ -136,53 +131,53 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 					user: conn.config.user,
 					password: conn.config.password,
 					ssl,
-				});
+				})
 				// Load SSH tunnel config if present
-				if (conn.config.type === "postgresql" && conn.config.sshTunnel) {
-					const t = conn.config.sshTunnel;
+				if (conn.config.type === 'postgresql' && conn.config.sshTunnel) {
+					const t = conn.config.sshTunnel
 					setSshFields({
 						enabled: t.enabled,
-						host: t.host ?? "",
+						host: t.host ?? '',
 						port: String(t.port ?? 22),
-						username: t.username ?? "",
-						authMethod: t.authMethod ?? "password",
-						password: t.password ?? "",
-						keyPath: t.keyPath ?? "",
-						keyPassphrase: t.keyPassphrase ?? "",
-						localPort: t.localPort ? String(t.localPort) : "",
-					});
-					setSshExpanded(t.enabled);
+						username: t.username ?? '',
+						authMethod: t.authMethod ?? 'password',
+						password: t.password ?? '',
+						keyPath: t.keyPath ?? '',
+						keyPassphrase: t.keyPassphrase ?? '',
+						localPort: t.localPort ? String(t.localPort) : '',
+					})
+					setSshExpanded(t.enabled)
 				} else {
-					setSshFields(defaultSshFields());
-					setSshExpanded(false);
+					setSshFields(defaultSshFields())
+					setSshExpanded(false)
 				}
 			} else {
 				setSqliteFields({
 					name: conn.name,
 					path: conn.config.path,
-				});
-				setSshFields(defaultSshFields());
-				setSshExpanded(false);
+				})
+				setSshFields(defaultSshFields())
+				setSshExpanded(false)
 			}
 		} else {
-			setDbType("postgresql");
-			setReadOnly(false);
-			setConnectionColor(undefined);
-			setRememberPassword(true);
-			setPgFields(defaultPgFields());
-			setSqliteFields(defaultSqliteFields());
-			setSshFields(defaultSshFields());
-			setSshExpanded(false);
+			setDbType('postgresql')
+			setReadOnly(false)
+			setConnectionColor(undefined)
+			setRememberPassword(true)
+			setPgFields(defaultPgFields())
+			setSqliteFields(defaultSqliteFields())
+			setSshFields(defaultSshFields())
+			setSshExpanded(false)
 		}
 	}
 
 	// Build config from current form state
 	function buildConfig(): ConnectionConfig {
-		const meta = CONNECTION_TYPE_META[dbType()];
+		const meta = CONNECTION_TYPE_META[dbType()]
 		if (meta.hasHost) {
-			const f = pgFields();
-			const type = dbType() as "postgresql" | "mysql";
-			if (type === "mysql") {
+			const f = pgFields()
+			const type = dbType() as 'postgresql' | 'mysql'
+			if (type === 'mysql') {
 				return {
 					type,
 					host: f.host,
@@ -190,10 +185,10 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 					database: f.database,
 					user: f.user,
 					password: f.password,
-					ssl: f.ssl !== "disable",
-				};
+					ssl: f.ssl !== 'disable',
+				}
 			}
-			const ssh = sshFields();
+			const ssh = sshFields()
 			const sshTunnel: SshTunnelConfig | undefined = ssh.enabled
 				? {
 					enabled: true,
@@ -201,12 +196,12 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 					port: Number(ssh.port) || 22,
 					username: ssh.username,
 					authMethod: ssh.authMethod,
-					password: ssh.authMethod === "password" ? ssh.password : undefined,
-					keyPath: ssh.authMethod === "key" ? ssh.keyPath : undefined,
-					keyPassphrase: ssh.authMethod === "key" && ssh.keyPassphrase ? ssh.keyPassphrase : undefined,
+					password: ssh.authMethod === 'password' ? ssh.password : undefined,
+					keyPath: ssh.authMethod === 'key' ? ssh.keyPath : undefined,
+					keyPassphrase: ssh.authMethod === 'key' && ssh.keyPassphrase ? ssh.keyPassphrase : undefined,
 					localPort: ssh.localPort ? Number(ssh.localPort) : undefined,
 				}
-				: undefined;
+				: undefined
 			return {
 				type,
 				host: f.host,
@@ -216,189 +211,193 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 				password: f.password,
 				ssl: f.ssl,
 				sshTunnel,
-			};
+			}
 		} else {
 			return {
-				type: "sqlite",
+				type: 'sqlite',
 				path: sqliteFields().path,
-			};
+			}
 		}
 	}
 
 	function getName(): string {
 		return CONNECTION_TYPE_META[dbType()].hasHost
 			? pgFields().name
-			: sqliteFields().name;
+			: sqliteFields().name
 	}
 
 	function validate(): boolean {
-		const errs: Record<string, string> = {};
+		const errs: Record<string, string> = {}
 
 		if (!getName().trim()) {
-			errs.name = "Name is required";
+			errs.name = 'Name is required'
 		}
 
 		if (CONNECTION_TYPE_META[dbType()].hasHost) {
-			const f = pgFields();
-			if (!f.host.trim()) errs.host = "Host is required";
-			if (!f.port.trim() || isNaN(Number(f.port))) errs.port = "Valid port is required";
-			if (!f.database.trim()) errs.database = "Database is required";
-			if (!f.user.trim()) errs.user = "Username is required";
+			const f = pgFields()
+			if (!f.host.trim()) errs.host = 'Host is required'
+			if (!f.port.trim() || Number.isNaN(Number(f.port))) errs.port = 'Valid port is required'
+			if (!f.database.trim()) errs.database = 'Database is required'
+			if (!f.user.trim()) errs.user = 'Username is required'
 
 			// Validate SSH tunnel fields
-			if (dbType() === "postgresql") {
-				const ssh = sshFields();
+			if (dbType() === 'postgresql') {
+				const ssh = sshFields()
 				if (ssh.enabled) {
-					if (!ssh.host.trim()) errs.sshHost = "SSH host is required";
-					if (!ssh.port.trim() || isNaN(Number(ssh.port))) errs.sshPort = "Valid SSH port is required";
-					if (!ssh.username.trim()) errs.sshUsername = "SSH username is required";
-					if (ssh.authMethod === "key" && !ssh.keyPath.trim()) errs.sshKeyPath = "SSH key path is required";
+					if (!ssh.host.trim()) errs.sshHost = 'SSH host is required'
+					if (!ssh.port.trim() || Number.isNaN(Number(ssh.port))) errs.sshPort = 'Valid SSH port is required'
+					if (!ssh.username.trim()) errs.sshUsername = 'SSH username is required'
+					if (ssh.authMethod === 'key' && !ssh.keyPath.trim()) errs.sshKeyPath = 'SSH key path is required'
 				}
 			}
 		} else {
-			const f = sqliteFields();
-			if (!f.path.trim()) errs.path = "File path is required";
+			const f = sqliteFields()
+			if (!f.path.trim()) errs.path = 'File path is required'
 		}
 
-		setErrors(errs);
-		return Object.keys(errs).length === 0;
+		setErrors(errs)
+		return Object.keys(errs).length === 0
 	}
 
 	async function handleTestConnection() {
-		if (!validate()) return;
+		if (!validate()) return
 
-		setTesting(true);
-		setTestResult(null);
+		setTesting(true)
+		setTestResult(null)
 		try {
-			const result = await rpc.connections.test({ config: buildConfig() });
-			setTestResult(result);
+			const result = await rpc.connections.test({ config: buildConfig() })
+			setTestResult(result)
 		} catch (err) {
 			setTestResult({
 				success: false,
 				error: err instanceof Error ? err.message : String(err),
-			});
+			})
 		} finally {
-			setTesting(false);
+			setTesting(false)
 		}
 	}
 
 	async function handleSave() {
-		if (!validate()) return;
+		if (!validate()) return
 
-		setSaving(true);
+		setSaving(true)
 		try {
-			const name = getName().trim();
-			const config = buildConfig();
+			const name = getName().trim()
+			const config = buildConfig()
 
 			if (props.connection) {
-				await connectionsStore.updateConnection(props.connection.id, name, config, rememberPassword(), readOnly(), connectionColor());
+				await connectionsStore.updateConnection(props.connection.id, name, config, rememberPassword(), readOnly(), connectionColor())
 			} else {
-				await connectionsStore.createConnection(name, config, rememberPassword(), readOnly(), connectionColor());
+				await connectionsStore.createConnection(name, config, rememberPassword(), readOnly(), connectionColor())
 			}
-			props.onClose();
+			props.onClose()
 		} catch (err) {
 			setTestResult({
 				success: false,
 				error: err instanceof Error ? err.message : String(err),
-			});
+			})
 		} finally {
-			setSaving(false);
+			setSaving(false)
 		}
 	}
 
 	async function handleBrowse() {
 		const result = await rpc.system.showOpenDialog({
-			title: "Select SQLite Database",
+			title: 'Select SQLite Database',
 			filters: [
-				{ name: "SQLite Databases", extensions: ["db", "sqlite", "sqlite3"] },
-				{ name: "All Files", extensions: ["*"] },
+				{ name: 'SQLite Databases', extensions: ['db', 'sqlite', 'sqlite3'] },
+				{ name: 'All Files', extensions: ['*'] },
 			],
-		});
+		})
 
 		if (!result.cancelled && result.paths.length > 0) {
-			setSqliteFields((f) => ({ ...f, path: result.paths[0] }));
+			setSqliteFields((f) => ({ ...f, path: result.paths[0] }))
 		}
 	}
 
 	function updatePgField(field: string, value: string | boolean) {
-		setPgFields((f) => ({ ...f, [field]: value }));
+		setPgFields((f) => ({ ...f, [field]: value }))
 		setErrors((e) => {
-			const next = { ...e };
-			delete next[field];
-			return next;
-		});
+			const next = { ...e }
+			delete next[field]
+			return next
+		})
 	}
 
 	function updateSqliteField(field: string, value: string) {
-		setSqliteFields((f) => ({ ...f, [field]: value }));
+		setSqliteFields((f) => ({ ...f, [field]: value }))
 		setErrors((e) => {
-			const next = { ...e };
-			delete next[field];
-			return next;
-		});
+			const next = { ...e }
+			delete next[field]
+			return next
+		})
 	}
 
 	function updateSshField(field: string, value: string | boolean) {
-		setSshFields((f) => ({ ...f, [field]: value }));
+		setSshFields((f) => ({ ...f, [field]: value }))
 		setErrors((e) => {
-			const next = { ...e };
+			const next = { ...e }
 			// Map SSH field names to error keys
-			const errorKey = field === "host" ? "sshHost"
-				: field === "port" ? "sshPort"
-				: field === "username" ? "sshUsername"
-				: field === "keyPath" ? "sshKeyPath"
-				: undefined;
-			if (errorKey) delete next[errorKey];
-			return next;
-		});
+			const errorKey = field === 'host'
+				? 'sshHost'
+				: field === 'port'
+				? 'sshPort'
+				: field === 'username'
+				? 'sshUsername'
+				: field === 'keyPath'
+				? 'sshKeyPath'
+				: undefined
+			if (errorKey) delete next[errorKey]
+			return next
+		})
 	}
 
 	async function handleBrowseSshKey() {
 		const result = await rpc.system.showOpenDialog({
-			title: "Select SSH Private Key",
+			title: 'Select SSH Private Key',
 			filters: [
-				{ name: "All Files", extensions: ["*"] },
+				{ name: 'All Files', extensions: ['*'] },
 			],
-		});
+		})
 
 		if (!result.cancelled && result.paths.length > 0) {
-			updateSshField("keyPath", result.paths[0]);
+			updateSshField('keyPath', result.paths[0])
 		}
 	}
 
 	function updateName(value: string) {
 		if (CONNECTION_TYPE_META[dbType()].hasHost) {
-			updatePgField("name", value);
+			updatePgField('name', value)
 		} else {
-			updateSqliteField("name", value);
+			updateSqliteField('name', value)
 		}
 	}
 
 	function handleUrlInput(value: string) {
-		setConnectionUrl(value);
-		const parsed = parseConnectionString(value);
+		setConnectionUrl(value)
+		const parsed = parseConnectionString(value)
 		if (parsed) {
-			setDbType(parsed.type);
-			const current = pgFields();
+			setDbType(parsed.type)
+			const current = pgFields()
 			setPgFields({
 				...parsed.fields,
 				name: current.name || parsed.fields.name,
-			});
+			})
 		}
 	}
 
 	// Use a ref callback to reset form when dialog opens
 	// Solid.js doesn't re-mount Show children on prop changes, so we use a getter
 	const dialogOpen = () => {
-		const isOpen = props.open;
+		const isOpen = props.open
 		if (isOpen) {
 			// Schedule reset after current batch
-			queueMicrotask(resetForm);
+			queueMicrotask(resetForm)
 		}
-		return isOpen;
-	};
+		return isOpen
+	}
 
-	const title = () => props.connection ? "Edit Connection" : "New Connection";
+	const title = () => props.connection ? 'Edit Connection' : 'New Connection'
 
 	return (
 		<Dialog open={dialogOpen()} title={title()} onClose={props.onClose}>
@@ -406,18 +405,21 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 				{/* DB Type Switcher */}
 				<div class="conn-dialog__type-switcher">
 					{(Object.entries(CONNECTION_TYPE_META) as [ConnectionType, typeof CONNECTION_TYPE_META[ConnectionType]][]).map(([type, meta]) => {
-						const icons: Record<ConnectionType, typeof siPostgresql> = { postgresql: siPostgresql, sqlite: siSqlite, mysql: siMysql };
-						const icon = icons[type];
+						const icons: Record<ConnectionType, typeof siPostgresql> = { postgresql: siPostgresql, sqlite: siSqlite, mysql: siMysql }
+						const icon = icons[type]
 						return (
 							<button
 								class="conn-dialog__type-btn"
-								classList={{ "conn-dialog__type-btn--active": dbType() === type }}
+								classList={{ 'conn-dialog__type-btn--active': dbType() === type }}
 								onClick={() => setDbType(type)}
 								disabled={!!props.connection}
 							>
-								<svg width={14} height={14} viewBox="0 0 24 24" fill={`#${icon.hex}`} aria-hidden="true"><path d={icon.path} /></svg> {meta.label}
+								<svg width={14} height={14} viewBox="0 0 24 24" fill={`#${icon.hex}`} aria-hidden="true">
+									<path d={icon.path} />
+								</svg>{' '}
+								{meta.label}
 							</button>
-						);
+						)
 					})}
 				</div>
 
@@ -430,7 +432,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 							type="text"
 							value={connectionUrl()}
 							onInput={(e) => handleUrlInput(e.currentTarget.value)}
-							placeholder={dbType() === "mysql" ? "mysql://user:password@localhost:3306/mydb" : "postgresql://user:password@localhost:5432/mydb"}
+							placeholder={dbType() === 'mysql' ? 'mysql://user:password@localhost:3306/mydb' : 'postgresql://user:password@localhost:5432/mydb'}
 						/>
 					</div>
 				</Show>
@@ -440,7 +442,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 					<label class="conn-dialog__label">Name</label>
 					<input
 						class="conn-dialog__input"
-						classList={{ "conn-dialog__input--error": !!errors().name }}
+						classList={{ 'conn-dialog__input--error': !!errors().name }}
 						type="text"
 						value={getName()}
 						onInput={(e) => updateName(e.currentTarget.value)}
@@ -457,10 +459,10 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 						<label class="conn-dialog__label">Host</label>
 						<input
 							class="conn-dialog__input"
-							classList={{ "conn-dialog__input--error": !!errors().host }}
+							classList={{ 'conn-dialog__input--error': !!errors().host }}
 							type="text"
 							value={pgFields().host}
-							onInput={(e) => updatePgField("host", e.currentTarget.value)}
+							onInput={(e) => updatePgField('host', e.currentTarget.value)}
 							placeholder="localhost"
 						/>
 						<Show when={errors().host}>
@@ -472,10 +474,10 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 						<label class="conn-dialog__label">Port</label>
 						<input
 							class="conn-dialog__input"
-							classList={{ "conn-dialog__input--error": !!errors().port }}
+							classList={{ 'conn-dialog__input--error': !!errors().port }}
 							type="text"
 							value={pgFields().port}
-							onInput={(e) => updatePgField("port", e.currentTarget.value)}
+							onInput={(e) => updatePgField('port', e.currentTarget.value)}
 							placeholder={String(CONNECTION_TYPE_META[dbType()].defaultPort ?? 5432)}
 						/>
 						<Show when={errors().port}>
@@ -487,10 +489,10 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 						<label class="conn-dialog__label">Database</label>
 						<input
 							class="conn-dialog__input"
-							classList={{ "conn-dialog__input--error": !!errors().database }}
+							classList={{ 'conn-dialog__input--error': !!errors().database }}
 							type="text"
 							value={pgFields().database}
-							onInput={(e) => updatePgField("database", e.currentTarget.value)}
+							onInput={(e) => updatePgField('database', e.currentTarget.value)}
 							placeholder="mydb"
 						/>
 						<Show when={errors().database}>
@@ -502,10 +504,10 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 						<label class="conn-dialog__label">Username</label>
 						<input
 							class="conn-dialog__input"
-							classList={{ "conn-dialog__input--error": !!errors().user }}
+							classList={{ 'conn-dialog__input--error': !!errors().user }}
 							type="text"
 							value={pgFields().user}
-							onInput={(e) => updatePgField("user", e.currentTarget.value)}
+							onInput={(e) => updatePgField('user', e.currentTarget.value)}
 							placeholder="postgres"
 						/>
 						<Show when={errors().user}>
@@ -519,7 +521,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 							class="conn-dialog__input"
 							type="password"
 							value={pgFields().password}
-							onInput={(e) => updatePgField("password", e.currentTarget.value)}
+							onInput={(e) => updatePgField('password', e.currentTarget.value)}
 						/>
 					</div>
 
@@ -528,11 +530,9 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 						<select
 							class="conn-dialog__input"
 							value={pgFields().ssl}
-							onChange={(e) => updatePgField("ssl", e.currentTarget.value)}
+							onChange={(e) => updatePgField('ssl', e.currentTarget.value)}
 						>
-							{SSL_MODES.map((mode) => (
-								<option value={mode}>{mode}</option>
-							))}
+							{SSL_MODES.map((mode) => <option value={mode}>{mode}</option>)}
 						</select>
 					</div>
 
@@ -552,14 +552,14 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 				</Show>
 
 				{/* SSH Tunnel (PostgreSQL only) */}
-				<Show when={dbType() === "postgresql"}>
+				<Show when={dbType() === 'postgresql'}>
 					<div class="conn-dialog__ssh-section">
 						<button
 							class="conn-dialog__ssh-toggle"
 							onClick={() => {
-								const expanding = !sshExpanded();
-								setSshExpanded(expanding);
-								if (!expanding && !sshFields().enabled) return;
+								const expanding = !sshExpanded()
+								setSshExpanded(expanding)
+								if (!expanding && !sshFields().enabled) return
 							}}
 							type="button"
 						>
@@ -577,7 +577,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 										<input
 											type="checkbox"
 											checked={sshFields().enabled}
-											onChange={(e) => updateSshField("enabled", e.currentTarget.checked)}
+											onChange={(e) => updateSshField('enabled', e.currentTarget.checked)}
 										/>
 										Use SSH Tunnel
 									</label>
@@ -588,10 +588,10 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 										<label class="conn-dialog__label">SSH Host</label>
 										<input
 											class="conn-dialog__input"
-											classList={{ "conn-dialog__input--error": !!errors().sshHost }}
+											classList={{ 'conn-dialog__input--error': !!errors().sshHost }}
 											type="text"
 											value={sshFields().host}
-											onInput={(e) => updateSshField("host", e.currentTarget.value)}
+											onInput={(e) => updateSshField('host', e.currentTarget.value)}
 											placeholder="bastion.example.com"
 										/>
 										<Show when={errors().sshHost}>
@@ -603,10 +603,10 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 										<label class="conn-dialog__label">SSH Port</label>
 										<input
 											class="conn-dialog__input"
-											classList={{ "conn-dialog__input--error": !!errors().sshPort }}
+											classList={{ 'conn-dialog__input--error': !!errors().sshPort }}
 											type="text"
 											value={sshFields().port}
-											onInput={(e) => updateSshField("port", e.currentTarget.value)}
+											onInput={(e) => updateSshField('port', e.currentTarget.value)}
 											placeholder="22"
 										/>
 										<Show when={errors().sshPort}>
@@ -618,10 +618,10 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 										<label class="conn-dialog__label">SSH Username</label>
 										<input
 											class="conn-dialog__input"
-											classList={{ "conn-dialog__input--error": !!errors().sshUsername }}
+											classList={{ 'conn-dialog__input--error': !!errors().sshUsername }}
 											type="text"
 											value={sshFields().username}
-											onInput={(e) => updateSshField("username", e.currentTarget.value)}
+											onInput={(e) => updateSshField('username', e.currentTarget.value)}
 											placeholder="ubuntu"
 										/>
 										<Show when={errors().sshUsername}>
@@ -634,16 +634,16 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 										<div class="conn-dialog__ssh-auth-switcher">
 											<button
 												class="conn-dialog__ssh-auth-btn"
-												classList={{ "conn-dialog__ssh-auth-btn--active": sshFields().authMethod === "password" }}
-												onClick={() => updateSshField("authMethod", "password")}
+												classList={{ 'conn-dialog__ssh-auth-btn--active': sshFields().authMethod === 'password' }}
+												onClick={() => updateSshField('authMethod', 'password')}
 												type="button"
 											>
 												Password
 											</button>
 											<button
 												class="conn-dialog__ssh-auth-btn"
-												classList={{ "conn-dialog__ssh-auth-btn--active": sshFields().authMethod === "key" }}
-												onClick={() => updateSshField("authMethod", "key")}
+												classList={{ 'conn-dialog__ssh-auth-btn--active': sshFields().authMethod === 'key' }}
+												onClick={() => updateSshField('authMethod', 'key')}
 												type="button"
 											>
 												SSH Key
@@ -651,28 +651,28 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 										</div>
 									</div>
 
-									<Show when={sshFields().authMethod === "password"}>
+									<Show when={sshFields().authMethod === 'password'}>
 										<div class="conn-dialog__field">
 											<label class="conn-dialog__label">SSH Password</label>
 											<input
 												class="conn-dialog__input"
 												type="password"
 												value={sshFields().password}
-												onInput={(e) => updateSshField("password", e.currentTarget.value)}
+												onInput={(e) => updateSshField('password', e.currentTarget.value)}
 											/>
 										</div>
 									</Show>
 
-									<Show when={sshFields().authMethod === "key"}>
+									<Show when={sshFields().authMethod === 'key'}>
 										<div class="conn-dialog__field">
 											<label class="conn-dialog__label">Private Key</label>
 											<div class="conn-dialog__browse-row">
 												<input
 													class="conn-dialog__input"
-													classList={{ "conn-dialog__input--error": !!errors().sshKeyPath }}
+													classList={{ 'conn-dialog__input--error': !!errors().sshKeyPath }}
 													type="text"
 													value={sshFields().keyPath}
-													onInput={(e) => updateSshField("keyPath", e.currentTarget.value)}
+													onInput={(e) => updateSshField('keyPath', e.currentTarget.value)}
 													placeholder="~/.ssh/id_rsa"
 												/>
 												<button
@@ -694,7 +694,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 												class="conn-dialog__input"
 												type="password"
 												value={sshFields().keyPassphrase}
-												onInput={(e) => updateSshField("keyPassphrase", e.currentTarget.value)}
+												onInput={(e) => updateSshField('keyPassphrase', e.currentTarget.value)}
 												placeholder="Optional"
 											/>
 										</div>
@@ -706,7 +706,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 											class="conn-dialog__input"
 											type="text"
 											value={sshFields().localPort}
-											onInput={(e) => updateSshField("localPort", e.currentTarget.value)}
+											onInput={(e) => updateSshField('localPort', e.currentTarget.value)}
 											placeholder="Auto"
 										/>
 										<span class="conn-dialog__hint">Leave empty for automatic assignment</span>
@@ -724,10 +724,10 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 						<div class="conn-dialog__browse-row">
 							<input
 								class="conn-dialog__input"
-								classList={{ "conn-dialog__input--error": !!errors().path }}
+								classList={{ 'conn-dialog__input--error': !!errors().path }}
 								type="text"
 								value={sqliteFields().path}
-								onInput={(e) => updateSqliteField("path", e.currentTarget.value)}
+								onInput={(e) => updateSqliteField('path', e.currentTarget.value)}
 								placeholder="/path/to/database.db"
 							/>
 							<button
@@ -762,7 +762,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 					<div class="conn-dialog__color-palette">
 						<button
 							class="conn-dialog__color-swatch conn-dialog__color-swatch--none"
-							classList={{ "conn-dialog__color-swatch--selected": !connectionColor() }}
+							classList={{ 'conn-dialog__color-swatch--selected': !connectionColor() }}
 							onClick={() => setConnectionColor(undefined)}
 							title="None"
 						/>
@@ -770,7 +770,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 							{(c) => (
 								<button
 									class="conn-dialog__color-swatch"
-									classList={{ "conn-dialog__color-swatch--selected": connectionColor() === c.value }}
+									classList={{ 'conn-dialog__color-swatch--selected': connectionColor() === c.value }}
 									style={{ background: c.value }}
 									onClick={() => setConnectionColor(c.value)}
 									title={c.label}
@@ -786,12 +786,12 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 						<div
 							class="conn-dialog__test-result"
 							classList={{
-								"conn-dialog__test-result--success": result().success,
-								"conn-dialog__test-result--error": !result().success,
+								'conn-dialog__test-result--success': result().success,
+								'conn-dialog__test-result--error': !result().success,
 							}}
 						>
 							{result().success
-								? "Connection successful"
+								? 'Connection successful'
 								: `Connection failed: ${result().error}`}
 						</div>
 					)}
@@ -804,7 +804,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 						onClick={handleTestConnection}
 						disabled={testing()}
 					>
-						<Plug size={14} /> {testing() ? "Testing..." : "Test Connection"}
+						<Plug size={14} /> {testing() ? 'Testing...' : 'Test Connection'}
 					</button>
 					<div class="conn-dialog__actions-right">
 						<button
@@ -818,11 +818,11 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 							onClick={handleSave}
 							disabled={saving()}
 						>
-							{saving() ? "Saving..." : "Save"}
+							{saving() ? 'Saving...' : 'Save'}
 						</button>
 					</div>
 				</div>
 			</div>
 		</Dialog>
-	);
+	)
 }

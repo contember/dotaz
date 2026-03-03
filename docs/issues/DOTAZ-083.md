@@ -11,6 +11,7 @@ All query builders in `query-executor.ts` hardcode PostgreSQL-style `$N` placeho
 The correct fix is generating the right placeholder format from the start rather than post-processing.
 
 Changes needed:
+
 1. Add `placeholder(index: number): string` method to `DatabaseDriver` interface
    - PostgreSQL/SQLite: returns `$${index}`
    - MySQL: returns `?`

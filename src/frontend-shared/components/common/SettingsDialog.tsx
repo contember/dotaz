@@ -1,125 +1,128 @@
-import { createSignal, createEffect, createMemo, Show } from "solid-js";
-import Dialog from "./Dialog";
-import { settingsStore } from "../../stores/settings";
-import type { SessionConfig } from "../../stores/settings";
+import { createEffect, createMemo, createSignal, Show } from 'solid-js'
 import type {
-	FormatProfile,
+	AiProvider,
+	BinaryDisplay,
+	BooleanDisplay,
+	ColorTheme,
 	DateFormat,
 	DecimalSeparator,
-	ThousandsSeparator,
+	FormatProfile,
 	NullDisplay,
-	BooleanDisplay,
-	BinaryDisplay,
-	AiProvider,
-	ColorTheme,
-} from "../../../shared/types/settings";
-import type { ConnectionMode, AutoPin, AutoUnpin } from "../../stores/session";
-import "./SettingsDialog.css";
+	ThousandsSeparator,
+} from '../../../shared/types/settings'
+import type { AutoPin, AutoUnpin, ConnectionMode } from '../../stores/session'
+import { settingsStore } from '../../stores/settings'
+import type { SessionConfig } from '../../stores/settings'
+import Dialog from './Dialog'
+import './SettingsDialog.css'
 
-export type SettingsSection = "appearance" | "data-format" | "ai" | "session";
+export type SettingsSection = 'appearance' | 'data-format' | 'ai' | 'session'
 
 interface SettingsDialogProps {
-	open: boolean;
-	onClose: () => void;
-	initialSection?: SettingsSection;
+	open: boolean
+	onClose: () => void
+	initialSection?: SettingsSection
 }
 
 export default function SettingsDialog(props: SettingsDialogProps) {
-	const [section, setSection] = createSignal<SettingsSection>("appearance");
+	const [section, setSection] = createSignal<SettingsSection>('appearance')
 
 	// ── Appearance signals ──
-	const [colorTheme, setColorTheme] = createSignal<ColorTheme>("dark");
-	let savedTheme: ColorTheme = "dark";
+	const [colorTheme, setColorTheme] = createSignal<ColorTheme>('dark')
+	let savedTheme: ColorTheme = 'dark'
 
 	// ── Data Format signals ──
-	const [dateFormat, setDateFormat] = createSignal<DateFormat>("YYYY-MM-DD HH:mm:ss");
-	const [decimalSeparator, setDecimalSeparator] = createSignal<DecimalSeparator>(".");
-	const [thousandsSeparator, setThousandsSeparator] = createSignal<ThousandsSeparator>("");
-	const [decimalPlaces, setDecimalPlaces] = createSignal(-1);
-	const [nullDisplay, setNullDisplay] = createSignal<NullDisplay>("NULL");
-	const [booleanDisplay, setBooleanDisplay] = createSignal<BooleanDisplay>("true/false");
-	const [binaryDisplay, setBinaryDisplay] = createSignal<BinaryDisplay>("size");
+	const [dateFormat, setDateFormat] = createSignal<DateFormat>('YYYY-MM-DD HH:mm:ss')
+	const [decimalSeparator, setDecimalSeparator] = createSignal<DecimalSeparator>('.')
+	const [thousandsSeparator, setThousandsSeparator] = createSignal<ThousandsSeparator>('')
+	const [decimalPlaces, setDecimalPlaces] = createSignal(-1)
+	const [nullDisplay, setNullDisplay] = createSignal<NullDisplay>('NULL')
+	const [booleanDisplay, setBooleanDisplay] = createSignal<BooleanDisplay>('true/false')
+	const [binaryDisplay, setBinaryDisplay] = createSignal<BinaryDisplay>('size')
 
 	// ── AI signals ──
-	const [aiProvider, setAiProvider] = createSignal<AiProvider>("anthropic");
-	const [apiKey, setApiKey] = createSignal("");
-	const [aiModel, setAiModel] = createSignal("");
-	const [aiEndpoint, setAiEndpoint] = createSignal("");
+	const [aiProvider, setAiProvider] = createSignal<AiProvider>('anthropic')
+	const [apiKey, setApiKey] = createSignal('')
+	const [aiModel, setAiModel] = createSignal('')
+	const [aiEndpoint, setAiEndpoint] = createSignal('')
 
 	// ── Session signals ──
-	const [connMode, setConnMode] = createSignal<ConnectionMode>("pool");
-	const [autoPin, setAutoPin] = createSignal<AutoPin>("on-begin");
-	const [autoUnpin, setAutoUnpin] = createSignal<AutoUnpin>("never");
+	const [connMode, setConnMode] = createSignal<ConnectionMode>('pool')
+	const [autoPin, setAutoPin] = createSignal<AutoPin>('on-begin')
+	const [autoUnpin, setAutoUnpin] = createSignal<AutoUnpin>('never')
 
 	// Load all values when dialog opens
 	createEffect(() => {
 		if (props.open) {
 			// Set initial section
-			setSection(props.initialSection ?? "appearance");
+			setSection(props.initialSection ?? 'appearance')
 
 			// Appearance
-			const appearance = settingsStore.appearanceConfig;
-			setColorTheme(appearance.colorTheme);
-			savedTheme = appearance.colorTheme;
+			const appearance = settingsStore.appearanceConfig
+			setColorTheme(appearance.colorTheme)
+			savedTheme = appearance.colorTheme
 
 			// Data Format
-			const p = settingsStore.formatProfile;
-			setDateFormat(p.dateFormat);
-			setDecimalSeparator(p.decimalSeparator);
-			setThousandsSeparator(p.thousandsSeparator);
-			setDecimalPlaces(p.decimalPlaces);
-			setNullDisplay(p.nullDisplay);
-			setBooleanDisplay(p.booleanDisplay);
-			setBinaryDisplay(p.binaryDisplay);
+			const p = settingsStore.formatProfile
+			setDateFormat(p.dateFormat)
+			setDecimalSeparator(p.decimalSeparator)
+			setThousandsSeparator(p.thousandsSeparator)
+			setDecimalPlaces(p.decimalPlaces)
+			setNullDisplay(p.nullDisplay)
+			setBooleanDisplay(p.booleanDisplay)
+			setBinaryDisplay(p.binaryDisplay)
 
 			// AI
-			const ai = settingsStore.aiConfig;
-			setAiProvider(ai.provider);
-			setApiKey(ai.apiKey);
-			setAiModel(ai.model);
-			setAiEndpoint(ai.endpoint);
+			const ai = settingsStore.aiConfig
+			setAiProvider(ai.provider)
+			setApiKey(ai.apiKey)
+			setAiModel(ai.model)
+			setAiEndpoint(ai.endpoint)
 
 			// Session
-			const sess = settingsStore.sessionConfig;
-			setConnMode(sess.defaultConnectionMode);
-			setAutoPin(sess.autoPin);
-			setAutoUnpin(sess.autoUnpin);
+			const sess = settingsStore.sessionConfig
+			setConnMode(sess.defaultConnectionMode)
+			setAutoPin(sess.autoPin)
+			setAutoUnpin(sess.autoUnpin)
 		}
-	});
+	})
 
 	const numberPreview = createMemo(() => {
-		const num = 1234567.891;
-		return formatNumberPreview(num, decimalSeparator(), thousandsSeparator(), decimalPlaces());
-	});
+		const num = 1234567.891
+		return formatNumberPreview(num, decimalSeparator(), thousandsSeparator(), decimalPlaces())
+	})
 
 	const datePreview = createMemo(() => {
-		const now = new Date(2026, 2, 2, 14, 30, 45);
-		return formatDatePreview(now, dateFormat());
-	});
+		const now = new Date(2026, 2, 2, 14, 30, 45)
+		return formatDatePreview(now, dateFormat())
+	})
 
 	function defaultModel(): string {
 		switch (aiProvider()) {
-			case "anthropic": return "claude-sonnet-4-20250514";
-			case "openai": return "gpt-4o";
-			case "custom": return "";
+			case 'anthropic':
+				return 'claude-sonnet-4-20250514'
+			case 'openai':
+				return 'gpt-4o'
+			case 'custom':
+				return ''
 		}
 	}
 
 	function handleCancel() {
 		// Revert theme to saved value
-		settingsStore.applyTheme(savedTheme);
-		props.onClose();
+		settingsStore.applyTheme(savedTheme)
+		props.onClose()
 	}
 
 	function handleThemeChange(theme: ColorTheme) {
-		setColorTheme(theme);
+		setColorTheme(theme)
 		// Live preview
-		settingsStore.applyTheme(theme);
+		settingsStore.applyTheme(theme)
 	}
 
 	function handleSave() {
 		// Save Appearance
-		settingsStore.saveAppearanceConfig({ colorTheme: colorTheme() });
+		settingsStore.saveAppearanceConfig({ colorTheme: colorTheme() })
 
 		// Save Data Format
 		const profile: FormatProfile = {
@@ -130,8 +133,8 @@ export default function SettingsDialog(props: SettingsDialogProps) {
 			nullDisplay: nullDisplay(),
 			booleanDisplay: booleanDisplay(),
 			binaryDisplay: binaryDisplay(),
-		};
-		settingsStore.saveFormatProfile(profile);
+		}
+		settingsStore.saveFormatProfile(profile)
 
 		// Save AI
 		settingsStore.saveAiConfig({
@@ -139,17 +142,17 @@ export default function SettingsDialog(props: SettingsDialogProps) {
 			apiKey: apiKey(),
 			model: aiModel(),
 			endpoint: aiEndpoint(),
-		});
+		})
 
 		// Save Session
 		const sessionConfig: SessionConfig = {
 			defaultConnectionMode: connMode(),
 			autoPin: autoPin(),
 			autoUnpin: autoUnpin(),
-		};
-		settingsStore.saveSessionConfig(sessionConfig);
+		}
+		settingsStore.saveSessionConfig(sessionConfig)
 
-		props.onClose();
+		props.onClose()
 	}
 
 	return (
@@ -158,67 +161,85 @@ export default function SettingsDialog(props: SettingsDialogProps) {
 				<nav class="settings-nav">
 					<button
 						class="settings-nav__item"
-						classList={{ "settings-nav__item--active": section() === "appearance" }}
-						onClick={() => setSection("appearance")}
+						classList={{ 'settings-nav__item--active': section() === 'appearance' }}
+						onClick={() => setSection('appearance')}
 					>
 						Appearance
 					</button>
 					<button
 						class="settings-nav__item"
-						classList={{ "settings-nav__item--active": section() === "data-format" }}
-						onClick={() => setSection("data-format")}
+						classList={{ 'settings-nav__item--active': section() === 'data-format' }}
+						onClick={() => setSection('data-format')}
 					>
 						Data Format
 					</button>
 					<button
 						class="settings-nav__item"
-						classList={{ "settings-nav__item--active": section() === "ai" }}
-						onClick={() => setSection("ai")}
+						classList={{ 'settings-nav__item--active': section() === 'ai' }}
+						onClick={() => setSection('ai')}
 					>
 						AI
 					</button>
 					<button
 						class="settings-nav__item"
-						classList={{ "settings-nav__item--active": section() === "session" }}
-						onClick={() => setSection("session")}
+						classList={{ 'settings-nav__item--active': section() === 'session' }}
+						onClick={() => setSection('session')}
 					>
 						Session
 					</button>
 				</nav>
 
 				<div class="settings-content">
-					<Show when={section() === "appearance"}>
+					<Show when={section() === 'appearance'}>
 						<AppearanceSection
 							colorTheme={colorTheme()}
 							setColorTheme={handleThemeChange}
 						/>
 					</Show>
-					<Show when={section() === "data-format"}>
+					<Show when={section() === 'data-format'}>
 						<DataFormatSection
-							dateFormat={dateFormat()} setDateFormat={setDateFormat}
-							decimalSeparator={decimalSeparator()} setDecimalSeparator={setDecimalSeparator}
-							thousandsSeparator={thousandsSeparator()} setThousandsSeparator={setThousandsSeparator}
-							decimalPlaces={decimalPlaces()} setDecimalPlaces={setDecimalPlaces}
-							nullDisplay={nullDisplay()} setNullDisplay={setNullDisplay}
-							booleanDisplay={booleanDisplay()} setBooleanDisplay={setBooleanDisplay}
-							binaryDisplay={binaryDisplay()} setBinaryDisplay={setBinaryDisplay}
-							datePreview={datePreview()} numberPreview={numberPreview()}
+							dateFormat={dateFormat()}
+							setDateFormat={setDateFormat}
+							decimalSeparator={decimalSeparator()}
+							setDecimalSeparator={setDecimalSeparator}
+							thousandsSeparator={thousandsSeparator()}
+							setThousandsSeparator={setThousandsSeparator}
+							decimalPlaces={decimalPlaces()}
+							setDecimalPlaces={setDecimalPlaces}
+							nullDisplay={nullDisplay()}
+							setNullDisplay={setNullDisplay}
+							booleanDisplay={booleanDisplay()}
+							setBooleanDisplay={setBooleanDisplay}
+							binaryDisplay={binaryDisplay()}
+							setBinaryDisplay={setBinaryDisplay}
+							datePreview={datePreview()}
+							numberPreview={numberPreview()}
 						/>
 					</Show>
-					<Show when={section() === "ai"}>
+					<Show when={section() === 'ai'}>
 						<AiSection
-							provider={aiProvider()} setProvider={(p) => { setAiProvider(p); if (!aiModel()) setAiModel(defaultModel()); }}
-							apiKey={apiKey()} setApiKey={setApiKey}
-							model={aiModel()} setModel={setAiModel}
-							endpoint={aiEndpoint()} setEndpoint={setAiEndpoint}
+							provider={aiProvider()}
+							setProvider={(p) => {
+								setAiProvider(p)
+								if (!aiModel()) setAiModel(defaultModel())
+							}}
+							apiKey={apiKey()}
+							setApiKey={setApiKey}
+							model={aiModel()}
+							setModel={setAiModel}
+							endpoint={aiEndpoint()}
+							setEndpoint={setAiEndpoint}
 							defaultModel={defaultModel()}
 						/>
 					</Show>
-					<Show when={section() === "session"}>
+					<Show when={section() === 'session'}>
 						<SessionSection
-							mode={connMode()} setMode={setConnMode}
-							autoPin={autoPin()} setAutoPin={setAutoPin}
-							autoUnpin={autoUnpin()} setAutoUnpin={setAutoUnpin}
+							mode={connMode()}
+							setMode={setConnMode}
+							autoPin={autoPin()}
+							setAutoPin={setAutoPin}
+							autoUnpin={autoUnpin()}
+							setAutoUnpin={setAutoUnpin}
 						/>
 					</Show>
 				</div>
@@ -229,14 +250,14 @@ export default function SettingsDialog(props: SettingsDialogProps) {
 				<button class="btn btn--primary" onClick={handleSave}>Save</button>
 			</div>
 		</Dialog>
-	);
+	)
 }
 
 // ── Appearance Section ───────────────────────────────────
 
 function AppearanceSection(props: {
-	colorTheme: ColorTheme;
-	setColorTheme: (v: ColorTheme) => void;
+	colorTheme: ColorTheme
+	setColorTheme: (v: ColorTheme) => void
 }) {
 	return (
 		<div class="settings-form">
@@ -259,20 +280,28 @@ function AppearanceSection(props: {
 				</div>
 			</div>
 		</div>
-	);
+	)
 }
 
 // ── Data Format Section ──────────────────────────────────
 
 function DataFormatSection(props: {
-	dateFormat: DateFormat; setDateFormat: (v: DateFormat) => void;
-	decimalSeparator: DecimalSeparator; setDecimalSeparator: (v: DecimalSeparator) => void;
-	thousandsSeparator: ThousandsSeparator; setThousandsSeparator: (v: ThousandsSeparator) => void;
-	decimalPlaces: number; setDecimalPlaces: (v: number) => void;
-	nullDisplay: NullDisplay; setNullDisplay: (v: NullDisplay) => void;
-	booleanDisplay: BooleanDisplay; setBooleanDisplay: (v: BooleanDisplay) => void;
-	binaryDisplay: BinaryDisplay; setBinaryDisplay: (v: BinaryDisplay) => void;
-	datePreview: string; numberPreview: string;
+	dateFormat: DateFormat
+	setDateFormat: (v: DateFormat) => void
+	decimalSeparator: DecimalSeparator
+	setDecimalSeparator: (v: DecimalSeparator) => void
+	thousandsSeparator: ThousandsSeparator
+	setThousandsSeparator: (v: ThousandsSeparator) => void
+	decimalPlaces: number
+	setDecimalPlaces: (v: number) => void
+	nullDisplay: NullDisplay
+	setNullDisplay: (v: NullDisplay) => void
+	booleanDisplay: BooleanDisplay
+	setBooleanDisplay: (v: BooleanDisplay) => void
+	binaryDisplay: BinaryDisplay
+	setBinaryDisplay: (v: BinaryDisplay) => void
+	datePreview: string
+	numberPreview: string
 }) {
 	return (
 		<div class="settings-form">
@@ -333,7 +362,7 @@ function DataFormatSection(props: {
 					/>
 				</div>
 				<div class="settings-form__preview">
-					Preview: {props.numberPreview} <span style={{ color: "var(--ink-muted)", "font-size": "var(--font-size-xs)" }}>(-1 = as-is)</span>
+					Preview: {props.numberPreview} <span style={{ color: 'var(--ink-muted)', 'font-size': 'var(--font-size-xs)' }}>(-1 = as-is)</span>
 				</div>
 			</div>
 
@@ -348,7 +377,7 @@ function DataFormatSection(props: {
 					>
 						<option value="NULL">NULL</option>
 						<option value="(empty)">(empty)</option>
-						<option value={"\u2205"}>{"\u2205"} (empty set)</option>
+						<option value={'\u2205'}>{'\u2205'} (empty set)</option>
 					</select>
 				</div>
 			</div>
@@ -365,7 +394,7 @@ function DataFormatSection(props: {
 						<option value="true/false">true / false</option>
 						<option value="1/0">1 / 0</option>
 						<option value="yes/no">yes / no</option>
-						<option value={"\u2713/\u2717"}>{"\u2713 / \u2717"} (check/cross)</option>
+						<option value={'\u2713/\u2717'}>{'\u2713 / \u2717'} (check/cross)</option>
 					</select>
 				</div>
 			</div>
@@ -386,17 +415,21 @@ function DataFormatSection(props: {
 				</div>
 			</div>
 		</div>
-	);
+	)
 }
 
 // ── AI Section ───────────────────────────────────────────
 
 function AiSection(props: {
-	provider: AiProvider; setProvider: (v: AiProvider) => void;
-	apiKey: string; setApiKey: (v: string) => void;
-	model: string; setModel: (v: string) => void;
-	endpoint: string; setEndpoint: (v: string) => void;
-	defaultModel: string;
+	provider: AiProvider
+	setProvider: (v: AiProvider) => void
+	apiKey: string
+	setApiKey: (v: string) => void
+	model: string
+	setModel: (v: string) => void
+	endpoint: string
+	setEndpoint: (v: string) => void
+	defaultModel: string
 }) {
 	return (
 		<div class="settings-form">
@@ -436,7 +469,7 @@ function AiSection(props: {
 					<input
 						class="settings-form__input"
 						type="text"
-						placeholder={props.defaultModel || "model-name"}
+						placeholder={props.defaultModel || 'model-name'}
 						value={props.model}
 						onInput={(e) => props.setModel(e.currentTarget.value)}
 					/>
@@ -449,27 +482,30 @@ function AiSection(props: {
 					<input
 						class="settings-form__input"
 						type="text"
-						placeholder={props.provider === "custom" ? "https://your-api.example.com" : "Leave empty for default"}
+						placeholder={props.provider === 'custom' ? 'https://your-api.example.com' : 'Leave empty for default'}
 						value={props.endpoint}
 						onInput={(e) => props.setEndpoint(e.currentTarget.value)}
 					/>
 				</div>
-				<div class="settings-form__preview" style={{ "font-size": "11px" }}>
-					{props.provider === "anthropic" && "Default: https://api.anthropic.com"}
-					{props.provider === "openai" && "Default: https://api.openai.com"}
-					{props.provider === "custom" && "Required for custom providers"}
+				<div class="settings-form__preview" style={{ 'font-size': '11px' }}>
+					{props.provider === 'anthropic' && 'Default: https://api.anthropic.com'}
+					{props.provider === 'openai' && 'Default: https://api.openai.com'}
+					{props.provider === 'custom' && 'Required for custom providers'}
 				</div>
 			</div>
 		</div>
-	);
+	)
 }
 
 // ── Session Section ──────────────────────────────────────
 
 function SessionSection(props: {
-	mode: ConnectionMode; setMode: (v: ConnectionMode) => void;
-	autoPin: AutoPin; setAutoPin: (v: AutoPin) => void;
-	autoUnpin: AutoUnpin; setAutoUnpin: (v: AutoUnpin) => void;
+	mode: ConnectionMode
+	setMode: (v: ConnectionMode) => void
+	autoPin: AutoPin
+	setAutoPin: (v: AutoPin) => void
+	autoUnpin: AutoUnpin
+	setAutoUnpin: (v: AutoUnpin) => void
 }) {
 	return (
 		<div class="settings-form">
@@ -520,51 +556,51 @@ function SessionSection(props: {
 				</div>
 			</div>
 		</div>
-	);
+	)
 }
 
 // ── Preview helpers ──────────────────────────────────────
 
 function formatNumberPreview(num: number, decSep: string, thousSep: string, places: number): string {
-	let str: string;
+	let str: string
 	if (places >= 0) {
-		str = num.toFixed(places);
+		str = num.toFixed(places)
 	} else {
-		str = String(num);
+		str = String(num)
 	}
 
-	const [intPart, fracPart] = str.split(".");
+	const [intPart, fracPart] = str.split('.')
 
-	let formattedInt = intPart;
+	let formattedInt = intPart
 	if (thousSep) {
-		formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, thousSep);
+		formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, thousSep)
 	}
 
 	if (fracPart !== undefined) {
-		return formattedInt + decSep + fracPart;
+		return formattedInt + decSep + fracPart
 	}
-	return formattedInt;
+	return formattedInt
 }
 
 function formatDatePreview(d: Date, format: DateFormat): string {
-	const pad = (n: number) => String(n).padStart(2, "0");
-	const Y = d.getFullYear();
-	const M = pad(d.getMonth() + 1);
-	const D = pad(d.getDate());
-	const h = pad(d.getHours());
-	const m = pad(d.getMinutes());
-	const s = pad(d.getSeconds());
+	const pad = (n: number) => String(n).padStart(2, '0')
+	const Y = d.getFullYear()
+	const M = pad(d.getMonth() + 1)
+	const D = pad(d.getDate())
+	const h = pad(d.getHours())
+	const m = pad(d.getMinutes())
+	const s = pad(d.getSeconds())
 
 	switch (format) {
-		case "YYYY-MM-DD HH:mm:ss":
-			return `${Y}-${M}-${D} ${h}:${m}:${s}`;
-		case "DD.MM.YYYY HH:mm:ss":
-			return `${D}.${M}.${Y} ${h}:${m}:${s}`;
-		case "MM/DD/YYYY HH:mm:ss":
-			return `${M}/${D}/${Y} ${h}:${m}:${s}`;
-		case "YYYY-MM-DD":
-			return `${Y}-${M}-${D}`;
-		case "ISO 8601":
-			return d.toISOString();
+		case 'YYYY-MM-DD HH:mm:ss':
+			return `${Y}-${M}-${D} ${h}:${m}:${s}`
+		case 'DD.MM.YYYY HH:mm:ss':
+			return `${D}.${M}.${Y} ${h}:${m}:${s}`
+		case 'MM/DD/YYYY HH:mm:ss':
+			return `${M}/${D}/${Y} ${h}:${m}:${s}`
+		case 'YYYY-MM-DD':
+			return `${Y}-${M}-${D}`
+		case 'ISO 8601':
+			return d.toISOString()
 	}
 }

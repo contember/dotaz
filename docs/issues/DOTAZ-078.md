@@ -14,11 +14,13 @@ Assign a color to a connection for visual differentiation of environments. Typic
 - **Blue** — testing
 
 The color appears as:
+
 - Colored bar in status bar
 - Colored indicator in connection tree
 - Optionally: colored border around the entire window
 
 ### Color selection
+
 - Predefined palette (8–12 colors)
 - Setting in Connection dialog
 

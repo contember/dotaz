@@ -9,6 +9,7 @@
 Save favorite SQL queries for quick access. Unlike query history (automatic), bookmarks are explicitly saved by the user with custom naming.
 
 ### Features
+
 - Save current SQL query as bookmark with name and optional description
 - List of bookmarks in sidebar panel or dialog
 - Click bookmark to insert SQL into editor
@@ -16,6 +17,7 @@ Save favorite SQL queries for quick access. Unlike query history (automatic), bo
 - Per-connection or global bookmarks
 
 ### Difference from Saved Views
+
 Saved Views store grid state (filters, sort, columns). Bookmarks store SQL queries.
 
 ## Files

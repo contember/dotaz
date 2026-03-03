@@ -9,6 +9,7 @@
 Generate SQL queries from natural language descriptions using an LLM API. The editor provides schema context (tables, columns, types, FK relationships) so the model can generate accurate queries.
 
 ### UX Flow
+
 1. User opens AI prompt (Ctrl+G or toolbar button)
 2. Input field appears above/within SQL editor
 3. User types natural language (e.g. "show all users who signed up last month with their order count")
@@ -17,12 +18,14 @@ Generate SQL queries from natural language descriptions using an LLM API. The ed
 6. User can review, edit, and run normally
 
 ### Schema Context
+
 - Automatically include relevant tables and columns from current connection
 - Include FK relationships for JOIN generation
 - Include column types for proper comparisons and casting
 - Limit context to fit within token budget
 
 ### Architecture
+
 - Backend service calls LLM API (configurable: Anthropic Claude, OpenAI, or local)
 - API key configured in settings
 - Schema context assembled on backend from existing schema introspection

@@ -9,15 +9,19 @@
 Several shared types are too loose, allowing invalid states that are only caught at runtime.
 
 ### DataChange is not a discriminated union
+
 `DataChange` has optional `primaryKeys` and `values` fields regardless of `type`. An INSERT without `values` or a DELETE without `primaryKeys` compiles fine but fails at runtime.
 
 ### ColumnInfo.dataType is untyped string
+
 `dataType: string` forces frontend to use ad-hoc string matching (`isNumericType()` etc.) without compile-time validation. A `DatabaseDataType` enum would centralize type classification.
 
 ### SavedViewConfig duplicates sort/filter types
+
 `SavedViewConfig` defines sort and filter inline instead of reusing existing `SortColumn` and `ColumnFilter` types from `grid.ts`.
 
 Changes needed:
+
 1. Convert `DataChange` to discriminated union: `InsertChange` (requires `values`), `UpdateChange` (requires `primaryKeys` + `values`), `DeleteChange` (requires `primaryKeys`)
 2. Create `DatabaseDataType` enum and use it in `ColumnInfo.dataType` and `QueryResultColumn.dataType`
 3. Update `SavedViewConfig` to reuse `SortColumn` and `ColumnFilter` types

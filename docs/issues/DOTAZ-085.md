@@ -9,18 +9,23 @@
 Several backend storage operations lack proper safety measures:
 
 ### No transaction wrapping in AppDatabase
+
 Multi-row operations like `storage.restore()` in `rpc-handlers.ts` (lines 292-322) insert into multiple tables without a transaction. If the operation fails midway, the app database is left in an inconsistent state.
 
 ### History cleanup not enforced
+
 `DEFAULT_SETTINGS.maxHistoryEntries = "1000"` exists but is never enforced. The history table grows without bound. `clearHistory()` is manual only.
 
 ### Settings are untyped strings
+
 `getSetting()` returns `string | null`. All settings are stored/retrieved as strings with no type-safe parsing. Frontend must manually parse numbers, booleans, etc.
 
 ### No connection pool limits
+
 `ConnectionManager` allows unlimited database activations. No configurable maximum.
 
 Changes needed:
+
 1. Add `transaction<T>(fn: () => T): T` method to `AppDatabase` using `bun:sqlite` transactions
 2. Wrap `restore()` and other multi-statement operations in transactions
 3. Add automatic history pruning in `addHistory()` — delete oldest entries when exceeding max

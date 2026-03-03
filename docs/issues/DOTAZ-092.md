@@ -9,6 +9,7 @@
 Global settings for how data values are displayed in the grid. Configurable format profiles for dates, numbers, and special values.
 
 ### Configurable Formats
+
 - **Date/Time**: display format (e.g. `YYYY-MM-DD HH:mm:ss`, `DD.MM.YYYY`, ISO 8601)
 - **Numbers**: decimal separator (dot/comma), thousands separator (space/comma/dot/none), decimal places
 - **NULL display**: how NULL values appear in the grid (empty, "NULL", "∅", custom text + styling)
@@ -16,6 +17,7 @@ Global settings for how data values are displayed in the grid. Configurable form
 - **Binary display**: hex, base64, "(binary N bytes)"
 
 ### Architecture
+
 - Settings stored in app database (global, not per-connection)
 - Settings dialog accessible from app menu or status bar
 - Grid cells read format settings from a shared store

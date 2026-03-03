@@ -9,6 +9,7 @@
 Search for a text string across all tables (or selected tables) in a database. Slow, but invaluable when you don't know where data is located.
 
 ### Flow
+
 1. User opens "Search in Database" dialog
 2. Enters search text
 3. Selects scope: entire database, specific schema, or selected tables
@@ -16,6 +17,7 @@ Search for a text string across all tables (or selected tables) in a database. S
 5. Results show: table → column → matching row
 
 ### Implementation
+
 - For each table in scope, generate SELECT with WHERE LIKE across text-compatible columns
 - Execute queries sequentially (not in parallel, to avoid overloading DB)
 - Progress bar with name of currently searched table

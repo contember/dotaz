@@ -1,15 +1,15 @@
-import type { Database } from "bun:sqlite";
+import type { Database } from 'bun:sqlite'
 
 export interface Migration {
-	version: number;
-	description: string;
-	up: (db: Database) => void;
+	version: number
+	description: string
+	up: (db: Database) => void
 }
 
 const migrations: Migration[] = [
 	{
 		version: 1,
-		description: "Create connections, query_history, saved_views, settings tables",
+		description: 'Create connections, query_history, saved_views, settings tables',
 		up: (db) => {
 			db.run(`
 				CREATE TABLE connections (
@@ -20,7 +20,7 @@ const migrations: Migration[] = [
 					created_at TEXT NOT NULL DEFAULT (datetime('now')),
 					updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 				)
-			`);
+			`)
 
 			db.run(`
 				CREATE TABLE query_history (
@@ -34,7 +34,7 @@ const migrations: Migration[] = [
 					executed_at TEXT NOT NULL DEFAULT (datetime('now')),
 					FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE CASCADE
 				)
-			`);
+			`)
 
 			db.run(`
 				CREATE TABLE saved_views (
@@ -48,41 +48,41 @@ const migrations: Migration[] = [
 					updated_at TEXT NOT NULL DEFAULT (datetime('now')),
 					FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE CASCADE
 				)
-			`);
+			`)
 
 			db.run(`
 				CREATE TABLE settings (
 					key TEXT PRIMARY KEY,
 					value TEXT NOT NULL
 				)
-			`);
+			`)
 		},
 	},
 	{
 		version: 2,
-		description: "Migrate SSL boolean to SSLMode string in connection configs",
+		description: 'Migrate SSL boolean to SSLMode string in connection configs',
 		up: (db) => {
-			const rows = db.prepare("SELECT id, config FROM connections WHERE type = 'postgresql' OR type = 'mysql'").all() as { id: string; config: string }[];
-			const update = db.prepare("UPDATE connections SET config = ? WHERE id = ?");
+			const rows = db.prepare("SELECT id, config FROM connections WHERE type = 'postgresql' OR type = 'mysql'").all() as { id: string; config: string }[]
+			const update = db.prepare('UPDATE connections SET config = ? WHERE id = ?')
 			for (const row of rows) {
-				const config = JSON.parse(row.config);
-				if (typeof config.ssl === "boolean") {
-					config.ssl = config.ssl ? "require" : "disable";
-					update.run(JSON.stringify(config), row.id);
+				const config = JSON.parse(row.config)
+				if (typeof config.ssl === 'boolean') {
+					config.ssl = config.ssl ? 'require' : 'disable'
+					update.run(JSON.stringify(config), row.id)
 				}
 			}
 		},
 	},
 	{
 		version: 3,
-		description: "Add read_only column to connections table",
+		description: 'Add read_only column to connections table',
 		up: (db) => {
-			db.run("ALTER TABLE connections ADD COLUMN read_only INTEGER NOT NULL DEFAULT 0");
+			db.run('ALTER TABLE connections ADD COLUMN read_only INTEGER NOT NULL DEFAULT 0')
 		},
 	},
 	{
 		version: 4,
-		description: "Create query_bookmarks table",
+		description: 'Create query_bookmarks table',
 		up: (db) => {
 			db.run(`
 				CREATE TABLE query_bookmarks (
@@ -95,19 +95,19 @@ const migrations: Migration[] = [
 					updated_at TEXT NOT NULL DEFAULT (datetime('now')),
 					FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE CASCADE
 				)
-			`);
+			`)
 		},
 	},
 	{
 		version: 5,
-		description: "Add color column to connections table",
+		description: 'Add color column to connections table',
 		up: (db) => {
-			db.run("ALTER TABLE connections ADD COLUMN color TEXT DEFAULT NULL");
+			db.run('ALTER TABLE connections ADD COLUMN color TEXT DEFAULT NULL')
 		},
 	},
 	{
 		version: 6,
-		description: "Create workspace table for session persistence",
+		description: 'Create workspace table for session persistence',
 		up: (db) => {
 			db.run(`
 				CREATE TABLE workspace (
@@ -115,10 +115,10 @@ const migrations: Migration[] = [
 					data TEXT NOT NULL,
 					updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 				)
-			`);
+			`)
 		},
 	},
-];
+]
 
 /**
  * Ensure the schema_version table exists.
@@ -129,15 +129,15 @@ function ensureSchemaVersionTable(db: Database): void {
 			version INTEGER PRIMARY KEY,
 			applied_at TEXT NOT NULL DEFAULT (datetime('now'))
 		)
-	`);
+	`)
 }
 
 /**
  * Get the current schema version from the database.
  */
 function getCurrentVersion(db: Database): number {
-	const row = db.prepare("SELECT MAX(version) as version FROM schema_version").get() as { version: number | null } | null;
-	return row?.version ?? 0;
+	const row = db.prepare('SELECT MAX(version) as version FROM schema_version').get() as { version: number | null } | null
+	return row?.version ?? 0
 }
 
 /**
@@ -145,30 +145,30 @@ function getCurrentVersion(db: Database): number {
  * Returns the number of migrations applied.
  */
 export function runMigrations(db: Database): number {
-	ensureSchemaVersionTable(db);
+	ensureSchemaVersionTable(db)
 
-	const currentVersion = getCurrentVersion(db);
-	const pending = migrations.filter((m) => m.version > currentVersion);
+	const currentVersion = getCurrentVersion(db)
+	const pending = migrations.filter((m) => m.version > currentVersion)
 
 	for (const migration of pending) {
-		db.run("BEGIN");
+		db.run('BEGIN')
 		try {
-			migration.up(db);
-			db.run("INSERT INTO schema_version (version) VALUES (?)", [migration.version]);
-			db.run("COMMIT");
+			migration.up(db)
+			db.run('INSERT INTO schema_version (version) VALUES (?)', [migration.version])
+			db.run('COMMIT')
 		} catch (err) {
-			db.run("ROLLBACK");
-			throw err;
+			db.run('ROLLBACK')
+			throw err
 		}
 	}
 
-	return pending.length;
+	return pending.length
 }
 
 /**
  * Get the current schema version (exposed for testing).
  */
 export function getSchemaVersion(db: Database): number {
-	ensureSchemaVersionTable(db);
-	return getCurrentVersion(db);
+	ensureSchemaVersionTable(db)
+	return getCurrentVersion(db)
 }

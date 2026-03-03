@@ -9,6 +9,7 @@
 Add an Advanced Copy option (Ctrl+Shift+C) that opens a dialog for configuring the clipboard output format when copying cells from the data grid.
 
 ### Options
+
 - **Delimiter**: Tab (default), Comma, Semicolon, Pipe, custom
 - **Include column headers**: yes/no (default: yes)
 - **Include row numbers**: yes/no (default: no)
@@ -16,6 +17,7 @@ Add an Advanced Copy option (Ctrl+Shift+C) that opens a dialog for configuring t
 - **NULL representation**: empty string, "NULL", "\N", custom
 
 ### Behavior
+
 - Regular Ctrl+C keeps current behavior (tab-delimited, no headers)
 - Ctrl+Shift+C opens the Advanced Copy dialog with preview
 - Dialog shows live preview of first few rows in chosen format

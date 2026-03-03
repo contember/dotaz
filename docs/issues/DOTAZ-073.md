@@ -9,6 +9,7 @@
 Allow pinning a result tab so it is not overwritten when running the next query. Currently a new query overwrites the result in the active tab. A pinned tab is preserved and the new query opens a new result tab.
 
 ### Behavior
+
 - Pin icon on result tab
 - Pinned tab cannot be overwritten automatically
 - New query creates a new result tab (if current is pinned)

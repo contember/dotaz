@@ -1,114 +1,123 @@
-import { createSignal, createEffect, createMemo, For, Show } from "solid-js";
-import type { ComparisonSource, ComparisonColumnMapping, ComparisonResult, DiffRowStatus } from "../../../shared/types/comparison";
-import { compareData, MAX_COMPARISON_ROWS } from "../../../shared/comparison";
-import { rpc } from "../../lib/rpc";
-import { connectionsStore } from "../../stores/connections";
-import { uiStore } from "../../stores/ui";
-import Icon from "../common/Icon";
-import "./ComparisonView.css";
+import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
+import { compareData, MAX_COMPARISON_ROWS } from '../../../shared/comparison'
+import type { ComparisonColumnMapping, ComparisonResult, ComparisonSource, DiffRowStatus } from '../../../shared/types/comparison'
+import { rpc } from '../../lib/rpc'
+import { connectionsStore } from '../../stores/connections'
+import { uiStore } from '../../stores/ui'
+import Icon from '../common/Icon'
+import './ComparisonView.css'
 
 interface ComparisonViewProps {
-	tabId: string;
+	tabId: string
 	/** Initial comparison parameters — triggers comparison on mount. */
 	initialParams?: {
-		left: ComparisonSource;
-		right: ComparisonSource;
-		keyColumns: ComparisonColumnMapping[];
-		columnMappings: ComparisonColumnMapping[];
-	};
+		left: ComparisonSource
+		right: ComparisonSource
+		keyColumns: ComparisonColumnMapping[]
+		columnMappings: ComparisonColumnMapping[]
+	}
 }
 
-type StatusFilter = "all" | DiffRowStatus;
+type StatusFilter = 'all' | DiffRowStatus
 
 export default function ComparisonView(props: ComparisonViewProps) {
-	const [result, setResult] = createSignal<ComparisonResult | null>(null);
-	const [loading, setLoading] = createSignal(false);
-	const [error, setError] = createSignal<string | null>(null);
-	const [statusFilter, setStatusFilter] = createSignal<StatusFilter>("all");
+	const [result, setResult] = createSignal<ComparisonResult | null>(null)
+	const [loading, setLoading] = createSignal(false)
+	const [error, setError] = createSignal<string | null>(null)
+	const [statusFilter, setStatusFilter] = createSignal<StatusFilter>('all')
 
 	createEffect(() => {
 		if (props.initialParams) {
-			runComparison(props.initialParams);
+			runComparison(props.initialParams)
 		}
-	});
+	})
 
 	function buildSourceSql(source: ComparisonSource): string {
-		if (source.type === "query") {
-			if (!source.sql) throw new Error("SQL query is required for query source");
-			return source.sql;
+		if (source.type === 'query') {
+			if (!source.sql) throw new Error('SQL query is required for query source')
+			return source.sql
 		}
 		if (!source.schema || !source.table) {
-			throw new Error("Schema and table are required for table source");
+			throw new Error('Schema and table are required for table source')
 		}
-		const dialect = connectionsStore.getDialect(source.connectionId);
-		const qualified = dialect.qualifyTable(source.schema, source.table);
-		return `SELECT * FROM ${qualified} LIMIT ${MAX_COMPARISON_ROWS + 1}`;
+		const dialect = connectionsStore.getDialect(source.connectionId)
+		const qualified = dialect.qualifyTable(source.schema, source.table)
+		return `SELECT * FROM ${qualified} LIMIT ${MAX_COMPARISON_ROWS + 1}`
 	}
 
-	async function runComparison(params: NonNullable<ComparisonViewProps["initialParams"]>) {
-		setLoading(true);
-		setError(null);
-		setResult(null);
+	async function runComparison(params: NonNullable<ComparisonViewProps['initialParams']>) {
+		setLoading(true)
+		setError(null)
+		setResult(null)
 		try {
-			const leftSql = buildSourceSql(params.left);
-			const rightSql = buildSourceSql(params.right);
+			const leftSql = buildSourceSql(params.left)
+			const rightSql = buildSourceSql(params.right)
 
 			const [leftResults, rightResults] = await Promise.all([
 				rpc.query.execute({ connectionId: params.left.connectionId, sql: leftSql, queryId: `cmp-left-${Date.now()}`, database: params.left.database }),
-				rpc.query.execute({ connectionId: params.right.connectionId, sql: rightSql, queryId: `cmp-right-${Date.now()}`, database: params.right.database }),
-			]);
+				rpc.query.execute({
+					connectionId: params.right.connectionId,
+					sql: rightSql,
+					queryId: `cmp-right-${Date.now()}`,
+					database: params.right.database,
+				}),
+			])
 
-			const leftResult = leftResults[0];
-			const rightResult = rightResults[0];
+			const leftResult = leftResults[0]
+			const rightResult = rightResults[0]
 
-			if (leftResult.error) throw new Error(leftResult.error);
-			if (rightResult.error) throw new Error(rightResult.error);
+			if (leftResult.error) throw new Error(leftResult.error)
+			if (rightResult.error) throw new Error(rightResult.error)
 
 			const leftData = {
 				columns: leftResult.columns.map((c) => c.name),
 				rows: leftResult.rows.slice(0, MAX_COMPARISON_ROWS) as Record<string, unknown>[],
-			};
+			}
 			const rightData = {
 				columns: rightResult.columns.map((c) => c.name),
 				rows: rightResult.rows.slice(0, MAX_COMPARISON_ROWS) as Record<string, unknown>[],
-			};
+			}
 
 			const res = compareData(
 				leftData,
 				rightData,
 				params.keyColumns,
 				params.columnMappings.length > 0 ? params.columnMappings : undefined,
-			);
-			setResult(res);
+			)
+			setResult(res)
 		} catch (err) {
-			const msg = err instanceof Error ? err.message : String(err);
-			setError(msg);
-			uiStore.addToast("error", `Comparison failed: ${msg}`);
+			const msg = err instanceof Error ? err.message : String(err)
+			setError(msg)
+			uiStore.addToast('error', `Comparison failed: ${msg}`)
 		} finally {
-			setLoading(false);
+			setLoading(false)
 		}
 	}
 
 	const filteredRows = createMemo(() => {
-		const r = result();
-		if (!r) return [];
-		const filter = statusFilter();
-		if (filter === "all") return r.rows;
-		return r.rows.filter((row) => row.status === filter);
-	});
+		const r = result()
+		if (!r) return []
+		const filter = statusFilter()
+		if (filter === 'all') return r.rows
+		return r.rows.filter((row) => row.status === filter)
+	})
 
 	function formatCellValue(value: unknown): string {
-		if (value === null || value === undefined) return "NULL";
-		if (typeof value === "object") return JSON.stringify(value);
-		return String(value);
+		if (value === null || value === undefined) return 'NULL'
+		if (typeof value === 'object') return JSON.stringify(value)
+		return String(value)
 	}
 
 	function getStatusLabel(status: DiffRowStatus): string {
 		switch (status) {
-			case "matched": return "Matched";
-			case "added": return "Added";
-			case "removed": return "Removed";
-			case "changed": return "Changed";
+			case 'matched':
+				return 'Matched'
+			case 'added':
+				return 'Added'
+			case 'removed':
+				return 'Removed'
+			case 'changed':
+				return 'Changed'
 		}
 	}
 
@@ -138,29 +147,29 @@ export default function ComparisonView(props: ComparisonViewProps) {
 								</span>
 								<button
 									class="comparison-view__stat comparison-view__stat--matched"
-									classList={{ "comparison-view__stat--active": statusFilter() === "matched" }}
-									onClick={() => setStatusFilter((f) => f === "matched" ? "all" : "matched")}
+									classList={{ 'comparison-view__stat--active': statusFilter() === 'matched' }}
+									onClick={() => setStatusFilter((f) => f === 'matched' ? 'all' : 'matched')}
 								>
 									Matched: {res().stats.matched}
 								</button>
 								<button
 									class="comparison-view__stat comparison-view__stat--added"
-									classList={{ "comparison-view__stat--active": statusFilter() === "added" }}
-									onClick={() => setStatusFilter((f) => f === "added" ? "all" : "added")}
+									classList={{ 'comparison-view__stat--active': statusFilter() === 'added' }}
+									onClick={() => setStatusFilter((f) => f === 'added' ? 'all' : 'added')}
 								>
 									Added: {res().stats.added}
 								</button>
 								<button
 									class="comparison-view__stat comparison-view__stat--removed"
-									classList={{ "comparison-view__stat--active": statusFilter() === "removed" }}
-									onClick={() => setStatusFilter((f) => f === "removed" ? "all" : "removed")}
+									classList={{ 'comparison-view__stat--active': statusFilter() === 'removed' }}
+									onClick={() => setStatusFilter((f) => f === 'removed' ? 'all' : 'removed')}
 								>
 									Removed: {res().stats.removed}
 								</button>
 								<button
 									class="comparison-view__stat comparison-view__stat--changed"
-									classList={{ "comparison-view__stat--active": statusFilter() === "changed" }}
-									onClick={() => setStatusFilter((f) => f === "changed" ? "all" : "changed")}
+									classList={{ 'comparison-view__stat--active': statusFilter() === 'changed' }}
+									onClick={() => setStatusFilter((f) => f === 'changed' ? 'all' : 'changed')}
 								>
 									Changed: {res().stats.changed}
 								</button>
@@ -179,9 +188,7 @@ export default function ComparisonView(props: ComparisonViewProps) {
 											<tr>
 												<th class="comparison-view__th comparison-view__th--status">Status</th>
 												<For each={res().leftColumns}>
-													{(col) => (
-														<th class="comparison-view__th">{col}</th>
-													)}
+													{(col) => <th class="comparison-view__th">{col}</th>}
 												</For>
 											</tr>
 										</thead>
@@ -196,19 +203,19 @@ export default function ComparisonView(props: ComparisonViewProps) {
 														</td>
 														<For each={res().leftColumns}>
 															{(col) => {
-																const isChanged = row.changedColumns.includes(col);
+																const isChanged = row.changedColumns.includes(col)
 																return (
 																	<td
 																		class="comparison-view__td"
 																		classList={{
-																			"comparison-view__td--changed": isChanged,
-																			"comparison-view__td--null": row.leftValues?.[col] === null || row.leftValues?.[col] === undefined,
-																			"comparison-view__td--empty": row.status === "added",
+																			'comparison-view__td--changed': isChanged,
+																			'comparison-view__td--null': row.leftValues?.[col] === null || row.leftValues?.[col] === undefined,
+																			'comparison-view__td--empty': row.status === 'added',
 																		}}
 																	>
-																		{row.leftValues ? formatCellValue(row.leftValues[col]) : ""}
+																		{row.leftValues ? formatCellValue(row.leftValues[col]) : ''}
 																	</td>
-																);
+																)
 															}}
 														</For>
 													</tr>
@@ -229,9 +236,7 @@ export default function ComparisonView(props: ComparisonViewProps) {
 											<tr>
 												<th class="comparison-view__th comparison-view__th--status">Status</th>
 												<For each={res().rightColumns}>
-													{(col) => (
-														<th class="comparison-view__th">{col}</th>
-													)}
+													{(col) => <th class="comparison-view__th">{col}</th>}
 												</For>
 											</tr>
 										</thead>
@@ -239,9 +244,9 @@ export default function ComparisonView(props: ComparisonViewProps) {
 											<For each={filteredRows()}>
 												{(row) => {
 													const mappedChangedCols = row.changedColumns.map((lc) => {
-														const mapping = res().columnMappings.find((m) => m.leftColumn === lc);
-														return mapping?.rightColumn ?? lc;
-													});
+														const mapping = res().columnMappings.find((m) => m.leftColumn === lc)
+														return mapping?.rightColumn ?? lc
+													})
 													return (
 														<tr class={`comparison-view__row comparison-view__row--${row.status}`}>
 															<td class="comparison-view__td comparison-view__td--status">
@@ -251,23 +256,23 @@ export default function ComparisonView(props: ComparisonViewProps) {
 															</td>
 															<For each={res().rightColumns}>
 																{(col) => {
-																	const isChanged = mappedChangedCols.includes(col);
+																	const isChanged = mappedChangedCols.includes(col)
 																	return (
 																		<td
 																			class="comparison-view__td"
 																			classList={{
-																				"comparison-view__td--changed": isChanged,
-																				"comparison-view__td--null": row.rightValues?.[col] === null || row.rightValues?.[col] === undefined,
-																				"comparison-view__td--empty": row.status === "removed",
+																				'comparison-view__td--changed': isChanged,
+																				'comparison-view__td--null': row.rightValues?.[col] === null || row.rightValues?.[col] === undefined,
+																				'comparison-view__td--empty': row.status === 'removed',
 																			}}
 																		>
-																			{row.rightValues ? formatCellValue(row.rightValues[col]) : ""}
+																			{row.rightValues ? formatCellValue(row.rightValues[col]) : ''}
 																		</td>
-																	);
+																	)
 																}}
 															</For>
 														</tr>
-													);
+													)
 												}}
 											</For>
 										</tbody>
@@ -285,5 +290,5 @@ export default function ComparisonView(props: ComparisonViewProps) {
 				</div>
 			</Show>
 		</div>
-	);
+	)
 }

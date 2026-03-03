@@ -14,20 +14,20 @@ The SessionManager does NOT track tab bindings — that's a frontend concern.
 
 ```typescript
 export interface SessionInfo {
-  sessionId: string;
-  connectionId: string;
-  database?: string;
-  label: string;           // auto-generated: "Session 1", "Session 2"
-  inTransaction: boolean;
-  createdAt: number;
+	sessionId: string
+	connectionId: string
+	database?: string
+	label: string // auto-generated: "Session 1", "Session 2"
+	inTransaction: boolean
+	createdAt: number
 }
 
 export class SessionManager {
-  createSession(connectionId: string, database?: string): Promise<SessionInfo>;
-  destroySession(sessionId: string): Promise<void>;
-  listSessions(connectionId: string): SessionInfo[];
-  getSession(sessionId: string): SessionInfo | undefined;
-  handleConnectionLost(connectionId: string): void;
+	createSession(connectionId: string, database?: string): Promise<SessionInfo>
+	destroySession(sessionId: string): Promise<void>
+	listSessions(connectionId: string): SessionInfo[]
+	getSession(sessionId: string): SessionInfo | undefined
+	handleConnectionLost(connectionId: string): void
 }
 ```
 

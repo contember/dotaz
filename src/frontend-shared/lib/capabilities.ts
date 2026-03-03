@@ -1,24 +1,24 @@
 export interface AppCapabilities {
 	/** Can read/write files via path (desktop) */
-	hasFileSystem: boolean;
+	hasFileSystem: boolean
 	/** Can stream via HTTP endpoints (web) */
-	hasHttpStreaming: boolean;
+	hasHttpStreaming: boolean
 	/** Has native open/save dialogs (desktop) */
-	hasNativeDialogs: boolean;
+	hasNativeDialogs: boolean
 }
 
 const defaults: AppCapabilities = {
 	hasFileSystem: false,
 	hasHttpStreaming: false,
 	hasNativeDialogs: false,
-};
+}
 
-let _capabilities: AppCapabilities = { ...defaults };
+let _capabilities: AppCapabilities = { ...defaults }
 
 export function setCapabilities(c: AppCapabilities): void {
-	_capabilities = { ...c };
+	_capabilities = { ...c }
 }
 
 export function getCapabilities(): Readonly<AppCapabilities> {
-	return _capabilities;
+	return _capabilities
 }

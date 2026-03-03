@@ -8,12 +8,14 @@
 
 When writing a JOIN clause in the SQL editor, automatically suggest the complete JOIN condition based on foreign key relationships. For example:
 
-User types `SELECT * FROM orders JOIN ` and autocomplete suggests:
+User types `SELECT * FROM orders JOIN` and autocomplete suggests:
+
 ```sql
 customers ON orders.customer_id = customers.id
 ```
 
 ### Behavior
+
 - After typing `JOIN`, suggest tables that have FK relationships with tables in FROM
 - After selecting a table, auto-complete the ON clause based on FK
 - If multiple FKs exist between tables, offer selection

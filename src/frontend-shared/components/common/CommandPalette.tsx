@@ -1,99 +1,99 @@
-import { createSignal, Show, For, onMount, onCleanup, createEffect } from "solid-js";
-import { commandRegistry } from "../../lib/commands";
-import type { Command } from "../../lib/commands";
-import "./CommandPalette.css";
+import { createEffect, createSignal, For, onCleanup, onMount, Show } from 'solid-js'
+import { commandRegistry } from '../../lib/commands'
+import type { Command } from '../../lib/commands'
+import './CommandPalette.css'
 
 interface CommandPaletteProps {
-	open: boolean;
-	onClose: () => void;
+	open: boolean
+	onClose: () => void
 }
 
 export default function CommandPalette(props: CommandPaletteProps) {
-	const [query, setQuery] = createSignal("");
-	const [selectedIndex, setSelectedIndex] = createSignal(0);
-	const [results, setResults] = createSignal<Command[]>([]);
+	const [query, setQuery] = createSignal('')
+	const [selectedIndex, setSelectedIndex] = createSignal(0)
+	const [results, setResults] = createSignal<Command[]>([])
 
-	let inputRef: HTMLInputElement | undefined;
-	let listRef: HTMLDivElement | undefined;
+	let inputRef: HTMLInputElement | undefined
+	let listRef: HTMLDivElement | undefined
 
 	// Update results when query changes or palette opens
 	createEffect(() => {
 		if (props.open) {
-			const q = query();
-			setResults(commandRegistry.search(q));
-			setSelectedIndex(0);
+			const q = query()
+			setResults(commandRegistry.search(q))
+			setSelectedIndex(0)
 		}
-	});
+	})
 
 	// Focus input when opened, reset state
 	createEffect(() => {
 		if (props.open) {
-			setQuery("");
+			setQuery('')
 			// Defer focus to next frame so the input is rendered
-			requestAnimationFrame(() => inputRef?.focus());
+			requestAnimationFrame(() => inputRef?.focus())
 		}
-	});
+	})
 
 	function handleKeyDown(e: KeyboardEvent) {
-		if (!props.open) return;
+		if (!props.open) return
 
-		if (e.key === "Escape") {
-			e.preventDefault();
-			props.onClose();
-			return;
+		if (e.key === 'Escape') {
+			e.preventDefault()
+			props.onClose()
+			return
 		}
 
-		if (e.key === "ArrowDown") {
-			e.preventDefault();
-			setSelectedIndex((i) => Math.min(i + 1, results().length - 1));
-			scrollToSelected();
-			return;
+		if (e.key === 'ArrowDown') {
+			e.preventDefault()
+			setSelectedIndex((i) => Math.min(i + 1, results().length - 1))
+			scrollToSelected()
+			return
 		}
 
-		if (e.key === "ArrowUp") {
-			e.preventDefault();
-			setSelectedIndex((i) => Math.max(i - 1, 0));
-			scrollToSelected();
-			return;
+		if (e.key === 'ArrowUp') {
+			e.preventDefault()
+			setSelectedIndex((i) => Math.max(i - 1, 0))
+			scrollToSelected()
+			return
 		}
 
-		if (e.key === "Enter") {
-			e.preventDefault();
-			const items = results();
-			const idx = selectedIndex();
+		if (e.key === 'Enter') {
+			e.preventDefault()
+			const items = results()
+			const idx = selectedIndex()
 			if (items[idx]) {
-				props.onClose();
-				commandRegistry.execute(items[idx].id);
+				props.onClose()
+				commandRegistry.execute(items[idx].id)
 			}
-			return;
+			return
 		}
 	}
 
 	function scrollToSelected() {
 		requestAnimationFrame(() => {
-			const el = listRef?.querySelector(".command-palette__item--selected");
-			el?.scrollIntoView({ block: "nearest" });
-		});
+			const el = listRef?.querySelector('.command-palette__item--selected')
+			el?.scrollIntoView({ block: 'nearest' })
+		})
 	}
 
 	function handleOverlayClick(e: MouseEvent) {
 		if (e.target === e.currentTarget) {
-			props.onClose();
+			props.onClose()
 		}
 	}
 
 	function handleItemClick(command: Command) {
-		props.onClose();
-		commandRegistry.execute(command.id);
+		props.onClose()
+		commandRegistry.execute(command.id)
 	}
 
 	onMount(() => {
-		document.addEventListener("keydown", handleKeyDown);
-	});
+		document.addEventListener('keydown', handleKeyDown)
+	})
 
 	onCleanup(() => {
-		document.removeEventListener("keydown", handleKeyDown);
-	});
+		document.removeEventListener('keydown', handleKeyDown)
+	})
 
 	return (
 		<Show when={props.open}>
@@ -116,7 +116,7 @@ export default function CommandPalette(props: CommandPaletteProps) {
 						<For each={results()}>
 							{(cmd, i) => (
 								<div
-									class={`command-palette__item${i() === selectedIndex() ? " command-palette__item--selected" : ""}`}
+									class={`command-palette__item${i() === selectedIndex() ? ' command-palette__item--selected' : ''}`}
 									onClick={() => handleItemClick(cmd)}
 									onMouseEnter={() => setSelectedIndex(i())}
 								>
@@ -134,5 +134,5 @@ export default function CommandPalette(props: CommandPaletteProps) {
 				</div>
 			</div>
 		</Show>
-	);
+	)
 }

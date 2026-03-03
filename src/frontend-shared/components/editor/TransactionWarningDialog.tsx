@@ -1,18 +1,18 @@
-import Dialog from "../common/Dialog";
+import Dialog from '../common/Dialog'
 
 interface TransactionWarningDialogProps {
-	open: boolean;
-	context: "close" | "disconnect";
-	onCommit: () => void;
-	onRollback: () => void;
-	onCancel: () => void;
+	open: boolean
+	context: 'close' | 'disconnect'
+	onCommit: () => void
+	onRollback: () => void
+	onCancel: () => void
 }
 
 export default function TransactionWarningDialog(props: TransactionWarningDialogProps) {
 	const message = () =>
-		props.context === "close"
-			? "This tab has an uncommitted transaction."
-			: "This connection has an uncommitted transaction.";
+		props.context === 'close'
+			? 'This tab has an uncommitted transaction.'
+			: 'This connection has an uncommitted transaction.'
 
 	return (
 		<Dialog
@@ -20,11 +20,11 @@ export default function TransactionWarningDialog(props: TransactionWarningDialog
 			title="Uncommitted Transaction"
 			onClose={props.onCancel}
 		>
-			<div style={{ padding: "var(--spacing-sm)" }}>
-				<p style={{ margin: "0 0 var(--spacing-md) 0", color: "var(--ink)" }}>
+			<div style={{ padding: 'var(--spacing-sm)' }}>
+				<p style={{ margin: '0 0 var(--spacing-md) 0', color: 'var(--ink)' }}>
 					{message()} What would you like to do?
 				</p>
-				<div style={{ display: "flex", gap: "var(--spacing-sm)", "justify-content": "flex-end" }}>
+				<div style={{ display: 'flex', gap: 'var(--spacing-sm)', 'justify-content': 'flex-end' }}>
 					<button class="btn btn--secondary" onClick={props.onCancel}>
 						Cancel
 					</button>
@@ -37,5 +37,5 @@ export default function TransactionWarningDialog(props: TransactionWarningDialog
 				</div>
 			</div>
 		</Dialog>
-	);
+	)
 }

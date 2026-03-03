@@ -1,200 +1,195 @@
-import { SQL } from "bun";
-import type { ReservedSQL } from "bun";
-import type { DatabaseDriver } from "../db/driver";
-import type { ConnectionConfig } from "../../shared/types/connection";
-import type { QueryResult, QueryResultColumn } from "../../shared/types/query";
-import {
-	DatabaseDataType,
-} from "../../shared/types/database";
-import type {
-	SchemaInfo,
-	SchemaData,
-	TableInfo,
-} from "../../shared/types/database";
-import { getAffectedRowCount } from "../db/result-utils";
-import { mapMysqlError } from "../db/error-mapping";
-import { DatabaseError } from "../../shared/types/errors";
+import { SQL } from 'bun'
+import type { ReservedSQL } from 'bun'
+import type { ConnectionConfig } from '../../shared/types/connection'
+import { DatabaseDataType } from '../../shared/types/database'
+import type { SchemaData, SchemaInfo, TableInfo } from '../../shared/types/database'
+import { DatabaseError } from '../../shared/types/errors'
+import type { QueryResult, QueryResultColumn } from '../../shared/types/query'
+import type { DatabaseDriver } from '../db/driver'
+import { mapMysqlError } from '../db/error-mapping'
+import { getAffectedRowCount } from '../db/result-utils'
 
 /** Row shape from information_schema.columns */
 interface MysqlColumnRow {
-	table_schema: string;
-	table_name: string;
-	column_name: string;
-	data_type: string;
-	column_type: string;
-	is_nullable: string;
-	column_default: string | null;
-	character_maximum_length: number | null;
-	column_key: string;
-	extra: string;
+	table_schema: string
+	table_name: string
+	column_name: string
+	data_type: string
+	column_type: string
+	is_nullable: string
+	column_default: string | null
+	character_maximum_length: number | null
+	column_key: string
+	extra: string
 }
 
 /** Row shape from information_schema.STATISTICS */
 interface MysqlIndexRow {
-	table_schema: string;
-	table_name: string;
-	index_name: string;
-	non_unique: number | string;
-	columns: string;
+	table_schema: string
+	table_name: string
+	index_name: string
+	non_unique: number | string
+	columns: string
 }
 
 /** Row shape from FK join query */
 interface MysqlForeignKeyRow {
-	table_schema: string;
-	table_name: string;
-	constraint_name: string;
-	columns: string;
-	referenced_schema: string;
-	referenced_table: string;
-	referenced_columns: string;
-	on_update: string;
-	on_delete: string;
+	table_schema: string
+	table_name: string
+	constraint_name: string
+	columns: string
+	referenced_schema: string
+	referenced_table: string
+	referenced_columns: string
+	on_update: string
+	on_delete: string
 }
 
 /** Row shape from referencing FK query */
 interface MysqlReferencingFkRow {
-	referenced_schema: string;
-	referenced_table: string;
-	constraint_name: string;
-	referencing_schema: string;
-	referencing_table: string;
-	referencing_columns: string;
-	referenced_columns: string;
+	referenced_schema: string
+	referenced_table: string
+	constraint_name: string
+	referencing_schema: string
+	referencing_table: string
+	referencing_columns: string
+	referenced_columns: string
 }
 
 /** Row shape from information_schema.tables */
 interface MysqlTableRow {
-	name: string;
-	table_type: string;
+	name: string
+	table_type: string
 }
 
 /** Map MySQL information_schema data_type to DatabaseDataType. */
 function mapMysqlDataType(dataType: string): DatabaseDataType {
 	switch (dataType.toLowerCase()) {
-		case "int":
-		case "integer":
-		case "bigint":
-		case "smallint":
-		case "tinyint":
-		case "mediumint":
-			return DatabaseDataType.Integer;
-		case "float":
-		case "double":
-			return DatabaseDataType.Float;
-		case "decimal":
-		case "numeric":
-			return DatabaseDataType.Numeric;
-		case "bit":
-		case "boolean":
-		case "bool":
-			return DatabaseDataType.Boolean;
-		case "text":
-		case "tinytext":
-		case "mediumtext":
-		case "longtext":
-			return DatabaseDataType.Text;
-		case "varchar":
-			return DatabaseDataType.Varchar;
-		case "char":
-			return DatabaseDataType.Char;
-		case "date":
-			return DatabaseDataType.Date;
-		case "time":
-			return DatabaseDataType.Time;
-		case "datetime":
-		case "timestamp":
-			return DatabaseDataType.Timestamp;
-		case "json":
-			return DatabaseDataType.Json;
-		case "binary":
-		case "varbinary":
-		case "blob":
-		case "tinyblob":
-		case "mediumblob":
-		case "longblob":
-			return DatabaseDataType.Binary;
-		case "enum":
-		case "set":
-			return DatabaseDataType.Enum;
+		case 'int':
+		case 'integer':
+		case 'bigint':
+		case 'smallint':
+		case 'tinyint':
+		case 'mediumint':
+			return DatabaseDataType.Integer
+		case 'float':
+		case 'double':
+			return DatabaseDataType.Float
+		case 'decimal':
+		case 'numeric':
+			return DatabaseDataType.Numeric
+		case 'bit':
+		case 'boolean':
+		case 'bool':
+			return DatabaseDataType.Boolean
+		case 'text':
+		case 'tinytext':
+		case 'mediumtext':
+		case 'longtext':
+			return DatabaseDataType.Text
+		case 'varchar':
+			return DatabaseDataType.Varchar
+		case 'char':
+			return DatabaseDataType.Char
+		case 'date':
+			return DatabaseDataType.Date
+		case 'time':
+			return DatabaseDataType.Time
+		case 'datetime':
+		case 'timestamp':
+			return DatabaseDataType.Timestamp
+		case 'json':
+			return DatabaseDataType.Json
+		case 'binary':
+		case 'varbinary':
+		case 'blob':
+		case 'tinyblob':
+		case 'mediumblob':
+		case 'longblob':
+			return DatabaseDataType.Binary
+		case 'enum':
+		case 'set':
+			return DatabaseDataType.Enum
 		default:
-			return DatabaseDataType.Unknown;
+			return DatabaseDataType.Unknown
 	}
 }
 
 export class MysqlDriver implements DatabaseDriver {
-	private db: SQL | null = null;
-	private connected = false;
-	private txActive = false;
-	private reservedConn: ReservedSQL | null = null;
-	private activeQuery: ReturnType<SQL["unsafe"]> | null = null;
-	private sessionIds = new Set<string>();
+	private db: SQL | null = null
+	private connected = false
+	private txActive = false
+	private reservedConn: ReservedSQL | null = null
+	private activeQuery: ReturnType<SQL['unsafe']> | null = null
+	private sessionIds = new Set<string>()
 
 	async connect(config: ConnectionConfig): Promise<void> {
-		if (config.type !== "mysql") {
+		if (config.type !== 'mysql') {
 			throw new Error(
-				"MysqlDriver requires a mysql connection config",
-			);
+				'MysqlDriver requires a mysql connection config',
+			)
 		}
-		const url = `mysql://${encodeURIComponent(config.user)}:${encodeURIComponent(config.password)}@${config.host}:${config.port}/${encodeURIComponent(config.database)}`;
-		this.db = new SQL({ url });
+		const url = `mysql://${encodeURIComponent(config.user)}:${encodeURIComponent(config.password)}@${config.host}:${config.port}/${
+			encodeURIComponent(config.database)
+		}`
+		this.db = new SQL({ url })
 		// Verify the connection works
 		try {
-			await this.db`SELECT 1`;
+			await this.db`SELECT 1`
 		} catch (err) {
-			this.db = null;
-			throw err instanceof DatabaseError ? err : mapMysqlError(err);
+			this.db = null
+			throw err instanceof DatabaseError ? err : mapMysqlError(err)
 		}
-		this.connected = true;
+		this.connected = true
 	}
 
 	async disconnect(): Promise<void> {
 		if (this.reservedConn) {
-			this.reservedConn.release();
-			this.reservedConn = null;
+			this.reservedConn.release()
+			this.reservedConn = null
 		}
 		if (this.db) {
-			await this.db.close();
-			this.db = null;
-			this.connected = false;
-			this.txActive = false;
-			this.sessionIds.clear();
+			await this.db.close()
+			this.db = null
+			this.connected = false
+			this.txActive = false
+			this.sessionIds.clear()
 		}
 	}
 
 	isConnected(): boolean {
-		return this.connected;
+		return this.connected
 	}
 
 	async reserveSession(sessionId: string): Promise<void> {
-		this.sessionIds.add(sessionId);
+		this.sessionIds.add(sessionId)
 	}
 
 	async releaseSession(sessionId: string): Promise<void> {
-		this.sessionIds.delete(sessionId);
+		this.sessionIds.delete(sessionId)
 	}
 
 	getSessionIds(): string[] {
-		return [...this.sessionIds];
+		return [...this.sessionIds]
 	}
 
 	async execute(sql: string, params?: unknown[], _sessionId?: string): Promise<QueryResult> {
-		this.ensureConnected();
-		const conn = this.reservedConn ?? this.db!;
-		const start = performance.now();
-		const query = conn.unsafe(sql, params ?? []);
-		this.activeQuery = query;
+		this.ensureConnected()
+		const conn = this.reservedConn ?? this.db!
+		const start = performance.now()
+		const query = conn.unsafe(sql, params ?? [])
+		this.activeQuery = query
 		try {
-			const result = await query;
-			const durationMs = Math.round(performance.now() - start);
-			const rows = [...result] as Record<string, unknown>[];
+			const result = await query
+			const durationMs = Math.round(performance.now() - start)
+			const rows = [...result] as Record<string, unknown>[]
 
-			const columns: QueryResultColumn[] =
-				rows.length > 0
-					? Object.keys(rows[0]).map((name) => ({
-							name,
-							dataType: DatabaseDataType.Unknown,
-						}))
-					: [];
+			const columns: QueryResultColumn[] = rows.length > 0
+				? Object.keys(rows[0]).map((name) => ({
+					name,
+					dataType: DatabaseDataType.Unknown,
+				}))
+				: []
 
 			return {
 				columns,
@@ -202,31 +197,31 @@ export class MysqlDriver implements DatabaseDriver {
 				rowCount: rows.length,
 				affectedRows: getAffectedRowCount(result),
 				durationMs,
-			};
+			}
 		} catch (err) {
-			throw err instanceof DatabaseError ? err : mapMysqlError(err);
+			throw err instanceof DatabaseError ? err : mapMysqlError(err)
 		} finally {
-			this.activeQuery = null;
+			this.activeQuery = null
 		}
 	}
 
 	async cancel(_sessionId?: string): Promise<void> {
 		if (this.activeQuery) {
-			this.activeQuery.cancel();
-			this.activeQuery = null;
+			this.activeQuery.cancel()
+			this.activeQuery = null
 		}
 	}
 
 	async loadSchema(_sessionId?: string): Promise<SchemaData> {
-		this.ensureConnected();
-		const conn = this.reservedConn ?? this.db!;
+		this.ensureConnected()
+		const conn = this.reservedConn ?? this.db!
 
-		const schemas = await this.getSchemas();
-		const schemaNames = schemas.map((s) => s.name);
+		const schemas = await this.getSchemas()
+		const schemaNames = schemas.map((s) => s.name)
 
-		const tables: SchemaData["tables"] = {};
+		const tables: SchemaData['tables'] = {}
 		for (const schema of schemas) {
-			tables[schema.name] = await this.getTables(schema.name);
+			tables[schema.name] = await this.getTables(schema.name)
 		}
 
 		const [allColumns, allIndexes, allForeignKeys, allReferencingForeignKeys] = await Promise.all([
@@ -244,7 +239,7 @@ export class MysqlDriver implements DatabaseDriver {
 					c.COLUMN_KEY AS column_key,
 					c.EXTRA AS extra
 				FROM information_schema.columns c
-				WHERE c.TABLE_SCHEMA IN (${schemaNames.map(() => "?").join(",")})
+				WHERE c.TABLE_SCHEMA IN (${schemaNames.map(() => '?').join(',')})
 				ORDER BY c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION`,
 				schemaNames,
 			),
@@ -257,7 +252,7 @@ export class MysqlDriver implements DatabaseDriver {
 					NON_UNIQUE AS non_unique,
 					GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) AS \`columns\`
 				FROM information_schema.STATISTICS
-				WHERE TABLE_SCHEMA IN (${schemaNames.map(() => "?").join(",")})
+				WHERE TABLE_SCHEMA IN (${schemaNames.map(() => '?').join(',')})
 				GROUP BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME, NON_UNIQUE
 				ORDER BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME`,
 				schemaNames,
@@ -278,7 +273,7 @@ export class MysqlDriver implements DatabaseDriver {
 				JOIN information_schema.REFERENTIAL_CONSTRAINTS rc
 					ON rc.CONSTRAINT_SCHEMA = kcu.TABLE_SCHEMA
 					AND rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
-				WHERE kcu.TABLE_SCHEMA IN (${schemaNames.map(() => "?").join(",")})
+				WHERE kcu.TABLE_SCHEMA IN (${schemaNames.map(() => '?').join(',')})
 					AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
 				GROUP BY kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.CONSTRAINT_NAME,
 					kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME,
@@ -297,116 +292,116 @@ export class MysqlDriver implements DatabaseDriver {
 					GROUP_CONCAT(kcu.COLUMN_NAME ORDER BY kcu.ORDINAL_POSITION) AS referencing_columns,
 					GROUP_CONCAT(kcu.REFERENCED_COLUMN_NAME ORDER BY kcu.ORDINAL_POSITION) AS referenced_columns
 				FROM information_schema.KEY_COLUMN_USAGE kcu
-				WHERE kcu.REFERENCED_TABLE_SCHEMA IN (${schemaNames.map(() => "?").join(",")})
+				WHERE kcu.REFERENCED_TABLE_SCHEMA IN (${schemaNames.map(() => '?').join(',')})
 					AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
 				GROUP BY kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME,
 					kcu.CONSTRAINT_NAME, kcu.TABLE_SCHEMA, kcu.TABLE_NAME
 				ORDER BY kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.CONSTRAINT_NAME`,
 				schemaNames,
 			),
-		]);
+		])
 
 		// Group columns by schema.table
-		const columns: SchemaData["columns"] = {};
+		const columns: SchemaData['columns'] = {}
 		for (const row of allColumns as MysqlColumnRow[]) {
-			const key = `${row.table_schema}.${row.table_name}`;
-			if (!columns[key]) columns[key] = [];
+			const key = `${row.table_schema}.${row.table_name}`
+			if (!columns[key]) columns[key] = []
 			columns[key].push({
 				name: row.column_name,
 				dataType: mapMysqlDataType(row.data_type),
-				nullable: row.is_nullable === "YES",
+				nullable: row.is_nullable === 'YES',
 				defaultValue: row.column_default,
-				isPrimaryKey: row.column_key === "PRI",
-				isAutoIncrement: (row.extra ?? "").includes("auto_increment"),
+				isPrimaryKey: row.column_key === 'PRI',
+				isAutoIncrement: (row.extra ?? '').includes('auto_increment'),
 				maxLength: row.character_maximum_length ?? undefined,
-			});
+			})
 		}
 
 		// Group indexes by schema.table
-		const indexes: SchemaData["indexes"] = {};
+		const indexes: SchemaData['indexes'] = {}
 		for (const row of allIndexes as MysqlIndexRow[]) {
-			const key = `${row.table_schema}.${row.table_name}`;
-			if (!indexes[key]) indexes[key] = [];
+			const key = `${row.table_schema}.${row.table_name}`
+			if (!indexes[key]) indexes[key] = []
 			indexes[key].push({
 				name: row.index_name,
-				columns: typeof row.columns === "string" ? row.columns.split(",") : [row.columns],
-				isUnique: row.non_unique === 0 || row.non_unique === "0",
-				isPrimary: row.index_name === "PRIMARY",
-			});
+				columns: typeof row.columns === 'string' ? row.columns.split(',') : [row.columns],
+				isUnique: row.non_unique === 0 || row.non_unique === '0',
+				isPrimary: row.index_name === 'PRIMARY',
+			})
 		}
 
 		// Group foreign keys by schema.table
-		const foreignKeys: SchemaData["foreignKeys"] = {};
+		const foreignKeys: SchemaData['foreignKeys'] = {}
 		for (const row of allForeignKeys as MysqlForeignKeyRow[]) {
-			const key = `${row.table_schema}.${row.table_name}`;
-			if (!foreignKeys[key]) foreignKeys[key] = [];
+			const key = `${row.table_schema}.${row.table_name}`
+			if (!foreignKeys[key]) foreignKeys[key] = []
 			foreignKeys[key].push({
 				name: row.constraint_name,
-				columns: typeof row.columns === "string" ? row.columns.split(",") : [row.columns],
+				columns: typeof row.columns === 'string' ? row.columns.split(',') : [row.columns],
 				referencedSchema: row.referenced_schema,
 				referencedTable: row.referenced_table,
-				referencedColumns: typeof row.referenced_columns === "string"
-					? row.referenced_columns.split(",")
+				referencedColumns: typeof row.referenced_columns === 'string'
+					? row.referenced_columns.split(',')
 					: [row.referenced_columns],
 				onUpdate: row.on_update,
 				onDelete: row.on_delete,
-			});
+			})
 		}
 
 		// Group referencing foreign keys by schema.table (the referenced table)
-		const referencingForeignKeys: SchemaData["referencingForeignKeys"] = {};
+		const referencingForeignKeys: SchemaData['referencingForeignKeys'] = {}
 		for (const row of allReferencingForeignKeys as MysqlReferencingFkRow[]) {
-			const key = `${row.referenced_schema}.${row.referenced_table}`;
-			if (!referencingForeignKeys[key]) referencingForeignKeys[key] = [];
+			const key = `${row.referenced_schema}.${row.referenced_table}`
+			if (!referencingForeignKeys[key]) referencingForeignKeys[key] = []
 			referencingForeignKeys[key].push({
 				constraintName: row.constraint_name,
 				referencingSchema: row.referencing_schema,
 				referencingTable: row.referencing_table,
-				referencingColumns: typeof row.referencing_columns === "string"
-					? row.referencing_columns.split(",")
+				referencingColumns: typeof row.referencing_columns === 'string'
+					? row.referencing_columns.split(',')
 					: [row.referencing_columns],
-				referencedColumns: typeof row.referenced_columns === "string"
-					? row.referenced_columns.split(",")
+				referencedColumns: typeof row.referenced_columns === 'string'
+					? row.referenced_columns.split(',')
 					: [row.referenced_columns],
-			});
+			})
 		}
 
 		// Ensure every table has entries (even if empty)
 		for (const schema of schemas) {
 			for (const table of tables[schema.name]) {
-				const key = `${schema.name}.${table.name}`;
-				if (!columns[key]) columns[key] = [];
-				if (!indexes[key]) indexes[key] = [];
-				if (!foreignKeys[key]) foreignKeys[key] = [];
-				if (!referencingForeignKeys[key]) referencingForeignKeys[key] = [];
+				const key = `${schema.name}.${table.name}`
+				if (!columns[key]) columns[key] = []
+				if (!indexes[key]) indexes[key] = []
+				if (!foreignKeys[key]) foreignKeys[key] = []
+				if (!referencingForeignKeys[key]) referencingForeignKeys[key] = []
 			}
 		}
 
-		return { schemas, tables, columns, indexes, foreignKeys, referencingForeignKeys };
+		return { schemas, tables, columns, indexes, foreignKeys, referencingForeignKeys }
 	}
 
 	private async getSchemas(): Promise<SchemaInfo[]> {
-		this.ensureConnected();
-		const conn = this.reservedConn ?? this.db!;
-		const rows = await conn.unsafe("SELECT DATABASE() AS name");
-		return [...rows] as SchemaInfo[];
+		this.ensureConnected()
+		const conn = this.reservedConn ?? this.db!
+		const rows = await conn.unsafe('SELECT DATABASE() AS name')
+		return [...rows] as SchemaInfo[]
 	}
 
 	private async getTables(schema: string): Promise<TableInfo[]> {
-		this.ensureConnected();
-		const conn = this.reservedConn ?? this.db!;
+		this.ensureConnected()
+		const conn = this.reservedConn ?? this.db!
 		const rows = await conn.unsafe(
 			`SELECT table_name AS name, table_type
 			FROM information_schema.tables
 			WHERE table_schema = ?
 			ORDER BY table_name`,
 			[schema],
-		);
+		)
 		return [...rows].map((row: MysqlTableRow) => ({
 			schema,
 			name: row.name,
-			type: row.table_type === "VIEW" ? ("view" as const) : ("table" as const),
-		}));
+			type: row.table_type === 'VIEW' ? ('view' as const) : ('table' as const),
+		}))
 	}
 
 	async *iterate(
@@ -416,20 +411,20 @@ export class MysqlDriver implements DatabaseDriver {
 		signal?: AbortSignal,
 		_sessionId?: string,
 	): AsyncGenerator<Record<string, unknown>[]> {
-		this.ensureConnected();
-		let offset = 0;
+		this.ensureConnected()
+		let offset = 0
 		while (true) {
 			if (signal?.aborted) {
-				throw new DOMException("Aborted", "AbortError");
+				throw new DOMException('Aborted', 'AbortError')
 			}
-			const pagedSql = `${sql} LIMIT ? OFFSET ?`;
-			const conn = this.reservedConn ?? this.db!;
-			const result = await conn.unsafe(pagedSql, [...(params ?? []), batchSize, offset]);
-			const rows = [...result] as Record<string, unknown>[];
-			if (rows.length === 0) break;
-			yield rows;
-			if (rows.length < batchSize) break;
-			offset += batchSize;
+			const pagedSql = `${sql} LIMIT ? OFFSET ?`
+			const conn = this.reservedConn ?? this.db!
+			const result = await conn.unsafe(pagedSql, [...(params ?? []), batchSize, offset])
+			const rows = [...result] as Record<string, unknown>[]
+			if (rows.length === 0) break
+			yield rows
+			if (rows.length < batchSize) break
+			offset += batchSize
 		}
 	}
 
@@ -439,86 +434,86 @@ export class MysqlDriver implements DatabaseDriver {
 		rows: Record<string, unknown>[],
 		_sessionId?: string,
 	): Promise<number> {
-		this.ensureConnected();
-		if (rows.length === 0) return 0;
-		const quotedCols = columns.map((c) => this.quoteIdentifier(c)).join(", ");
-		const allParams: unknown[] = [];
-		const valueTuples: string[] = [];
+		this.ensureConnected()
+		if (rows.length === 0) return 0
+		const quotedCols = columns.map((c) => this.quoteIdentifier(c)).join(', ')
+		const allParams: unknown[] = []
+		const valueTuples: string[] = []
 		for (let i = 0; i < rows.length; i++) {
-			const placeholders: string[] = [];
+			const placeholders: string[] = []
 			for (let j = 0; j < columns.length; j++) {
-				allParams.push(rows[i][columns[j]]);
-				placeholders.push(this.placeholder(allParams.length));
+				allParams.push(rows[i][columns[j]])
+				placeholders.push(this.placeholder(allParams.length))
 			}
-			valueTuples.push(`(${placeholders.join(", ")})`);
+			valueTuples.push(`(${placeholders.join(', ')})`)
 		}
-		const sql = `INSERT INTO ${qualifiedTable} (${quotedCols}) VALUES ${valueTuples.join(", ")}`;
-		const result = await this.execute(sql, allParams);
-		return result.affectedRows ?? rows.length;
+		const sql = `INSERT INTO ${qualifiedTable} (${quotedCols}) VALUES ${valueTuples.join(', ')}`
+		const result = await this.execute(sql, allParams)
+		return result.affectedRows ?? rows.length
 	}
 
 	async beginTransaction(_sessionId?: string): Promise<void> {
-		this.ensureConnected();
-		const conn = await this.db!.reserve();
+		this.ensureConnected()
+		const conn = await this.db!.reserve()
 		try {
-			await conn.unsafe("START TRANSACTION");
+			await conn.unsafe('START TRANSACTION')
 		} catch (err) {
-			conn.release();
-			throw err;
+			conn.release()
+			throw err
 		}
-		this.reservedConn = conn;
-		this.txActive = true;
+		this.reservedConn = conn
+		this.txActive = true
 	}
 
 	async commit(_sessionId?: string): Promise<void> {
-		this.ensureConnected();
+		this.ensureConnected()
 		if (!this.reservedConn) {
-			throw new Error("No active transaction");
+			throw new Error('No active transaction')
 		}
-		await this.reservedConn.unsafe("COMMIT");
-		this.reservedConn.release();
-		this.reservedConn = null;
-		this.txActive = false;
+		await this.reservedConn.unsafe('COMMIT')
+		this.reservedConn.release()
+		this.reservedConn = null
+		this.txActive = false
 	}
 
 	async rollback(_sessionId?: string): Promise<void> {
-		this.ensureConnected();
+		this.ensureConnected()
 		if (!this.reservedConn) {
-			throw new Error("No active transaction");
+			throw new Error('No active transaction')
 		}
-		await this.reservedConn.unsafe("ROLLBACK");
-		this.reservedConn.release();
-		this.reservedConn = null;
-		this.txActive = false;
+		await this.reservedConn.unsafe('ROLLBACK')
+		this.reservedConn.release()
+		this.reservedConn = null
+		this.txActive = false
 	}
 
 	inTransaction(_sessionId?: string): boolean {
-		return this.txActive;
+		return this.txActive
 	}
 
-	getDriverType(): "mysql" {
-		return "mysql";
+	getDriverType(): 'mysql' {
+		return 'mysql'
 	}
 
 	quoteIdentifier(name: string): string {
-		return `\`${name.replace(/`/g, "``")}\``;
+		return `\`${name.replace(/`/g, '``')}\``
 	}
 
 	qualifyTable(schema: string, table: string): string {
-		return `${this.quoteIdentifier(schema)}.${this.quoteIdentifier(table)}`;
+		return `${this.quoteIdentifier(schema)}.${this.quoteIdentifier(table)}`
 	}
 
 	emptyInsertSql(qualifiedTable: string): string {
-		return `INSERT INTO ${qualifiedTable} () VALUES ()`;
+		return `INSERT INTO ${qualifiedTable} () VALUES ()`
 	}
 
 	placeholder(_index: number): string {
-		return "?";
+		return '?'
 	}
 
 	private ensureConnected(): void {
 		if (!this.db || !this.connected) {
-			throw new Error("Not connected. Call connect() first.");
+			throw new Error('Not connected. Call connect() first.')
 		}
 	}
 }

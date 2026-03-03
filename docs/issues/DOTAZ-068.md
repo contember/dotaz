@@ -9,6 +9,7 @@
 Import data from a file (CSV, JSON) into an existing table. Natural counterpart to the existing export feature.
 
 ### Flow
+
 1. User selects target table and clicks "Import"
 2. Selects file (CSV or JSON)
 3. App shows data preview and column mapping: file columns → table columns
@@ -16,10 +17,12 @@ Import data from a file (CSV, JSON) into an existing table. Natural counterpart 
 5. Clicking "Import" inserts data via batched INSERT statements
 
 ### Supported formats
+
 - **CSV**: configurable delimiter (comma, semicolon, tab), header row on/off
 - **JSON**: array of objects (`[{col: val}, ...]`)
 
 ### Safety
+
 - Import runs in a transaction — rollback on error
 - Preview first N rows before actual import
 - Show imported row count on completion

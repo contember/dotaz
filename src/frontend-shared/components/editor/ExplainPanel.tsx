@@ -1,42 +1,42 @@
-import { createSignal, For, Show } from "solid-js";
-import type { ExplainNode, ExplainResult } from "../../../shared/types/query";
-import ChevronRight from "lucide-solid/icons/chevron-right";
-import ChevronDown from "lucide-solid/icons/chevron-down";
-import "./ExplainPanel.css";
+import ChevronDown from 'lucide-solid/icons/chevron-down'
+import ChevronRight from 'lucide-solid/icons/chevron-right'
+import { createSignal, For, Show } from 'solid-js'
+import type { ExplainNode, ExplainResult } from '../../../shared/types/query'
+import './ExplainPanel.css'
 
 interface ExplainPanelProps {
-	result: ExplainResult;
+	result: ExplainResult
 }
 
 export default function ExplainPanel(props: ExplainPanelProps) {
-	const [showRaw, setShowRaw] = createSignal(false);
+	const [showRaw, setShowRaw] = createSignal(false)
 
 	const maxCost = () => {
-		let max = 0;
+		let max = 0
 		function walk(nodes: ExplainNode[]) {
 			for (const n of nodes) {
-				if (n.cost != null && n.cost > max) max = n.cost;
-				if (n.actualTime != null && n.actualTime > max) max = n.actualTime;
-				walk(n.children);
+				if (n.cost != null && n.cost > max) max = n.cost
+				if (n.actualTime != null && n.actualTime > max) max = n.actualTime
+				walk(n.children)
 			}
 		}
-		walk(props.result.nodes);
-		return max || 1;
-	};
+		walk(props.result.nodes)
+		return max || 1
+	}
 
 	return (
 		<div class="explain-panel">
 			<div class="explain-panel__toolbar">
 				<button
 					class="explain-panel__tab"
-					classList={{ "explain-panel__tab--active": !showRaw() }}
+					classList={{ 'explain-panel__tab--active': !showRaw() }}
 					onClick={() => setShowRaw(false)}
 				>
 					Tree
 				</button>
 				<button
 					class="explain-panel__tab"
-					classList={{ "explain-panel__tab--active": showRaw() }}
+					classList={{ 'explain-panel__tab--active': showRaw() }}
 					onClick={() => setShowRaw(true)}
 				>
 					Raw
@@ -50,38 +50,34 @@ export default function ExplainPanel(props: ExplainPanelProps) {
 			<Show when={!props.result.error}>
 				<Show
 					when={!showRaw()}
-					fallback={
-						<pre class="explain-panel__raw">{props.result.rawText}</pre>
-					}
+					fallback={<pre class="explain-panel__raw">{props.result.rawText}</pre>}
 				>
 					<div class="explain-panel__tree">
 						<For each={props.result.nodes}>
-							{(node) => (
-								<ExplainNodeRow node={node} depth={0} maxCost={maxCost()} />
-							)}
+							{(node) => <ExplainNodeRow node={node} depth={0} maxCost={maxCost()} />}
 						</For>
 					</div>
 				</Show>
 			</Show>
 		</div>
-	);
+	)
 }
 
 function ExplainNodeRow(props: { node: ExplainNode; depth: number; maxCost: number }) {
-	const [expanded, setExpanded] = createSignal(true);
-	const hasChildren = () => props.node.children.length > 0;
+	const [expanded, setExpanded] = createSignal(true)
+	const hasChildren = () => props.node.children.length > 0
 	const costRatio = () => {
-		const val = props.node.actualTime ?? props.node.cost ?? 0;
-		return val / props.maxCost;
-	};
-	const isExpensive = () => costRatio() > 0.5;
+		const val = props.node.actualTime ?? props.node.cost ?? 0
+		return val / props.maxCost
+	}
+	const isExpensive = () => costRatio() > 0.5
 
 	return (
 		<div class="explain-node">
 			<div
 				class="explain-node__row"
-				classList={{ "explain-node__row--expensive": isExpensive() }}
-				style={{ "padding-left": `${props.depth * 20 + 4}px` }}
+				classList={{ 'explain-node__row--expensive': isExpensive() }}
+				style={{ 'padding-left': `${props.depth * 20 + 4}px` }}
 				onClick={() => hasChildren() && setExpanded((e) => !e)}
 			>
 				<span class="explain-node__toggle">
@@ -93,7 +89,7 @@ function ExplainNodeRow(props: { node: ExplainNode; depth: number; maxCost: numb
 				<span class="explain-node__operation">{props.node.operation}</span>
 
 				<Show when={props.node.relation}>
-					<span class="explain-node__relation"> on {props.node.relation}</span>
+					<span class="explain-node__relation">on {props.node.relation}</span>
 				</Show>
 
 				<span class="explain-node__metrics">
@@ -122,7 +118,7 @@ function ExplainNodeRow(props: { node: ExplainNode; depth: number; maxCost: numb
 				<Show when={costRatio() > 0}>
 					<span
 						class="explain-node__bar"
-						classList={{ "explain-node__bar--hot": isExpensive() }}
+						classList={{ 'explain-node__bar--hot': isExpensive() }}
 						style={{ width: `${Math.max(costRatio() * 100, 2)}px` }}
 					/>
 				</Show>
@@ -130,11 +126,9 @@ function ExplainNodeRow(props: { node: ExplainNode; depth: number; maxCost: numb
 
 			<Show when={expanded() && hasChildren()}>
 				<For each={props.node.children}>
-					{(child) => (
-						<ExplainNodeRow node={child} depth={props.depth + 1} maxCost={props.maxCost} />
-					)}
+					{(child) => <ExplainNodeRow node={child} depth={props.depth + 1} maxCost={props.maxCost} />}
 				</For>
 			</Show>
 		</div>
-	);
+	)
 }

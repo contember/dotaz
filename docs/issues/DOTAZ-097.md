@@ -12,13 +12,13 @@ New async-generator CSV parser that processes a `ReadableStream<Uint8Array>` and
 
 ```typescript
 async function* parseCsvStream(
-  stream: ReadableStream<Uint8Array>,
-  options: {
-    delimiter: CsvDelimiter;
-    hasHeader: boolean;
-    batchSize: number;
-    maxRows?: number;  // for preview — stops reading early
-  },
+	stream: ReadableStream<Uint8Array>,
+	options: {
+		delimiter: CsvDelimiter
+		hasHeader: boolean
+		batchSize: number
+		maxRows?: number // for preview — stops reading early
+	},
 ): AsyncGenerator<{ columns: string[]; rows: Record<string, unknown>[] }>
 ```
 

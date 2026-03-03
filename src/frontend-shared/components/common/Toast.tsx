@@ -1,15 +1,15 @@
-import { For } from "solid-js";
-import { uiStore } from "../../stores/ui";
-import type { ToastType } from "../../stores/ui";
-import Icon, { type IconName } from "./Icon";
-import "./Toast.css";
+import { For } from 'solid-js'
+import { uiStore } from '../../stores/ui'
+import type { ToastType } from '../../stores/ui'
+import Icon, { type IconName } from './Icon'
+import './Toast.css'
 
 const ICON_MAP: Record<ToastType, IconName> = {
-	success: "check",
-	error: "error",
-	warning: "warning",
-	info: "info",
-};
+	success: 'check',
+	error: 'error',
+	warning: 'warning',
+	info: 'info',
+}
 
 export default function ToastContainer() {
 	return (
@@ -32,5 +32,5 @@ export default function ToastContainer() {
 				)}
 			</For>
 		</div>
-	);
+	)
 }

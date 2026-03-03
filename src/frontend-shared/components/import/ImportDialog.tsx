@@ -1,98 +1,93 @@
-import { createEffect, createSignal, For, Show } from "solid-js";
-import type {
-	ImportFormat,
-	CsvDelimiter,
-	ColumnMapping,
-	ImportPreviewResult,
-} from "../../../shared/types/import";
-import type { ColumnInfo } from "../../../shared/types/database";
-import { rpc } from "../../lib/rpc";
-import { getCapabilities } from "../../lib/capabilities";
-import { transport } from "../../lib/transport";
-import Upload from "lucide-solid/icons/upload";
-import Eye from "lucide-solid/icons/eye";
-import AlertTriangle from "lucide-solid/icons/alert-triangle";
-import Dialog from "../common/Dialog";
-import "./ImportDialog.css";
+import AlertTriangle from 'lucide-solid/icons/alert-triangle'
+import Eye from 'lucide-solid/icons/eye'
+import Upload from 'lucide-solid/icons/upload'
+import { createEffect, createSignal, For, Show } from 'solid-js'
+import type { ColumnInfo } from '../../../shared/types/database'
+import type { ColumnMapping, CsvDelimiter, ImportFormat, ImportPreviewResult } from '../../../shared/types/import'
+import { getCapabilities } from '../../lib/capabilities'
+import { rpc } from '../../lib/rpc'
+import { transport } from '../../lib/transport'
+import Dialog from '../common/Dialog'
+import './ImportDialog.css'
 
 interface ImportDialogProps {
-	open: boolean;
-	connectionId: string;
-	schema: string;
-	table: string;
-	database?: string;
-	onClose: () => void;
-	onImported?: () => void;
+	open: boolean
+	connectionId: string
+	schema: string
+	table: string
+	database?: string
+	onClose: () => void
+	onImported?: () => void
 }
 
 const FORMAT_LABELS: Record<ImportFormat, string> = {
-	csv: "CSV",
-	json: "JSON",
-};
+	csv: 'CSV',
+	json: 'JSON',
+}
 
 const DELIMITER_LABELS: Record<CsvDelimiter, string> = {
-	",": "Comma (,)",
-	";": "Semicolon (;)",
-	"\t": "Tab",
-};
+	',': 'Comma (,)',
+	';': 'Semicolon (;)',
+	'\t': 'Tab',
+}
 
 const FILE_ACCEPT: Record<ImportFormat, string> = {
-	csv: ".csv,.tsv,.txt",
-	json: ".json",
-};
+	csv: '.csv,.tsv,.txt',
+	json: '.json',
+}
 
 export default function ImportDialog(props: ImportDialogProps) {
-	let fileInputRef: HTMLInputElement | undefined;
+	let fileInputRef: HTMLInputElement | undefined
 
-	const [format, setFormat] = createSignal<ImportFormat>("csv");
-	const [delimiter, setDelimiter] = createSignal<CsvDelimiter>(",");
-	const [hasHeader, setHasHeader] = createSignal(true);
-	const [fileContent, setFileContent] = createSignal<string | null>(null);
-	const [filePath, setFilePath] = createSignal<string | null>(null);
-	const [fileName, setFileName] = createSignal<string | null>(null);
-	const [selectedFile, setSelectedFile] = createSignal<File | null>(null);
-	const [preview, setPreview] = createSignal<ImportPreviewResult | null>(null);
-	const [previewLoading, setPreviewLoading] = createSignal(false);
-	const [mappings, setMappings] = createSignal<ColumnMapping[]>([]);
-	const [tableColumns, setTableColumns] = createSignal<ColumnInfo[]>([]);
-	const [importing, setImporting] = createSignal(false);
-	const [progressRows, setProgressRows] = createSignal(0);
-	const [importResult, setImportResult] = createSignal<{ rowCount: number } | null>(null);
-	const [error, setError] = createSignal<string | null>(null);
+	const [format, setFormat] = createSignal<ImportFormat>('csv')
+	const [delimiter, setDelimiter] = createSignal<CsvDelimiter>(',')
+	const [hasHeader, setHasHeader] = createSignal(true)
+	const [fileContent, setFileContent] = createSignal<string | null>(null)
+	const [filePath, setFilePath] = createSignal<string | null>(null)
+	const [fileName, setFileName] = createSignal<string | null>(null)
+	const [selectedFile, setSelectedFile] = createSignal<File | null>(null)
+	const [preview, setPreview] = createSignal<ImportPreviewResult | null>(null)
+	const [previewLoading, setPreviewLoading] = createSignal(false)
+	const [mappings, setMappings] = createSignal<ColumnMapping[]>([])
+	const [tableColumns, setTableColumns] = createSignal<ColumnInfo[]>([])
+	const [importing, setImporting] = createSignal(false)
+	const [progressRows, setProgressRows] = createSignal(0)
+	const [importResult, setImportResult] = createSignal<{ rowCount: number } | null>(null)
+	const [error, setError] = createSignal<string | null>(null)
 
-	const caps = () => getCapabilities();
+	const caps = () => getCapabilities()
 
 	// Reset form when dialog opens
 	createEffect(() => {
 		if (props.open) {
-			setFormat("csv");
-			setDelimiter(",");
-			setHasHeader(true);
-			setFileContent(null);
-			setFilePath(null);
-			setFileName(null);
-			setSelectedFile(null);
-			setPreview(null);
-			setPreviewLoading(false);
-			setMappings([]);
-			setTableColumns([]);
-			setImporting(false);
-			setProgressRows(0);
-			setImportResult(null);
-			setError(null);
-			if (fileInputRef) fileInputRef.value = "";
-			loadTableColumns();
+			setFormat('csv')
+			setDelimiter(',')
+			setHasHeader(true)
+			setFileContent(null)
+			setFilePath(null)
+			setFileName(null)
+			setSelectedFile(null)
+			setPreview(null)
+			setPreviewLoading(false)
+			setMappings([])
+			setTableColumns([])
+			setImporting(false)
+			setProgressRows(0)
+			setImportResult(null)
+			setError(null)
+			if (fileInputRef) fileInputRef.value = ''
+			loadTableColumns()
 		}
-	});
+	})
 
 	async function loadTableColumns() {
 		try {
 			const schema = await rpc.schema.load({
 				connectionId: props.connectionId,
 				database: props.database,
-			});
-			const columns = schema.columns[`${props.schema}.${props.table}`] ?? [];
-			setTableColumns(columns);
+			})
+			const columns = schema.columns[`${props.schema}.${props.table}`] ?? []
+			setTableColumns(columns)
 		} catch {
 			// Ignore schema load errors
 		}
@@ -102,65 +97,65 @@ export default function ImportDialog(props: ImportDialogProps) {
 		if (caps().hasFileSystem && caps().hasNativeDialogs) {
 			// Desktop: use native file dialog -> store file path (not content)
 			try {
-				const exts = FILE_ACCEPT[format()].split(",").map(s => s.replace(".", ""));
+				const exts = FILE_ACCEPT[format()].split(',').map(s => s.replace('.', ''))
 				const result = await rpc.system.showOpenDialog({
 					filters: [{ name: FORMAT_LABELS[format()], extensions: exts }],
 					multiple: false,
-				});
-				if (result.cancelled || result.paths.length === 0) return;
-				const path = result.paths[0];
-				setFilePath(path);
-				setFileName(path.split("/").pop() ?? path);
-				setFileContent(null);
-				setError(null);
-				await loadPreview();
+				})
+				if (result.cancelled || result.paths.length === 0) return
+				const path = result.paths[0]
+				setFilePath(path)
+				setFileName(path.split('/').pop() ?? path)
+				setFileContent(null)
+				setError(null)
+				await loadPreview()
 			} catch (err) {
-				setError(err instanceof Error ? err.message : String(err));
+				setError(err instanceof Error ? err.message : String(err))
 			}
 		} else {
 			// Demo/Web: use browser file input
 			if (fileInputRef) {
-				fileInputRef.accept = FILE_ACCEPT[format()];
-				fileInputRef.click();
+				fileInputRef.accept = FILE_ACCEPT[format()]
+				fileInputRef.click()
 			}
 		}
 	}
 
 	async function handleFileChange(e: Event) {
-		const input = e.currentTarget as HTMLInputElement;
-		const file = input.files?.[0];
-		if (!file) return;
+		const input = e.currentTarget as HTMLInputElement
+		const file = input.files?.[0]
+		if (!file) return
 
-		setFileName(file.name);
-		setFilePath(null);
-		setError(null);
+		setFileName(file.name)
+		setFilePath(null)
+		setError(null)
 
 		try {
 			if (caps().hasHttpStreaming) {
 				// Web mode: store File object for HTTP upload, read 64KB prefix for preview
-				setSelectedFile(file);
-				const prefix = await file.slice(0, 65536).text();
-				setFileContent(prefix);
-				await loadPreview(prefix);
+				setSelectedFile(file)
+				const prefix = await file.slice(0, 65536).text()
+				setFileContent(prefix)
+				await loadPreview(prefix)
 			} else {
 				// Demo mode: read entire file content via WS
-				const content = await file.text();
-				setFileContent(content);
-				await loadPreview(content);
+				const content = await file.text()
+				setFileContent(content)
+				await loadPreview(content)
 			}
 		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
+			setError(err instanceof Error ? err.message : String(err))
 		}
 	}
 
 	async function loadPreview(content?: string) {
-		const fp = filePath();
-		const fc = content ?? fileContent();
-		if (!fp && !fc) return;
+		const fp = filePath()
+		const fc = content ?? fileContent()
+		if (!fp && !fc) return
 
-		setPreviewLoading(true);
-		setPreview(null);
-		setError(null);
+		setPreviewLoading(true)
+		setPreview(null)
+		setError(null)
 
 		try {
 			const result = await rpc.import.preview({
@@ -170,72 +165,72 @@ export default function ImportDialog(props: ImportDialogProps) {
 				database: props.database,
 				...(fp ? { filePath: fp } : { fileContent: fc! }),
 				format: format(),
-				delimiter: format() === "csv" ? delimiter() : undefined,
-				hasHeader: format() === "csv" ? hasHeader() : undefined,
+				delimiter: format() === 'csv' ? delimiter() : undefined,
+				hasHeader: format() === 'csv' ? hasHeader() : undefined,
 				limit: 20,
-			});
+			})
 
-			setPreview(result);
-			autoMapColumns(result.fileColumns);
+			setPreview(result)
+			autoMapColumns(result.fileColumns)
 		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
+			setError(err instanceof Error ? err.message : String(err))
 		} finally {
-			setPreviewLoading(false);
+			setPreviewLoading(false)
 		}
 	}
 
 	function autoMapColumns(fileColumns: string[]) {
-		const tCols = tableColumns();
-		const tColNames = new Set(tCols.map((c) => c.name));
-		const tColNamesLower = new Map(tCols.map((c) => [c.name.toLowerCase(), c.name]));
+		const tCols = tableColumns()
+		const tColNames = new Set(tCols.map((c) => c.name))
+		const tColNamesLower = new Map(tCols.map((c) => [c.name.toLowerCase(), c.name]))
 
 		const newMappings: ColumnMapping[] = fileColumns.map((fc) => {
 			if (tColNames.has(fc)) {
-				return { fileColumn: fc, tableColumn: fc };
+				return { fileColumn: fc, tableColumn: fc }
 			}
-			const match = tColNamesLower.get(fc.toLowerCase());
+			const match = tColNamesLower.get(fc.toLowerCase())
 			if (match) {
-				return { fileColumn: fc, tableColumn: match };
+				return { fileColumn: fc, tableColumn: match }
 			}
-			return { fileColumn: fc, tableColumn: null };
-		});
+			return { fileColumn: fc, tableColumn: null }
+		})
 
-		setMappings(newMappings);
+		setMappings(newMappings)
 	}
 
 	function updateMapping(index: number, tableColumn: string | null) {
 		setMappings((prev) => {
-			const next = [...prev];
-			next[index] = { ...next[index], tableColumn };
-			return next;
-		});
+			const next = [...prev]
+			next[index] = { ...next[index], tableColumn }
+			return next
+		})
 	}
 
 	function activeMappingCount() {
-		return mappings().filter((m) => m.tableColumn !== null).length;
+		return mappings().filter((m) => m.tableColumn !== null).length
 	}
 
 	async function handleImport() {
-		const fp = filePath();
-		const fc = fileContent();
-		const sf = selectedFile();
-		if (!fp && !fc && !sf) return;
+		const fp = filePath()
+		const fc = fileContent()
+		const sf = selectedFile()
+		if (!fp && !fc && !sf) return
 
 		// Web mode: use HTTP streaming
 		if (caps().hasHttpStreaming && sf) {
-			return handleWebImport(sf);
+			return handleWebImport(sf)
 		}
 
-		setError(null);
-		setImportResult(null);
-		setProgressRows(0);
-		setImporting(true);
+		setError(null)
+		setImportResult(null)
+		setProgressRows(0)
+		setImporting(true)
 
 		// Subscribe to progress events
 		const unsub = transport.addMessageListener<{ rowCount: number }>(
-			"import.progress",
+			'import.progress',
 			(payload) => setProgressRows(payload.rowCount),
-		);
+		)
 
 		try {
 			const result = await rpc.import.importData({
@@ -245,97 +240,97 @@ export default function ImportDialog(props: ImportDialogProps) {
 				database: props.database,
 				...(fp ? { filePath: fp } : { fileContent: fc! }),
 				format: format(),
-				delimiter: format() === "csv" ? delimiter() : undefined,
-				hasHeader: format() === "csv" ? hasHeader() : undefined,
+				delimiter: format() === 'csv' ? delimiter() : undefined,
+				hasHeader: format() === 'csv' ? hasHeader() : undefined,
 				mappings: mappings(),
-			});
+			})
 
-			setImportResult(result);
-			props.onImported?.();
+			setImportResult(result)
+			props.onImported?.()
 		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
+			setError(err instanceof Error ? err.message : String(err))
 		} finally {
-			unsub();
-			setImporting(false);
+			unsub()
+			setImporting(false)
 		}
 	}
 
 	async function handleWebImport(file: File) {
-		setError(null);
-		setImportResult(null);
-		setProgressRows(0);
-		setImporting(true);
+		setError(null)
+		setImportResult(null)
+		setProgressRows(0)
+		setImporting(true)
 
 		// Subscribe to progress events
 		const unsub = transport.addMessageListener<{ rowCount: number }>(
-			"import.progress",
+			'import.progress',
 			(payload) => setProgressRows(payload.rowCount),
-		);
+		)
 
-		const abortController = new AbortController();
+		const abortController = new AbortController()
 
 		try {
 			// Get a stream token via WS
-			const { token } = await transport.call<{ token: string }>("stream.createImportToken", {
+			const { token } = await transport.call<{ token: string }>('stream.createImportToken', {
 				connectionId: props.connectionId,
 				database: props.database,
 				schema: props.schema,
 				table: props.table,
 				format: format(),
-				delimiter: format() === "csv" ? delimiter() : undefined,
-				hasHeader: format() === "csv" ? hasHeader() : undefined,
+				delimiter: format() === 'csv' ? delimiter() : undefined,
+				hasHeader: format() === 'csv' ? hasHeader() : undefined,
 				mappings: mappings(),
-			});
+			})
 
 			// POST the file to the HTTP endpoint
 			const response = await fetch(`/api/stream/import/${token}`, {
-				method: "POST",
+				method: 'POST',
 				body: file,
 				signal: abortController.signal,
-			});
+			})
 
-			const result = await response.json();
+			const result = await response.json()
 			if (!response.ok) {
-				throw new Error(result.error ?? "Import failed");
+				throw new Error(result.error ?? 'Import failed')
 			}
 
-			setImportResult({ rowCount: result.rowCount });
-			props.onImported?.();
+			setImportResult({ rowCount: result.rowCount })
+			props.onImported?.()
 		} catch (err) {
-			if (err instanceof DOMException && err.name === "AbortError") {
-				setError("Import cancelled");
+			if (err instanceof DOMException && err.name === 'AbortError') {
+				setError('Import cancelled')
 			} else {
-				setError(err instanceof Error ? err.message : String(err));
+				setError(err instanceof Error ? err.message : String(err))
 			}
 		} finally {
-			unsub();
-			setImporting(false);
+			unsub()
+			setImporting(false)
 		}
 	}
 
 	function formatValue(value: unknown): string {
-		if (value === null || value === undefined) return "NULL";
-		if (typeof value === "object") return JSON.stringify(value);
-		return String(value);
+		if (value === null || value === undefined) return 'NULL'
+		if (typeof value === 'object') return JSON.stringify(value)
+		return String(value)
 	}
 
 	function formatNumber(n: number): string {
-		return n.toLocaleString();
+		return n.toLocaleString()
 	}
 
-	const hasFile = () => filePath() !== null || fileContent() !== null || selectedFile() !== null;
+	const hasFile = () => filePath() !== null || fileContent() !== null || selectedFile() !== null
 
 	const canImport = () =>
-		hasFile() &&
-		activeMappingCount() > 0 &&
-		!importing() &&
-		!importResult();
+		hasFile()
+		&& activeMappingCount() > 0
+		&& !importing()
+		&& !importResult()
 
 	/** Whether preview was from a 64KB prefix (streaming mode without totalRows) */
 	const isPartialPreview = () => {
-		const p = preview();
-		return p !== null && p.totalRows === undefined && p.rows.length >= 20;
-	};
+		const p = preview()
+		return p !== null && p.totalRows === undefined && p.rows.length >= 20
+	}
 
 	return (
 		<Dialog
@@ -349,7 +344,7 @@ export default function ImportDialog(props: ImportDialogProps) {
 					<input
 						ref={fileInputRef}
 						type="file"
-						style={{ display: "none" }}
+						style={{ display: 'none' }}
 						accept={FILE_ACCEPT[format()]}
 						onChange={handleFileChange}
 					/>
@@ -363,18 +358,18 @@ export default function ImportDialog(props: ImportDialogProps) {
 							{([fmt, label]) => (
 								<button
 									class="import-dialog__format-btn"
-									classList={{ "import-dialog__format-btn--active": format() === fmt }}
+									classList={{ 'import-dialog__format-btn--active': format() === fmt }}
 									onClick={() => {
-										setFormat(fmt);
-										setFileContent(null);
-										setFilePath(null);
-										setFileName(null);
-										setSelectedFile(null);
-										setPreview(null);
-										setMappings([]);
-										setImportResult(null);
-										setError(null);
-										if (fileInputRef) fileInputRef.value = "";
+										setFormat(fmt)
+										setFileContent(null)
+										setFilePath(null)
+										setFileName(null)
+										setSelectedFile(null)
+										setPreview(null)
+										setMappings([])
+										setImportResult(null)
+										setError(null)
+										if (fileInputRef) fileInputRef.value = ''
 									}}
 								>
 									{label}
@@ -390,9 +385,9 @@ export default function ImportDialog(props: ImportDialogProps) {
 					<div class="import-dialog__file-row">
 						<div
 							class="import-dialog__file-name"
-							classList={{ "import-dialog__file-name--empty": !fileName() }}
+							classList={{ 'import-dialog__file-name--empty': !fileName() }}
 						>
-							{fileName() ?? "No file selected"}
+							{fileName() ?? 'No file selected'}
 						</div>
 						<button
 							class="import-dialog__browse-btn"
@@ -405,7 +400,7 @@ export default function ImportDialog(props: ImportDialogProps) {
 				</div>
 
 				{/* CSV options */}
-				<Show when={format() === "csv"}>
+				<Show when={format() === 'csv'}>
 					<div class="import-dialog__section">
 						<label class="import-dialog__label">Options</label>
 						<div class="import-dialog__options">
@@ -415,14 +410,12 @@ export default function ImportDialog(props: ImportDialogProps) {
 									class="import-dialog__select"
 									value={delimiter()}
 									onChange={(e) => {
-										setDelimiter(e.currentTarget.value as CsvDelimiter);
-										if (hasFile()) loadPreview();
+										setDelimiter(e.currentTarget.value as CsvDelimiter)
+										if (hasFile()) loadPreview()
 									}}
 								>
 									<For each={Object.entries(DELIMITER_LABELS)}>
-										{([value, label]) => (
-											<option value={value}>{label}</option>
-										)}
+										{([value, label]) => <option value={value}>{label}</option>}
 									</For>
 								</select>
 							</div>
@@ -431,8 +424,8 @@ export default function ImportDialog(props: ImportDialogProps) {
 									type="checkbox"
 									checked={hasHeader()}
 									onChange={(e) => {
-										setHasHeader(e.currentTarget.checked);
-										if (hasFile()) loadPreview();
+										setHasHeader(e.currentTarget.checked)
+										if (hasFile()) loadPreview()
 									}}
 								/>
 								First row is header
@@ -462,17 +455,15 @@ export default function ImportDialog(props: ImportDialogProps) {
 										<div class="import-dialog__mapping-arrow">&rarr;</div>
 										<select
 											class="import-dialog__mapping-select"
-											value={mapping.tableColumn ?? ""}
+											value={mapping.tableColumn ?? ''}
 											onChange={(e) => {
-												const val = e.currentTarget.value;
-												updateMapping(index(), val === "" ? null : val);
+												const val = e.currentTarget.value
+												updateMapping(index(), val === '' ? null : val)
 											}}
 										>
 											<option value="">(skip)</option>
 											<For each={tableColumns()}>
-												{(col) => (
-													<option value={col.name}>{col.name}</option>
-												)}
+												{(col) => <option value={col.name}>{col.name}</option>}
 											</For>
 										</select>
 									</div>
@@ -488,7 +479,8 @@ export default function ImportDialog(props: ImportDialogProps) {
 						<div class="import-dialog__section">
 							<div class="import-dialog__preview-header">
 								<label class="import-dialog__label">
-									Preview (first {Math.min(p().rows.length, 20)}{p().totalRows !== undefined ? ` of ${formatNumber(p().totalRows!)}` : ""} rows)
+									Preview (first {Math.min(p().rows.length, 20)}
+									{p().totalRows !== undefined ? ` of ${formatNumber(p().totalRows!)}` : ''} rows)
 								</label>
 								<button
 									class="import-dialog__browse-btn"
@@ -553,7 +545,7 @@ export default function ImportDialog(props: ImportDialogProps) {
 							<div class="import-dialog__progress-bar-fill" />
 						</div>
 						<span class="import-dialog__progress-text">
-							Importing... {progressRows() > 0 ? `${formatNumber(progressRows())} rows` : ""}
+							Importing... {progressRows() > 0 ? `${formatNumber(progressRows())} rows` : ''}
 						</span>
 					</div>
 				</Show>
@@ -562,7 +554,7 @@ export default function ImportDialog(props: ImportDialogProps) {
 				<Show when={importResult()}>
 					{(result) => (
 						<div class="import-dialog__result">
-							Successfully imported {formatNumber(result().rowCount)} row{result().rowCount !== 1 ? "s" : ""}
+							Successfully imported {formatNumber(result().rowCount)} row{result().rowCount !== 1 ? 's' : ''}
 						</div>
 					)}
 				</Show>
@@ -576,11 +568,11 @@ export default function ImportDialog(props: ImportDialogProps) {
 				<Show when={preview() && !importResult()}>
 					<div class="import-dialog__info">
 						{preview()!.totalRows !== undefined
-							? `${formatNumber(preview()!.totalRows!)} row${preview()!.totalRows !== 1 ? "s" : ""}`
+							? `${formatNumber(preview()!.totalRows!)} row${preview()!.totalRows !== 1 ? 's' : ''}`
 							: `${preview()!.rows.length}+ rows`} to import
 						{activeMappingCount() > 0
-							? ` into ${activeMappingCount()} column${activeMappingCount() !== 1 ? "s" : ""}`
-							: " (no columns mapped)"}
+							? ` into ${activeMappingCount()} column${activeMappingCount() !== 1 ? 's' : ''}`
+							: ' (no columns mapped)'}
 					</div>
 				</Show>
 
@@ -590,7 +582,7 @@ export default function ImportDialog(props: ImportDialogProps) {
 						class="btn btn--secondary"
 						onClick={props.onClose}
 					>
-						{importResult() ? "Close" : "Cancel"}
+						{importResult() ? 'Close' : 'Cancel'}
 					</button>
 					<Show when={!importResult()}>
 						<button
@@ -598,11 +590,11 @@ export default function ImportDialog(props: ImportDialogProps) {
 							onClick={handleImport}
 							disabled={!canImport()}
 						>
-							<Upload size={14} /> {importing() ? "Importing..." : "Import"}
+							<Upload size={14} /> {importing() ? 'Importing...' : 'Import'}
 						</button>
 					</Show>
 				</div>
 			</div>
 		</Dialog>
-	);
+	)
 }

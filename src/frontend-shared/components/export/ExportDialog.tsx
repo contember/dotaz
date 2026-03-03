@@ -1,175 +1,172 @@
-import { createEffect, createSignal, For, Show } from "solid-js";
-import type {
-	ExportFormat,
-	CsvDelimiter,
-	CsvEncoding,
-	ExportPreviewRequest,
-} from "../../../shared/types/export";
-import type { ColumnFilter, SortColumn } from "../../../shared/types/grid";
-import { gridStore } from "../../stores/grid";
-import { rpc } from "../../lib/rpc";
-import { getCapabilities } from "../../lib/capabilities";
-import { transport } from "../../lib/transport";
-import Download from "lucide-solid/icons/download";
-import Eye from "lucide-solid/icons/eye";
-import Dialog from "../common/Dialog";
-import "./ExportDialog.css";
+import Download from 'lucide-solid/icons/download'
+import Eye from 'lucide-solid/icons/eye'
+import { createEffect, createSignal, For, Show } from 'solid-js'
+import type { CsvDelimiter, CsvEncoding, ExportFormat, ExportPreviewRequest } from '../../../shared/types/export'
+import type { ColumnFilter, SortColumn } from '../../../shared/types/grid'
+import { getCapabilities } from '../../lib/capabilities'
+import { rpc } from '../../lib/rpc'
+import { transport } from '../../lib/transport'
+import { gridStore } from '../../stores/grid'
+import Dialog from '../common/Dialog'
+import './ExportDialog.css'
 
-type ExportScope = "all" | "view" | "selected";
+type ExportScope = 'all' | 'view' | 'selected'
 
 interface ExportDialogProps {
-	open: boolean;
-	tabId: string;
-	connectionId: string;
-	schema: string;
-	table: string;
-	database?: string;
-	onClose: () => void;
+	open: boolean
+	tabId: string
+	connectionId: string
+	schema: string
+	table: string
+	database?: string
+	onClose: () => void
 }
 
 const FORMAT_LABELS: Record<ExportFormat, string> = {
-	csv: "CSV",
-	json: "JSON",
-	sql: "SQL INSERT",
-	markdown: "Markdown",
-	sql_update: "SQL UPDATE",
-	html: "HTML",
-	xml: "XML",
-};
+	csv: 'CSV',
+	json: 'JSON',
+	sql: 'SQL INSERT',
+	markdown: 'Markdown',
+	sql_update: 'SQL UPDATE',
+	html: 'HTML',
+	xml: 'XML',
+}
 
 const ENCODING_LABELS: Record<CsvEncoding, string> = {
-	"utf-8": "UTF-8",
-	"iso-8859-1": "ISO-8859-1 (Latin-1)",
-	"windows-1252": "Windows-1252",
-};
+	'utf-8': 'UTF-8',
+	'iso-8859-1': 'ISO-8859-1 (Latin-1)',
+	'windows-1252': 'Windows-1252',
+}
 
 const DELIMITER_LABELS: Record<CsvDelimiter, string> = {
-	",": "Comma (,)",
-	";": "Semicolon (;)",
-	"\t": "Tab",
-};
+	',': 'Comma (,)',
+	';': 'Semicolon (;)',
+	'\t': 'Tab',
+}
 
 const FILE_EXTENSIONS: Record<ExportFormat, string> = {
-	csv: "csv",
-	json: "json",
-	sql: "sql",
-	markdown: "md",
-	sql_update: "sql",
-	html: "html",
-	xml: "xml",
-};
+	csv: 'csv',
+	json: 'json',
+	sql: 'sql',
+	markdown: 'md',
+	sql_update: 'sql',
+	html: 'html',
+	xml: 'xml',
+}
 
 export default function ExportDialog(props: ExportDialogProps) {
-	const [format, setFormat] = createSignal<ExportFormat>("csv");
-	const [scope, setScope] = createSignal<ExportScope>("all");
-	const [delimiter, setDelimiter] = createSignal<CsvDelimiter>(",");
-	const [encoding, setEncoding] = createSignal<CsvEncoding>("utf-8");
-	const [utf8Bom, setUtf8Bom] = createSignal(false);
-	const [includeHeaders, setIncludeHeaders] = createSignal(true);
-	const [batchSize, setBatchSize] = createSignal(100);
-	const [preview, setPreview] = createSignal("");
-	const [previewLoading, setPreviewLoading] = createSignal(false);
-	const [exporting, setExporting] = createSignal(false);
-	const [progressRows, setProgressRows] = createSignal(0);
-	const [exportResult, setExportResult] = createSignal<{
-		rowCount: number;
-		filePath?: string;
-		sizeBytes: number;
-	} | null>(null);
-	const [error, setError] = createSignal<string | null>(null);
+	const [format, setFormat] = createSignal<ExportFormat>('csv')
+	const [scope, setScope] = createSignal<ExportScope>('all')
+	const [delimiter, setDelimiter] = createSignal<CsvDelimiter>(',')
+	const [encoding, setEncoding] = createSignal<CsvEncoding>('utf-8')
+	const [utf8Bom, setUtf8Bom] = createSignal(false)
+	const [includeHeaders, setIncludeHeaders] = createSignal(true)
+	const [batchSize, setBatchSize] = createSignal(100)
+	const [preview, setPreview] = createSignal('')
+	const [previewLoading, setPreviewLoading] = createSignal(false)
+	const [exporting, setExporting] = createSignal(false)
+	const [progressRows, setProgressRows] = createSignal(0)
+	const [exportResult, setExportResult] = createSignal<
+		{
+			rowCount: number
+			filePath?: string
+			sizeBytes: number
+		} | null
+	>(null)
+	const [error, setError] = createSignal<string | null>(null)
 
-	const caps = () => getCapabilities();
-	const tab = () => gridStore.getTab(props.tabId);
+	const caps = () => getCapabilities()
+	const tab = () => gridStore.getTab(props.tabId)
 
 	const hasSelection = () => {
-		const t = tab();
-		return t ? t.selectedRows.size > 0 : false;
-	};
+		const t = tab()
+		return t ? t.selectedRows.size > 0 : false
+	}
 
 	const hasPrimaryKey = () => {
-		const t = tab();
-		if (!t) return false;
-		return t.columns.some((c) => c.isPrimaryKey);
-	};
+		const t = tab()
+		if (!t) return false
+		return t.columns.some((c) => c.isPrimaryKey)
+	}
 
 	const selectedRowCount = () => {
-		const t = tab();
-		return t ? t.selectedRows.size : 0;
-	};
+		const t = tab()
+		return t ? t.selectedRows.size : 0
+	}
 
 	const rowCountForScope = () => {
-		const t = tab();
-		if (!t) return 0;
-		if (scope() === "selected") return selectedRowCount();
-		if (scope() === "view" && t.filters.length > 0) return t.totalCount;
-		return t.totalCount;
-	};
+		const t = tab()
+		if (!t) return 0
+		if (scope() === 'selected') return selectedRowCount()
+		if (scope() === 'view' && t.filters.length > 0) return t.totalCount
+		return t.totalCount
+	}
 
 	// Reset form when dialog opens
 	createEffect(() => {
 		if (props.open) {
-			setFormat("csv");
-			setScope("all");
-			setDelimiter(",");
-			setEncoding("utf-8");
-			setUtf8Bom(false);
-			setIncludeHeaders(true);
-			setBatchSize(100);
-			setPreview("");
-			setPreviewLoading(false);
-			setExporting(false);
-			setProgressRows(0);
-			setExportResult(null);
-			setError(null);
+			setFormat('csv')
+			setScope('all')
+			setDelimiter(',')
+			setEncoding('utf-8')
+			setUtf8Bom(false)
+			setIncludeHeaders(true)
+			setBatchSize(100)
+			setPreview('')
+			setPreviewLoading(false)
+			setExporting(false)
+			setProgressRows(0)
+			setExportResult(null)
+			setError(null)
 		}
-	});
+	})
 
 	function getExportFilters(): ColumnFilter[] | undefined {
-		const t = tab();
-		if (!t) return undefined;
+		const t = tab()
+		if (!t) return undefined
 
-		if (scope() === "all") return undefined;
-		if (scope() === "view") {
-			return t.filters.length > 0 ? t.filters : undefined;
+		if (scope() === 'all') return undefined
+		if (scope() === 'view') {
+			return t.filters.length > 0 ? t.filters : undefined
 		}
 
 		// Selected rows: construct IN filter from PK values
-		if (scope() === "selected") {
-			const pkCols = t.columns.filter((c) => c.isPrimaryKey);
-			if (pkCols.length === 0) return undefined;
+		if (scope() === 'selected') {
+			const pkCols = t.columns.filter((c) => c.isPrimaryKey)
+			if (pkCols.length === 0) return undefined
 
-			const selectedIndices = [...t.selectedRows].sort((a, b) => a - b);
-			const filters: ColumnFilter[] = [];
+			const selectedIndices = [...t.selectedRows].sort((a, b) => a - b)
+			const filters: ColumnFilter[] = []
 
 			for (const pkCol of pkCols) {
-				const values = selectedIndices.map((i) => t.rows[i]?.[pkCol.name]);
+				const values = selectedIndices.map((i) => t.rows[i]?.[pkCol.name])
 				filters.push({
 					column: pkCol.name,
-					operator: "in",
+					operator: 'in',
 					value: values,
-				});
+				})
 			}
 
-			return filters;
+			return filters
 		}
 
-		return undefined;
+		return undefined
 	}
 
 	function getExportSort(): SortColumn[] | undefined {
-		const t = tab();
-		if (!t) return undefined;
-		if (scope() === "all") return undefined;
-		if (scope() === "view") {
-			return t.sort.length > 0 ? t.sort : undefined;
+		const t = tab()
+		if (!t) return undefined
+		if (scope() === 'all') return undefined
+		if (scope() === 'view') {
+			return t.sort.length > 0 ? t.sort : undefined
 		}
-		return undefined;
+		return undefined
 	}
 
 	async function loadPreview() {
-		setPreviewLoading(true);
-		setPreview("");
-		setError(null);
+		setPreviewLoading(true)
+		setPreview('')
+		setError(null)
 
 		try {
 			const params: ExportPreviewRequest = {
@@ -178,60 +175,60 @@ export default function ExportDialog(props: ExportDialogProps) {
 				table: props.table,
 				format: format(),
 				limit: 10,
-				delimiter: format() === "csv" ? delimiter() : undefined,
+				delimiter: format() === 'csv' ? delimiter() : undefined,
 				filters: getExportFilters(),
 				sort: getExportSort(),
 				database: props.database,
-			};
+			}
 
-			const result = await rpc.export.preview(params);
-			setPreview(result.content);
+			const result = await rpc.export.preview(params)
+			setPreview(result.content)
 		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
+			setError(err instanceof Error ? err.message : String(err))
 		} finally {
-			setPreviewLoading(false);
+			setPreviewLoading(false)
 		}
 	}
 
 	async function handleExport() {
-		setError(null);
-		setExportResult(null);
-		setProgressRows(0);
+		setError(null)
+		setExportResult(null)
+		setProgressRows(0)
 
-		const ext = FILE_EXTENSIONS[format()];
-		const defaultName = `${props.table}.${ext}`;
+		const ext = FILE_EXTENSIONS[format()]
+		const defaultName = `${props.table}.${ext}`
 
 		// Web mode: use HTTP streaming via token
 		if (caps().hasHttpStreaming && !caps().hasFileSystem) {
-			return handleWebExport(defaultName);
+			return handleWebExport(defaultName)
 		}
 
-		let exportFilePath: string | undefined;
+		let exportFilePath: string | undefined
 
 		// Desktop: use native save dialog to get file path
 		if (caps().hasFileSystem && caps().hasNativeDialogs) {
 			try {
 				const saveResult = await rpc.system.showSaveDialog({
-					title: "Export Data",
+					title: 'Export Data',
 					defaultName,
 					filters: [{ name: FORMAT_LABELS[format()], extensions: [ext] }],
-				});
+				})
 
-				if (saveResult.cancelled || !saveResult.path) return;
-				exportFilePath = saveResult.path;
+				if (saveResult.cancelled || !saveResult.path) return
+				exportFilePath = saveResult.path
 			} catch (err) {
-				setError(err instanceof Error ? err.message : String(err));
-				return;
+				setError(err instanceof Error ? err.message : String(err))
+				return
 			}
 		}
 
-		setExporting(true);
+		setExporting(true)
 
 		// Subscribe to progress events
 		const unsub = transport.addMessageListener<{ rowCount: number }>(
-			"export.progress",
+			'export.progress',
 			(payload) => setProgressRows(payload.rowCount),
-		);
+		)
 
 		try {
 			const result = await rpc.export.exportData({
@@ -240,110 +237,110 @@ export default function ExportDialog(props: ExportDialogProps) {
 				table: props.table,
 				format: format(),
 				filePath: exportFilePath ?? defaultName,
-				delimiter: format() === "csv" ? delimiter() : undefined,
-				encoding: format() === "csv" ? encoding() : undefined,
-				utf8Bom: format() === "csv" && encoding() === "utf-8" ? utf8Bom() : undefined,
-				includeHeaders: format() === "csv" ? includeHeaders() : undefined,
-				batchSize: format() === "sql" ? batchSize() : undefined,
+				delimiter: format() === 'csv' ? delimiter() : undefined,
+				encoding: format() === 'csv' ? encoding() : undefined,
+				utf8Bom: format() === 'csv' && encoding() === 'utf-8' ? utf8Bom() : undefined,
+				includeHeaders: format() === 'csv' ? includeHeaders() : undefined,
+				batchSize: format() === 'sql' ? batchSize() : undefined,
 				filters: getExportFilters(),
 				sort: getExportSort(),
 				database: props.database,
-			});
+			})
 
-			setExportResult(result);
+			setExportResult(result)
 		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
+			setError(err instanceof Error ? err.message : String(err))
 		} finally {
-			unsub();
-			setExporting(false);
+			unsub()
+			setExporting(false)
 		}
 	}
 
 	async function handleWebExport(defaultName: string) {
-		setExporting(true);
+		setExporting(true)
 
 		// Subscribe to progress and completion events
 		const unsub = transport.addMessageListener<{ rowCount: number }>(
-			"export.progress",
+			'export.progress',
 			(payload) => setProgressRows(payload.rowCount),
-		);
+		)
 
-		let completionReceived = false;
+		let completionReceived = false
 		const unsubComplete = transport.addMessageListener<{ rowCount: number }>(
-			"export.complete",
+			'export.complete',
 			(payload) => {
-				completionReceived = true;
-				setExportResult({ rowCount: payload.rowCount, sizeBytes: 0 });
-				setExporting(false);
+				completionReceived = true
+				setExportResult({ rowCount: payload.rowCount, sizeBytes: 0 })
+				setExporting(false)
 			},
-		);
+		)
 
 		try {
 			// Get a stream token via WS RPC
-			const { token } = await transport.call<{ token: string }>("stream.createExportToken", {
+			const { token } = await transport.call<{ token: string }>('stream.createExportToken', {
 				connectionId: props.connectionId,
 				database: props.database,
 				schema: props.schema,
 				table: props.table,
 				format: format(),
-				delimiter: format() === "csv" ? delimiter() : undefined,
-				encoding: format() === "csv" ? encoding() : undefined,
-				utf8Bom: format() === "csv" && encoding() === "utf-8" ? utf8Bom() : undefined,
-				includeHeaders: format() === "csv" ? includeHeaders() : undefined,
-				batchSize: format() === "sql" ? batchSize() : undefined,
+				delimiter: format() === 'csv' ? delimiter() : undefined,
+				encoding: format() === 'csv' ? encoding() : undefined,
+				utf8Bom: format() === 'csv' && encoding() === 'utf-8' ? utf8Bom() : undefined,
+				includeHeaders: format() === 'csv' ? includeHeaders() : undefined,
+				batchSize: format() === 'sql' ? batchSize() : undefined,
 				filters: getExportFilters(),
 				sort: getExportSort(),
-			});
+			})
 
 			// Trigger browser download via hidden anchor tag
-			const a = document.createElement("a");
-			a.href = `/api/stream/export/${token}`;
-			a.download = defaultName;
-			document.body.appendChild(a);
-			a.click();
-			document.body.removeChild(a);
+			const a = document.createElement('a')
+			a.href = `/api/stream/export/${token}`
+			a.download = defaultName
+			document.body.appendChild(a)
+			a.click()
+			document.body.removeChild(a)
 
 			// Wait for completion signal with a timeout
 			// If no completion after 500ms and no progress, show as started
 			await new Promise<void>((resolve) => {
 				const check = () => {
 					if (completionReceived) {
-						resolve();
-						return;
+						resolve()
+						return
 					}
 					// Keep waiting while we're getting progress
-					setTimeout(check, 1000);
-				};
+					setTimeout(check, 1000)
+				}
 				// For anchor-based downloads, we can't detect stream end precisely.
 				// Show the download as started after a brief delay if no completion yet.
 				setTimeout(() => {
 					if (!completionReceived && !error()) {
-						setExporting(false);
-						setExportResult({ rowCount: progressRows(), sizeBytes: 0 });
+						setExporting(false)
+						setExportResult({ rowCount: progressRows(), sizeBytes: 0 })
 					}
-					resolve();
-				}, 3000);
-			});
+					resolve()
+				}, 3000)
+			})
 		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err));
-			setExporting(false);
+			setError(err instanceof Error ? err.message : String(err))
+			setExporting(false)
 		} finally {
 			// Clean up listeners after a delay to catch late messages
 			setTimeout(() => {
-				unsub();
-				unsubComplete();
-			}, 5000);
+				unsub()
+				unsubComplete()
+			}, 5000)
 		}
 	}
 
 	function formatFileSize(bytes: number): string {
-		if (bytes < 1024) return `${bytes} B`;
-		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+		if (bytes < 1024) return `${bytes} B`
+		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 	}
 
 	function formatNumber(n: number): string {
-		return n.toLocaleString();
+		return n.toLocaleString()
 	}
 
 	return (
@@ -361,7 +358,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 							{([fmt, label]) => (
 								<button
 									class="export-dialog__format-btn"
-									classList={{ "export-dialog__format-btn--active": format() === fmt }}
+									classList={{ 'export-dialog__format-btn--active': format() === fmt }}
 									onClick={() => setFormat(fmt)}
 								>
 									{label}
@@ -380,8 +377,8 @@ export default function ExportDialog(props: ExportDialogProps) {
 								type="radio"
 								name="scope"
 								value="all"
-								checked={scope() === "all"}
-								onChange={() => setScope("all")}
+								checked={scope() === 'all'}
+								onChange={() => setScope('all')}
 							/>
 							Entire table
 						</label>
@@ -390,22 +387,22 @@ export default function ExportDialog(props: ExportDialogProps) {
 								type="radio"
 								name="scope"
 								value="view"
-								checked={scope() === "view"}
-								onChange={() => setScope("view")}
+								checked={scope() === 'view'}
+								onChange={() => setScope('view')}
 							/>
 							Current view (with filters)
 						</label>
 						<label
 							class="export-dialog__radio-label"
-							classList={{ "export-dialog__radio-label--disabled": !hasSelection() || !hasPrimaryKey() }}
+							classList={{ 'export-dialog__radio-label--disabled': !hasSelection() || !hasPrimaryKey() }}
 						>
 							<input
 								type="radio"
 								name="scope"
 								value="selected"
-								checked={scope() === "selected"}
+								checked={scope() === 'selected'}
 								disabled={!hasSelection() || !hasPrimaryKey()}
-								onChange={() => setScope("selected")}
+								onChange={() => setScope('selected')}
 							/>
 							Selected rows ({selectedRowCount()})
 						</label>
@@ -413,7 +410,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 				</div>
 
 				{/* Format-specific options */}
-				<Show when={format() === "csv"}>
+				<Show when={format() === 'csv'}>
 					<div class="export-dialog__section">
 						<label class="export-dialog__label">Options</label>
 						<div class="export-dialog__options">
@@ -425,9 +422,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 									onChange={(e) => setDelimiter(e.currentTarget.value as CsvDelimiter)}
 								>
 									<For each={Object.entries(DELIMITER_LABELS)}>
-										{([value, label]) => (
-											<option value={value}>{label}</option>
-										)}
+										{([value, label]) => <option value={value}>{label}</option>}
 									</For>
 								</select>
 							</div>
@@ -439,9 +434,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 									onChange={(e) => setEncoding(e.currentTarget.value as CsvEncoding)}
 								>
 									<For each={Object.entries(ENCODING_LABELS)}>
-										{([value, label]) => (
-											<option value={value}>{label}</option>
-										)}
+										{([value, label]) => <option value={value}>{label}</option>}
 									</For>
 								</select>
 							</div>
@@ -453,7 +446,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 								/>
 								Include column headers
 							</label>
-							<Show when={encoding() === "utf-8"}>
+							<Show when={encoding() === 'utf-8'}>
 								<label class="export-dialog__checkbox-label">
 									<input
 										type="checkbox"
@@ -467,7 +460,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 					</div>
 				</Show>
 
-				<Show when={format() === "sql"}>
+				<Show when={format() === 'sql'}>
 					<div class="export-dialog__section">
 						<label class="export-dialog__label">Options</label>
 						<div class="export-dialog__options">
@@ -480,8 +473,8 @@ export default function ExportDialog(props: ExportDialogProps) {
 									max={10000}
 									value={batchSize()}
 									onInput={(e) => {
-										const v = parseInt(e.currentTarget.value, 10);
-										if (!isNaN(v) && v > 0) setBatchSize(v);
+										const v = parseInt(e.currentTarget.value, 10)
+										if (!Number.isNaN(v) && v > 0) setBatchSize(v)
 									}}
 								/>
 							</div>
@@ -489,7 +482,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 					</div>
 				</Show>
 
-				<Show when={format() === "sql_update"}>
+				<Show when={format() === 'sql_update'}>
 					<div class="export-dialog__section">
 						<div class="export-dialog__note">
 							Uses the first column as the primary key for the WHERE clause.
@@ -506,7 +499,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 							onClick={loadPreview}
 							disabled={previewLoading()}
 						>
-							<Eye size={12} /> {previewLoading() ? "Loading..." : "Load Preview"}
+							<Eye size={12} /> {previewLoading() ? 'Loading...' : 'Load Preview'}
 						</button>
 					</div>
 					<Show when={preview()}>
@@ -526,7 +519,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 							<div class="export-dialog__progress-bar-fill" />
 						</div>
 						<span class="export-dialog__progress-text">
-							Exporting... {progressRows() > 0 ? `${formatNumber(progressRows())} rows` : ""}
+							Exporting... {progressRows() > 0 ? `${formatNumber(progressRows())} rows` : ''}
 						</span>
 					</div>
 				</Show>
@@ -535,8 +528,8 @@ export default function ExportDialog(props: ExportDialogProps) {
 				<Show when={exportResult()}>
 					{(result) => (
 						<div class="export-dialog__result">
-							Exported {formatNumber(result().rowCount)} row{result().rowCount !== 1 ? "s" : ""}
-							{result().sizeBytes > 0 ? ` (${formatFileSize(result().sizeBytes)})` : ""}
+							Exported {formatNumber(result().rowCount)} row{result().rowCount !== 1 ? 's' : ''}
+							{result().sizeBytes > 0 ? ` (${formatFileSize(result().sizeBytes)})` : ''}
 						</div>
 					)}
 				</Show>
@@ -548,9 +541,9 @@ export default function ExportDialog(props: ExportDialogProps) {
 
 				{/* Info about row count */}
 				<div class="export-dialog__info">
-					{scope() === "selected"
-						? `${selectedRowCount()} row${selectedRowCount() !== 1 ? "s" : ""} selected`
-						: `${rowCountForScope()} row${rowCountForScope() !== 1 ? "s" : ""} to export`}
+					{scope() === 'selected'
+						? `${selectedRowCount()} row${selectedRowCount() !== 1 ? 's' : ''} selected`
+						: `${rowCountForScope()} row${rowCountForScope() !== 1 ? 's' : ''} to export`}
 				</div>
 
 				{/* Actions */}
@@ -566,10 +559,10 @@ export default function ExportDialog(props: ExportDialogProps) {
 						onClick={handleExport}
 						disabled={exporting()}
 					>
-						<Download size={14} /> {exporting() ? "Exporting..." : "Export"}
+						<Download size={14} /> {exporting() ? 'Exporting...' : 'Export'}
 					</button>
 				</div>
 			</div>
 		</Dialog>
-	);
+	)
 }

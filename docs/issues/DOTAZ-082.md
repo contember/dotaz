@@ -11,6 +11,7 @@ Error handling is inconsistent across the application. Raw database errors propa
 Additionally, several catch blocks silently swallow errors: query history logging (line 668), cancel during disconnect (line 502), cancel query (line 595).
 
 Changes needed:
+
 1. Create domain error hierarchy in `src/shared/types/errors.ts`:
    - `DatabaseError` (base, with `code` field)
    - `ConnectionError` (connection failures, timeouts)

@@ -9,6 +9,7 @@
 Vyhledávání textového řetězce napříč všemi tabulkami (nebo vybranými tabulkami) v databázi. Pomalé, ale neocenitelné když nevíte, kde se data nachází.
 
 ### Flow
+
 1. Uživatel otevře "Search in Database" dialog
 2. Zadá hledaný text
 3. Vybere scope: celá databáze, konkrétní schéma, nebo vybrané tabulky
@@ -16,6 +17,7 @@ Vyhledávání textového řetězce napříč všemi tabulkami (nebo vybranými 
 5. Výsledky zobrazí: tabulka → sloupec → řádek s matchem
 
 ### Implementace
+
 - Pro každou tabulku v scope generovat SELECT s WHERE LIKE přes text-kompatibilní sloupce
 - Dotazy spouštět sekvenčně (ne paralelně, aby se nepřetížila DB)
 - Progress bar s názvem aktuálně prohledávané tabulky

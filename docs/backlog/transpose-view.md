@@ -9,6 +9,7 @@
 Přepínač v toolbaru gridu pro transpozici zobrazení: řádky se stanou sloupci a sloupce řádky. Klíčové pro tabulky s mnoha sloupci (50+), kde horizontální scrollování je nepraktické.
 
 V transponovaném režimu:
+
 - Každý řádek původní tabulky = jeden sloupec
 - Názvy sloupců jsou v prvním sloupci (jako row headers)
 - Navigace šipkami funguje otočeně

@@ -16,8 +16,8 @@ Extract a single shared signal at module level that all DataGrid instances subsc
 
 ```typescript
 // In a shared module or at DataGrid module level
-const [staleNow, setStaleNow] = createSignal(Date.now());
-setInterval(() => setStaleNow(Date.now()), 30_000);
+const [staleNow, setStaleNow] = createSignal(Date.now())
+setInterval(() => setStaleNow(Date.now()), 30_000)
 ```
 
 Remove per-instance `setInterval` from `onMount`.

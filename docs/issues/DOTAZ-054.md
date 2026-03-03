@@ -9,6 +9,7 @@
 Replace the current boolean SSL checkbox with a proper SSL mode dropdown for PostgreSQL connections. The PRD requires full SSL mode support (FR-CONN-01). Currently the SSL setting is stored as a boolean and is not even passed to the PostgreSQL driver connection string, making it non-functional.
 
 Changes needed:
+
 1. Change `PostgresConnectionConfig.ssl` from `boolean` to `SSLMode` enum type (`"disable" | "allow" | "prefer" | "require" | "verify-ca" | "verify-full"`)
 2. Update ConnectionDialog to render a `<select>` dropdown instead of a checkbox
 3. Pass the SSL mode parameter to the PostgreSQL driver connection URL (`?sslmode=...`)

@@ -15,6 +15,7 @@ After a successful reconnect, check if the old driver had `inTransaction() === t
 ### Frontend changes
 
 Listen for `transactionLost` events. When received:
+
 1. Reset the editor store's transaction state for that connection
 2. Show a warning toast: "Connection was lost and restored. Active transaction was rolled back by the server."
 

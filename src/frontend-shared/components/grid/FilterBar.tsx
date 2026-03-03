@@ -1,170 +1,164 @@
-import { createSignal, For, Show } from "solid-js";
-import type {
-	ColumnFilter,
-	FilterOperator,
-	GridColumnDef,
-} from "../../../shared/types/grid";
-import type { DatabaseDataType } from "../../../shared/types/database";
-import X from "lucide-solid/icons/x";
-import FilterX from "lucide-solid/icons/funnel-x";
-import Plus from "lucide-solid/icons/plus";
-import { getColumnCategory } from "../../lib/column-types";
-import "./FilterBar.css";
+import FilterX from 'lucide-solid/icons/funnel-x'
+import Plus from 'lucide-solid/icons/plus'
+import X from 'lucide-solid/icons/x'
+import { createSignal, For, Show } from 'solid-js'
+import type { DatabaseDataType } from '../../../shared/types/database'
+import type { ColumnFilter, FilterOperator, GridColumnDef } from '../../../shared/types/grid'
+import { getColumnCategory } from '../../lib/column-types'
+import './FilterBar.css'
 
 interface FilterBarProps {
-	columns: GridColumnDef[];
-	filters: ColumnFilter[];
-	customFilter: string;
-	onAddFilter: (filter: ColumnFilter) => void;
-	onRemoveFilter: (column: string) => void;
-	onSetCustomFilter: (value: string) => void;
-	onClearAll: () => void;
+	columns: GridColumnDef[]
+	filters: ColumnFilter[]
+	customFilter: string
+	onAddFilter: (filter: ColumnFilter) => void
+	onRemoveFilter: (column: string) => void
+	onSetCustomFilter: (value: string) => void
+	onClearAll: () => void
 }
 
 interface OperatorOption {
-	value: FilterOperator;
-	label: string;
+	value: FilterOperator
+	label: string
 }
 
 const ALL_OPERATORS: OperatorOption[] = [
-	{ value: "eq", label: "=" },
-	{ value: "neq", label: "!=" },
-	{ value: "gt", label: ">" },
-	{ value: "gte", label: ">=" },
-	{ value: "lt", label: "<" },
-	{ value: "lte", label: "<=" },
-	{ value: "like", label: "LIKE" },
-	{ value: "in", label: "IN" },
-	{ value: "isNull", label: "IS NULL" },
-	{ value: "isNotNull", label: "IS NOT NULL" },
-];
+	{ value: 'eq', label: '=' },
+	{ value: 'neq', label: '!=' },
+	{ value: 'gt', label: '>' },
+	{ value: 'gte', label: '>=' },
+	{ value: 'lt', label: '<' },
+	{ value: 'lte', label: '<=' },
+	{ value: 'like', label: 'LIKE' },
+	{ value: 'in', label: 'IN' },
+	{ value: 'isNull', label: 'IS NULL' },
+	{ value: 'isNotNull', label: 'IS NOT NULL' },
+]
 
 function getOperatorsForType(dataType: DatabaseDataType): OperatorOption[] {
-	const category = getColumnCategory(dataType);
+	const category = getColumnCategory(dataType)
 	switch (category) {
-		case "boolean":
-			return ALL_OPERATORS.filter((o) =>
-				["eq", "neq", "isNull", "isNotNull"].includes(o.value),
-			);
-		case "number":
-			return ALL_OPERATORS.filter((o) => o.value !== "like");
-		case "text":
-			return ALL_OPERATORS;
+		case 'boolean':
+			return ALL_OPERATORS.filter((o) => ['eq', 'neq', 'isNull', 'isNotNull'].includes(o.value))
+		case 'number':
+			return ALL_OPERATORS.filter((o) => o.value !== 'like')
+		case 'text':
+			return ALL_OPERATORS
 		default:
-			return ALL_OPERATORS;
+			return ALL_OPERATORS
 	}
 }
 
 function operatorNeedsValue(op: FilterOperator): boolean {
-	return op !== "isNull" && op !== "isNotNull";
+	return op !== 'isNull' && op !== 'isNotNull'
 }
 
 function operatorLabel(op: FilterOperator): string {
-	return ALL_OPERATORS.find((o) => o.value === op)?.label ?? op;
+	return ALL_OPERATORS.find((o) => o.value === op)?.label ?? op
 }
 
 function formatFilterValue(filter: ColumnFilter): string {
-	if (!operatorNeedsValue(filter.operator)) return "";
-	if (filter.operator === "in" && Array.isArray(filter.value)) {
-		return (filter.value as unknown[]).join(", ");
+	if (!operatorNeedsValue(filter.operator)) return ''
+	if (filter.operator === 'in' && Array.isArray(filter.value)) {
+		return (filter.value as unknown[]).join(', ')
 	}
-	return String(filter.value ?? "");
+	return String(filter.value ?? '')
 }
 
 export default function FilterBar(props: FilterBarProps) {
-	const [adding, setAdding] = createSignal(false);
-	const [selectedColumn, setSelectedColumn] = createSignal("");
-	const [selectedOperator, setSelectedOperator] = createSignal<FilterOperator>("eq");
-	const [inputValue, setInputValue] = createSignal("");
-	const [editingCustom, setEditingCustom] = createSignal(false);
-	const [customInput, setCustomInput] = createSignal("");
+	const [adding, setAdding] = createSignal(false)
+	const [selectedColumn, setSelectedColumn] = createSignal('')
+	const [selectedOperator, setSelectedOperator] = createSignal<FilterOperator>('eq')
+	const [inputValue, setInputValue] = createSignal('')
+	const [editingCustom, setEditingCustom] = createSignal(false)
+	const [customInput, setCustomInput] = createSignal('')
 
 	function availableColumns() {
-		const filtered = new Set(props.filters.map((f) => f.column));
-		return props.columns.filter((c) => !filtered.has(c.name));
+		const filtered = new Set(props.filters.map((f) => f.column))
+		return props.columns.filter((c) => !filtered.has(c.name))
 	}
 
 	function currentColumnDef(): GridColumnDef | undefined {
-		return props.columns.find((c) => c.name === selectedColumn());
+		return props.columns.find((c) => c.name === selectedColumn())
 	}
 
 	function currentOperators(): OperatorOption[] {
-		const col = currentColumnDef();
-		if (!col) return ALL_OPERATORS;
-		return getOperatorsForType(col.dataType);
+		const col = currentColumnDef()
+		if (!col) return ALL_OPERATORS
+		return getOperatorsForType(col.dataType)
 	}
 
 	function resetForm() {
-		setSelectedColumn("");
-		setSelectedOperator("eq");
-		setInputValue("");
-		setAdding(false);
+		setSelectedColumn('')
+		setSelectedOperator('eq')
+		setInputValue('')
+		setAdding(false)
 	}
 
 	function handleColumnChange(name: string) {
-		setSelectedColumn(name);
-		setInputValue("");
-		const col = props.columns.find((c) => c.name === name);
+		setSelectedColumn(name)
+		setInputValue('')
+		const col = props.columns.find((c) => c.name === name)
 		if (col) {
-			const ops = getOperatorsForType(col.dataType);
+			const ops = getOperatorsForType(col.dataType)
 			if (!ops.find((o) => o.value === selectedOperator())) {
-				setSelectedOperator(ops[0].value);
+				setSelectedOperator(ops[0].value)
 			}
 		}
 	}
 
 	function handleApply() {
-		const col = selectedColumn();
-		const op = selectedOperator();
-		if (!col) return;
+		const col = selectedColumn()
+		const op = selectedOperator()
+		if (!col) return
 
-		let value: unknown = null;
+		let value: unknown = null
 		if (operatorNeedsValue(op)) {
-			const raw = inputValue().trim();
-			if (!raw) return;
-			if (op === "in") {
-				value = raw.split(",").map((v) => v.trim());
+			const raw = inputValue().trim()
+			if (!raw) return
+			if (op === 'in') {
+				value = raw.split(',').map((v) => v.trim())
 			} else {
-				value = raw;
+				value = raw
 			}
 		}
 
-		props.onAddFilter({ column: col, operator: op, value });
-		resetForm();
+		props.onAddFilter({ column: col, operator: op, value })
+		resetForm()
 	}
 
 	function handleKeyDown(e: KeyboardEvent) {
-		if (e.key === "Enter") {
-			handleApply();
-		} else if (e.key === "Escape") {
-			resetForm();
+		if (e.key === 'Enter') {
+			handleApply()
+		} else if (e.key === 'Escape') {
+			resetForm()
 		}
 	}
 
 	function startEditingCustom() {
-		setCustomInput(props.customFilter);
-		setEditingCustom(true);
+		setCustomInput(props.customFilter)
+		setEditingCustom(true)
 	}
 
 	function applyCustomFilter() {
-		const val = customInput().trim();
-		props.onSetCustomFilter(val);
-		setEditingCustom(false);
+		const val = customInput().trim()
+		props.onSetCustomFilter(val)
+		setEditingCustom(false)
 	}
 
 	function cancelCustomEdit() {
-		setEditingCustom(false);
+		setEditingCustom(false)
 	}
 
 	function handleCustomKeyDown(e: KeyboardEvent) {
-		if (e.key === "Enter") {
-			applyCustomFilter();
-		} else if (e.key === "Escape") {
-			cancelCustomEdit();
+		if (e.key === 'Enter') {
+			applyCustomFilter()
+		} else if (e.key === 'Escape') {
+			cancelCustomEdit()
 		}
 	}
 
-	const hasAnyFilter = () => props.filters.length > 0 || !!props.customFilter;
+	const hasAnyFilter = () => props.filters.length > 0 || !!props.customFilter
 
 	return (
 		<div class="filter-bar">
@@ -195,8 +189,8 @@ export default function FilterBar(props: FilterBarProps) {
 						<button
 							class="filter-bar__chip-remove"
 							onClick={(e) => {
-								e.stopPropagation();
-								props.onSetCustomFilter("");
+								e.stopPropagation()
+								props.onSetCustomFilter('')
 							}}
 							title="Remove custom filter"
 						>
@@ -281,7 +275,7 @@ export default function FilterBar(props: FilterBarProps) {
 							<input
 								class="filter-bar__input"
 								type="text"
-								placeholder={selectedOperator() === "in" ? "val1, val2, ..." : "Value..."}
+								placeholder={selectedOperator() === 'in' ? 'val1, val2, ...' : 'Value...'}
 								value={inputValue()}
 								onInput={(e) => setInputValue(e.currentTarget.value)}
 								onKeyDown={handleKeyDown}
@@ -302,5 +296,5 @@ export default function FilterBar(props: FilterBarProps) {
 				</Show>
 			</Show>
 		</div>
-	);
+	)
 }

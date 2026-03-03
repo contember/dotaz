@@ -30,11 +30,13 @@ Actions:
 ```
 
 **Auto-pin logic:** Before executing a query, check SQL against `autoPin` setting:
+
 - `"on-begin"`: auto-pin if SQL contains `BEGIN` or `START TRANSACTION`
 - `"on-set-session"`: also auto-pin on `SET` (not `SET LOCAL`), `CREATE TEMP/TEMPORARY`
 - `"never"`: never auto-pin
 
 **Auto-unpin logic:** After commit/rollback, check `autoUnpin` setting:
+
 - `"on-commit"`: auto-unpin (destroy session) after COMMIT or ROLLBACK
 - `"never"`: keep session pinned
 

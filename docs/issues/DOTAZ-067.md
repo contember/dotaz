@@ -9,15 +9,18 @@
 Add the ability to view execution plan of a SQL query. User clicks "Explain" (or Ctrl+E) instead of "Run" and the result displays as a structured plan instead of a data grid.
 
 ### PostgreSQL
+
 - `EXPLAIN` — estimated plan
 - `EXPLAIN ANALYZE` — actual plan with measured timings
 - Output in JSON format (easier to parse) or TEXT
 
 ### SQLite
+
 - `EXPLAIN QUERY PLAN` — simplified plan
 - Output as table with nested structure
 
 ### Display
+
 - Tree/table visualization of operations (Seq Scan, Index Scan, Hash Join, Sort, etc.)
 - Highlight expensive operations (highest cost / actual time)
 - Show estimated vs. actual rows (ANALYZE mode)
