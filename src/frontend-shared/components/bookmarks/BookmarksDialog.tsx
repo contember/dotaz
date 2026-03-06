@@ -9,6 +9,7 @@ import { connectionsStore } from '../../stores/connections'
 import { editorStore } from '../../stores/editor'
 import { tabsStore } from '../../stores/tabs'
 import Dialog from '../common/Dialog'
+import Select from '../common/Select'
 import Icon from '../common/Icon'
 import './BookmarksDialog.css'
 
@@ -321,16 +322,12 @@ export default function BookmarksDialog(props: BookmarksDialogProps) {
 							value={search()}
 							onInput={(e) => handleSearchInput(e.currentTarget.value)}
 						/>
-						<select
+						<Select
 							class="bookmarks-dialog__connection-filter"
 							value={connectionFilter()}
-							onChange={(e) => handleConnectionFilterChange(e.currentTarget.value)}
-						>
-							<option value="">Select connection</option>
-							<For each={connectedConnections()}>
-								{(conn) => <option value={conn.id}>{conn.name}</option>}
-							</For>
-						</select>
+							onChange={(v) => handleConnectionFilterChange(v)}
+							options={[{ value: '', label: 'Select connection' }, ...connectedConnections().map((conn) => ({ value: conn.id, label: conn.name }))]}
+						/>
 						<button
 							class="bookmarks-dialog__add-btn"
 							onClick={startCreate}

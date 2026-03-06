@@ -9,6 +9,7 @@ import type { UpdateChange } from '../../../shared/types/rpc'
 import { isBooleanType, isDateType, isNumericType, isTextType } from '../../lib/column-types'
 import { isQuickValueModifier, quickValueModifierLabel } from '../../lib/keyboard'
 import { rpc } from '../../lib/rpc'
+import DateInput from '../common/DateInput'
 import { connectionsStore } from '../../stores/connections'
 import { gridStore } from '../../stores/grid'
 import { tabsStore } from '../../stores/tabs'
@@ -350,28 +351,22 @@ export default function RowDetailTab(props: RowDetailTabProps) {
 		}
 
 		if (isDateType(col.dataType)) {
-			const inputType = col.dataType === DatabaseDataType.Date ? 'date' : 'datetime-local'
 			return (
 				<div class="row-detail__input-row">
-					<input
+					<DateInput
 						class="row-detail__input"
-						classList={{
-							'row-detail__input--null': isNull,
-							'row-detail__input--default': isDef,
-						}}
-						type={inputType}
 						value={isNull || isDef ? '' : dateInputValue(value, col.dataType)}
-						readOnly={readOnly}
-						placeholder={specialPlaceholder}
-						onKeyDown={(e) => handleFieldKeyDown(e, col)}
-						onInput={(e) => {
-							const v = e.target.value
+						onChange={(v) => {
 							if (v === '') {
 								if (col.nullable) setFieldValue(col.name, null)
 							} else {
 								setFieldValue(col.name, v)
 							}
 						}}
+						mode={col.dataType === DatabaseDataType.Date ? 'date' : 'datetime'}
+						readOnly={readOnly}
+						placeholder={specialPlaceholder}
+						onKeyDown={(e) => handleFieldKeyDown(e, col)}
 					/>
 				</div>
 			)

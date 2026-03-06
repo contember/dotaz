@@ -3,6 +3,7 @@ import type { GridColumnDef } from '../../../shared/types/grid'
 import { gridStore } from '../../stores/grid'
 import type { AdvancedCopyDelimiter, AdvancedCopyOptions, AdvancedCopyValueFormat } from '../../stores/grid'
 import Dialog from '../common/Dialog'
+import Select from '../common/Select'
 import './AdvancedCopyDialog.css'
 
 interface AdvancedCopyDialogProps {
@@ -197,19 +198,16 @@ export default function AdvancedCopyDialog(props: AdvancedCopyDialogProps) {
 				<div class="adv-copy__section">
 					<span class="adv-copy__label">NULL Representation</span>
 					<div class="adv-copy__field">
-						<select
+						<Select
 							class="adv-copy__select"
 							value={nullPresets.find((p) => p.value === nullRepresentation()) ? nullRepresentation() : '__custom__'}
-							onChange={(e) => {
-								const val = e.currentTarget.value
-								if (val !== '__custom__') {
-									setNullRepresentation(val)
+							onChange={(v) => {
+								if (v !== '__custom__') {
+									setNullRepresentation(v)
 								}
 							}}
-						>
-							{nullPresets.map((p) => <option value={p.value}>{p.label}</option>)}
-							<option value="__custom__">Custom...</option>
-						</select>
+							options={[...nullPresets.map((p) => ({ value: p.value, label: p.label })), { value: '__custom__', label: 'Custom...' }]}
+						/>
 						<Show when={!nullPresets.find((p) => p.value === nullRepresentation())}>
 							<input
 								type="text"

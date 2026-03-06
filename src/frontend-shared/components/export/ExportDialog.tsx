@@ -9,6 +9,7 @@ import { rpc } from '../../lib/rpc'
 import { transport } from '../../lib/transport'
 import { gridStore } from '../../stores/grid'
 import Dialog from '../common/Dialog'
+import Select from '../common/Select'
 import './ExportDialog.css'
 
 type ExportScope = 'all' | 'view' | 'selected'
@@ -451,27 +452,21 @@ export default function ExportDialog(props: ExportDialogProps) {
 						<div class="export-dialog__options">
 							<div class="export-dialog__field">
 								<label class="export-dialog__field-label">Delimiter</label>
-								<select
+								<Select
 									class="export-dialog__select"
 									value={delimiter()}
-									onChange={(e) => setDelimiter(e.currentTarget.value as CsvDelimiter)}
-								>
-									<For each={Object.entries(DELIMITER_LABELS)}>
-										{([value, label]) => <option value={value}>{label}</option>}
-									</For>
-								</select>
+									onChange={(v) => setDelimiter(v as CsvDelimiter)}
+									options={Object.entries(DELIMITER_LABELS).map(([value, label]) => ({ value, label }))}
+								/>
 							</div>
 							<div class="export-dialog__field">
 								<label class="export-dialog__field-label">Encoding</label>
-								<select
+								<Select
 									class="export-dialog__select"
 									value={encoding()}
-									onChange={(e) => setEncoding(e.currentTarget.value as CsvEncoding)}
-								>
-									<For each={Object.entries(ENCODING_LABELS)}>
-										{([value, label]) => <option value={value}>{label}</option>}
-									</For>
-								</select>
+									onChange={(v) => setEncoding(v as CsvEncoding)}
+									options={Object.entries(ENCODING_LABELS).map(([value, label]) => ({ value, label }))}
+								/>
 							</div>
 							<label class="export-dialog__checkbox-label">
 								<input

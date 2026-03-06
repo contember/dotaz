@@ -5,6 +5,7 @@ import type { ColumnInfo, SchemaData } from '../../../shared/types/database'
 import { rpc } from '../../lib/rpc'
 import { connectionsStore } from '../../stores/connections'
 import Dialog from '../common/Dialog'
+import Select from '../common/Select'
 import Icon from '../common/Icon'
 import './ComparisonDialog.css'
 
@@ -247,31 +248,23 @@ export default function ComparisonDialog(props: ComparisonDialogProps) {
 
 				<div class="comparison-dialog__field">
 					<label class="comparison-dialog__label">Connection</label>
-					<select
+					<Select
 						class="comparison-dialog__select"
 						value={state().connectionId}
-						onChange={(e) => handleConnectionChange(side, e.currentTarget.value)}
-					>
-						<option value="">Select connection...</option>
-						<For each={connectedConnections()}>
-							{(conn) => <option value={conn.id}>{conn.name}</option>}
-						</For>
-					</select>
+						onChange={(v) => handleConnectionChange(side, v)}
+						options={[{ value: '', label: 'Select connection...' }, ...connectedConnections().map((conn) => ({ value: conn.id, label: conn.name }))]}
+					/>
 				</div>
 
 				<Show when={getAvailableDatabases(state().connectionId).length > 0}>
 					<div class="comparison-dialog__field">
 						<label class="comparison-dialog__label">Database</label>
-						<select
+						<Select
 							class="comparison-dialog__select"
 							value={state().database}
-							onChange={(e) => handleDatabaseChange(side, e.currentTarget.value)}
-						>
-							<option value="">Default</option>
-							<For each={getAvailableDatabases(state().connectionId)}>
-								{(db) => <option value={db.name}>{db.name}</option>}
-							</For>
-						</select>
+							onChange={(v) => handleDatabaseChange(side, v)}
+							options={[{ value: '', label: 'Default' }, ...getAvailableDatabases(state().connectionId).map((db) => ({ value: db.name, label: db.name }))]}
+						/>
 					</div>
 				</Show>
 
@@ -298,30 +291,22 @@ export default function ComparisonDialog(props: ComparisonDialogProps) {
 				<Show when={state().type === 'table'}>
 					<div class="comparison-dialog__field">
 						<label class="comparison-dialog__label">Schema</label>
-						<select
+						<Select
 							class="comparison-dialog__select"
 							value={state().schema}
-							onChange={(e) => handleSchemaChange(side, e.currentTarget.value)}
-						>
-							<option value="">Select schema...</option>
-							<For each={getSchemas(schemaData())}>
-								{(s) => <option value={s}>{s}</option>}
-							</For>
-						</select>
+							onChange={(v) => handleSchemaChange(side, v)}
+							options={[{ value: '', label: 'Select schema...' }, ...getSchemas(schemaData()).map((s) => ({ value: s, label: s }))]}
+						/>
 					</div>
 
 					<div class="comparison-dialog__field">
 						<label class="comparison-dialog__label">Table</label>
-						<select
+						<Select
 							class="comparison-dialog__select"
 							value={state().table}
-							onChange={(e) => setState((prev) => ({ ...prev, table: e.currentTarget.value }))}
-						>
-							<option value="">Select table...</option>
-							<For each={getTables(schemaData(), state().schema)}>
-								{(t) => <option value={t}>{t}</option>}
-							</For>
-						</select>
+							onChange={(v) => setState((prev) => ({ ...prev, table: v }))}
+							options={[{ value: '', label: 'Select table...' }, ...getTables(schemaData(), state().schema).map((t) => ({ value: t, label: t }))]}
+						/>
 					</div>
 				</Show>
 
@@ -396,16 +381,12 @@ export default function ComparisonDialog(props: ComparisonDialogProps) {
 											/>
 										}
 									>
-										<select
+										<Select
 											class="comparison-dialog__select"
 											value={kc.leftColumn}
-											onChange={(e) => updateKeyColumn(i(), 'left', e.currentTarget.value)}
-										>
-											<option value="">Select...</option>
-											<For each={getLeftColumnNames()}>
-												{(col) => <option value={col}>{col}</option>}
-											</For>
-										</select>
+											onChange={(v) => updateKeyColumn(i(), 'left', v)}
+											options={[{ value: '', label: 'Select...' }, ...getLeftColumnNames().map((col) => ({ value: col, label: col }))]}
+										/>
 									</Show>
 									<span class="comparison-dialog__key-arrow">=</span>
 									<Show
@@ -419,16 +400,12 @@ export default function ComparisonDialog(props: ComparisonDialogProps) {
 											/>
 										}
 									>
-										<select
+										<Select
 											class="comparison-dialog__select"
 											value={kc.rightColumn}
-											onChange={(e) => updateKeyColumn(i(), 'right', e.currentTarget.value)}
-										>
-											<option value="">Select...</option>
-											<For each={getRightColumnNames()}>
-												{(col) => <option value={col}>{col}</option>}
-											</For>
-										</select>
+											onChange={(v) => updateKeyColumn(i(), 'right', v)}
+											options={[{ value: '', label: 'Select...' }, ...getRightColumnNames().map((col) => ({ value: col, label: col }))]}
+										/>
 									</Show>
 									<button
 										class="comparison-dialog__remove-btn"

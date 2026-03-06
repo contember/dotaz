@@ -8,8 +8,10 @@ import { storage } from '../../lib/storage'
 import { connectionsStore } from '../../stores/connections'
 import { editorStore } from '../../stores/editor'
 import { tabsStore } from '../../stores/tabs'
+import DateInput from '../common/DateInput'
 import Dialog from '../common/Dialog'
 import Icon from '../common/Icon'
+import Select from '../common/Select'
 import './QueryHistory.css'
 
 interface QueryHistoryProps {
@@ -266,16 +268,15 @@ export default function QueryHistory(props: QueryHistoryProps) {
 						value={search()}
 						onInput={(e) => handleSearchInput(e.currentTarget.value)}
 					/>
-					<select
+					<Select
 						class="query-history__connection-filter"
 						value={connectionFilter()}
-						onChange={(e) => handleConnectionFilterChange(e.currentTarget.value)}
-					>
-						<option value="">All connections</option>
-						<For each={connectedConnections()}>
-							{(conn) => <option value={conn.id}>{conn.name}</option>}
-						</For>
-					</select>
+						onChange={(v) => handleConnectionFilterChange(v)}
+						options={[
+							{ value: '', label: 'All connections' },
+							...connectedConnections().map((conn) => ({ value: String(conn.id), label: String(conn.name) })),
+						]}
+					/>
 					<button
 						class="query-history__clear-btn"
 						onClick={handleClearHistory}
@@ -286,19 +287,17 @@ export default function QueryHistory(props: QueryHistoryProps) {
 					</button>
 				</div>
 				<div class="query-history__date-filters">
-					<input
+					<DateInput
 						class="query-history__date-input"
-						type="date"
 						value={startDate()}
-						onChange={(e) => handleStartDateChange(e.currentTarget.value)}
+						onChange={handleStartDateChange}
 						title="From date"
 					/>
 					<span class="query-history__date-separator">–</span>
-					<input
+					<DateInput
 						class="query-history__date-input"
-						type="date"
 						value={endDate()}
-						onChange={(e) => handleEndDateChange(e.currentTarget.value)}
+						onChange={handleEndDateChange}
 						title="To date"
 					/>
 					<div class="query-history__presets">

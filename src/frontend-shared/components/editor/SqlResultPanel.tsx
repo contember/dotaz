@@ -17,6 +17,7 @@ import { editorStore, type PinnedResultSet } from '../../stores/editor'
 import type { ColumnConfig } from '../../stores/grid'
 import { settingsStore } from '../../stores/settings'
 import Icon from '../common/Icon'
+import Select from '../common/Select'
 import GridHeader from '../grid/GridHeader'
 import VirtualScroller from '../grid/VirtualScroller'
 import ExplainPanel from './ExplainPanel'
@@ -128,8 +129,8 @@ export default function SqlResultPanel(props: SqlResultPanelProps) {
 	const LIMIT_OPTIONS = [100, 500, 1000, 5000, 0] as const
 	const currentLimit = () => settingsStore.consoleConfig.defaultResultLimit
 
-	function handleLimitChange(e: Event) {
-		const value = Number((e.target as HTMLSelectElement).value)
+	function handleLimitChange(v: string) {
+		const value = Number(v)
 		settingsStore.saveConsoleConfig({ ...settingsStore.consoleConfig, defaultResultLimit: value })
 	}
 
@@ -313,20 +314,13 @@ export default function SqlResultPanel(props: SqlResultPanelProps) {
 								{formatDuration(duration())}
 							</span>
 						</Show>
-						<select
+						<Select
 							class="sql-result-panel__limit-select"
-							value={currentLimit()}
+							value={String(currentLimit())}
 							onChange={handleLimitChange}
 							title="Default result limit"
-						>
-							<For each={[...LIMIT_OPTIONS]}>
-								{(opt) => (
-									<option value={opt}>
-										{opt === 0 ? 'No limit' : `Limit ${opt}`}
-									</option>
-								)}
-							</For>
-						</select>
+							options={[...LIMIT_OPTIONS].map((opt) => ({ value: String(opt), label: opt === 0 ? 'No limit' : `Limit ${opt}` }))}
+						/>
 						{/* Pin button for current results */}
 						<Show when={!isViewingPinned() && currentHasContent()}>
 							<button

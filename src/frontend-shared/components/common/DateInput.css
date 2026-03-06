@@ -1,0 +1,225 @@
+.date-input {
+	position: relative;
+	display: inline-flex;
+}
+
+.date-input--disabled {
+	opacity: 0.5;
+	pointer-events: none;
+}
+
+.date-input--readonly .date-input__trigger {
+	cursor: default;
+}
+
+.date-input__trigger {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-xs);
+	background: var(--surface-inset);
+	border: 1px solid var(--edge-strong);
+	border-radius: var(--radius-sm);
+	color: var(--ink);
+	font-size: var(--font-size-sm);
+	font-family: var(--font-ui);
+	padding: var(--spacing-xs) var(--spacing-sm);
+	cursor: pointer;
+	white-space: nowrap;
+	min-width: 0;
+	width: 100%;
+}
+
+.date-input__trigger:focus {
+	outline: none;
+	border-color: var(--edge-focus);
+}
+
+.date-input__icon {
+	flex-shrink: 0;
+	color: var(--ink-muted);
+}
+
+.date-input__value {
+	flex: 1;
+	text-align: left;
+}
+
+.date-input__value--placeholder {
+	color: var(--ink-muted);
+}
+
+.date-input__clear {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: none;
+	border: none;
+	color: var(--ink-muted);
+	cursor: pointer;
+	padding: 0;
+	flex-shrink: 0;
+}
+
+.date-input__clear:hover {
+	color: var(--ink);
+}
+
+.date-input__dropdown {
+	position: absolute;
+	top: 100%;
+	left: 0;
+	z-index: 2000;
+	margin-top: 2px;
+	background: var(--surface-overlay);
+	border: 1px solid var(--edge-strong);
+	border-radius: var(--radius-sm);
+	box-shadow: var(--shadow-popup);
+	padding: var(--spacing-sm);
+	width: 230px;
+}
+
+.date-input__dropdown--above {
+	top: auto;
+	bottom: 100%;
+	margin-top: 0;
+	margin-bottom: 2px;
+}
+
+.date-input__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: var(--spacing-sm);
+}
+
+.date-input__nav {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: none;
+	border: none;
+	color: var(--ink-secondary);
+	cursor: pointer;
+	padding: 2px;
+	border-radius: var(--radius-sm);
+}
+
+.date-input__nav:hover {
+	background: var(--surface-hover);
+	color: var(--ink);
+}
+
+.date-input__month-year {
+	font-size: var(--font-size-sm);
+	font-weight: 600;
+	color: var(--ink);
+}
+
+.date-input__weekdays {
+	display: grid;
+	grid-template-columns: repeat(7, 1fr);
+	margin-bottom: 2px;
+}
+
+.date-input__weekday {
+	font-size: var(--font-size-xs);
+	color: var(--ink-muted);
+	text-align: center;
+	padding: 2px 0;
+}
+
+.date-input__grid {
+	display: grid;
+	grid-template-columns: repeat(7, 1fr);
+	gap: 1px;
+}
+
+.date-input__empty {
+	aspect-ratio: 1;
+}
+
+.date-input__day {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	aspect-ratio: 1;
+	background: none;
+	border: none;
+	border-radius: var(--radius-sm);
+	color: var(--ink);
+	font-size: var(--font-size-xs);
+	font-family: var(--font-ui);
+	cursor: pointer;
+	padding: 0;
+}
+
+.date-input__day:hover {
+	background: var(--surface-hover);
+}
+
+.date-input__day--today {
+	border: 1px solid var(--edge-strong);
+}
+
+.date-input__day--selected {
+	background: var(--accent);
+	color: var(--accent-fg);
+}
+
+.date-input__day--selected:hover {
+	background: var(--accent-hover);
+}
+
+.date-input__time {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	margin-top: var(--spacing-sm);
+	padding-top: var(--spacing-sm);
+	border-top: 1px solid var(--edge);
+}
+
+.date-input__time-field {
+	width: 36px;
+	background: var(--surface-inset);
+	border: 1px solid var(--edge-strong);
+	border-radius: var(--radius-sm);
+	color: var(--ink);
+	font-size: var(--font-size-sm);
+	font-family: var(--font-mono);
+	padding: 2px 4px;
+	text-align: center;
+	-moz-appearance: textfield;
+}
+
+.date-input__time-field::-webkit-inner-spin-button,
+.date-input__time-field::-webkit-outer-spin-button {
+	-webkit-appearance: none;
+	margin: 0;
+}
+
+.date-input__time-field:focus {
+	outline: none;
+	border-color: var(--edge-focus);
+}
+
+.date-input__time-sep {
+	color: var(--ink-muted);
+	font-size: var(--font-size-sm);
+}
+
+.date-input__time-done {
+	margin-left: auto;
+	background: var(--accent);
+	color: var(--accent-fg);
+	border: none;
+	border-radius: var(--radius-sm);
+	font-size: var(--font-size-xs);
+	font-family: var(--font-ui);
+	padding: 2px 8px;
+	cursor: pointer;
+}
+
+.date-input__time-done:hover {
+	background: var(--accent-hover);
+}

@@ -3,6 +3,7 @@ import { DatabaseDataType, isSqlDefault, SQL_DEFAULT } from '../../../shared/typ
 import type { GridColumnDef } from '../../../shared/types/grid'
 import { isBooleanType, isDateType, isNumericType, isTextType } from '../../lib/column-types'
 import { isQuickValueModifier } from '../../lib/keyboard'
+import DateInput from '../common/DateInput'
 import './InlineEditor.css'
 
 interface InlineEditorProps {
@@ -98,6 +99,7 @@ export default function InlineEditor(props: InlineEditorProps) {
 		props.value === null || props.value === undefined,
 	)
 	const [isDefault, setIsDefault] = createSignal(isSqlDefault(props.value))
+	const [dateValue, setDateValue] = createSignal(dateInputValue())
 	let inputRef: HTMLInputElement | HTMLTextAreaElement | undefined
 
 	const dataType = () => props.column.dataType
@@ -126,6 +128,12 @@ export default function InlineEditor(props: InlineEditorProps) {
 		}
 		if (isBool()) {
 			// Checkbox value is handled in handleCheckboxChange
+			return
+		}
+		if (isDate()) {
+			const v = dateValue()
+			const parsed = parseValue(v, props.column)
+			props.onSave(parsed)
 			return
 		}
 		if (inputRef) {
@@ -214,20 +222,21 @@ export default function InlineEditor(props: InlineEditorProps) {
 	}
 
 	if (isDate()) {
-		const inputType = dataType().toLowerCase() === 'date' ? 'date' : 'datetime-local'
 		return (
 			<div
 				class="inline-editor inline-editor--date"
 				style={{ width: `${props.width}px` }}
 				onKeyDown={handleKeyDown}
 			>
-				<input
-					ref={(el) => {
-						inputRef = el
-					}}
-					type={inputType}
+				<DateInput
 					value={dateInputValue()}
+					onChange={(v) => {
+						setDateValue(v)
+						setIsNull(v === '')
+					}}
+					mode={dataType().toLowerCase() === 'date' ? 'date' : 'datetime'}
 					onBlur={() => save()}
+					onKeyDown={handleKeyDown}
 				/>
 				{props.column.nullable && (
 					<button class="inline-editor__null-btn" onClick={handleSetNull} title="Set NULL">

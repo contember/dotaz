@@ -6,6 +6,7 @@ import { connectionsStore } from '../../stores/connections'
 import { gridStore } from '../../stores/grid'
 import { tabsStore } from '../../stores/tabs'
 import Dialog from '../common/Dialog'
+import Select from '../common/Select'
 import './DatabaseSearchDialog.css'
 
 interface DatabaseSearchDialogProps {
@@ -230,45 +231,40 @@ export default function DatabaseSearchDialog(props: DatabaseSearchDialogProps) {
 
 					<div class="search-dialog__row">
 						<span class="search-dialog__label">Connection</span>
-						<select
+						<Select
 							class="search-dialog__select"
 							value={connectionId()}
-							onChange={(e) => {
-								setConnectionId(e.currentTarget.value)
+							onChange={(v) => {
+								setConnectionId(v)
 								setDatabase(undefined)
 								setResults([])
 								setHasSearched(false)
 							}}
-						>
-							<For each={connectedConnections()}>
-								{(conn) => <option value={conn.id}>{conn.name}</option>}
-							</For>
-						</select>
+							options={connectedConnections().map((conn) => ({ value: conn.id, label: conn.name }))}
+						/>
 
 						<span class="search-dialog__label">Scope</span>
-						<select
+						<Select
 							class="search-dialog__select"
 							value={scope()}
-							onChange={(e) => setScope(e.currentTarget.value as SearchScope)}
-						>
-							<option value="database">Entire database</option>
-							<option value="schema">Specific schema</option>
-							<option value="tables">Selected tables</option>
-						</select>
+							onChange={(v) => setScope(v as SearchScope)}
+							options={[
+								{ value: 'database', label: 'Entire database' },
+								{ value: 'schema', label: 'Specific schema' },
+								{ value: 'tables', label: 'Selected tables' },
+							]}
+						/>
 					</div>
 
 					<Show when={scope() === 'schema'}>
 						<div class="search-dialog__row">
 							<span class="search-dialog__label">Schema</span>
-							<select
+							<Select
 								class="search-dialog__select"
 								value={schemaName()}
-								onChange={(e) => setSchemaName(e.currentTarget.value)}
-							>
-								<For each={schemas()}>
-									{(s) => <option value={s.name}>{s.name}</option>}
-								</For>
-							</select>
+								onChange={(v) => setSchemaName(v)}
+								options={schemas().map((s) => ({ value: s.name, label: s.name }))}
+							/>
 						</div>
 					</Show>
 

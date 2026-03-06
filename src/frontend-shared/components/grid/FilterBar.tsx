@@ -2,6 +2,7 @@ import FilterX from 'lucide-solid/icons/funnel-x'
 import Plus from 'lucide-solid/icons/plus'
 import X from 'lucide-solid/icons/x'
 import { createSignal, For, Show } from 'solid-js'
+import Select from '../common/Select'
 import type { DatabaseDataType } from '../../../shared/types/database'
 import type { ColumnFilter, FilterOperator, GridColumnDef } from '../../../shared/types/grid'
 import { getColumnCategory } from '../../lib/column-types'
@@ -250,26 +251,23 @@ export default function FilterBar(props: FilterBarProps) {
 					}
 				>
 					<div class="filter-bar__form">
-						<select
+						<Select
 							class="filter-bar__select"
 							value={selectedColumn()}
-							onChange={(e) => handleColumnChange(e.currentTarget.value)}
-						>
-							<option value="">Column...</option>
-							<For each={availableColumns()}>
-								{(col) => <option value={col.name}>{col.name}</option>}
-							</For>
-						</select>
+							onChange={(v) => handleColumnChange(v)}
+							placeholder="Column..."
+							options={[
+								{ value: '', label: 'Column...' },
+								...availableColumns().map((col) => ({ value: col.name, label: col.name })),
+							]}
+						/>
 
-						<select
+						<Select
 							class="filter-bar__select"
 							value={selectedOperator()}
-							onChange={(e) => setSelectedOperator(e.currentTarget.value as FilterOperator)}
-						>
-							<For each={currentOperators()}>
-								{(op) => <option value={op.value}>{op.label}</option>}
-							</For>
-						</select>
+							onChange={(v) => setSelectedOperator(v as FilterOperator)}
+							options={currentOperators().map((op) => ({ value: op.value, label: op.label }))}
+						/>
 
 						<Show when={operatorNeedsValue(selectedOperator())}>
 							<input

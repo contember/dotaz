@@ -8,6 +8,7 @@ import { getCapabilities } from '../../lib/capabilities'
 import { rpc } from '../../lib/rpc'
 import { transport } from '../../lib/transport'
 import Dialog from '../common/Dialog'
+import Select from '../common/Select'
 import './ImportDialog.css'
 
 interface ImportDialogProps {
@@ -406,18 +407,15 @@ export default function ImportDialog(props: ImportDialogProps) {
 						<div class="import-dialog__options">
 							<div class="import-dialog__field">
 								<label class="import-dialog__field-label">Delimiter</label>
-								<select
+								<Select
 									class="import-dialog__select"
 									value={delimiter()}
-									onChange={(e) => {
-										setDelimiter(e.currentTarget.value as CsvDelimiter)
+									onChange={(v) => {
+										setDelimiter(v as CsvDelimiter)
 										if (hasFile()) loadPreview()
 									}}
-								>
-									<For each={Object.entries(DELIMITER_LABELS)}>
-										{([value, label]) => <option value={value}>{label}</option>}
-									</For>
-								</select>
+									options={Object.entries(DELIMITER_LABELS).map(([value, label]) => ({ value, label }))}
+								/>
 							</div>
 							<label class="import-dialog__checkbox-label">
 								<input
@@ -453,19 +451,14 @@ export default function ImportDialog(props: ImportDialogProps) {
 											{mapping.fileColumn}
 										</div>
 										<div class="import-dialog__mapping-arrow">&rarr;</div>
-										<select
+										<Select
 											class="import-dialog__mapping-select"
 											value={mapping.tableColumn ?? ''}
-											onChange={(e) => {
-												const val = e.currentTarget.value
-												updateMapping(index(), val === '' ? null : val)
+											onChange={(v) => {
+												updateMapping(index(), v === '' ? null : v)
 											}}
-										>
-											<option value="">(skip)</option>
-											<For each={tableColumns()}>
-												{(col) => <option value={col.name}>{col.name}</option>}
-											</For>
-										</select>
+											options={[{ value: '', label: '(skip)' }, ...tableColumns().map((col) => ({ value: col.name, label: col.name }))]}
+										/>
 									</div>
 								)}
 							</For>

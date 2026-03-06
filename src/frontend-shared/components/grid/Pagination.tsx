@@ -3,6 +3,7 @@ import ChevronRight from 'lucide-solid/icons/chevron-right'
 import ChevronsLeft from 'lucide-solid/icons/chevrons-left'
 import ChevronsRight from 'lucide-solid/icons/chevrons-right'
 import { createMemo, createSignal, For, onCleanup, Show } from 'solid-js'
+import Select from '../common/Select'
 import './Pagination.css'
 
 interface PaginationProps {
@@ -159,14 +160,11 @@ export default function Pagination(props: PaginationProps) {
 
 			<div class="pagination__size">
 				<span>Rows:</span>
-				<select
-					value={props.pageSize}
-					onChange={(e) => props.onPageSizeChange(Number(e.currentTarget.value))}
-				>
-					<For each={PAGE_SIZES}>
-						{(size) => <option value={size}>{size}</option>}
-					</For>
-				</select>
+				<Select
+					value={String(props.pageSize)}
+					onChange={(v) => props.onPageSizeChange(Number(v))}
+					options={PAGE_SIZES.map(s => ({ value: String(s), label: String(s) }))}
+				/>
 			</div>
 		</div>
 	)

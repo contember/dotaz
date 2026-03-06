@@ -10,6 +10,7 @@ import { rpc } from '../../lib/rpc'
 import { storage } from '../../lib/storage'
 import { connectionsStore } from '../../stores/connections'
 import Dialog from '../common/Dialog'
+import Select from '../common/Select'
 import './ConnectionDialog.css'
 
 interface ConnectionDialogProps {
@@ -527,13 +528,12 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 
 					<div class="conn-dialog__field">
 						<label class="conn-dialog__label">SSL Mode</label>
-						<select
+						<Select
 							class="conn-dialog__input"
 							value={pgFields().ssl}
-							onChange={(e) => updatePgField('ssl', e.currentTarget.value)}
-						>
-							{SSL_MODES.map((mode) => <option value={mode}>{mode}</option>)}
-						</select>
+							onChange={(v) => updatePgField('ssl', v)}
+							options={SSL_MODES.map((mode) => ({ value: mode, label: mode }))}
+						/>
 					</div>
 
 					<Show when={storage.passConfigOnConnect}>

@@ -3,7 +3,9 @@ import { DatabaseDataType, SQL_DEFAULT } from '../../../shared/types/database'
 import type { GridColumnDef } from '../../../shared/types/grid'
 import { isBooleanType, isDateType, isNumericType, isTextType } from '../../lib/column-types'
 import { gridStore } from '../../stores/grid'
+import DateInput from '../common/DateInput'
 import Dialog from '../common/Dialog'
+import Select from '../common/Select'
 import './BatchEditDialog.css'
 
 interface BatchEditDialogProps {
@@ -158,20 +160,18 @@ export default function BatchEditDialog(props: BatchEditDialogProps) {
 		}
 
 		if (isDateType(col.dataType)) {
-			const inputType = col.dataType === DatabaseDataType.Date ? 'date' : 'datetime-local'
 			return (
-				<input
+				<DateInput
 					class="row-detail__input"
-					type={inputType}
 					value={value() != null ? dateInputValue(value(), col.dataType) : ''}
-					onInput={(e) => {
-						const v = e.target.value
+					onChange={(v) => {
 						if (v === '') {
 							if (col.nullable) setValue(col.name, null)
 						} else {
 							setValue(col.name, v)
 						}
 					}}
+					mode={col.dataType === DatabaseDataType.Date ? 'date' : 'datetime'}
 				/>
 			)
 		}
@@ -226,16 +226,13 @@ export default function BatchEditDialog(props: BatchEditDialogProps) {
 										</Show>
 									</div>
 									<div class="batch-edit__col-controls">
-										<select
+										<Select
 											class="batch-edit__mode-select"
 											value={mode()}
 											disabled={isPk}
-											onChange={(e) => setMode(col.name, e.currentTarget.value as FieldMode)}
-										>
-											<For each={availableModes}>
-												{(m) => <option value={m}>{modeLabel(m)}</option>}
-											</For>
-										</select>
+											onChange={(v) => setMode(col.name, v as FieldMode)}
+											options={availableModes.map((m) => ({ value: m, label: modeLabel(m) }))}
+										/>
 										<Show when={mode() === 'set'}>
 											<div class="batch-edit__input-wrap">
 												{renderInput(col)}

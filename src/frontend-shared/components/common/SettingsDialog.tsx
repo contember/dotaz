@@ -14,6 +14,7 @@ import type { AutoPin, AutoUnpin, ConnectionMode } from '../../stores/session'
 import { settingsStore } from '../../stores/settings'
 import type { SessionConfig } from '../../stores/settings'
 import Dialog from './Dialog'
+import Select from './Select'
 import './SettingsDialog.css'
 
 export type SettingsSection = 'appearance' | 'data-format' | 'ai' | 'session'
@@ -265,18 +266,19 @@ function AppearanceSection(props: {
 				<h4 class="settings-form__section-title">Color Theme</h4>
 				<div class="settings-form__field settings-form__field--inline">
 					<label class="settings-form__label">Theme</label>
-					<select
+					<Select
 						class="settings-form__select"
 						value={props.colorTheme}
-						onChange={(e) => props.setColorTheme(e.currentTarget.value as ColorTheme)}
-					>
-						<option value="dark">Dark</option>
-						<option value="light">Light</option>
-						<option value="high-contrast">High Contrast</option>
-						<option value="nord">Nord</option>
-						<option value="solarized-dark">Solarized Dark</option>
-						<option value="monokai">Monokai</option>
-					</select>
+						onChange={(v) => props.setColorTheme(v as ColorTheme)}
+						options={[
+							{ value: 'dark', label: 'Dark' },
+							{ value: 'light', label: 'Light' },
+							{ value: 'high-contrast', label: 'High Contrast' },
+							{ value: 'nord', label: 'Nord' },
+							{ value: 'solarized-dark', label: 'Solarized Dark' },
+							{ value: 'monokai', label: 'Monokai' },
+						]}
+					/>
 				</div>
 			</div>
 		</div>
@@ -309,17 +311,18 @@ function DataFormatSection(props: {
 				<h4 class="settings-form__section-title">Date & Time</h4>
 				<div class="settings-form__field settings-form__field--inline">
 					<label class="settings-form__label">Display format</label>
-					<select
+					<Select
 						class="settings-form__select"
 						value={props.dateFormat}
-						onChange={(e) => props.setDateFormat(e.currentTarget.value as DateFormat)}
-					>
-						<option value="YYYY-MM-DD HH:mm:ss">YYYY-MM-DD HH:mm:ss</option>
-						<option value="DD.MM.YYYY HH:mm:ss">DD.MM.YYYY HH:mm:ss</option>
-						<option value="MM/DD/YYYY HH:mm:ss">MM/DD/YYYY HH:mm:ss</option>
-						<option value="YYYY-MM-DD">YYYY-MM-DD (date only)</option>
-						<option value="ISO 8601">ISO 8601</option>
-					</select>
+						onChange={(v) => props.setDateFormat(v as DateFormat)}
+						options={[
+							{ value: 'YYYY-MM-DD HH:mm:ss', label: 'YYYY-MM-DD HH:mm:ss' },
+							{ value: 'DD.MM.YYYY HH:mm:ss', label: 'DD.MM.YYYY HH:mm:ss' },
+							{ value: 'MM/DD/YYYY HH:mm:ss', label: 'MM/DD/YYYY HH:mm:ss' },
+							{ value: 'YYYY-MM-DD', label: 'YYYY-MM-DD (date only)' },
+							{ value: 'ISO 8601', label: 'ISO 8601' },
+						]}
+					/>
 				</div>
 				<div class="settings-form__preview">Preview: {props.datePreview}</div>
 			</div>
@@ -328,27 +331,29 @@ function DataFormatSection(props: {
 				<h4 class="settings-form__section-title">Numbers</h4>
 				<div class="settings-form__field settings-form__field--inline">
 					<label class="settings-form__label">Decimal separator</label>
-					<select
+					<Select
 						class="settings-form__select"
 						value={props.decimalSeparator}
-						onChange={(e) => props.setDecimalSeparator(e.currentTarget.value as DecimalSeparator)}
-					>
-						<option value=".">Dot (.)</option>
-						<option value=",">Comma (,)</option>
-					</select>
+						onChange={(v) => props.setDecimalSeparator(v as DecimalSeparator)}
+						options={[
+							{ value: '.', label: 'Dot (.)' },
+							{ value: ',', label: 'Comma (,)' },
+						]}
+					/>
 				</div>
 				<div class="settings-form__field settings-form__field--inline">
 					<label class="settings-form__label">Thousands separator</label>
-					<select
+					<Select
 						class="settings-form__select"
 						value={props.thousandsSeparator}
-						onChange={(e) => props.setThousandsSeparator(e.currentTarget.value as ThousandsSeparator)}
-					>
-						<option value="">None</option>
-						<option value=",">Comma (,)</option>
-						<option value=".">Dot (.)</option>
-						<option value=" ">Space</option>
-					</select>
+						onChange={(v) => props.setThousandsSeparator(v as ThousandsSeparator)}
+						options={[
+							{ value: '', label: 'None' },
+							{ value: ',', label: 'Comma (,)' },
+							{ value: '.', label: 'Dot (.)' },
+							{ value: ' ', label: 'Space' },
+						]}
+					/>
 				</div>
 				<div class="settings-form__field settings-form__field--inline">
 					<label class="settings-form__label">Decimal places</label>
@@ -370,15 +375,16 @@ function DataFormatSection(props: {
 				<h4 class="settings-form__section-title">NULL Values</h4>
 				<div class="settings-form__field settings-form__field--inline">
 					<label class="settings-form__label">Display text</label>
-					<select
+					<Select
 						class="settings-form__select"
 						value={props.nullDisplay}
-						onChange={(e) => props.setNullDisplay(e.currentTarget.value as NullDisplay)}
-					>
-						<option value="NULL">NULL</option>
-						<option value="(empty)">(empty)</option>
-						<option value={'\u2205'}>{'\u2205'} (empty set)</option>
-					</select>
+						onChange={(v) => props.setNullDisplay(v as NullDisplay)}
+						options={[
+							{ value: 'NULL', label: 'NULL' },
+							{ value: '(empty)', label: '(empty)' },
+							{ value: '\u2205', label: '\u2205 (empty set)' },
+						]}
+					/>
 				</div>
 			</div>
 
@@ -386,16 +392,17 @@ function DataFormatSection(props: {
 				<h4 class="settings-form__section-title">Boolean</h4>
 				<div class="settings-form__field settings-form__field--inline">
 					<label class="settings-form__label">Display format</label>
-					<select
+					<Select
 						class="settings-form__select"
 						value={props.booleanDisplay}
-						onChange={(e) => props.setBooleanDisplay(e.currentTarget.value as BooleanDisplay)}
-					>
-						<option value="true/false">true / false</option>
-						<option value="1/0">1 / 0</option>
-						<option value="yes/no">yes / no</option>
-						<option value={'\u2713/\u2717'}>{'\u2713 / \u2717'} (check/cross)</option>
-					</select>
+						onChange={(v) => props.setBooleanDisplay(v as BooleanDisplay)}
+						options={[
+							{ value: 'true/false', label: 'true / false' },
+							{ value: '1/0', label: '1 / 0' },
+							{ value: 'yes/no', label: 'yes / no' },
+							{ value: '\u2713/\u2717', label: '\u2713 / \u2717 (check/cross)' },
+						]}
+					/>
 				</div>
 			</div>
 
@@ -403,15 +410,16 @@ function DataFormatSection(props: {
 				<h4 class="settings-form__section-title">Binary Data</h4>
 				<div class="settings-form__field settings-form__field--inline">
 					<label class="settings-form__label">Display format</label>
-					<select
+					<Select
 						class="settings-form__select"
 						value={props.binaryDisplay}
-						onChange={(e) => props.setBinaryDisplay(e.currentTarget.value as BinaryDisplay)}
-					>
-						<option value="size">(binary N bytes)</option>
-						<option value="hex">Hex</option>
-						<option value="base64">Base64</option>
-					</select>
+						onChange={(v) => props.setBinaryDisplay(v as BinaryDisplay)}
+						options={[
+							{ value: 'size', label: '(binary N bytes)' },
+							{ value: 'hex', label: 'Hex' },
+							{ value: 'base64', label: 'Base64' },
+						]}
+					/>
 				</div>
 			</div>
 		</div>
@@ -437,15 +445,16 @@ function AiSection(props: {
 				<h4 class="settings-form__section-title">LLM Provider</h4>
 				<div class="settings-form__field settings-form__field--inline">
 					<label class="settings-form__label">Provider</label>
-					<select
+					<Select
 						class="settings-form__select"
 						value={props.provider}
-						onChange={(e) => props.setProvider(e.currentTarget.value as AiProvider)}
-					>
-						<option value="anthropic">Anthropic (Claude)</option>
-						<option value="openai">OpenAI</option>
-						<option value="custom">Custom (OpenAI-compatible)</option>
-					</select>
+						onChange={(v) => props.setProvider(v as AiProvider)}
+						options={[
+							{ value: 'anthropic', label: 'Anthropic (Claude)' },
+							{ value: 'openai', label: 'OpenAI' },
+							{ value: 'custom', label: 'Custom (OpenAI-compatible)' },
+						]}
+					/>
 				</div>
 			</div>
 
@@ -513,15 +522,16 @@ function SessionSection(props: {
 				<h4 class="settings-form__section-title">Default Connection Mode</h4>
 				<div class="settings-form__field settings-form__field--inline">
 					<label class="settings-form__label">Mode for new tabs</label>
-					<select
+					<Select
 						class="settings-form__select"
 						value={props.mode}
-						onChange={(e) => props.setMode(e.currentTarget.value as ConnectionMode)}
-					>
-						<option value="pool">Pool (shared connections)</option>
-						<option value="pinned-per-tab">Pinned per tab (dedicated session)</option>
-						<option value="single-session">Single session (all tabs share one)</option>
-					</select>
+						onChange={(v) => props.setMode(v as ConnectionMode)}
+						options={[
+							{ value: 'pool', label: 'Pool (shared connections)' },
+							{ value: 'pinned-per-tab', label: 'Pinned per tab (dedicated session)' },
+							{ value: 'single-session', label: 'Single session (all tabs share one)' },
+						]}
+					/>
 				</div>
 			</div>
 
@@ -529,15 +539,16 @@ function SessionSection(props: {
 				<h4 class="settings-form__section-title">Auto-Pin</h4>
 				<div class="settings-form__field settings-form__field--inline">
 					<label class="settings-form__label">Auto-create session when</label>
-					<select
+					<Select
 						class="settings-form__select"
 						value={props.autoPin}
-						onChange={(e) => props.setAutoPin(e.currentTarget.value as AutoPin)}
-					>
-						<option value="on-begin">BEGIN / START TRANSACTION</option>
-						<option value="on-set-session">BEGIN + SET / CREATE TEMP</option>
-						<option value="never">Never</option>
-					</select>
+						onChange={(v) => props.setAutoPin(v as AutoPin)}
+						options={[
+							{ value: 'on-begin', label: 'BEGIN / START TRANSACTION' },
+							{ value: 'on-set-session', label: 'BEGIN + SET / CREATE TEMP' },
+							{ value: 'never', label: 'Never' },
+						]}
+					/>
 				</div>
 			</div>
 
@@ -545,14 +556,15 @@ function SessionSection(props: {
 				<h4 class="settings-form__section-title">Auto-Unpin</h4>
 				<div class="settings-form__field settings-form__field--inline">
 					<label class="settings-form__label">Auto-destroy session after</label>
-					<select
+					<Select
 						class="settings-form__select"
 						value={props.autoUnpin}
-						onChange={(e) => props.setAutoUnpin(e.currentTarget.value as AutoUnpin)}
-					>
-						<option value="on-commit">COMMIT / ROLLBACK</option>
-						<option value="never">Never (keep session)</option>
-					</select>
+						onChange={(v) => props.setAutoUnpin(v as AutoUnpin)}
+						options={[
+							{ value: 'on-commit', label: 'COMMIT / ROLLBACK' },
+							{ value: 'never', label: 'Never (keep session)' },
+						]}
+					/>
 				</div>
 			</div>
 		</div>
