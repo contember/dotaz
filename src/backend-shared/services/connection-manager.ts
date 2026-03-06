@@ -63,6 +63,8 @@ export class ConnectionManager {
 	private healthTimers = new Map<string, ReturnType<typeof setInterval>>()
 	// Active auto-reconnect state keyed by connectionId
 	private reconnectStates = new Map<string, ReconnectState>()
+	// Monotonic counter to detect stale connect() calls
+	private connectAttempt = new Map<string, number>()
 
 	constructor(appDb: AppDatabase, opts?: ConnectionManagerOptions) {
 		this.appDb = appDb
@@ -79,6 +81,10 @@ export class ConnectionManager {
 
 		// Cancel any pending auto-reconnect
 		this.cancelAutoReconnect(connectionId)
+
+		// Track this attempt so stale connect() calls don't overwrite state
+		const attempt = (this.connectAttempt.get(connectionId) ?? 0) + 1
+		this.connectAttempt.set(connectionId, attempt)
 
 		// Disconnect existing drivers if already active
 		if (this.drivers.has(connectionId)) {
@@ -107,6 +113,12 @@ export class ConnectionManager {
 			const driver = createDriver(config)
 			await driver.connect(config)
 
+			// A newer connect() was initiated while we were awaiting — discard this result
+			if (this.connectAttempt.get(connectionId) !== attempt) {
+				await driver.disconnect().catch(() => {})
+				return
+			}
+
 			const driverMap = new Map<string, DatabaseDriver>()
 			driverMap.set(defaultDb, driver)
 			this.drivers.set(connectionId, driverMap)
@@ -122,6 +134,10 @@ export class ConnectionManager {
 			this.setConnectionState(connectionId, 'connected')
 			this.startHealthCheck(connectionId)
 		} catch (err) {
+			// A newer connect() was initiated — don't overwrite its state
+			if (this.connectAttempt.get(connectionId) !== attempt) {
+				return
+			}
 			// Clean up tunnel on connection failure
 			await this.closeTunnel(connectionId)
 			const message = err instanceof Error ? err.message : 'Unknown connection error'
@@ -132,6 +148,8 @@ export class ConnectionManager {
 	}
 
 	async disconnect(connectionId: string): Promise<void> {
+		// Invalidate any in-flight connect() calls
+		this.connectAttempt.set(connectionId, (this.connectAttempt.get(connectionId) ?? 0) + 1)
 		this.cancelAutoReconnect(connectionId)
 		this.stopHealthCheck(connectionId)
 		await this.gracefulDisconnect(connectionId)

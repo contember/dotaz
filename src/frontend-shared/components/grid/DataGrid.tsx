@@ -5,7 +5,7 @@ import Check from 'lucide-solid/icons/check'
 import Pencil from 'lucide-solid/icons/pencil'
 import RotateCcw from 'lucide-solid/icons/rotate-ccw'
 import Save from 'lucide-solid/icons/save'
-import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, untrack } from 'solid-js'
 import type { ForeignKeyInfo } from '../../../shared/types/database'
 import type { ColumnFilter, GridColumnDef } from '../../../shared/types/grid'
 import type { SavedViewConfig } from '../../../shared/types/rpc'
@@ -200,28 +200,46 @@ export default function DataGrid(props: DataGridProps) {
 		return gridStore.computeHeatmapStats(t)
 	})
 
-	onMount(async () => {
-		const existing = gridStore.getTab(props.tabId)
-		if (!existing || existing.columns.length === 0) {
-			await gridStore.loadTableData(props.tabId, props.connectionId, props.schema, props.table, props.database)
-		}
+	// Wait for the connection to be ready before initial data load.
+	// On workspace restore, tabs mount before connections are established —
+	// this effect defers the fetch until the connection is actually available.
+	// If the connection is disconnected, trigger reconnect automatically.
+	let didInitialLoad = false
+	let didTriggerReconnect = false
+	createEffect(() => {
+		const conn = connectionsStore.connections.find((c) => c.id === props.connectionId)
+		if (!conn || didInitialLoad) return
 
-		// Apply saved view config if this tab was opened for a specific view
-		const ti = tabInfo()
-		if (ti?.viewId) {
-			const view = viewsStore.getViewById(props.connectionId, ti.viewId)
-			if (view) {
-				gridStore.setActiveView(props.tabId, view.id, view.name)
-				await gridStore.applyViewConfig(props.tabId, view.config)
-				setSavedViewConfig(view.config)
-			}
-		}
+		if (conn.state === 'connected') {
+			didInitialLoad = true
+			untrack(async () => {
+				const existing = gridStore.getTab(props.tabId)
+				if (!existing || existing.columns.length === 0) {
+					await gridStore.loadTableData(props.tabId, props.connectionId, props.schema, props.table, props.database)
+				}
 
-		loadForeignKeys(props.schema, props.table)
+				// Apply saved view config if this tab was opened for a specific view
+				const ti = tabInfo()
+				if (ti?.viewId) {
+					const view = viewsStore.getViewById(props.connectionId, ti.viewId)
+					if (view) {
+						gridStore.setActiveView(props.tabId, view.id, view.name)
+						await gridStore.applyViewConfig(props.tabId, view.config)
+						setSavedViewConfig(view.config)
+					}
+				}
+
+				loadForeignKeys(props.schema, props.table)
+			})
+		} else if (!didTriggerReconnect && conn.state !== 'connecting') {
+			// Connection not active — trigger reconnect (once)
+			didTriggerReconnect = true
+			connectionsStore.connectTo(props.connectionId)
+		}
 	})
 
 	// Reload FK info when the table changes (e.g. after FK navigation).
-	// defer: true skips the initial run (handled by onMount).
+	// defer: true skips the initial run (handled by the initial load effect above).
 	createEffect(on(
 		() => [currentSchema(), currentTable()] as const,
 		([schema, table]) => loadForeignKeys(schema, table),
