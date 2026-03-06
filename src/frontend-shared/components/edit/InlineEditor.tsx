@@ -99,7 +99,6 @@ export default function InlineEditor(props: InlineEditorProps) {
 		props.value === null || props.value === undefined,
 	)
 	const [isDefault, setIsDefault] = createSignal(isSqlDefault(props.value))
-	const [dateValue, setDateValue] = createSignal(dateInputValue())
 	let inputRef: HTMLInputElement | HTMLTextAreaElement | undefined
 
 	const dataType = () => props.column.dataType
@@ -107,6 +106,8 @@ export default function InlineEditor(props: InlineEditorProps) {
 	const isDate = () => isDateType(dataType())
 	const isNum = () => isNumericType(dataType())
 	const isText = () => isTextType(dataType())
+
+	const [dateValue, setDateValue] = createSignal(dateInputValue())
 
 	onMount(() => {
 		if (inputRef) {

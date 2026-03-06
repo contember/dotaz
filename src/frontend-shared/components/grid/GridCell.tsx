@@ -20,6 +20,8 @@ interface GridCellProps {
 	newRow?: boolean
 	/** FK target info for this column (if it's a single-column FK). */
 	fkTarget?: { schema: string; table: string; column: string }
+	/** Whether this column is a primary key (enables PK peek on click). */
+	pkColumn?: boolean
 	/** Background color for heatmap visualization. */
 	heatmapColor?: string
 	onSave?: (value: unknown) => void
@@ -27,6 +29,7 @@ interface GridCellProps {
 	onMoveNext?: () => void
 	onMoveDown?: () => void
 	onFkClick?: (anchorEl: HTMLElement) => void
+	onPkClick?: (anchorEl: HTMLElement) => void
 }
 
 function formatTimestamp(value: unknown, fmt: DateFormat): string {
@@ -142,6 +145,7 @@ export default function GridCell(props: GridCellProps) {
 	}
 
 	const isFk = () => !!props.fkTarget && !isNull()
+	const isPk = () => !!props.pkColumn && !isNull() && !isDefault() && !isFk()
 
 	const tooltipValue = (): string | undefined => {
 		if (props.fkTarget && !isNull()) {
@@ -179,6 +183,11 @@ export default function GridCell(props: GridCellProps) {
 		props.onFkClick?.(e.currentTarget as HTMLElement)
 	}
 
+	function handlePkClick(e: MouseEvent) {
+		e.stopPropagation()
+		props.onPkClick?.(e.currentTarget as HTMLElement)
+	}
+
 	return (
 		<Show
 			when={!props.editing}
@@ -204,6 +213,7 @@ export default function GridCell(props: GridCellProps) {
 					'grid-cell--json': isJson() && !isNull() && !isDefault(),
 					'grid-cell--timestamp': isTs() && !isNull() && !isDefault(),
 					'grid-cell--fk': isFk(),
+					'grid-cell--pk': isPk(),
 					'grid-cell--changed': !!props.changed,
 					'grid-cell--selected': !!props.selected,
 					'grid-cell--focused': !!props.focused,
@@ -219,7 +229,13 @@ export default function GridCell(props: GridCellProps) {
 				data-column={props.column.name}
 				onClick={isJson() && !isNull() ? handleJsonClick : undefined}
 			>
-				<Show when={isFk()} fallback={displayValue()}>
+				<Show when={isFk()} fallback={
+					<Show when={isPk()} fallback={displayValue()}>
+						<span class="grid-cell__pk-link" onClick={handlePkClick}>
+							{displayValue()}
+						</span>
+					</Show>
+				}>
 					<span class="grid-cell__fk-link" onClick={handleFkClick}>
 						{displayValue()}
 					</span>

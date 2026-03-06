@@ -29,6 +29,7 @@ interface GridRowProps {
 	onCellMoveNext?: (column: string) => void
 	onCellMoveDown?: (column: string) => void
 	onFkClick?: (column: string, anchorEl: HTMLElement) => void
+	onPkClick?: (column: string, anchorEl: HTMLElement) => void
 }
 
 function getColumnWidth(col: string, config: Record<string, ColumnConfig>): number {
@@ -110,6 +111,8 @@ export default function GridRow(props: GridRowProps) {
 							onMoveNext={() => props.onCellMoveNext?.(col.name)}
 							onMoveDown={() => props.onCellMoveDown?.(col.name)}
 							onFkClick={props.fkMap?.has(col.name) ? (anchorEl) => props.onFkClick?.(col.name, anchorEl) : undefined}
+							pkColumn={col.isPrimaryKey}
+							onPkClick={col.isPrimaryKey ? (anchorEl) => props.onPkClick?.(col.name, anchorEl) : undefined}
 						/>
 					)
 				}}

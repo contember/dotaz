@@ -1469,6 +1469,29 @@ async function openFkPeek(
 	}
 }
 
+function openPkPeek(
+	tabId: string,
+	rowIndex: number,
+	anchorRect: { top: number; left: number; bottom: number; right: number },
+) {
+	const tab = ensureTab(tabId)
+	const row = tab.rows[rowIndex]
+	if (!row) return
+
+	const foreignKeys = connectionsStore.getForeignKeys(tab.connectionId, tab.schema, tab.table, tab.database)
+
+	setState('tabs', tabId, 'fkPeek', {
+		anchorRect,
+		rows: [row],
+		columns: tab.columns,
+		breadcrumbs: [{ schema: tab.schema, table: tab.table, column: '', value: null }],
+		foreignKeys,
+		schema: tab.schema,
+		table: tab.table,
+		loading: false,
+	})
+}
+
 function closeFkPeek(tabId: string) {
 	ensureTab(tabId)
 	setState('tabs', tabId, 'fkPeek', null)
@@ -1637,6 +1660,13 @@ async function fetchFkPanelData(tabId: string) {
 	} catch {
 		setState('tabs', tabId, 'fkPanel', null)
 	}
+}
+
+async function refreshFkPanel(tabId: string) {
+	const tab = ensureTab(tabId)
+	if (!tab.fkPanel) return
+	setState('tabs', tabId, 'fkPanel', 'loading', true)
+	await fetchFkPanelData(tabId)
 }
 
 function closeFkPanel(tabId: string) {
@@ -1876,6 +1906,7 @@ export const gridStore = {
 
 	// FK peek popover
 	openFkPeek,
+	openPkPeek,
 	closeFkPeek,
 	fkPeekNavigate,
 	fkPeekBack,
@@ -1883,6 +1914,7 @@ export const gridStore = {
 	// FK exploration panel
 	openFkPanel,
 	closeFkPanel,
+	refreshFkPanel,
 	fkPanelNavigate,
 	fkPanelBack,
 	fkPanelResize,

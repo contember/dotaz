@@ -6,9 +6,10 @@ import Pencil from 'lucide-solid/icons/pencil'
 import RotateCcw from 'lucide-solid/icons/rotate-ccw'
 import Save from 'lucide-solid/icons/save'
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show, untrack } from 'solid-js'
+import { generateUpdate } from '../../../shared/sql'
 import type { ForeignKeyInfo } from '../../../shared/types/database'
 import type { ColumnFilter, GridColumnDef } from '../../../shared/types/grid'
-import type { SavedViewConfig } from '../../../shared/types/rpc'
+import type { SavedViewConfig, UpdateChange } from '../../../shared/types/rpc'
 import { cellValueToDbValue, parseClipboardText } from '../../lib/clipboard-paste'
 import { isNumericType } from '../../lib/column-types'
 import { createKeyHandler } from '../../lib/keyboard'
@@ -32,7 +33,6 @@ import AdvancedCopyDialog from './AdvancedCopyDialog'
 import AggregatePanel from './AggregatePanel'
 import BatchEditDialog from './BatchEditDialog'
 import ColumnManager from './ColumnManager'
-import FkExplorationPanel from './FkExplorationPanel'
 import FkPeekPopover from './FkPeekPopover'
 import FilterBar from './FilterBar'
 import GridHeader from './GridHeader'
@@ -484,9 +484,11 @@ export default function DataGrid(props: DataGridProps) {
 		setRowDetailIndex(indices[0])
 	}
 
-	function handleRowDetailSave(rowIndex: number, changes: Record<string, unknown>) {
+	function handleRowDetailSave(changes: Record<string, unknown>) {
+		const idx = rowDetailIndex()
+		if (idx === null) return
 		for (const [column, value] of Object.entries(changes)) {
-			gridStore.setCellValue(props.tabId, rowIndex, column, value)
+			gridStore.setCellValue(props.tabId, idx, column, value)
 		}
 	}
 
@@ -494,10 +496,185 @@ export default function DataGrid(props: DataGridProps) {
 		setRowDetailIndex(null)
 	}
 
-	function handleRowDetailNavigate(rowIndex: number) {
-		setRowDetailIndex(rowIndex)
-		// Also update selection in the grid
-		gridStore.selectFullRow(props.tabId, rowIndex, visibleColumns().length)
+	function handleRowDetailNavigate(direction: 'prev' | 'next') {
+		const idx = rowDetailIndex()
+		if (idx === null) return
+		const t = tab()
+		if (!t) return
+		const newIdx = direction === 'prev' ? idx - 1 : idx + 1
+		if (newIdx < 0 || newIdx >= t.rows.length) return
+		setRowDetailIndex(newIdx)
+		gridStore.selectFullRow(props.tabId, newIdx, visibleColumns().length)
+	}
+
+	function rowDetailPendingColumns(): Set<string> {
+		const idx = rowDetailIndex()
+		if (idx === null) return new Set()
+		const t = tab()
+		if (!t) return new Set()
+		const result = new Set<string>()
+		for (const key of Object.keys(t.pendingChanges.cellEdits)) {
+			const sepIdx = key.indexOf(':')
+			if (sepIdx >= 0 && parseInt(key.substring(0, sepIdx)) === idx) {
+				result.add(key.substring(sepIdx + 1))
+			}
+		}
+		return result
+	}
+
+	function rowDetailOpenInTab() {
+		const t = tab()
+		const idx = rowDetailIndex()
+		if (!t || idx === null) return
+		const row = t.rows[idx]
+		if (!row) return
+		const pkCols = t.columns.filter((c) => c.isPrimaryKey)
+		if (pkCols.length === 0) return
+		const pks: Record<string, unknown> = {}
+		for (const pk of pkCols) {
+			if (row[pk.name] === null || row[pk.name] === undefined) return
+			pks[pk.name] = row[pk.name]
+		}
+		tabsStore.openTab({
+			type: 'row-detail',
+			title: `${currentTable()} — ${Object.values(pks).join(', ')}`,
+			connectionId: props.connectionId,
+			schema: currentSchema(),
+			table: currentTable(),
+			database: props.database,
+			primaryKeys: pks,
+		})
+		setRowDetailIndex(null)
+	}
+
+	function rowDetailSubtitle(): string {
+		const idx = rowDetailIndex()
+		if (idx === null) return ''
+		const t = tab()
+		if (!t) return ''
+		const row = t.rows[idx]
+		if (!row) return ''
+		const pkCols = t.columns.filter((c) => c.isPrimaryKey)
+		if (pkCols.length === 0) return ''
+		return pkCols.map((pk) => `${pk.name}=${row[pk.name] === null ? 'NULL' : row[pk.name]}`).join(', ')
+	}
+
+	// ── FK panel handlers ────────────────────────────────────
+
+	async function handleFkPanelSave(changes: Record<string, unknown>) {
+		const t = tab()
+		const panel = t?.fkPanel
+		if (!panel) return
+		const currentRow = panel.rows[panel.currentRowIndex]
+		if (!currentRow) return
+		const pkCols = panel.columns.filter((c) => c.isPrimaryKey)
+		if (pkCols.length === 0) return
+		const pks: Record<string, unknown> = {}
+		for (const pk of pkCols) pks[pk.name] = currentRow[pk.name]
+
+		const dialect = connectionsStore.getDialect(props.connectionId)
+		const change: UpdateChange = {
+			type: 'update',
+			schema: panel.schema,
+			table: panel.table,
+			primaryKeys: pks,
+			values: changes,
+		}
+		const stmt = generateUpdate(change, dialect)
+		await rpc.query.execute({
+			connectionId: props.connectionId,
+			sql: '',
+			queryId: `fk-panel-save-${props.tabId}`,
+			database: props.database,
+			statements: [{ sql: stmt.sql, params: stmt.params }],
+		})
+		await gridStore.refreshFkPanel(props.tabId)
+	}
+
+	function fkPanelOpenInTab() {
+		const t = tab()
+		const panel = t?.fkPanel
+		if (!panel) return
+		const currentRow = panel.rows[panel.currentRowIndex]
+		if (!currentRow) return
+		const pkCols = panel.columns.filter((c) => c.isPrimaryKey)
+		if (pkCols.length > 0) {
+			const pks: Record<string, unknown> = {}
+			for (const pk of pkCols) pks[pk.name] = currentRow[pk.name]
+			tabsStore.openTab({
+				type: 'row-detail',
+				title: `${panel.table} — ${Object.values(pks).join(', ')}`,
+				connectionId: props.connectionId,
+				schema: panel.schema,
+				table: panel.table,
+				database: props.database,
+				primaryKeys: pks,
+			})
+		} else {
+			const newTabId = tabsStore.openTab({
+				type: 'data-grid',
+				title: panel.table,
+				connectionId: props.connectionId,
+				schema: panel.schema,
+				table: panel.table,
+				database: props.database,
+			})
+			gridStore.loadTableData(newTabId, props.connectionId, panel.schema, panel.table, props.database).then(() => {
+				for (const f of panel.filters) {
+					gridStore.setFilter(newTabId, f)
+				}
+			})
+		}
+		gridStore.closeFkPanel(props.tabId)
+	}
+
+	function fkPanelSubtitle(): string {
+		const panel = tab()?.fkPanel
+		if (!panel || panel.filters.length === 0) return ''
+		return panel.filters.map((f) => `${f.column} = ${f.value}`).join(', ')
+	}
+
+	function fkPanelRowLabel(): string {
+		const panel = tab()?.fkPanel
+		if (!panel) return ''
+		const global = (panel.currentPage - 1) * panel.pageSize + panel.currentRowIndex + 1
+		return `${global} / ${panel.totalCount}`
+	}
+
+	function fkPanelCanPrev(): boolean {
+		const panel = tab()?.fkPanel
+		if (!panel) return false
+		return panel.currentRowIndex > 0 || panel.currentPage > 1
+	}
+
+	function fkPanelCanNext(): boolean {
+		const panel = tab()?.fkPanel
+		if (!panel) return false
+		const totalPages = Math.max(1, Math.ceil(panel.totalCount / panel.pageSize))
+		return panel.currentRowIndex < panel.rows.length - 1 || panel.currentPage < totalPages
+	}
+
+	function fkPanelPrev() {
+		const panel = tab()?.fkPanel
+		if (!panel) return
+		if (panel.currentRowIndex > 0) {
+			gridStore.fkPanelSetRowIndex(props.tabId, panel.currentRowIndex - 1)
+		} else if (panel.currentPage > 1) {
+			gridStore.fkPanelSetPage(props.tabId, panel.currentPage - 1)
+		}
+	}
+
+	function fkPanelNext() {
+		const panel = tab()?.fkPanel
+		if (!panel) return
+		if (panel.currentRowIndex < panel.rows.length - 1) {
+			gridStore.fkPanelSetRowIndex(props.tabId, panel.currentRowIndex + 1)
+		} else {
+			const totalPages = Math.max(1, Math.ceil(panel.totalCount / panel.pageSize))
+			if (panel.currentPage < totalPages) {
+				gridStore.fkPanelSetPage(props.tabId, panel.currentPage + 1)
+			}
+		}
 	}
 
 	// ── Pending changes ──────────────────────────────────────
@@ -603,6 +780,15 @@ export default function DataGrid(props: DataGridProps) {
 			target.column,
 			value,
 		)
+	}
+
+	function handlePkClick(rowIndex: number, _column: string, anchorEl?: HTMLElement) {
+		let anchorRect = { top: 200, left: 200, bottom: 220, right: 300 }
+		if (anchorEl) {
+			const r = anchorEl.getBoundingClientRect()
+			anchorRect = { top: r.top, left: r.left, bottom: r.bottom, right: r.right }
+		}
+		gridStore.openPkPeek(props.tabId, rowIndex, anchorRect)
 	}
 
 	function handleDuplicateRow(rowIndex: number) {
@@ -1493,6 +1679,7 @@ export default function DataGrid(props: DataGridProps) {
 													onCellMoveNext={handleCellMoveNext}
 													onCellMoveDown={handleCellMoveDown}
 													onFkClick={handleFkClick}
+													onPkClick={handlePkClick}
 												/>
 											</>
 										}
@@ -1515,6 +1702,7 @@ export default function DataGrid(props: DataGridProps) {
 											onCellMoveNext={handleCellMoveNext}
 											onCellMoveDown={handleCellMoveDown}
 											onFkClick={handleFkClick}
+											onPkClick={handlePkClick}
 										/>
 									</Show>
 
@@ -1569,45 +1757,93 @@ export default function DataGrid(props: DataGridProps) {
 
 							<Show when={tabState().fkPanel}>
 								{(panel) => (
-									<FkExplorationPanel
-										panel={panel()}
-										onClose={() => gridStore.closeFkPanel(props.tabId)}
-										onNavigate={(schema, table, column, value) => {
+									<RowDetailPanel
+										connectionId={props.connectionId}
+										schema={panel().schema}
+										table={panel().table}
+										database={props.database}
+										columns={panel().columns}
+										row={panel().rows[panel().currentRowIndex] ?? null}
+										foreignKeys={panel().foreignKeys}
+										width={panel().width}
+										loading={panel().loading}
+										readOnly={isReadOnly()}
+										rowLabel={fkPanelRowLabel()}
+										canGoPrev={fkPanelCanPrev()}
+										canGoNext={fkPanelCanNext()}
+										onPrev={fkPanelPrev}
+										onNext={fkPanelNext}
+										breadcrumbs={panel().breadcrumbs}
+										onBack={() => gridStore.fkPanelBack(props.tabId)}
+										onSave={handleFkPanelSave}
+										onFkNavigate={(schema, table, column, value) => {
 											gridStore.fkPanelNavigate(props.tabId, schema, table, column, value)
 										}}
-										onBack={() => gridStore.fkPanelBack(props.tabId)}
+										onReferencingNavigate={(schema, table, filters) => {
+											const newTabId = tabsStore.openTab({
+												type: 'data-grid',
+												title: table,
+												connectionId: props.connectionId,
+												schema,
+												table,
+												database: props.database,
+											})
+											gridStore.loadTableData(newTabId, props.connectionId, schema, table, props.database).then(() => {
+												for (const f of filters) {
+													gridStore.setFilter(newTabId, f)
+												}
+											})
+										}}
+										onOpenInTab={fkPanelOpenInTab}
+										subtitle={fkPanelSubtitle()}
+										onClose={() => gridStore.closeFkPanel(props.tabId)}
 										onResize={(delta) => {
 											gridStore.fkPanelResize(props.tabId, (panel().width ?? 500) + delta)
 										}}
-										onPageChange={(page) => gridStore.fkPanelSetPage(props.tabId, page)}
-										onRowIndexChange={(index) => gridStore.fkPanelSetRowIndex(props.tabId, index)}
 									/>
 								)}
 							</Show>
 
-							<Show when={rowDetailIndex() !== null}>
+							<Show when={rowDetailIndex() !== null && !tabState().fkPanel}>
 								{(_) => {
 									const t = tab()!
+									const idx = () => rowDetailIndex()!
 									return (
 										<RowDetailPanel
-											tabId={props.tabId}
 											connectionId={props.connectionId}
 											schema={currentSchema()}
 											table={currentTable()}
 											database={props.database}
 											columns={t.columns}
-											rows={t.rows}
-											rowIndex={rowDetailIndex()!}
+											row={t.rows[idx()] ?? null}
 											foreignKeys={foreignKeys()}
-											pendingCellEdits={t.pendingChanges.cellEdits}
 											width={rowDetailWidth()}
+											readOnly={isReadOnly()}
+											rowLabel={`Row ${idx() + 1} of ${t.rows.length}`}
+											canGoPrev={idx() > 0}
+											canGoNext={idx() < t.rows.length - 1}
+											onPrev={() => handleRowDetailNavigate('prev')}
+											onNext={() => handleRowDetailNavigate('next')}
 											onSave={handleRowDetailSave}
-											onClose={handleRowDetailClose}
-											onNavigate={handleRowDetailNavigate}
-											onNavigateToTable={(schema, table, filters) => {
-												setRowDetailIndex(null)
-												gridStore.openFkPanel(props.tabId, schema, table, filters)
+											pendingChangedColumns={rowDetailPendingColumns()}
+											onReferencingNavigate={(schema, table, filters) => {
+												const newTabId = tabsStore.openTab({
+													type: 'data-grid',
+													title: table,
+													connectionId: props.connectionId,
+													schema,
+													table,
+													database: props.database,
+												})
+												gridStore.loadTableData(newTabId, props.connectionId, schema, table, props.database).then(() => {
+													for (const f of filters) {
+														gridStore.setFilter(newTabId, f)
+													}
+												})
 											}}
+											onOpenInTab={rowDetailOpenInTab}
+											subtitle={rowDetailSubtitle()}
+											onClose={handleRowDetailClose}
 											onResize={(delta) => {
 												setRowDetailWidth((w) => Math.min(1200, Math.max(250, w + delta)))
 											}}
@@ -1738,6 +1974,22 @@ export default function DataGrid(props: DataGridProps) {
 							const p = peek()
 							const bc = p.breadcrumbs[p.breadcrumbs.length - 1]
 							if (!bc) return
+
+							// PK peek: breadcrumbs has 1 entry with empty column — open row detail
+							if (p.breadcrumbs.length === 1 && !bc.column) {
+								const t = tab()
+								if (!t || !p.rows[0]) return
+								const pkRow = p.rows[0]
+								const rowIdx = t.rows.findIndex((r) =>
+									t.columns.every((c) => c.isPrimaryKey ? r[c.name] === pkRow[c.name] : true),
+								)
+								if (rowIdx >= 0) {
+									gridStore.closeFkPeek(props.tabId)
+									setRowDetailIndex(rowIdx)
+								}
+								return
+							}
+
 							setRowDetailIndex(null)
 							gridStore.openFkPanel(
 								props.tabId,
@@ -1750,6 +2002,31 @@ export default function DataGrid(props: DataGridProps) {
 							const p = peek()
 							const bc = p.breadcrumbs[p.breadcrumbs.length - 1]
 							if (!bc) return
+
+							// PK peek: open row-detail tab
+							if (p.breadcrumbs.length === 1 && !bc.column && p.rows[0]) {
+								const row = p.rows[0]
+								const pkCols = p.columns.filter((c) => c.isPrimaryKey)
+								if (pkCols.length > 0) {
+									const pks: Record<string, unknown> = {}
+									for (const pk of pkCols) {
+										if (row[pk.name] === null || row[pk.name] === undefined) return
+										pks[pk.name] = row[pk.name]
+									}
+									tabsStore.openTab({
+										type: 'row-detail',
+										title: `${p.table} — ${Object.values(pks).join(', ')}`,
+										connectionId: props.connectionId,
+										schema: p.schema,
+										table: p.table,
+										database: props.database,
+										primaryKeys: pks,
+									})
+								}
+								gridStore.closeFkPeek(props.tabId)
+								return
+							}
+
 							const newTabId = tabsStore.openTab({
 								type: 'data-grid',
 								title: p.table,

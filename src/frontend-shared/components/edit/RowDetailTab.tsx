@@ -14,7 +14,7 @@ import { connectionsStore } from '../../stores/connections'
 import { gridStore } from '../../stores/grid'
 import { tabsStore } from '../../stores/tabs'
 import './RowDetailTab.css'
-import './RowDetailDialog.css'
+import './RowDetailPanel.css'
 
 interface RowDetailTabProps {
 	tabId: string

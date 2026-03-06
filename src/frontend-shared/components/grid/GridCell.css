@@ -49,6 +49,17 @@
 	text-decoration-style: solid;
 }
 
+.grid-cell--pk .grid-cell__pk-link {
+	color: var(--warning);
+	text-decoration: underline;
+	text-decoration-style: dotted;
+	cursor: pointer;
+}
+
+.grid-cell--pk .grid-cell__pk-link:hover {
+	text-decoration-style: solid;
+}
+
 .grid-cell--selected {
 	background: var(--surface-selected);
 }
