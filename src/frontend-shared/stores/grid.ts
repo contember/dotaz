@@ -27,6 +27,63 @@ export interface ColumnConfig {
 	pinned?: 'left' | 'right'
 }
 
+// ── Cell selection ────────────────────────────────────────
+
+export interface NormalizedRange {
+	minRow: number
+	maxRow: number
+	minCol: number
+	maxCol: number
+}
+
+export interface CellSelection {
+	focusedCell: { row: number; col: number } | null
+	ranges: NormalizedRange[]
+	anchor: { row: number; col: number } | null
+	selectMode: 'cells' | 'rows' | 'columns'
+}
+
+function createDefaultSelection(): CellSelection {
+	return { focusedCell: null, ranges: [], anchor: null, selectMode: 'cells' }
+}
+
+function normalizeRange(startRow: number, endRow: number, startCol: number, endCol: number): NormalizedRange {
+	return {
+		minRow: Math.min(startRow, endRow),
+		maxRow: Math.max(startRow, endRow),
+		minCol: Math.min(startCol, endCol),
+		maxCol: Math.max(startCol, endCol),
+	}
+}
+
+export function isCellInSelection(sel: CellSelection, row: number, col: number): boolean {
+	for (const r of sel.ranges) {
+		if (row >= r.minRow && row <= r.maxRow && col >= r.minCol && col <= r.maxCol) return true
+	}
+	return false
+}
+
+export function getSelectedRowIndices(sel: CellSelection): number[] {
+	const rows = new Set<number>()
+	for (const r of sel.ranges) {
+		for (let i = r.minRow; i <= r.maxRow; i++) rows.add(i)
+	}
+	return [...rows].sort((a, b) => a - b)
+}
+
+export function getSelectedColIndices(sel: CellSelection): number[] {
+	const cols = new Set<number>()
+	for (const r of sel.ranges) {
+		for (let i = r.minCol; i <= r.maxCol; i++) cols.add(i)
+	}
+	return [...cols].sort((a, b) => a - b)
+}
+
+export function hasFullRowSelection(sel: CellSelection, totalCols: number): boolean {
+	if (sel.ranges.length === 0) return false
+	return sel.ranges.some((r) => r.minCol === 0 && r.maxCol === totalCols - 1)
+}
+
 // ── Per-tab grid state ───────────────────────────────────
 
 export interface FocusedCell {
@@ -89,8 +146,7 @@ export interface TabGridState {
 	filters: ColumnFilter[]
 	customFilter: string
 	quickSearch: string
-	selectedRows: Set<number>
-	focusedCell: FocusedCell | null
+	selection: CellSelection
 	editingCell: EditingCell | null
 	pendingChanges: PendingChanges
 	columnConfig: Record<string, ColumnConfig>
@@ -135,8 +191,7 @@ function createDefaultTabState(
 		filters: [],
 		customFilter: '',
 		quickSearch: '',
-		selectedRows: new Set(),
-		focusedCell: null,
+		selection: createDefaultSelection(),
 		editingCell: null,
 		pendingChanges: createDefaultPendingChanges(),
 		columnConfig: {},
@@ -265,8 +320,7 @@ async function fetchData(tabId: string) {
 			loading: false,
 			lastLoadedAt: Date.now(),
 			fetchDuration,
-			selectedRows: new Set<number>(),
-			focusedCell: null,
+			selection: createDefaultSelection(),
 			editingCell: null,
 		})
 	} catch (err) {
@@ -302,7 +356,7 @@ async function refreshData(tabId: string) {
 async function setPage(tabId: string, page: number) {
 	ensureTab(tabId)
 	setState('tabs', tabId, 'currentPage', page)
-	setState('tabs', tabId, 'selectedRows', new Set())
+	setState('tabs', tabId, 'selection', createDefaultSelection())
 	await fetchData(tabId)
 }
 
@@ -310,7 +364,7 @@ async function setPageSize(tabId: string, pageSize: number) {
 	ensureTab(tabId)
 	setState('tabs', tabId, 'pageSize', pageSize)
 	setState('tabs', tabId, 'currentPage', 1)
-	setState('tabs', tabId, 'selectedRows', new Set())
+	setState('tabs', tabId, 'selection', createDefaultSelection())
 	await fetchData(tabId)
 }
 
@@ -341,7 +395,7 @@ async function toggleSort(tabId: string, column: string, multi = false) {
 
 	setState('tabs', tabId, 'sort', newSort)
 	setState('tabs', tabId, 'currentPage', 1)
-	setState('tabs', tabId, 'selectedRows', new Set())
+	setState('tabs', tabId, 'selection', createDefaultSelection())
 	await fetchData(tabId)
 }
 
@@ -354,7 +408,7 @@ async function setFilter(tabId: string, filter: ColumnFilter) {
 		setState('tabs', tabId, 'filters', (filters) => filters.map((f, i) => (i === idx ? filter : f)))
 	}
 	setState('tabs', tabId, 'currentPage', 1)
-	setState('tabs', tabId, 'selectedRows', new Set())
+	setState('tabs', tabId, 'selection', createDefaultSelection())
 	await fetchData(tabId)
 }
 
@@ -367,7 +421,7 @@ async function removeFilter(tabId: string, column: string) {
 		tab.filters.filter((f) => f.column !== column),
 	)
 	setState('tabs', tabId, 'currentPage', 1)
-	setState('tabs', tabId, 'selectedRows', new Set())
+	setState('tabs', tabId, 'selection', createDefaultSelection())
 	await fetchData(tabId)
 }
 
@@ -375,7 +429,7 @@ async function setQuickSearch(tabId: string, search: string) {
 	ensureTab(tabId)
 	setState('tabs', tabId, 'quickSearch', search)
 	setState('tabs', tabId, 'currentPage', 1)
-	setState('tabs', tabId, 'selectedRows', new Set())
+	setState('tabs', tabId, 'selection', createDefaultSelection())
 	await fetchData(tabId)
 }
 
@@ -383,7 +437,7 @@ async function setCustomFilter(tabId: string, filter: string) {
 	ensureTab(tabId)
 	setState('tabs', tabId, 'customFilter', filter)
 	setState('tabs', tabId, 'currentPage', 1)
-	setState('tabs', tabId, 'selectedRows', new Set())
+	setState('tabs', tabId, 'selection', createDefaultSelection())
 	await fetchData(tabId)
 }
 
@@ -392,59 +446,156 @@ async function clearFilters(tabId: string) {
 	setState('tabs', tabId, 'filters', [])
 	setState('tabs', tabId, 'customFilter', '')
 	setState('tabs', tabId, 'currentPage', 1)
-	setState('tabs', tabId, 'selectedRows', new Set())
+	setState('tabs', tabId, 'selection', createDefaultSelection())
 	await fetchData(tabId)
 }
 
-function selectRow(tabId: string, index: number) {
-	const tab = ensureTab(tabId)
-	const next = new Set<number>()
-	if (!tab.selectedRows.has(index)) {
-		next.add(index)
-	}
-	setState('tabs', tabId, 'selectedRows', next)
-}
-
-function toggleRowInSelection(tabId: string, index: number) {
-	const tab = ensureTab(tabId)
-	const next = new Set(tab.selectedRows)
-	if (next.has(index)) {
-		next.delete(index)
-	} else {
-		next.add(index)
-	}
-	setState('tabs', tabId, 'selectedRows', next)
-}
-
-function selectRange(tabId: string, from: number, to: number) {
-	const start = Math.min(from, to)
-	const end = Math.max(from, to)
-	const next = new Set<number>()
-	for (let i = start; i <= end; i++) {
-		next.add(i)
-	}
-	setState('tabs', tabId, 'selectedRows', next)
-	setState('tabs', tabId, 'focusedCell', null)
-}
-
-function selectAll(tabId: string) {
-	const tab = ensureTab(tabId)
-	const next = new Set<number>()
-	for (let i = 0; i < tab.rows.length; i++) {
-		next.add(i)
-	}
-	setState('tabs', tabId, 'selectedRows', next)
-	setState('tabs', tabId, 'focusedCell', null)
-}
-
-function setFocusedCell(tabId: string, cell: FocusedCell | null) {
+function selectCell(tabId: string, row: number, col: number) {
 	ensureTab(tabId)
-	setState('tabs', tabId, 'focusedCell', cell)
+	const range = normalizeRange(row, row, col, col)
+	setState('tabs', tabId, 'selection', {
+		focusedCell: { row, col },
+		ranges: [range],
+		anchor: { row, col },
+		selectMode: 'cells',
+	})
+}
+
+function extendSelection(tabId: string, toRow: number, toCol: number) {
+	const tab = ensureTab(tabId)
+	const anchor = tab.selection.anchor ?? { row: toRow, col: toCol }
+	const range = normalizeRange(anchor.row, toRow, anchor.col, toCol)
+	setState('tabs', tabId, 'selection', {
+		focusedCell: { row: toRow, col: toCol },
+		ranges: [range],
+		anchor,
+		selectMode: tab.selection.selectMode,
+	})
+}
+
+function addCellRange(tabId: string, row: number, col: number) {
+	const tab = ensureTab(tabId)
+	const range = normalizeRange(row, row, col, col)
+	setState('tabs', tabId, 'selection', {
+		focusedCell: { row, col },
+		ranges: [...tab.selection.ranges, range],
+		anchor: { row, col },
+		selectMode: 'cells',
+	})
+}
+
+function selectFullRow(tabId: string, rowIndex: number, totalCols: number) {
+	ensureTab(tabId)
+	const range = normalizeRange(rowIndex, rowIndex, 0, totalCols - 1)
+	setState('tabs', tabId, 'selection', {
+		focusedCell: { row: rowIndex, col: 0 },
+		ranges: [range],
+		anchor: { row: rowIndex, col: 0 },
+		selectMode: 'rows',
+	})
+}
+
+function selectFullRowRange(tabId: string, from: number, to: number, totalCols: number) {
+	const tab = ensureTab(tabId)
+	const anchor = tab.selection.anchor ?? { row: from, col: 0 }
+	const range = normalizeRange(anchor.row, to, 0, totalCols - 1)
+	setState('tabs', tabId, 'selection', {
+		focusedCell: { row: to, col: 0 },
+		ranges: [range],
+		anchor,
+		selectMode: 'rows',
+	})
+}
+
+function toggleFullRow(tabId: string, rowIndex: number, totalCols: number) {
+	const tab = ensureTab(tabId)
+	const range = normalizeRange(rowIndex, rowIndex, 0, totalCols - 1)
+	// Check if this row is already fully selected
+	const alreadySelected = tab.selection.ranges.some(
+		(r) => r.minRow <= rowIndex && r.maxRow >= rowIndex && r.minCol === 0 && r.maxCol === totalCols - 1,
+	)
+	if (alreadySelected) {
+		// Remove ranges that fully cover this row
+		const filtered = tab.selection.ranges.filter(
+			(r) => !(r.minRow === rowIndex && r.maxRow === rowIndex),
+		)
+		setState('tabs', tabId, 'selection', {
+			focusedCell: filtered.length > 0 ? tab.selection.focusedCell : null,
+			ranges: filtered,
+			anchor: { row: rowIndex, col: 0 },
+			selectMode: 'rows',
+		})
+	} else {
+		setState('tabs', tabId, 'selection', {
+			focusedCell: { row: rowIndex, col: 0 },
+			ranges: [...tab.selection.ranges, range],
+			anchor: { row: rowIndex, col: 0 },
+			selectMode: 'rows',
+		})
+	}
+}
+
+function selectFullColumn(tabId: string, colIndex: number, totalRows: number) {
+	ensureTab(tabId)
+	const range = normalizeRange(0, totalRows - 1, colIndex, colIndex)
+	setState('tabs', tabId, 'selection', {
+		focusedCell: { row: 0, col: colIndex },
+		ranges: [range],
+		anchor: { row: 0, col: colIndex },
+		selectMode: 'columns',
+	})
+}
+
+function selectAll(tabId: string, totalRows: number, totalCols: number) {
+	ensureTab(tabId)
+	if (totalRows === 0 || totalCols === 0) return
+	const range = normalizeRange(0, totalRows - 1, 0, totalCols - 1)
+	setState('tabs', tabId, 'selection', {
+		focusedCell: { row: 0, col: 0 },
+		ranges: [range],
+		anchor: { row: 0, col: 0 },
+		selectMode: 'rows',
+	})
+}
+
+function moveFocus(tabId: string, dRow: number, dCol: number, totalRows: number, totalCols: number) {
+	const tab = ensureTab(tabId)
+	const current = tab.selection.focusedCell ?? { row: 0, col: 0 }
+	const row = Math.max(0, Math.min(totalRows - 1, current.row + dRow))
+	const col = Math.max(0, Math.min(totalCols - 1, current.col + dCol))
+	selectCell(tabId, row, col)
+}
+
+function extendFocus(tabId: string, dRow: number, dCol: number, totalRows: number, totalCols: number) {
+	const tab = ensureTab(tabId)
+	const current = tab.selection.focusedCell ?? { row: 0, col: 0 }
+	const row = Math.max(0, Math.min(totalRows - 1, current.row + dRow))
+	const col = Math.max(0, Math.min(totalCols - 1, current.col + dCol))
+	extendSelection(tabId, row, col)
+}
+
+function clearSelection(tabId: string) {
+	ensureTab(tabId)
+	setState('tabs', tabId, 'selection', createDefaultSelection())
+}
+
+/** Legacy compatibility: set focused cell by column name */
+function setFocusedCell(tabId: string, cell: FocusedCell | null, visibleColumns?: GridColumnDef[]) {
+	const tab = ensureTab(tabId)
+	if (!cell) {
+		setState('tabs', tabId, 'selection', { ...tab.selection, focusedCell: null })
+		return
+	}
+	const colIdx = visibleColumns
+		? visibleColumns.findIndex((c) => c.name === cell.column)
+		: 0
+	selectCell(tabId, cell.row, Math.max(0, colIdx))
 }
 
 function getSelectedData(tabId: string): Record<string, unknown>[] {
 	const tab = ensureTab(tabId)
-	return [...tab.selectedRows].sort((a, b) => a - b).map((i) => tab.rows[i])
+	const indices = getSelectedRowIndices(tab.selection)
+	return indices.filter((i) => tab.rows[i] != null).map((i) => tab.rows[i])
 }
 
 /** Format a cell value for TSV clipboard export. NULL → empty string. */
@@ -463,31 +614,32 @@ function buildClipboardTsv(
 	visibleColumns: GridColumnDef[],
 ): { text: string; rowCount: number } | null {
 	const tab = ensureTab(tabId)
-	const selected = tab.selectedRows
+	const sel = tab.selection
+	if (sel.ranges.length === 0) return null
 
-	if (selected.size === 0) return null
+	const selectedRows = getSelectedRowIndices(sel)
+	const selectedCols = getSelectedColIndices(sel)
 
-	// Single row + focused cell → copy just the cell value
-	if (selected.size === 1 && tab.focusedCell) {
-		const rowIdx = [...selected][0]
-		const row = tab.rows[rowIdx]
+	// Single cell → copy just the cell value
+	if (selectedRows.length === 1 && selectedCols.length === 1) {
+		const row = tab.rows[selectedRows[0]]
 		if (!row) return null
-		const value = row[tab.focusedCell.column]
-		return { text: formatCellForClipboard(value), rowCount: 0 }
+		const colName = visibleColumns[selectedCols[0]]?.name
+		if (!colName) return null
+		return { text: formatCellForClipboard(row[colName]), rowCount: 0 }
 	}
 
-	// Multi-row or single row without focused cell → copy all visible columns
-	const colNames = visibleColumns.map((c) => c.name)
+	// Full row selection or multi-cell → copy selected cells as TSV
+	const colNames = selectedCols.map((i) => visibleColumns[i]?.name).filter(Boolean) as string[]
 	const header = colNames.join('\t')
-	const sortedIndices = [...selected].sort((a, b) => a - b)
-	const rows = sortedIndices
+	const rows = selectedRows
 		.filter((i) => tab.rows[i] != null)
 		.map((i) => {
 			const row = tab.rows[i]
 			return colNames.map((col) => formatCellForClipboard(row[col])).join('\t')
 		})
 
-	return { text: [header, ...rows].join('\n'), rowCount: sortedIndices.length }
+	return { text: [header, ...rows].join('\n'), rowCount: selectedRows.length }
 }
 
 // ── Advanced copy ─────────────────────────────────────────
@@ -540,12 +692,13 @@ function buildAdvancedCopyText(
 	options: AdvancedCopyOptions,
 ): string | null {
 	const tab = ensureTab(tabId)
-	const selected = tab.selectedRows
-	if (selected.size === 0) return null
+	const sel = tab.selection
+	if (sel.ranges.length === 0) return null
 
 	const delim = getDelimiterChar(options)
-	const colNames = visibleColumns.map((c) => c.name)
-	const sortedIndices = [...selected].sort((a, b) => a - b)
+	const selectedRows = getSelectedRowIndices(sel)
+	const selectedCols = getSelectedColIndices(sel)
+	const colNames = selectedCols.map((i) => visibleColumns[i]?.name).filter(Boolean) as string[]
 	const lines: string[] = []
 
 	if (options.includeHeaders) {
@@ -553,8 +706,8 @@ function buildAdvancedCopyText(
 		lines.push(headerParts.join(delim))
 	}
 
-	for (let i = 0; i < sortedIndices.length; i++) {
-		const rowIdx = sortedIndices[i]
+	for (let i = 0; i < selectedRows.length; i++) {
+		const rowIdx = selectedRows[i]
 		const row = tab.rows[rowIdx]
 		if (!row) continue
 		const values = colNames.map((col) => formatAdvancedCellValue(row[col], options))
@@ -659,7 +812,8 @@ function computePinStyles(
 ): Map<string, Record<string, string>> {
 	const styles = new Map<string, Record<string, string>>()
 
-	let leftOffset = 0
+	// Start after the row number column (40px)
+	let leftOffset = 40
 	for (const col of columns) {
 		if (columnConfig[col.name]?.pinned === 'left') {
 			styles.set(col.name, {
@@ -774,13 +928,14 @@ function pasteCells(
 
 function deleteSelectedRows(tabId: string) {
 	const tab = ensureTab(tabId)
-	if (tab.selectedRows.size === 0) return
+	const selectedIndices = getSelectedRowIndices(tab.selection)
+	if (selectedIndices.length === 0) return
 	const next = new Set(tab.pendingChanges.deletedRows)
 
 	// Collect new-row indices to remove from the rows array
 	const newRowIndicesToRemove: number[] = []
 
-	for (const idx of tab.selectedRows) {
+	for (const idx of selectedIndices) {
 		if (tab.pendingChanges.newRows.has(idx)) {
 			newRowIndicesToRemove.push(idx)
 		} else {
@@ -814,7 +969,7 @@ function deleteSelectedRows(tabId: string) {
 	}
 
 	setState('tabs', tabId, 'pendingChanges', 'deletedRows', next)
-	setState('tabs', tabId, 'selectedRows', new Set())
+	clearSelection(tabId)
 }
 
 function hasPendingChanges(tabId: string): boolean {
@@ -1095,7 +1250,7 @@ async function applyViewConfig(tabId: string, config: SavedViewConfig) {
 	}
 
 	setState('tabs', tabId, 'currentPage', 1)
-	setState('tabs', tabId, 'selectedRows', new Set())
+	setState('tabs', tabId, 'selection', createDefaultSelection())
 	await fetchData(tabId)
 }
 
@@ -1110,7 +1265,7 @@ async function resetToDefault(tabId: string) {
 	setState('tabs', tabId, 'activeViewId', null)
 	setState('tabs', tabId, 'activeViewName', null)
 	setState('tabs', tabId, 'currentPage', 1)
-	setState('tabs', tabId, 'selectedRows', new Set())
+	setState('tabs', tabId, 'selection', createDefaultSelection())
 	await fetchData(tabId)
 }
 
@@ -1196,8 +1351,7 @@ async function navigateToFkTarget(
 	setState('tabs', tabId, 'columnConfig', {})
 	setState('tabs', tabId, 'columnOrder', [])
 	setState('tabs', tabId, 'currentPage', 1)
-	setState('tabs', tabId, 'selectedRows', new Set())
-	setState('tabs', tabId, 'focusedCell', null)
+	setState('tabs', tabId, 'selection', createDefaultSelection())
 	setState('tabs', tabId, 'editingCell', null)
 	setState('tabs', tabId, 'pendingChanges', createDefaultPendingChanges())
 	setState('tabs', tabId, 'activeViewId', null)
@@ -1235,8 +1389,7 @@ async function navigateToTableWithFilters(
 	setState('tabs', tabId, 'columnConfig', {})
 	setState('tabs', tabId, 'columnOrder', [])
 	setState('tabs', tabId, 'currentPage', 1)
-	setState('tabs', tabId, 'selectedRows', new Set())
-	setState('tabs', tabId, 'focusedCell', null)
+	setState('tabs', tabId, 'selection', createDefaultSelection())
 	setState('tabs', tabId, 'editingCell', null)
 	setState('tabs', tabId, 'pendingChanges', createDefaultPendingChanges())
 	setState('tabs', tabId, 'activeViewId', null)
@@ -1265,8 +1418,7 @@ async function navigateBack(tabId: string) {
 	setState('tabs', tabId, 'customFilter', '')
 	setState('tabs', tabId, 'quickSearch', '')
 	setState('tabs', tabId, 'currentPage', 1)
-	setState('tabs', tabId, 'selectedRows', new Set())
-	setState('tabs', tabId, 'focusedCell', null)
+	setState('tabs', tabId, 'selection', createDefaultSelection())
 	setState('tabs', tabId, 'editingCell', null)
 	setState('tabs', tabId, 'pendingChanges', createDefaultPendingChanges())
 	setState('tabs', tabId, 'activeViewId', null)
@@ -1365,9 +1517,10 @@ function removeTab(tabId: string) {
 /** Return selected rows data and columns for aggregate computation. */
 function getSelectedCellData(tabId: string): { rows: Record<string, unknown>[]; columns: GridColumnDef[] } | null {
 	const tab = getTab(tabId)
-	if (!tab || tab.selectedRows.size < 2) return null
-	const sorted = [...tab.selectedRows].sort((a, b) => a - b)
-	const rows = sorted.filter((i) => tab.rows[i] != null).map((i) => tab.rows[i])
+	if (!tab) return null
+	const indices = getSelectedRowIndices(tab.selection)
+	if (indices.length < 2) return null
+	const rows = indices.filter((i) => tab.rows[i] != null).map((i) => tab.rows[i])
 	return { rows, columns: tab.columns }
 }
 
@@ -1386,10 +1539,17 @@ export const gridStore = {
 	clearFilters,
 	setCustomFilter,
 	setQuickSearch,
-	selectRow,
-	toggleRowInSelection,
-	selectRange,
+	selectCell,
+	extendSelection,
+	addCellRange,
+	selectFullRow,
+	selectFullRowRange,
+	toggleFullRow,
+	selectFullColumn,
 	selectAll,
+	moveFocus,
+	extendFocus,
+	clearSelection,
 	getSelectedData,
 	setFocusedCell,
 	buildClipboardTsv,

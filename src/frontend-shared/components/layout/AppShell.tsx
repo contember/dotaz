@@ -378,6 +378,9 @@ export default function AppShell() {
 	}
 
 	async function restoreWorkspace() {
+		// Guard against duplicate restore (e.g. HMR re-mounts)
+		if (tabsStore.openTabs.length > 0) return
+
 		const workspace = await loadWorkspace()
 		if (!workspace || workspace.tabs.length === 0) return
 
@@ -719,9 +722,13 @@ export default function AppShell() {
 				const tab = tabsStore.activeTab
 				if (tab?.type !== 'data-grid') return
 				const gridTab = gridStore.getTab(tab.id)
-				if (!gridTab?.focusedCell) return
-				if (gridStore.isRowDeleted(tab.id, gridTab.focusedCell.row)) return
-				gridStore.startEditing(tab.id, gridTab.focusedCell.row, gridTab.focusedCell.column)
+				const focused = gridTab?.selection.focusedCell
+				if (!focused) return
+				const visibleCols = gridStore.getVisibleColumns(gridTab)
+				const col = visibleCols[focused.col]
+				if (!col) return
+				if (gridStore.isRowDeleted(tab.id, focused.row)) return
+				gridStore.startEditing(tab.id, focused.row, col.name)
 			},
 		})
 

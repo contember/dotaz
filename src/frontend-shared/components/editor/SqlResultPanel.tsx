@@ -14,7 +14,7 @@ import type { GridColumnDef } from '../../../shared/types/grid'
 import type { QueryEditability, QueryResult, QueryResultColumn } from '../../../shared/types/query'
 import { connectionsStore } from '../../stores/connections'
 import { editorStore, type PinnedResultSet } from '../../stores/editor'
-import type { ColumnConfig } from '../../stores/grid'
+import type { CellSelection, ColumnConfig } from '../../stores/grid'
 import { settingsStore } from '../../stores/settings'
 import Icon from '../common/Icon'
 import Select from '../common/Select'
@@ -436,7 +436,12 @@ interface ResultGridProps {
 function ResultGrid(props: ResultGridProps) {
 	const [scrollEl, setScrollEl] = createSignal<HTMLDivElement>()
 	const [columnWidths, setColumnWidths] = createSignal<Record<string, number>>({})
-	const [selectedRows, setSelectedRows] = createSignal<Set<number>>(new Set())
+	const [selection, setSelection] = createSignal<CellSelection>({
+		focusedCell: null,
+		ranges: [],
+		anchor: null,
+		selectMode: 'cells',
+	})
 	const [showPendingPanel, setShowPendingPanel] = createSignal(false)
 	const [applying, setApplying] = createSignal(false)
 	const [applyError, setApplyError] = createSignal<string | null>(null)
@@ -487,9 +492,12 @@ function ResultGrid(props: ResultGridProps) {
 	}
 
 	function handleRowClick(index: number, _e: MouseEvent) {
-		const next = new Set<number>()
-		next.add(index)
-		setSelectedRows(next)
+		setSelection({
+			focusedCell: { row: index, col: 0 },
+			ranges: [{ minRow: index, maxRow: index, minCol: 0, maxCol: Math.max(0, columns().length - 1) }],
+			anchor: { row: index, col: 0 },
+			selectMode: 'cells',
+		})
 	}
 
 	function handleRowDblClick(index: number, e: MouseEvent) {
@@ -597,7 +605,7 @@ function ResultGrid(props: ResultGridProps) {
 					columns={columns()}
 					columnConfig={columnConfig()}
 					pinStyles={EMPTY_PIN_STYLES}
-					selectedRows={selectedRows()}
+					selection={selection()}
 					scrollMargin={HEADER_HEIGHT}
 					onRowClick={handleRowClick}
 					onRowDblClick={isEditable() ? handleRowDblClick : undefined}

@@ -2,7 +2,8 @@ import { For, Show } from 'solid-js'
 import type { GridColumnDef } from '../../../shared/types/grid'
 import { getDataTypeLabel } from '../../lib/column-types'
 import { DEFAULT_COLUMN_WIDTH } from '../../lib/layout-constants'
-import type { ColumnConfig, EditingCell, FkTarget, HeatmapInfo } from '../../stores/grid'
+import type { CellSelection, ColumnConfig, EditingCell, FkTarget, HeatmapInfo } from '../../stores/grid'
+import { getSelectedRowIndices } from '../../stores/grid'
 import { gridStore } from '../../stores/grid'
 import GridCell from './GridCell'
 import './TransposedGrid.css'
@@ -11,7 +12,7 @@ interface TransposedGridProps {
 	rows: Record<string, unknown>[]
 	columns: GridColumnDef[]
 	columnConfig: Record<string, ColumnConfig>
-	selectedRows: Set<number>
+	selection: CellSelection
 	onRowClick: (index: number, e: MouseEvent) => void
 	onRowDblClick?: (index: number, e: MouseEvent) => void
 	editingCell?: EditingCell | null
@@ -31,6 +32,8 @@ interface TransposedGridProps {
 const HEADER_COL_WIDTH = 180
 
 export default function TransposedGrid(props: TransposedGridProps) {
+	const selectedRowSet = () => new Set(getSelectedRowIndices(props.selection))
+
 	return (
 		<div class="transposed-grid">
 			{/* Header row: row-header label + one column per original row */}
@@ -46,7 +49,7 @@ export default function TransposedGrid(props: TransposedGridProps) {
 						<div
 							class="transposed-grid__col-header"
 							classList={{
-								'transposed-grid__col-header--selected': props.selectedRows.has(rowIdx()),
+								'transposed-grid__col-header--selected': selectedRowSet().has(rowIdx()),
 							}}
 							style={{ width: `${DEFAULT_COLUMN_WIDTH}px` }}
 							onClick={(e) => props.onRowClick(rowIdx(), e)}
@@ -103,7 +106,7 @@ export default function TransposedGrid(props: TransposedGridProps) {
 									<div
 										class="transposed-grid__cell-wrapper"
 										classList={{
-											'transposed-grid__cell-wrapper--selected': props.selectedRows.has(rowIdx()),
+											'transposed-grid__cell-wrapper--selected': selectedRowSet().has(rowIdx()),
 										}}
 										data-column={col.name}
 										data-row-index={rowIdx()}

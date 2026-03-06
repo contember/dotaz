@@ -14,6 +14,8 @@ interface GridCellProps {
 	pinStyle?: Record<string, string>
 	editing?: boolean
 	changed?: boolean
+	selected?: boolean
+	focused?: boolean
 	deleted?: boolean
 	newRow?: boolean
 	/** FK target info for this column (if it's a single-column FK). */
@@ -203,6 +205,8 @@ export default function GridCell(props: GridCellProps) {
 					'grid-cell--timestamp': isTs() && !isNull() && !isDefault(),
 					'grid-cell--fk': isFk(),
 					'grid-cell--changed': !!props.changed,
+					'grid-cell--selected': !!props.selected,
+					'grid-cell--focused': !!props.focused,
 					'grid-cell--deleted': !!props.deleted,
 					'grid-cell--new-row': !!props.newRow,
 				}}

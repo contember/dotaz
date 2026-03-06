@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, Show } from 'solid-js'
 import type { GridColumnDef } from '../../../shared/types/grid'
-import { gridStore } from '../../stores/grid'
+import { getSelectedRowIndices, gridStore } from '../../stores/grid'
 import type { AdvancedCopyDelimiter, AdvancedCopyOptions, AdvancedCopyValueFormat } from '../../stores/grid'
 import Dialog from '../common/Dialog'
 import Select from '../common/Select'
@@ -61,10 +61,10 @@ export default function AdvancedCopyDialog(props: AdvancedCopyDialogProps) {
 	const preview = createMemo(() => {
 		if (!props.open) return ''
 		const tab = gridStore.getTab(props.tabId)
-		if (!tab || tab.selectedRows.size === 0) return ''
+		if (!tab || tab.selection.ranges.length === 0) return ''
 
 		// Limit preview to first N rows
-		const sorted = [...tab.selectedRows].sort((a, b) => a - b)
+		const sorted = getSelectedRowIndices(tab.selection)
 		const previewIndices = sorted.slice(0, MAX_PREVIEW_ROWS)
 		const truncated = sorted.length > MAX_PREVIEW_ROWS
 
@@ -88,7 +88,7 @@ export default function AdvancedCopyDialog(props: AdvancedCopyDialogProps) {
 
 	const selectedRowCount = createMemo(() => {
 		const tab = gridStore.getTab(props.tabId)
-		return tab?.selectedRows.size ?? 0
+		return tab ? getSelectedRowIndices(tab.selection).length : 0
 	})
 
 	function saveToSession() {

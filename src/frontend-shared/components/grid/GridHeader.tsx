@@ -16,6 +16,8 @@ interface GridHeaderProps {
 	onToggleSort: (column: string, multi: boolean) => void
 	onResizeColumn: (column: string, width: number) => void
 	onHeaderContextMenu?: (e: MouseEvent, column: string) => void
+	onSelectAll?: () => void
+	onColumnSelect?: (colIndex: number, e: MouseEvent) => void
 }
 
 function getSortDirection(sort: SortColumn[], column: string): 'asc' | 'desc' | null {
@@ -28,7 +30,12 @@ function getSortIndex(sort: SortColumn[], column: string): number {
 }
 
 export default function GridHeader(props: GridHeaderProps) {
-	function handleHeaderClick(e: MouseEvent, column: string) {
+	function handleHeaderClick(e: MouseEvent, column: string, colIndex: number) {
+		if ((e.ctrlKey || e.metaKey) && props.onColumnSelect) {
+			e.preventDefault()
+			props.onColumnSelect(colIndex, e)
+			return
+		}
 		props.onToggleSort(column, e.shiftKey)
 	}
 
@@ -73,8 +80,13 @@ export default function GridHeader(props: GridHeaderProps) {
 
 	return (
 		<div class="grid-header">
+			<div
+				class="grid-header__row-number"
+				onClick={() => props.onSelectAll?.()}
+				title="Select all"
+			/>
 			<For each={props.columns}>
-				{(col) => {
+				{(col, colIdx) => {
 					const sortDir = () => getSortDirection(props.sort, col.name)
 					const sortIdx = () => getSortIndex(props.sort, col.name)
 
@@ -86,7 +98,7 @@ export default function GridHeader(props: GridHeaderProps) {
 								width: `${getColumnWidth(col.name)}px`,
 								...props.pinStyles.get(col.name),
 							}}
-							onClick={(e) => handleHeaderClick(e, col.name)}
+							onClick={(e) => handleHeaderClick(e, col.name, colIdx())}
 							onContextMenu={(e) => props.onHeaderContextMenu?.(e, col.name)}
 						>
 							<span class="grid-header__type-badge">

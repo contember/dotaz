@@ -2,7 +2,8 @@ import { createVirtualizer } from '@tanstack/solid-virtual'
 import { createSignal, For, onMount, Show } from 'solid-js'
 import type { GridColumnDef } from '../../../shared/types/grid'
 import { ROW_HEIGHT } from '../../lib/layout-constants'
-import type { ColumnConfig, EditingCell, FkTarget, HeatmapInfo } from '../../stores/grid'
+import type { CellSelection, ColumnConfig, EditingCell, FkTarget, HeatmapInfo } from '../../stores/grid'
+import { isCellInSelection } from '../../stores/grid'
 import GridRow from './GridRow'
 import './VirtualScroller.css'
 
@@ -14,10 +15,11 @@ interface VirtualScrollerProps {
 	columns: GridColumnDef[]
 	columnConfig: Record<string, ColumnConfig>
 	pinStyles: Map<string, Record<string, string>>
-	selectedRows: Set<number>
+	selection: CellSelection
 	scrollMargin: number
 	onRowClick: (index: number, e: MouseEvent) => void
 	onRowDblClick?: (index: number, e: MouseEvent) => void
+	onRowNumberClick?: (index: number, e: MouseEvent) => void
 	editingCell?: EditingCell | null
 	getChangedCells?: (rowIndex: number) => Set<string>
 	isRowDeleted?: (rowIndex: number) => boolean
@@ -70,9 +72,11 @@ export default function VirtualScroller(props: VirtualScrollerProps) {
 							columns={props.columns}
 							columnConfig={props.columnConfig}
 							pinStyles={props.pinStyles}
-							selected={props.selectedRows.has(virtualRow.index)}
+							isCellSelected={(colIndex: number) => isCellInSelection(props.selection, virtualRow.index, colIndex)}
+							focusedColIndex={props.selection.focusedCell?.row === virtualRow.index ? props.selection.focusedCell.col : null}
 							onClick={props.onRowClick}
 							onDblClick={props.onRowDblClick}
+							onRowNumberClick={props.onRowNumberClick}
 							editingCell={props.editingCell}
 							changedCells={props.getChangedCells?.(virtualRow.index)}
 							isDeleted={props.isRowDeleted?.(virtualRow.index)}

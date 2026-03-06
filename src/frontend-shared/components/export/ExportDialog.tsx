@@ -7,7 +7,7 @@ import type { ColumnFilter, SortColumn } from '../../../shared/types/grid'
 import { getCapabilities } from '../../lib/capabilities'
 import { rpc } from '../../lib/rpc'
 import { transport } from '../../lib/transport'
-import { gridStore } from '../../stores/grid'
+import { getSelectedRowIndices, gridStore } from '../../stores/grid'
 import Dialog from '../common/Dialog'
 import Select from '../common/Select'
 import './ExportDialog.css'
@@ -85,7 +85,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 
 	const hasSelection = () => {
 		const t = tab()
-		return t ? t.selectedRows.size > 0 : false
+		return t ? getSelectedRowIndices(t.selection).length > 0 : false
 	}
 
 	const hasPrimaryKey = () => {
@@ -96,7 +96,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 
 	const selectedRowCount = () => {
 		const t = tab()
-		return t ? t.selectedRows.size : 0
+		return t ? getSelectedRowIndices(t.selection).length : 0
 	}
 
 	const rowCountForScope = () => {
@@ -142,7 +142,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 			const pkCols = t.columns.filter((c) => c.isPrimaryKey)
 			if (pkCols.length === 0) return undefined
 
-			const selectedIndices = [...t.selectedRows].sort((a, b) => a - b)
+			const selectedIndices = getSelectedRowIndices(t.selection)
 			const filters: ColumnFilter[] = []
 
 			for (const pkCol of pkCols) {

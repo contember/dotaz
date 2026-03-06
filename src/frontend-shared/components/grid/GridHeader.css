@@ -9,6 +9,22 @@
 	min-width: 100%;
 }
 
+.grid-header__row-number {
+	width: 40px;
+	min-width: 40px;
+	flex-shrink: 0;
+	position: sticky;
+	left: 0;
+	z-index: 4;
+	background: var(--surface-raised);
+	border-right: 1px solid var(--edge);
+	cursor: pointer;
+}
+
+.grid-header__row-number:hover {
+	background: var(--surface-hover);
+}
+
 .grid-header__cell {
 	display: flex;
 	align-items: center;

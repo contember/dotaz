@@ -212,9 +212,9 @@ describe('grid store', () => {
 			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
 			await gridStore.loadTableData('tab-2', 'conn-2', 'main', 'items')
 
-			gridStore.selectAll('tab-1')
-			expect(gridStore.getTab('tab-1')!.selectedRows.size).toBe(3)
-			expect(gridStore.getTab('tab-2')!.selectedRows.size).toBe(0)
+			gridStore.selectAll('tab-1', 3, 2)
+			expect(gridStore.getTab('tab-1')!.selection.ranges.length).toBe(1)
+			expect(gridStore.getTab('tab-2')!.selection.ranges.length).toBe(0)
 		})
 	})
 
@@ -231,11 +231,11 @@ describe('grid store', () => {
 
 		test('setPage clears row selection', async () => {
 			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
-			gridStore.selectAll('tab-1')
-			expect(gridStore.getTab('tab-1')!.selectedRows.size).toBe(3)
+			gridStore.selectAll('tab-1', 3, 2)
+			expect(gridStore.getTab('tab-1')!.selection.ranges.length).toBe(1)
 
 			await gridStore.setPage('tab-1', 2)
-			expect(gridStore.getTab('tab-1')!.selectedRows.size).toBe(0)
+			expect(gridStore.getTab('tab-1')!.selection.ranges.length).toBe(0)
 		})
 
 		test('setPageSize updates page size and resets to page 1', async () => {
@@ -250,11 +250,11 @@ describe('grid store', () => {
 
 		test('setPageSize clears row selection', async () => {
 			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
-			gridStore.selectAll('tab-1')
-			expect(gridStore.getTab('tab-1')!.selectedRows.size).toBe(3)
+			gridStore.selectAll('tab-1', 3, 2)
+			expect(gridStore.getTab('tab-1')!.selection.ranges.length).toBe(1)
 
 			await gridStore.setPageSize('tab-1', 25)
-			expect(gridStore.getTab('tab-1')!.selectedRows.size).toBe(0)
+			expect(gridStore.getTab('tab-1')!.selection.ranges.length).toBe(0)
 		})
 
 		test('setPageSize sends correct page size', async () => {
@@ -400,72 +400,66 @@ describe('grid store', () => {
 		})
 	})
 
-	describe('row selection', () => {
-		test('selectRow selects a single row', async () => {
+	describe('cell selection', () => {
+		test('selectCell selects a single cell', async () => {
 			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
 
-			gridStore.selectRow('tab-1', 0)
+			gridStore.selectCell('tab-1', 0, 0)
 
 			const tab = gridStore.getTab('tab-1')!
-			expect(tab.selectedRows.has(0)).toBe(true)
-			expect(tab.selectedRows.size).toBe(1)
+			expect(tab.selection.focusedCell).toEqual({ row: 0, col: 0 })
+			expect(tab.selection.ranges).toHaveLength(1)
+			expect(tab.selection.ranges[0]).toEqual({ minRow: 0, maxRow: 0, minCol: 0, maxCol: 0 })
 		})
 
-		test('selectRow deselects if already selected', async () => {
+		test('selectCell replaces previous selection', async () => {
 			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
 
-			gridStore.selectRow('tab-1', 0)
-			gridStore.selectRow('tab-1', 0)
-
-			expect(gridStore.getTab('tab-1')!.selectedRows.size).toBe(0)
-		})
-
-		test('selectRow clears previous selection when selecting a different row', async () => {
-			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
-
-			gridStore.selectRow('tab-1', 0)
-			gridStore.selectRow('tab-1', 1)
+			gridStore.selectCell('tab-1', 0, 0)
+			gridStore.selectCell('tab-1', 1, 1)
 
 			const tab = gridStore.getTab('tab-1')!
-			expect(tab.selectedRows.size).toBe(1)
-			expect(tab.selectedRows.has(1)).toBe(true)
-			expect(tab.selectedRows.has(0)).toBe(false)
+			expect(tab.selection.ranges).toHaveLength(1)
+			expect(tab.selection.focusedCell).toEqual({ row: 1, col: 1 })
 		})
 
-		test('selectRange selects a range of rows', async () => {
+		test('selectFullRow selects entire row', async () => {
 			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
 
-			gridStore.selectRange('tab-1', 0, 2)
+			gridStore.selectFullRow('tab-1', 0, 2)
 
 			const tab = gridStore.getTab('tab-1')!
-			expect(tab.selectedRows.size).toBe(3)
-			expect(tab.selectedRows.has(0)).toBe(true)
-			expect(tab.selectedRows.has(1)).toBe(true)
-			expect(tab.selectedRows.has(2)).toBe(true)
+			expect(tab.selection.ranges).toHaveLength(1)
+			expect(tab.selection.ranges[0]).toEqual({ minRow: 0, maxRow: 0, minCol: 0, maxCol: 1 })
+			expect(tab.selection.selectMode).toBe('rows')
 		})
 
-		test('selectRange handles reversed from/to', async () => {
+		test('selectFullRowRange selects range of rows', async () => {
 			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
 
-			gridStore.selectRange('tab-1', 2, 0)
+			gridStore.selectFullRow('tab-1', 0, 2)
+			gridStore.selectFullRowRange('tab-1', 0, 2, 2)
 
 			const tab = gridStore.getTab('tab-1')!
-			expect(tab.selectedRows.size).toBe(3)
+			expect(tab.selection.ranges).toHaveLength(1)
+			expect(tab.selection.ranges[0]).toEqual({ minRow: 0, maxRow: 2, minCol: 0, maxCol: 1 })
 		})
 
-		test('selectAll selects all rows', async () => {
+		test('selectAll selects all cells', async () => {
 			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
 
-			gridStore.selectAll('tab-1')
+			gridStore.selectAll('tab-1', 3, 2)
 
 			const tab = gridStore.getTab('tab-1')!
-			expect(tab.selectedRows.size).toBe(3)
+			expect(tab.selection.ranges).toHaveLength(1)
+			expect(tab.selection.ranges[0]).toEqual({ minRow: 0, maxRow: 2, minCol: 0, maxCol: 1 })
 		})
 
 		test('getSelectedData returns data for selected rows in order', async () => {
 			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
 
-			gridStore.selectRange('tab-1', 0, 1)
+			gridStore.selectFullRow('tab-1', 0, 2)
+			gridStore.selectFullRowRange('tab-1', 0, 1, 2)
 			const data = gridStore.getSelectedData('tab-1')
 
 			expect(data).toHaveLength(2)
@@ -516,11 +510,10 @@ describe('grid store', () => {
 			expect(result).toBeNull()
 		})
 
-		test('buildClipboardTsv copies single cell when focusedCell is set', async () => {
+		test('buildClipboardTsv copies single cell when single cell selected', async () => {
 			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
 
-			gridStore.selectRow('tab-1', 0)
-			gridStore.setFocusedCell('tab-1', { row: 0, column: 'name' })
+			gridStore.selectCell('tab-1', 0, 1) // col 1 = 'name'
 
 			const tab = gridStore.getTab('tab-1')!
 			const cols = gridStore.getVisibleColumns(tab)
@@ -540,8 +533,7 @@ describe('grid store', () => {
 			})
 			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
 
-			gridStore.selectRow('tab-1', 0)
-			gridStore.setFocusedCell('tab-1', { row: 0, column: 'name' })
+			gridStore.selectCell('tab-1', 0, 1) // col 1 = 'name'
 
 			const tab = gridStore.getTab('tab-1')!
 			const cols = gridStore.getVisibleColumns(tab)
@@ -553,7 +545,7 @@ describe('grid store', () => {
 		test('buildClipboardTsv copies multiple rows as TSV with header', async () => {
 			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
 
-			gridStore.selectRange('tab-1', 0, 2)
+			gridStore.selectAll('tab-1', 3, 2)
 
 			const tab = gridStore.getTab('tab-1')!
 			const cols = gridStore.getVisibleColumns(tab)
@@ -570,11 +562,10 @@ describe('grid store', () => {
 			expect(lines[3]).toBe('3\tCharlie')
 		})
 
-		test('buildClipboardTsv copies single row (no focused cell) as TSV with header', async () => {
+		test('buildClipboardTsv copies full row as TSV with header', async () => {
 			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
 
-			gridStore.selectRow('tab-1', 1)
-			// Don't set focusedCell
+			gridStore.selectFullRow('tab-1', 1, 2)
 
 			const tab = gridStore.getTab('tab-1')!
 			const cols = gridStore.getVisibleColumns(tab)
@@ -589,15 +580,13 @@ describe('grid store', () => {
 			expect(lines[1]).toBe('2\tBob')
 		})
 
-		test('buildClipboardTsv with multiple rows ignores focusedCell', async () => {
+		test('buildClipboardTsv multi-row selection copies all columns', async () => {
 			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
 
-			gridStore.selectRange('tab-1', 0, 1)
-			// selectRange clears focusedCell, but even if it were set,
-			// multi-row copies all visible columns
-			const tab = gridStore.getTab('tab-1')!
-			expect(tab.focusedCell).toBeNull()
+			gridStore.selectFullRow('tab-1', 0, 2)
+			gridStore.selectFullRowRange('tab-1', 0, 1, 2)
 
+			const tab = gridStore.getTab('tab-1')!
 			const cols = gridStore.getVisibleColumns(tab)
 			const result = gridStore.buildClipboardTsv('tab-1', cols)
 
@@ -606,38 +595,35 @@ describe('grid store', () => {
 	})
 
 	describe('focusedCell', () => {
-		test('setFocusedCell sets and clears focused cell', async () => {
+		test('selectCell sets focused cell', async () => {
 			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
 
-			gridStore.setFocusedCell('tab-1', { row: 0, column: 'name' })
-			expect(gridStore.getTab('tab-1')!.focusedCell).toEqual({ row: 0, column: 'name' })
+			gridStore.selectCell('tab-1', 0, 1)
+			expect(gridStore.getTab('tab-1')!.selection.focusedCell).toEqual({ row: 0, col: 1 })
+		})
 
+		test('clearSelection clears focusedCell', async () => {
+			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
+
+			gridStore.selectCell('tab-1', 0, 1)
+			gridStore.clearSelection('tab-1')
+
+			expect(gridStore.getTab('tab-1')!.selection.focusedCell).toBeNull()
+		})
+
+		test('setFocusedCell with null clears focused cell', async () => {
+			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
+
+			gridStore.selectCell('tab-1', 0, 1)
 			gridStore.setFocusedCell('tab-1', null)
-			expect(gridStore.getTab('tab-1')!.focusedCell).toBeNull()
-		})
 
-		test('selectRange clears focusedCell', async () => {
-			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
-
-			gridStore.setFocusedCell('tab-1', { row: 0, column: 'name' })
-			gridStore.selectRange('tab-1', 0, 2)
-
-			expect(gridStore.getTab('tab-1')!.focusedCell).toBeNull()
-		})
-
-		test('selectAll clears focusedCell', async () => {
-			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
-
-			gridStore.setFocusedCell('tab-1', { row: 0, column: 'name' })
-			gridStore.selectAll('tab-1')
-
-			expect(gridStore.getTab('tab-1')!.focusedCell).toBeNull()
+			expect(gridStore.getTab('tab-1')!.selection.focusedCell).toBeNull()
 		})
 	})
 
 	describe('error handling', () => {
 		test('throws for operations on non-existent tabs', () => {
-			expect(() => gridStore.selectRow('nonexistent', 0)).toThrow(
+			expect(() => gridStore.selectCell('nonexistent', 0, 0)).toThrow(
 				'Grid state not found for tab nonexistent',
 			)
 		})
@@ -722,7 +708,7 @@ describe('grid store', () => {
 		test('deleteSelectedRows marks rows as deleted', async () => {
 			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
 
-			gridStore.selectRow('tab-1', 1)
+			gridStore.selectFullRow('tab-1', 1, 2)
 			gridStore.deleteSelectedRows('tab-1')
 
 			expect(gridStore.isRowDeleted('tab-1', 1)).toBe(true)
@@ -733,7 +719,7 @@ describe('grid store', () => {
 			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
 
 			const newIndex = gridStore.addNewRow('tab-1')
-			gridStore.selectRow('tab-1', newIndex)
+			gridStore.selectFullRow('tab-1', newIndex, 2)
 			gridStore.deleteSelectedRows('tab-1')
 
 			const tab = gridStore.getTab('tab-1')!
@@ -781,7 +767,7 @@ describe('grid store', () => {
 		test('buildDataChanges generates delete changes', async () => {
 			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
 
-			gridStore.selectRow('tab-1', 2)
+			gridStore.selectFullRow('tab-1', 2, 2)
 			gridStore.deleteSelectedRows('tab-1')
 
 			const changes = gridStore.buildDataChanges('tab-1')
@@ -858,7 +844,7 @@ describe('grid store', () => {
 
 		test('counts deleted rows', async () => {
 			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
-			gridStore.selectRow('tab-1', 0)
+			gridStore.selectFullRow('tab-1', 0, 2)
 			gridStore.deleteSelectedRows('tab-1')
 			expect(gridStore.pendingChangesCount('tab-1')).toBe(1)
 		})
@@ -867,7 +853,7 @@ describe('grid store', () => {
 			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
 			gridStore.setCellValue('tab-1', 0, 'name', 'Updated')
 			gridStore.addNewRow('tab-1')
-			gridStore.selectRow('tab-1', 1)
+			gridStore.selectFullRow('tab-1', 1, 2)
 			gridStore.deleteSelectedRows('tab-1')
 			// 1 update + 1 insert + 1 delete = 3
 			expect(gridStore.pendingChangesCount('tab-1')).toBe(3)
@@ -876,7 +862,7 @@ describe('grid store', () => {
 		test('does not double-count edits on deleted rows', async () => {
 			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
 			gridStore.setCellValue('tab-1', 0, 'name', 'Updated')
-			gridStore.selectRow('tab-1', 0)
+			gridStore.selectFullRow('tab-1', 0, 2)
 			gridStore.deleteSelectedRows('tab-1')
 			// Row 0 is deleted; the edit should not count separately
 			expect(gridStore.pendingChangesCount('tab-1')).toBe(1)
@@ -921,7 +907,7 @@ describe('grid store', () => {
 	describe('revertDeletedRow', () => {
 		test('unmarks a deleted row', async () => {
 			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
-			gridStore.selectRow('tab-1', 0)
+			gridStore.selectFullRow('tab-1', 0, 2)
 			gridStore.deleteSelectedRows('tab-1')
 			expect(gridStore.isRowDeleted('tab-1', 0)).toBe(true)
 

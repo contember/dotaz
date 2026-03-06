@@ -16,7 +16,7 @@ import { HEADER_HEIGHT } from '../../lib/layout-constants'
 import { rpc } from '../../lib/rpc'
 import { connectionsStore } from '../../stores/connections'
 import type { FkTarget } from '../../stores/grid'
-import { gridStore } from '../../stores/grid'
+import { getSelectedRowIndices, isCellInSelection, gridStore } from '../../stores/grid'
 import { tabsStore } from '../../stores/tabs'
 import { viewsStore } from '../../stores/views'
 import ContextMenu from '../common/ContextMenu'
@@ -110,7 +110,6 @@ export default function DataGrid(props: DataGridProps) {
 	let moreMenuRef: HTMLDivElement | undefined
 	let moreMenuTriggerRef: HTMLButtonElement | undefined
 	let gridRef: HTMLDivElement | undefined
-	let anchorRow = -1
 	let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined
 
 	const tab = () => gridStore.getTab(props.tabId)
@@ -307,25 +306,36 @@ export default function DataGrid(props: DataGridProps) {
 		gridStore.clearFilters(props.tabId)
 	}
 
-	function handleRowClick(index: number, e: MouseEvent) {
-		// Detect which cell was clicked via data-column attribute
+	function resolveColIndex(e: MouseEvent): number {
 		const target = e.target as HTMLElement
 		const cellEl = target.closest<HTMLElement>('[data-column]')
 		const columnName = cellEl?.dataset.column ?? null
+		if (!columnName) return 0
+		const cols = visibleColumns()
+		const idx = cols.findIndex((c) => c.name === columnName)
+		return idx >= 0 ? idx : 0
+	}
 
-		if (e.shiftKey && anchorRow >= 0) {
-			gridStore.selectRange(props.tabId, anchorRow, index)
+	function handleRowClick(index: number, e: MouseEvent) {
+		const colIdx = resolveColIndex(e)
+
+		if (e.shiftKey) {
+			gridStore.extendSelection(props.tabId, index, colIdx)
 		} else if (e.ctrlKey || e.metaKey) {
-			gridStore.toggleRowInSelection(props.tabId, index)
-			if (anchorRow < 0) anchorRow = index
+			gridStore.addCellRange(props.tabId, index, colIdx)
 		} else {
-			gridStore.selectRow(props.tabId, index)
-			anchorRow = index
+			gridStore.selectCell(props.tabId, index, colIdx)
 		}
+	}
 
-		// Set focused cell for single-cell copy
-		if (columnName && !e.shiftKey) {
-			gridStore.setFocusedCell(props.tabId, { row: index, column: columnName })
+	function handleRowNumberClick(index: number, e: MouseEvent) {
+		const totalCols = visibleColumns().length
+		if (e.shiftKey) {
+			gridStore.selectFullRowRange(props.tabId, index, index, totalCols)
+		} else if (e.ctrlKey || e.metaKey) {
+			gridStore.toggleFullRow(props.tabId, index, totalCols)
+		} else {
+			gridStore.selectFullRow(props.tabId, index, totalCols)
 		}
 	}
 
@@ -341,12 +351,21 @@ export default function DataGrid(props: DataGridProps) {
 		}
 	}
 
+	function getFocusedCellInfo(): { row: number; column: string } | null {
+		const t = tab()
+		if (!t?.selection.focusedCell) return null
+		const cols = visibleColumns()
+		const col = cols[t.selection.focusedCell.col]
+		if (!col) return null
+		return { row: t.selection.focusedCell.row, column: col.name }
+	}
+
 	function startEditingFocused() {
 		if (isReadOnly()) return
-		const t = tab()
-		if (!t?.focusedCell) return
-		if (gridStore.isRowDeleted(props.tabId, t.focusedCell.row)) return
-		gridStore.startEditing(props.tabId, t.focusedCell.row, t.focusedCell.column)
+		const focused = getFocusedCellInfo()
+		if (!focused) return
+		if (gridStore.isRowDeleted(props.tabId, focused.row)) return
+		gridStore.startEditing(props.tabId, focused.row, focused.column)
 	}
 
 	function handleCellSave(rowIndex: number, column: string, value: unknown) {
@@ -364,7 +383,7 @@ export default function DataGrid(props: DataGridProps) {
 		if (idx < cols.length - 1) {
 			const nextCol = cols[idx + 1].name
 			gridStore.startEditing(props.tabId, rowIndex, nextCol)
-			gridStore.setFocusedCell(props.tabId, { row: rowIndex, column: nextCol })
+			gridStore.selectCell(props.tabId, rowIndex, idx + 1)
 		} else {
 			gridStore.stopEditing(props.tabId)
 		}
@@ -373,9 +392,11 @@ export default function DataGrid(props: DataGridProps) {
 	function handleCellMoveDown(rowIndex: number, currentColumn: string) {
 		const t = tab()
 		if (!t) return
+		const cols = visibleColumns()
+		const colIdx = cols.findIndex((c) => c.name === currentColumn)
 		if (rowIndex < t.rows.length - 1) {
 			gridStore.startEditing(props.tabId, rowIndex + 1, currentColumn)
-			gridStore.setFocusedCell(props.tabId, { row: rowIndex + 1, column: currentColumn })
+			gridStore.selectCell(props.tabId, rowIndex + 1, Math.max(0, colIdx))
 		} else {
 			gridStore.stopEditing(props.tabId)
 		}
@@ -387,7 +408,7 @@ export default function DataGrid(props: DataGridProps) {
 		const cols = visibleColumns()
 		if (cols.length > 0) {
 			gridStore.startEditing(props.tabId, newIndex, cols[0].name)
-			gridStore.setFocusedCell(props.tabId, { row: newIndex, column: cols[0].name })
+			gridStore.selectCell(props.tabId, newIndex, 0)
 		}
 	}
 
@@ -414,10 +435,9 @@ export default function DataGrid(props: DataGridProps) {
 	function openRowDetail() {
 		const t = tab()
 		if (!t) return
-		// Use first selected row
-		const selected = [...t.selectedRows].sort((a, b) => a - b)
-		if (selected.length === 0) return
-		setRowDetailIndex(selected[0])
+		const indices = getSelectedRowIndices(t.selection)
+		if (indices.length === 0) return
+		setRowDetailIndex(indices[0])
 	}
 
 	function handleRowDetailSave(rowIndex: number, changes: Record<string, unknown>) {
@@ -433,7 +453,7 @@ export default function DataGrid(props: DataGridProps) {
 	function handleRowDetailNavigate(rowIndex: number) {
 		setRowDetailIndex(rowIndex)
 		// Also update selection in the grid
-		gridStore.selectRow(props.tabId, rowIndex)
+		gridStore.selectFullRow(props.tabId, rowIndex, visibleColumns().length)
 	}
 
 	// ── Pending changes ──────────────────────────────────────
@@ -582,8 +602,8 @@ export default function DataGrid(props: DataGridProps) {
 
 	async function handlePaste() {
 		if (isReadOnly()) return
-		const t = tab()
-		if (!t?.focusedCell) return
+		const focused = getFocusedCellInfo()
+		if (!focused) return
 
 		let text: string
 		try {
@@ -604,11 +624,11 @@ export default function DataGrid(props: DataGridProps) {
 	}
 
 	function executePaste(rows: string[][], treatNullText: boolean) {
-		const t = tab()
-		if (!t?.focusedCell) return
+		const focused = getFocusedCellInfo()
+		if (!focused) return
 
 		const data = rows.map((row) => row.map((cell) => cellValueToDbValue(cell, treatNullText)))
-		gridStore.pasteCells(props.tabId, t.focusedCell.row, t.focusedCell.column, data)
+		gridStore.pasteCells(props.tabId, focused.row, focused.column, data)
 
 		const msg = `Pasted ${rows.length} row${rows.length !== 1 ? 's' : ''}`
 		setCopyFeedback(msg)
@@ -638,6 +658,17 @@ export default function DataGrid(props: DataGridProps) {
 
 		e.preventDefault()
 		setHeaderContextMenu(null)
+
+		// If right-clicked cell is outside selection, move selection to it
+		const t = tab()
+		if (t) {
+			const cols = visibleColumns()
+			const colIdx = cols.findIndex((c) => c.name === columnName)
+			if (colIdx >= 0 && !isCellInSelection(t.selection, rowIndex, colIdx)) {
+				gridStore.selectCell(props.tabId, rowIndex, colIdx)
+			}
+		}
+
 		setCellContextMenu({
 			x: e.clientX,
 			y: e.clientY,
@@ -704,7 +735,132 @@ export default function DataGrid(props: DataGridProps) {
 			ctrl: true,
 			handler(e) {
 				e.preventDefault()
-				gridStore.selectAll(props.tabId)
+				const t = tab()
+				if (t) gridStore.selectAll(props.tabId, t.rows.length, visibleColumns().length)
+			},
+		},
+		{
+			key: 'ArrowUp',
+			handler(e) {
+				e.preventDefault()
+				const t = tab()
+				if (t) gridStore.moveFocus(props.tabId, -1, 0, t.rows.length, visibleColumns().length)
+			},
+		},
+		{
+			key: 'ArrowDown',
+			handler(e) {
+				e.preventDefault()
+				const t = tab()
+				if (t) gridStore.moveFocus(props.tabId, 1, 0, t.rows.length, visibleColumns().length)
+			},
+		},
+		{
+			key: 'ArrowLeft',
+			handler(e) {
+				e.preventDefault()
+				const t = tab()
+				if (t) gridStore.moveFocus(props.tabId, 0, -1, t.rows.length, visibleColumns().length)
+			},
+		},
+		{
+			key: 'ArrowRight',
+			handler(e) {
+				e.preventDefault()
+				const t = tab()
+				if (t) gridStore.moveFocus(props.tabId, 0, 1, t.rows.length, visibleColumns().length)
+			},
+		},
+		{
+			key: 'ArrowUp',
+			shift: true,
+			handler(e) {
+				e.preventDefault()
+				const t = tab()
+				if (t) gridStore.extendFocus(props.tabId, -1, 0, t.rows.length, visibleColumns().length)
+			},
+		},
+		{
+			key: 'ArrowDown',
+			shift: true,
+			handler(e) {
+				e.preventDefault()
+				const t = tab()
+				if (t) gridStore.extendFocus(props.tabId, 1, 0, t.rows.length, visibleColumns().length)
+			},
+		},
+		{
+			key: 'ArrowLeft',
+			shift: true,
+			handler(e) {
+				e.preventDefault()
+				const t = tab()
+				if (t) gridStore.extendFocus(props.tabId, 0, -1, t.rows.length, visibleColumns().length)
+			},
+		},
+		{
+			key: 'ArrowRight',
+			shift: true,
+			handler(e) {
+				e.preventDefault()
+				const t = tab()
+				if (t) gridStore.extendFocus(props.tabId, 0, 1, t.rows.length, visibleColumns().length)
+			},
+		},
+		{
+			key: 'Home',
+			handler(e) {
+				e.preventDefault()
+				const t = tab()
+				if (t) {
+					const focused = t.selection.focusedCell
+					gridStore.selectCell(props.tabId, focused?.row ?? 0, 0)
+				}
+			},
+		},
+		{
+			key: 'End',
+			handler(e) {
+				e.preventDefault()
+				const t = tab()
+				if (t) {
+					const focused = t.selection.focusedCell
+					gridStore.selectCell(props.tabId, focused?.row ?? 0, visibleColumns().length - 1)
+				}
+			},
+		},
+		{
+			key: 'Home',
+			ctrl: true,
+			handler(e) {
+				e.preventDefault()
+				gridStore.selectCell(props.tabId, 0, 0)
+			},
+		},
+		{
+			key: 'End',
+			ctrl: true,
+			handler(e) {
+				e.preventDefault()
+				const t = tab()
+				if (t) gridStore.selectCell(props.tabId, t.rows.length - 1, visibleColumns().length - 1)
+			},
+		},
+		{
+			key: 'Tab',
+			handler(e) {
+				e.preventDefault()
+				const t = tab()
+				if (t) gridStore.moveFocus(props.tabId, 0, 1, t.rows.length, visibleColumns().length)
+			},
+		},
+		{
+			key: 'Tab',
+			shift: true,
+			handler(e) {
+				e.preventDefault()
+				const t = tab()
+				if (t) gridStore.moveFocus(props.tabId, 0, -1, t.rows.length, visibleColumns().length)
 			},
 		},
 		{
@@ -736,7 +892,7 @@ export default function DataGrid(props: DataGridProps) {
 			handler(e) {
 				const t = tab()
 				if (t?.editingCell) return // Don't open detail while inline editing
-				if (t && t.selectedRows.size > 0) {
+				if (t && t.selection.ranges.length > 0) {
 					e.preventDefault()
 					openRowDetail()
 				}
@@ -847,7 +1003,7 @@ export default function DataGrid(props: DataGridProps) {
 			{
 				label: 'Row Detail',
 				action: () => {
-					gridStore.selectRow(props.tabId, rowIndex)
+					gridStore.selectFullRow(props.tabId, rowIndex, visibleColumns().length)
 					setRowDetailIndex(rowIndex)
 				},
 			},
@@ -874,7 +1030,7 @@ export default function DataGrid(props: DataGridProps) {
 			{
 				label: 'Delete Row',
 				action: () => {
-					gridStore.selectRow(props.tabId, rowIndex)
+					gridStore.selectFullRow(props.tabId, rowIndex, visibleColumns().length)
 					gridStore.deleteSelectedRows(props.tabId)
 				},
 				disabled: isDeleted || ro,
@@ -1270,6 +1426,14 @@ export default function DataGrid(props: DataGridProps) {
 													onToggleSort={handleToggleSort}
 													onResizeColumn={handleResizeColumn}
 													onHeaderContextMenu={handleHeaderContextMenu}
+													onSelectAll={() => {
+														const t = tab()
+														if (t) gridStore.selectAll(props.tabId, t.rows.length, visibleColumns().length)
+													}}
+													onColumnSelect={(colIndex) => {
+														const t = tab()
+														if (t) gridStore.selectFullColumn(props.tabId, colIndex, t.rows.length)
+													}}
 												/>
 
 												<VirtualScroller
@@ -1278,10 +1442,11 @@ export default function DataGrid(props: DataGridProps) {
 													columns={visibleColumns()}
 													columnConfig={tabState().columnConfig}
 													pinStyles={pinStyles()}
-													selectedRows={tabState().selectedRows}
+													selection={tabState().selection}
 													scrollMargin={HEADER_HEIGHT}
 													onRowClick={handleRowClick}
 													onRowDblClick={handleRowDblClick}
+													onRowNumberClick={handleRowNumberClick}
 													editingCell={tabState().editingCell}
 													getChangedCells={getChangedCells}
 													isRowDeleted={(idx) => gridStore.isRowDeleted(props.tabId, idx)}
@@ -1301,7 +1466,7 @@ export default function DataGrid(props: DataGridProps) {
 											rows={tabState().rows}
 											columns={visibleColumns()}
 											columnConfig={tabState().columnConfig}
-											selectedRows={tabState().selectedRows}
+											selection={tabState().selection}
 											onRowClick={handleRowClick}
 											onRowDblClick={handleRowDblClick}
 											editingCell={tabState().editingCell}
@@ -1334,9 +1499,14 @@ export default function DataGrid(props: DataGridProps) {
 								</div>
 							</div>
 
-							<Show when={tabState().valueEditorOpen && tabState().focusedCell}>
+							<Show when={tabState().valueEditorOpen && tabState().selection.focusedCell}>
 								{(_) => {
-									const focused = () => tabState().focusedCell!
+									const focusedSel = () => tabState().selection.focusedCell!
+									const focused = () => {
+										const fc = focusedSel()
+										const col = visibleColumns()[fc.col]
+										return { row: fc.row, column: col?.name ?? '' }
+									}
 									const col = () => visibleColumns().find((c) => c.name === focused().column) ?? tabState().columns.find((c) => c.name === focused().column)
 									const cellValue = () => tabState().rows[focused().row]?.[focused().column]
 									return (
@@ -1363,11 +1533,11 @@ export default function DataGrid(props: DataGridProps) {
 							</Show>
 						</div>
 
-						<Show when={tabState().selectedRows.size >= 2}>
+						<Show when={getSelectedRowIndices(tabState().selection).length >= 2}>
 							<div class="data-grid__selection-bar">
 								<div class="data-grid__selection-bar-info">
 									<Check size={12} />
-									<span>{tabState().selectedRows.size} rows selected</span>
+									<span>{getSelectedRowIndices(tabState().selection).length} rows selected</span>
 								</div>
 								<div class="data-grid__selection-bar-actions">
 									<Show when={!isReadOnly()}>
@@ -1583,7 +1753,7 @@ export default function DataGrid(props: DataGridProps) {
 							open={true}
 							tabId={props.tabId}
 							columns={t.columns}
-							selectedRows={t.selectedRows}
+							selectedRows={new Set(getSelectedRowIndices(t.selection))}
 							onClose={() => setShowBatchEdit(false)}
 						/>
 					)
@@ -1599,8 +1769,8 @@ export default function DataGrid(props: DataGridProps) {
 							parsedRows={preview().rows}
 							delimiter={preview().delimiter}
 							columns={visibleColumns()}
-							startColumn={t.focusedCell?.column ?? ''}
-							startRow={t.focusedCell?.row ?? 0}
+							startColumn={visibleColumns()[t.selection.focusedCell?.col ?? 0]?.name ?? ''}
+							startRow={t.selection.focusedCell?.row ?? 0}
 							totalExistingRows={t.rows.length}
 							onConfirm={handlePastePreviewConfirm}
 							onClose={() => setPastePreview(null)}

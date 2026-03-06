@@ -12,9 +12,11 @@ interface GridRowProps {
 	columns: GridColumnDef[]
 	columnConfig: Record<string, ColumnConfig>
 	pinStyles: Map<string, Record<string, string>>
-	selected: boolean
+	isCellSelected: (colIndex: number) => boolean
+	focusedColIndex: number | null
 	onClick: (index: number, e: MouseEvent) => void
 	onDblClick?: (index: number, e: MouseEvent) => void
+	onRowNumberClick?: (index: number, e: MouseEvent) => void
 	style?: Record<string, string>
 	editingCell?: EditingCell | null
 	changedCells?: Set<string>
@@ -42,11 +44,23 @@ export default function GridRow(props: GridRowProps) {
 		props.onDblClick?.(props.index, e)
 	}
 
+	function handleRowNumberClick(e: MouseEvent) {
+		e.stopPropagation()
+		props.onRowNumberClick?.(props.index, e)
+	}
+
+	// Check if any cell in this row is selected
+	const hasAnySelection = () => {
+		for (let i = 0; i < props.columns.length; i++) {
+			if (props.isCellSelected(i)) return true
+		}
+		return false
+	}
+
 	return (
 		<div
 			class="grid-row"
 			classList={{
-				'grid-row--selected': props.selected,
 				'grid-row--even': props.index % 2 === 0,
 				'grid-row--odd': props.index % 2 !== 0,
 				'grid-row--deleted': !!props.isDeleted,
@@ -57,12 +71,21 @@ export default function GridRow(props: GridRowProps) {
 			onClick={handleClick}
 			onDblClick={handleDblClick}
 		>
+			<div
+				class="grid-row-number"
+				classList={{ 'grid-row-number--selected': hasAnySelection() }}
+				onClick={handleRowNumberClick}
+			>
+				{props.index + 1}
+			</div>
 			<For each={props.columns}>
-				{(col) => {
+				{(col, colIdx) => {
 					const isEditing = () =>
 						props.editingCell?.row === props.index
 						&& props.editingCell?.column === col.name
 					const isChanged = () => props.changedCells?.has(col.name) ?? false
+					const isSelected = () => props.isCellSelected(colIdx())
+					const isFocused = () => props.focusedColIndex === colIdx()
 					const heatmapColor = () => {
 						const info = props.heatmapInfo?.get(col.name)
 						return info ? gridStore.computeHeatmapColor(props.row[col.name], info) : undefined
@@ -76,6 +99,8 @@ export default function GridRow(props: GridRowProps) {
 							pinStyle={props.pinStyles.get(col.name)}
 							editing={isEditing()}
 							changed={isChanged()}
+							selected={isSelected()}
+							focused={isFocused()}
 							deleted={props.isDeleted}
 							newRow={props.isNewRow}
 							fkTarget={props.fkMap?.get(col.name)}
