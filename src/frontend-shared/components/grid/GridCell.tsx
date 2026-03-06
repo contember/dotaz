@@ -26,7 +26,7 @@ interface GridCellProps {
 	onCancel?: () => void
 	onMoveNext?: () => void
 	onMoveDown?: () => void
-	onFkClick?: () => void
+	onFkClick?: (anchorEl: HTMLElement) => void
 }
 
 function formatTimestamp(value: unknown, fmt: DateFormat): string {
@@ -176,7 +176,7 @@ export default function GridCell(props: GridCellProps) {
 
 	function handleFkClick(e: MouseEvent) {
 		e.stopPropagation()
-		props.onFkClick?.()
+		props.onFkClick?.(e.currentTarget as HTMLElement)
 	}
 
 	return (

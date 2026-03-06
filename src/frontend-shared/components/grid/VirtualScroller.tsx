@@ -30,7 +30,7 @@ interface VirtualScrollerProps {
 	onCellCancel?: () => void
 	onCellMoveNext?: (rowIndex: number, column: string) => void
 	onCellMoveDown?: (rowIndex: number, column: string) => void
-	onFkClick?: (rowIndex: number, column: string) => void
+	onFkClick?: (rowIndex: number, column: string, anchorEl?: HTMLElement) => void
 }
 
 export default function VirtualScroller(props: VirtualScrollerProps) {
@@ -87,7 +87,7 @@ export default function VirtualScroller(props: VirtualScrollerProps) {
 							onCellCancel={props.onCellCancel}
 							onCellMoveNext={(col) => props.onCellMoveNext?.(virtualRow.index, col)}
 							onCellMoveDown={(col) => props.onCellMoveDown?.(virtualRow.index, col)}
-							onFkClick={(col) => props.onFkClick?.(virtualRow.index, col)}
+							onFkClick={(col, anchorEl) => props.onFkClick?.(virtualRow.index, col, anchorEl)}
 							style={{
 								position: 'absolute',
 								top: `${virtualRow.start - virtualizer.options.scrollMargin}px`,

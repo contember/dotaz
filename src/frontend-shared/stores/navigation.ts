@@ -1,12 +1,10 @@
 import { createSignal } from 'solid-js'
-import { gridStore } from './grid'
 import { tabsStore } from './tabs'
 
 // ── Types ────────────────────────────────────────────────
 
 interface NavigationEntry {
 	tabId: string
-	fkDepth: number
 }
 
 // ── State ────────────────────────────────────────────────
@@ -35,15 +33,11 @@ function updateSignals() {
 function getCurrentEntry(): NavigationEntry | null {
 	const tabId = tabsStore.activeTabId
 	if (!tabId) return null
-	const gridTab = gridStore.getTab(tabId)
-	return {
-		tabId,
-		fkDepth: gridTab?.fkNavigationHistory.length ?? 0,
-	}
+	return { tabId }
 }
 
 function entriesMatch(a: NavigationEntry, b: NavigationEntry): boolean {
-	return a.tabId === b.tabId && a.fkDepth === b.fkDepth
+	return a.tabId === b.tabId
 }
 
 function pushCurrent() {
@@ -76,20 +70,6 @@ async function navigateToEntry(entry: NavigationEntry) {
 	// Switch to the target tab if needed
 	if (tabsStore.activeTabId !== entry.tabId) {
 		tabsStore.setActiveTab(entry.tabId)
-	}
-
-	// Adjust FK depth
-	const gridTab = gridStore.getTab(entry.tabId)
-	if (gridTab) {
-		const currentDepth = gridTab.fkNavigationHistory.length
-		if (entry.fkDepth < currentDepth) {
-			// Need to go back in FK history
-			const stepsBack = currentDepth - entry.fkDepth
-			for (let i = 0; i < stepsBack; i++) {
-				await gridStore.navigateBack(entry.tabId)
-			}
-		}
-		// Note: if entry.fkDepth > currentDepth, FK forward state is lost (by design)
 	}
 }
 
@@ -176,7 +156,6 @@ function handleTabClosed(tabId: string) {
 // ── Register callbacks ───────────────────────────────────
 
 tabsStore.onBeforeTabChange(() => pushCurrent())
-gridStore.onBeforeFkNavigation(() => pushCurrent())
 
 // ── Lifecycle ────────────────────────────────────────────
 

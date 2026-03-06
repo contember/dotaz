@@ -5,7 +5,7 @@ import Check from 'lucide-solid/icons/check'
 import Pencil from 'lucide-solid/icons/pencil'
 import RotateCcw from 'lucide-solid/icons/rotate-ccw'
 import Save from 'lucide-solid/icons/save'
-import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, untrack } from 'solid-js'
+import { createEffect, createMemo, createSignal, onCleanup, onMount, Show, untrack } from 'solid-js'
 import type { ForeignKeyInfo } from '../../../shared/types/database'
 import type { ColumnFilter, GridColumnDef } from '../../../shared/types/grid'
 import type { SavedViewConfig } from '../../../shared/types/rpc'
@@ -32,6 +32,8 @@ import AdvancedCopyDialog from './AdvancedCopyDialog'
 import AggregatePanel from './AggregatePanel'
 import BatchEditDialog from './BatchEditDialog'
 import ColumnManager from './ColumnManager'
+import FkExplorationPanel from './FkExplorationPanel'
+import FkPeekPopover from './FkPeekPopover'
 import FilterBar from './FilterBar'
 import GridHeader from './GridHeader'
 import Pagination from './Pagination'
@@ -116,7 +118,6 @@ export default function DataGrid(props: DataGridProps) {
 	const tabInfo = () => tabsStore.openTabs.find((t) => t.id === props.tabId)
 	const isReadOnly = () => connectionsStore.isReadOnly(props.connectionId)
 
-	// Current schema/table from tab state (changes on FK navigation)
 	const currentSchema = () => tab()?.schema ?? props.schema
 	const currentTable = () => tab()?.table ?? props.table
 
@@ -241,14 +242,6 @@ export default function DataGrid(props: DataGridProps) {
 			connectionsStore.connectTo(props.connectionId)
 		}
 	})
-
-	// Reload FK info when the table changes (e.g. after FK navigation).
-	// defer: true skips the initial run (handled by the initial load effect above).
-	createEffect(on(
-		() => [currentSchema(), currentTable()] as const,
-		([schema, table]) => loadForeignKeys(schema, table),
-		{ defer: true },
-	))
 
 	function loadForeignKeys(schema: string, table: string) {
 		const fks = connectionsStore.getForeignKeys(
@@ -536,7 +529,7 @@ export default function DataGrid(props: DataGridProps) {
 
 	// ── FK navigation ─────────────────────────────────────
 
-	function handleFkClick(rowIndex: number, column: string) {
+	function handleFkClick(rowIndex: number, column: string, anchorEl?: HTMLElement) {
 		const t = tab()
 		if (!t) return
 		const target = fkMap().get(column)
@@ -544,25 +537,21 @@ export default function DataGrid(props: DataGridProps) {
 		const value = t.rows[rowIndex]?.[column]
 		if (value === null || value === undefined) return
 
-		gridStore.navigateToFkTarget(
+		// Get anchor rect for popover positioning
+		let anchorRect = { top: 200, left: 200, bottom: 220, right: 300 }
+		if (anchorEl) {
+			const r = anchorEl.getBoundingClientRect()
+			anchorRect = { top: r.top, left: r.left, bottom: r.bottom, right: r.right }
+		}
+
+		gridStore.openFkPeek(
 			props.tabId,
+			anchorRect,
 			target.schema,
 			target.table,
 			target.column,
 			value,
 		)
-		// Update tab title to reflect the current table
-		tabsStore.renameTab(props.tabId, target.table)
-	}
-
-	function handleFkBack() {
-		const t = tab()
-		if (!t || t.fkNavigationHistory.length === 0) return
-
-		const prev = t.fkNavigationHistory[t.fkNavigationHistory.length - 1]
-		gridStore.navigateBack(props.tabId)
-		// Restore tab title
-		tabsStore.renameTab(props.tabId, prev.table)
 	}
 
 	function handleDuplicateRow(rowIndex: number) {
@@ -1047,11 +1036,22 @@ export default function DataGrid(props: DataGridProps) {
 		if (fkTarget && value !== null && value !== undefined) {
 			items.push('separator')
 			items.push({
-				label: 'Go to referenced row',
+				label: 'Peek referenced row',
 				action: () => handleFkClick(rowIndex, column),
 			})
 			items.push({
-				label: `Open ${fkTarget.table}`,
+				label: `Open ${fkTarget.table} in Panel`,
+				action: () => {
+					gridStore.openFkPanel(
+						props.tabId,
+						fkTarget.schema,
+						fkTarget.table,
+						[{ column: fkTarget.column, operator: 'eq', value: String(value) }],
+					)
+				},
+			})
+			items.push({
+				label: `Open ${fkTarget.table} in Tab`,
 				action: () => {
 					tabsStore.openTab({
 						type: 'data-grid',
@@ -1161,31 +1161,6 @@ export default function DataGrid(props: DataGridProps) {
 			onKeyDown={handleKeyDown}
 			onContextMenu={handleGridContextMenu}
 		>
-			<Show when={tab()}>
-				{(tabState) => (
-					<Show when={tabState().fkNavigationHistory.length > 0}>
-						<div class="data-grid__breadcrumb">
-							<button
-								class="data-grid__breadcrumb-back"
-								onClick={handleFkBack}
-								title="Go back"
-							>
-								<Icon name="arrow-left" size={12} />
-							</button>
-							<For each={tabState().fkNavigationHistory}>
-								{(entry) => (
-									<>
-										<span class="data-grid__breadcrumb-item">{entry.table}</span>
-										<span class="data-grid__breadcrumb-sep">&#8250;</span>
-									</>
-								)}
-							</For>
-							<span class="data-grid__breadcrumb-current">{currentTable()}</span>
-						</div>
-					</Show>
-				)}
-			</Show>
-
 			<div class="data-grid__toolbar">
 				<Show when={tab()}>
 					{(tabState) => (
@@ -1531,6 +1506,23 @@ export default function DataGrid(props: DataGridProps) {
 									)
 								}}
 							</Show>
+
+							<Show when={tabState().fkPanel}>
+								{(panel) => (
+									<FkExplorationPanel
+										panel={panel()}
+										onClose={() => gridStore.closeFkPanel(props.tabId)}
+										onNavigate={(schema, table, column, value) => {
+											gridStore.fkPanelNavigate(props.tabId, schema, table, column, value)
+										}}
+										onBack={() => gridStore.fkPanelBack(props.tabId)}
+										onResize={(delta) => {
+											gridStore.fkPanelResize(props.tabId, (panel().width ?? 500) + delta)
+										}}
+										onPageChange={(page) => gridStore.fkPanelSetPage(props.tabId, page)}
+									/>
+								)}
+							</Show>
 						</div>
 
 						<Show when={getSelectedRowIndices(tabState().selection).length >= 2}>
@@ -1641,6 +1633,53 @@ export default function DataGrid(props: DataGridProps) {
 				<div class="data-grid__copy-toast">{copyFeedback()}</div>
 			</Show>
 
+			<Show when={tab()?.fkPeek}>
+				{(peek) => (
+					<FkPeekPopover
+						peek={peek()}
+						onClose={() => gridStore.closeFkPeek(props.tabId)}
+						onNavigate={(schema, table, column, value) => {
+							gridStore.fkPeekNavigate(props.tabId, schema, table, column, value)
+						}}
+						onBack={() => gridStore.fkPeekBack(props.tabId)}
+						onOpenInPanel={() => {
+							const p = peek()
+							const bc = p.breadcrumbs[p.breadcrumbs.length - 1]
+							if (!bc) return
+							gridStore.openFkPanel(
+								props.tabId,
+								p.schema,
+								p.table,
+								[{ column: bc.column, operator: 'eq' as const, value: String(bc.value) }],
+							)
+						}}
+						onOpenInTab={() => {
+							const p = peek()
+							const bc = p.breadcrumbs[p.breadcrumbs.length - 1]
+							if (!bc) return
+							const newTabId = tabsStore.openTab({
+								type: 'data-grid',
+								title: p.table,
+								connectionId: props.connectionId,
+								schema: p.schema,
+								table: p.table,
+								database: props.database,
+							})
+							gridStore.closeFkPeek(props.tabId)
+							gridStore.loadTableData(
+								newTabId,
+								props.connectionId,
+								p.schema,
+								p.table,
+								props.database,
+							).then(() => {
+								gridStore.setFilter(newTabId, { column: bc.column, operator: 'eq', value: String(bc.value) })
+							})
+						}}
+					/>
+				)}
+			</Show>
+
 			<Show when={rowDetailIndex() !== null}>
 				{(_) => {
 					const t = tab()!
@@ -1662,13 +1701,7 @@ export default function DataGrid(props: DataGridProps) {
 							onNavigate={handleRowDetailNavigate}
 							onNavigateToTable={(schema, table, filters) => {
 								setRowDetailIndex(null)
-								gridStore.navigateToTableWithFilters(
-									props.tabId,
-									schema,
-									table,
-									filters,
-								)
-								tabsStore.renameTab(props.tabId, table)
+								gridStore.openFkPanel(props.tabId, schema, table, filters)
 							}}
 						/>
 					)

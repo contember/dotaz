@@ -1,5 +1,6 @@
 import { createStore } from 'solid-js/store'
 import { buildCountQuery, buildQuickSearchClause, buildSelectQuery, generateChangesPreview, generateChangeSql } from '../../shared/sql'
+import type { ForeignKeyInfo } from '../../shared/types/database'
 import type { ColumnFilter, GridColumnDef, SortColumn } from '../../shared/types/grid'
 import type { DataChange, SavedViewConfig } from '../../shared/types/rpc'
 import { isNumericType } from '../lib/column-types'
@@ -114,22 +115,47 @@ export interface PendingChanges {
 	deletedRows: Set<number>
 }
 
-/** A snapshot of the table state for FK back-navigation. */
-export interface FkNavigationEntry {
-	schema: string
-	table: string
-	database?: string
-	filters: ColumnFilter[]
-	sort: SortColumn[]
-	columnConfig: Record<string, ColumnConfig>
-	columnOrder: string[]
-}
-
 /** FK target info for a single-column foreign key. */
 export interface FkTarget {
 	schema: string
 	table: string
 	column: string
+}
+
+/** Breadcrumb entry for FK peek/panel navigation. */
+export interface FkBreadcrumb {
+	schema: string
+	table: string
+	column: string
+	value: unknown
+}
+
+/** State for the FK peek popover. */
+export interface FkPeekState {
+	anchorRect: { top: number; left: number; bottom: number; right: number }
+	rows: Record<string, unknown>[]
+	columns: GridColumnDef[]
+	breadcrumbs: FkBreadcrumb[]
+	foreignKeys: ForeignKeyInfo[]
+	schema: string
+	table: string
+	loading: boolean
+}
+
+/** State for the FK exploration panel. */
+export interface FkPanelState {
+	width: number
+	schema: string
+	table: string
+	filters: ColumnFilter[]
+	rows: Record<string, unknown>[]
+	columns: GridColumnDef[]
+	breadcrumbs: FkBreadcrumb[]
+	foreignKeys: ForeignKeyInfo[]
+	totalCount: number
+	currentPage: number
+	pageSize: number
+	loading: boolean
 }
 
 export interface TabGridState {
@@ -156,7 +182,8 @@ export interface TabGridState {
 	fetchDuration: number | null
 	activeViewId: string | null
 	activeViewName: string | null
-	fkNavigationHistory: FkNavigationEntry[]
+	fkPeek: FkPeekState | null
+	fkPanel: FkPanelState | null
 	transposed: boolean
 	valueEditorOpen: boolean
 	valueEditorWidth: number
@@ -201,7 +228,8 @@ function createDefaultTabState(
 		fetchDuration: null,
 		activeViewId: null,
 		activeViewName: null,
-		fkNavigationHistory: [],
+		fkPeek: null,
+		fkPanel: null,
 		transposed: false,
 		valueEditorOpen: false,
 		valueEditorWidth: 350,
@@ -218,13 +246,6 @@ interface GridStoreState {
 const [state, setState] = createStore<GridStoreState>({
 	tabs: {},
 })
-
-/** Callbacks invoked before FK navigation (for navigation history). */
-const beforeFkNavigationCallbacks: ((tabId: string) => void)[] = []
-
-function onBeforeFkNavigation(cb: (tabId: string) => void) {
-	beforeFkNavigationCallbacks.push(cb)
-}
 
 // ── Internal helpers ─────────────────────────────────────
 
@@ -1315,116 +1336,319 @@ function captureViewConfig(tabId: string): SavedViewConfig {
 	}
 }
 
-// ── FK navigation actions ─────────────────────────────────
+// ── FK Peek popover actions ───────────────────────────────
 
-async function navigateToFkTarget(
+async function fetchFkRowData(
+	connectionId: string,
+	schema: string,
+	table: string,
+	column: string,
+	value: unknown,
+	database?: string,
+): Promise<{ rows: Record<string, unknown>[]; columns: GridColumnDef[]; foreignKeys: ForeignKeyInfo[] }> {
+	const dialect = connectionsStore.getDialect(connectionId)
+	const filters: ColumnFilter[] = [{ column, operator: 'eq', value: String(value) }]
+
+	const cachedColumns = connectionsStore.getColumns(connectionId, schema, table, database)
+	const gridColumns: GridColumnDef[] = cachedColumns.map((c) => ({
+		name: c.name,
+		dataType: c.dataType,
+		nullable: c.nullable,
+		isPrimaryKey: c.isPrimaryKey,
+	}))
+
+	const selectQuery = buildSelectQuery(schema, table, 1, 50, undefined, filters, dialect)
+	const results = await rpc.query.execute({
+		connectionId,
+		sql: selectQuery.sql,
+		queryId: `fk-peek-${schema}-${table}-${column}`,
+		params: selectQuery.params,
+		database,
+	})
+
+	const foreignKeys = connectionsStore.getForeignKeys(connectionId, schema, table, database)
+
+	return {
+		rows: results[0]?.rows ?? [],
+		columns: gridColumns,
+		foreignKeys,
+	}
+}
+
+async function openFkPeek(
 	tabId: string,
-	targetSchema: string,
-	targetTable: string,
-	targetColumn: string,
+	anchorRect: { top: number; left: number; bottom: number; right: number },
+	schema: string,
+	table: string,
+	column: string,
 	value: unknown,
 ) {
-	for (const cb of beforeFkNavigationCallbacks) cb(tabId)
 	const tab = ensureTab(tabId)
 
-	// Push current state to navigation history
-	const entry: FkNavigationEntry = {
-		schema: tab.schema,
-		table: tab.table,
-		database: tab.database,
-		filters: [...tab.filters],
-		sort: [...tab.sort],
-		columnConfig: { ...tab.columnConfig },
-		columnOrder: [...tab.columnOrder],
+	setState('tabs', tabId, 'fkPeek', {
+		anchorRect,
+		rows: [],
+		columns: [],
+		breadcrumbs: [],
+		foreignKeys: [],
+		schema,
+		table,
+		loading: true,
+	})
+
+	try {
+		const data = await fetchFkRowData(tab.connectionId, schema, table, column, value, tab.database)
+		// Check peek is still open (user might have closed it)
+		if (!state.tabs[tabId]?.fkPeek) return
+		setState('tabs', tabId, 'fkPeek', {
+			anchorRect,
+			rows: data.rows,
+			columns: data.columns,
+			breadcrumbs: [{ schema, table, column, value }],
+			foreignKeys: data.foreignKeys,
+			schema,
+			table,
+			loading: false,
+		})
+	} catch {
+		setState('tabs', tabId, 'fkPeek', null)
 	}
-	setState('tabs', tabId, 'fkNavigationHistory', [...tab.fkNavigationHistory, entry])
-
-	// Navigate to target table with filter
-	setState('tabs', tabId, 'schema', targetSchema)
-	setState('tabs', tabId, 'table', targetTable)
-	setState('tabs', tabId, 'filters', [
-		{ column: targetColumn, operator: 'eq', value: String(value) },
-	])
-	setState('tabs', tabId, 'sort', [])
-	setState('tabs', tabId, 'customFilter', '')
-	setState('tabs', tabId, 'quickSearch', '')
-	setState('tabs', tabId, 'columnConfig', {})
-	setState('tabs', tabId, 'columnOrder', [])
-	setState('tabs', tabId, 'currentPage', 1)
-	setState('tabs', tabId, 'selection', createDefaultSelection())
-	setState('tabs', tabId, 'editingCell', null)
-	setState('tabs', tabId, 'pendingChanges', createDefaultPendingChanges())
-	setState('tabs', tabId, 'activeViewId', null)
-	setState('tabs', tabId, 'activeViewName', null)
-
-	await fetchData(tabId)
 }
 
-async function navigateToTableWithFilters(
+function closeFkPeek(tabId: string) {
+	ensureTab(tabId)
+	setState('tabs', tabId, 'fkPeek', null)
+}
+
+async function fkPeekNavigate(
 	tabId: string,
-	targetSchema: string,
-	targetTable: string,
+	schema: string,
+	table: string,
+	column: string,
+	value: unknown,
+) {
+	const tab = ensureTab(tabId)
+	const peek = tab.fkPeek
+	if (!peek) return
+
+	const newBreadcrumbs = [...peek.breadcrumbs, { schema, table, column, value }]
+	setState('tabs', tabId, 'fkPeek', {
+		...peek,
+		loading: true,
+		breadcrumbs: newBreadcrumbs,
+	})
+
+	try {
+		const data = await fetchFkRowData(tab.connectionId, schema, table, column, value, tab.database)
+		if (!state.tabs[tabId]?.fkPeek) return
+		setState('tabs', tabId, 'fkPeek', {
+			anchorRect: peek.anchorRect,
+			rows: data.rows,
+			columns: data.columns,
+			breadcrumbs: newBreadcrumbs,
+			foreignKeys: data.foreignKeys,
+			schema,
+			table,
+			loading: false,
+		})
+	} catch {
+		setState('tabs', tabId, 'fkPeek', null)
+	}
+}
+
+function fkPeekBack(tabId: string) {
+	const tab = ensureTab(tabId)
+	const peek = tab.fkPeek
+	if (!peek || peek.breadcrumbs.length <= 1) return
+
+	const prevBreadcrumbs = peek.breadcrumbs.slice(0, -1)
+	const prev = prevBreadcrumbs[prevBreadcrumbs.length - 1]
+
+	// Re-fetch the previous breadcrumb's data
+	setState('tabs', tabId, 'fkPeek', {
+		...peek,
+		loading: true,
+		breadcrumbs: prevBreadcrumbs,
+	})
+
+	fetchFkRowData(tab.connectionId, prev.schema, prev.table, prev.column, prev.value, tab.database)
+		.then((data) => {
+			if (!state.tabs[tabId]?.fkPeek) return
+			setState('tabs', tabId, 'fkPeek', {
+				anchorRect: peek.anchorRect,
+				rows: data.rows,
+				columns: data.columns,
+				breadcrumbs: prevBreadcrumbs,
+				foreignKeys: data.foreignKeys,
+				schema: prev.schema,
+				table: prev.table,
+				loading: false,
+			})
+		})
+		.catch(() => {
+			setState('tabs', tabId, 'fkPeek', null)
+		})
+}
+
+// ── FK Exploration panel actions ──────────────────────────
+
+async function openFkPanel(
+	tabId: string,
+	schema: string,
+	table: string,
 	filters: ColumnFilter[],
 ) {
-	for (const cb of beforeFkNavigationCallbacks) cb(tabId)
 	const tab = ensureTab(tabId)
 
-	const entry: FkNavigationEntry = {
-		schema: tab.schema,
-		table: tab.table,
-		database: tab.database,
-		filters: [...tab.filters],
-		sort: [...tab.sort],
-		columnConfig: { ...tab.columnConfig },
-		columnOrder: [...tab.columnOrder],
+	// Close value editor if open (mutually exclusive)
+	if (tab.valueEditorOpen) {
+		setState('tabs', tabId, 'valueEditorOpen', false)
 	}
-	setState('tabs', tabId, 'fkNavigationHistory', [...tab.fkNavigationHistory, entry])
+	// Close peek if open
+	setState('tabs', tabId, 'fkPeek', null)
 
-	setState('tabs', tabId, 'schema', targetSchema)
-	setState('tabs', tabId, 'table', targetTable)
-	setState('tabs', tabId, 'filters', filters)
-	setState('tabs', tabId, 'sort', [])
-	setState('tabs', tabId, 'customFilter', '')
-	setState('tabs', tabId, 'quickSearch', '')
-	setState('tabs', tabId, 'columnConfig', {})
-	setState('tabs', tabId, 'columnOrder', [])
-	setState('tabs', tabId, 'currentPage', 1)
-	setState('tabs', tabId, 'selection', createDefaultSelection())
-	setState('tabs', tabId, 'editingCell', null)
-	setState('tabs', tabId, 'pendingChanges', createDefaultPendingChanges())
-	setState('tabs', tabId, 'activeViewId', null)
-	setState('tabs', tabId, 'activeViewName', null)
+	const breadcrumb: FkBreadcrumb = {
+		schema,
+		table,
+		column: filters[0]?.column ?? '',
+		value: filters[0]?.value,
+	}
 
-	await fetchData(tabId)
+	setState('tabs', tabId, 'fkPanel', {
+		width: tab.fkPanel?.width ?? 500,
+		schema,
+		table,
+		filters,
+		rows: [],
+		columns: [],
+		breadcrumbs: [breadcrumb],
+		foreignKeys: [],
+		totalCount: 0,
+		currentPage: 1,
+		pageSize: 100,
+		loading: true,
+	})
+
+	await fetchFkPanelData(tabId)
 }
 
-async function navigateBack(tabId: string) {
+async function fetchFkPanelData(tabId: string) {
 	const tab = ensureTab(tabId)
-	if (tab.fkNavigationHistory.length === 0) return
-	for (const cb of beforeFkNavigationCallbacks) cb(tabId)
+	const panel = tab.fkPanel
+	if (!panel) return
 
-	const history = [...tab.fkNavigationHistory]
-	const entry = history.pop()!
-	setState('tabs', tabId, 'fkNavigationHistory', history)
+	try {
+		const dialect = connectionsStore.getDialect(tab.connectionId)
+		const cachedColumns = connectionsStore.getColumns(tab.connectionId, panel.schema, panel.table, tab.database)
+		const gridColumns: GridColumnDef[] = cachedColumns.map((c) => ({
+			name: c.name,
+			dataType: c.dataType,
+			nullable: c.nullable,
+			isPrimaryKey: c.isPrimaryKey,
+		}))
 
-	// Restore previous state
-	setState('tabs', tabId, 'schema', entry.schema)
-	setState('tabs', tabId, 'table', entry.table)
-	setState('tabs', tabId, 'database', entry.database)
-	setState('tabs', tabId, 'filters', entry.filters)
-	setState('tabs', tabId, 'sort', entry.sort)
-	setState('tabs', tabId, 'columnConfig', entry.columnConfig)
-	setState('tabs', tabId, 'columnOrder', entry.columnOrder)
-	setState('tabs', tabId, 'customFilter', '')
-	setState('tabs', tabId, 'quickSearch', '')
-	setState('tabs', tabId, 'currentPage', 1)
-	setState('tabs', tabId, 'selection', createDefaultSelection())
-	setState('tabs', tabId, 'editingCell', null)
-	setState('tabs', tabId, 'pendingChanges', createDefaultPendingChanges())
-	setState('tabs', tabId, 'activeViewId', null)
-	setState('tabs', tabId, 'activeViewName', null)
+		const filters = panel.filters.length > 0 ? panel.filters : undefined
+		const selectQuery = buildSelectQuery(panel.schema, panel.table, panel.currentPage, panel.pageSize, undefined, filters, dialect)
+		const countQuery = buildCountQuery(panel.schema, panel.table, filters, dialect)
 
-	await fetchData(tabId)
+		const [dataResults, countResults] = await Promise.all([
+			rpc.query.execute({
+				connectionId: tab.connectionId,
+				sql: selectQuery.sql,
+				queryId: `fk-panel-${tabId}`,
+				params: selectQuery.params,
+				database: tab.database,
+			}),
+			rpc.query.execute({
+				connectionId: tab.connectionId,
+				sql: countQuery.sql,
+				queryId: `fk-panel-count-${tabId}`,
+				params: countQuery.params,
+				database: tab.database,
+			}),
+		])
+
+		if (!state.tabs[tabId]?.fkPanel) return
+		const foreignKeys = connectionsStore.getForeignKeys(tab.connectionId, panel.schema, panel.table, tab.database)
+
+		setState('tabs', tabId, 'fkPanel', {
+			...panel,
+			rows: dataResults[0]?.rows ?? [],
+			columns: gridColumns,
+			totalCount: Number(countResults[0]?.rows[0]?.count ?? 0),
+			foreignKeys,
+			loading: false,
+		})
+	} catch {
+		setState('tabs', tabId, 'fkPanel', null)
+	}
+}
+
+function closeFkPanel(tabId: string) {
+	ensureTab(tabId)
+	setState('tabs', tabId, 'fkPanel', null)
+}
+
+async function fkPanelNavigate(
+	tabId: string,
+	schema: string,
+	table: string,
+	column: string,
+	value: unknown,
+) {
+	const tab = ensureTab(tabId)
+	const panel = tab.fkPanel
+	if (!panel) return
+
+	const newFilters: ColumnFilter[] = [{ column, operator: 'eq', value: String(value) }]
+	const newBreadcrumbs = [...panel.breadcrumbs, { schema, table, column, value }]
+
+	setState('tabs', tabId, 'fkPanel', {
+		...panel,
+		schema,
+		table,
+		filters: newFilters,
+		breadcrumbs: newBreadcrumbs,
+		currentPage: 1,
+		loading: true,
+	})
+
+	await fetchFkPanelData(tabId)
+}
+
+async function fkPanelBack(tabId: string) {
+	const tab = ensureTab(tabId)
+	const panel = tab.fkPanel
+	if (!panel || panel.breadcrumbs.length <= 1) return
+
+	const prevBreadcrumbs = panel.breadcrumbs.slice(0, -1)
+	const prev = prevBreadcrumbs[prevBreadcrumbs.length - 1]
+
+	setState('tabs', tabId, 'fkPanel', {
+		...panel,
+		schema: prev.schema,
+		table: prev.table,
+		filters: [{ column: prev.column, operator: 'eq', value: String(prev.value) }],
+		breadcrumbs: prevBreadcrumbs,
+		currentPage: 1,
+		loading: true,
+	})
+
+	await fetchFkPanelData(tabId)
+}
+
+function fkPanelResize(tabId: string, width: number) {
+	const tab = ensureTab(tabId)
+	if (!tab.fkPanel) return
+	setState('tabs', tabId, 'fkPanel', 'width', Math.min(1200, Math.max(250, width)))
+}
+
+async function fkPanelSetPage(tabId: string, page: number) {
+	const tab = ensureTab(tabId)
+	if (!tab.fkPanel) return
+	setState('tabs', tabId, 'fkPanel', 'currentPage', page)
+	setState('tabs', tabId, 'fkPanel', 'loading', true)
+	await fetchFkPanelData(tabId)
 }
 
 function toggleTranspose(tabId: string) {
@@ -1434,6 +1658,10 @@ function toggleTranspose(tabId: string) {
 
 function toggleValueEditor(tabId: string) {
 	const tab = ensureTab(tabId)
+	// Close FK panel if opening value editor (mutually exclusive)
+	if (!tab.valueEditorOpen && tab.fkPanel) {
+		setState('tabs', tabId, 'fkPanel', null)
+	}
 	setState('tabs', tabId, 'valueEditorOpen', !tab.valueEditorOpen)
 }
 
@@ -1578,11 +1806,19 @@ export const gridStore = {
 	toggleValueEditor,
 	setValueEditorWidth,
 
-	// FK navigation
-	navigateToFkTarget,
-	navigateToTableWithFilters,
-	navigateBack,
-	onBeforeFkNavigation,
+	// FK peek popover
+	openFkPeek,
+	closeFkPeek,
+	fkPeekNavigate,
+	fkPeekBack,
+
+	// FK exploration panel
+	openFkPanel,
+	closeFkPanel,
+	fkPanelNavigate,
+	fkPanelBack,
+	fkPanelResize,
+	fkPanelSetPage,
 
 	// Saved views
 	setActiveView,
