@@ -191,6 +191,37 @@
 	color: var(--accent-hover);
 }
 
+.fk-peek__field-actions {
+	display: flex;
+	gap: 2px;
+	flex-shrink: 0;
+	opacity: 0;
+	margin-left: auto;
+}
+
+.fk-peek__field:hover .fk-peek__field-actions {
+	opacity: 1;
+}
+
+.fk-peek__filter-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	background: none;
+	border: 1px solid var(--edge);
+	border-radius: var(--radius-sm);
+	color: var(--ink-muted);
+	cursor: pointer;
+	padding: 0;
+}
+
+.fk-peek__filter-btn:hover {
+	color: var(--ink);
+	background: var(--surface-hover);
+}
+
 .fk-peek__actions {
 	display: flex;
 	gap: var(--spacing-xs);

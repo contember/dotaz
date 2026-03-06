@@ -1,5 +1,7 @@
 import ChevronLeft from 'lucide-solid/icons/chevron-left'
 import ExternalLink from 'lucide-solid/icons/external-link'
+import FilterIcon from 'lucide-solid/icons/funnel'
+import FilterXIcon from 'lucide-solid/icons/funnel-x'
 import PanelRightOpen from 'lucide-solid/icons/panel-right-open'
 import X from 'lucide-solid/icons/x'
 import { createEffect, For, onCleanup, Show } from 'solid-js'
@@ -14,6 +16,7 @@ interface FkPeekPopoverProps {
 	onBack: () => void
 	onOpenInPanel: () => void
 	onOpenInTab: () => void
+	onFilter?: (column: string, value: unknown, exclude: boolean) => void
 }
 
 function buildFkLookup(foreignKeys: ForeignKeyInfo[]): Map<string, { schema: string; table: string; column: string }> {
@@ -177,6 +180,24 @@ export default function FkPeekPopover(props: FkPeekPopoverProps) {
 									>
 										{formatDisplayValue(value())}
 									</span>
+									<Show when={props.onFilter}>
+										<span class="fk-peek__field-actions">
+											<button
+												class="fk-peek__filter-btn"
+												title={`Filter: ${col.name} = ${formatDisplayValue(value())}`}
+												onClick={() => props.onFilter!(col.name, value(), false)}
+											>
+												<FilterIcon size={10} />
+											</button>
+											<button
+												class="fk-peek__filter-btn"
+												title={`Filter: ${col.name} != ${formatDisplayValue(value())}`}
+												onClick={() => props.onFilter!(col.name, value(), true)}
+											>
+												<FilterXIcon size={10} />
+											</button>
+										</span>
+									</Show>
 								</div>
 							)
 						}}
