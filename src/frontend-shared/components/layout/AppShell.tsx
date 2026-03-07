@@ -43,6 +43,7 @@ import DataGrid from '../grid/DataGrid'
 import QueryHistory from '../history/QueryHistory'
 import SchemaViewer from '../schema/SchemaViewer'
 import DatabaseSearchDialog from '../search/DatabaseSearchDialog'
+import appIcon from '../../../../assets/icon.png'
 import Resizer from './Resizer'
 import Sidebar, { SidebarExpandButton } from './Sidebar'
 import type { TabStatus } from './TabBar'
@@ -1038,7 +1039,7 @@ export default function AppShell() {
 					<main class="main-content">
 						<Show when={tabsStore.openTabs.length === 0}>
 							<div class="welcome-screen">
-								<Icon name="database" size={40} class="welcome-screen__icon" />
+								<img src={appIcon} alt="Dotaz" class="welcome-screen__icon" />
 								<h2 class="welcome-screen__title">Dotaz</h2>
 								<p class="welcome-screen__subtitle">
 									Open a connection and select a table to get started.

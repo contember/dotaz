@@ -37,6 +37,8 @@
 }
 
 .welcome-screen__icon {
+	width: 48px;
+	height: 48px;
 	opacity: 0.3;
 	margin-bottom: var(--spacing-sm);
 }
