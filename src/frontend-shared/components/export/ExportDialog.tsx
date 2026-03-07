@@ -7,7 +7,7 @@ import type { CsvDelimiter, CsvEncoding, ExportFormat, ExportPreviewRequest } fr
 import type { ColumnFilter, SortColumn } from '../../../shared/types/grid'
 import { getCapabilities } from '../../lib/capabilities'
 import { formatPreview } from '../../lib/export-formatters'
-import { formatFileSize, formatNumber } from '../../lib/format-utils'
+import { formatFileSize, formatNumber } from '../../lib/value-format'
 import { rpc } from '../../lib/rpc'
 import { transport } from '../../lib/transport'
 import { gridStore } from '../../stores/grid'
