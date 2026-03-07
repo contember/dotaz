@@ -1,0 +1,81 @@
+<p align="center">
+  <img src="assets/icon.png" alt="Dotaz" width="128" height="128">
+</p>
+
+<h1 align="center">Dotaz</h1>
+
+<p align="center">
+  A fast, lightweight database client for PostgreSQL and SQLite.<br>
+  Browse, edit, and query your data. No DDL, no bloat — just data.
+</p>
+
+<p align="center">
+  <strong>Preview</strong> — Dotaz is under active development. No pre-built packages yet — build from source to try it out.<br>
+  <a href="https://contember.github.io/dotaz/">Try the live demo</a> (runs entirely in your browser)
+</p>
+
+---
+
+## What is Dotaz?
+
+Dotaz is a database client that gets out of your way. It focuses on what you do most — looking at data, editing rows, and running queries. It deliberately skips schema management (CREATE TABLE, ALTER, migrations) to keep things simple and fast.
+
+It runs in three modes:
+
+| Mode | How it works |
+|------|-------------|
+| **Desktop** | Native app via [Electrobun](https://electrobun.dev/) — Bun backend with a system webview |
+| **Web** | Bun HTTP/WebSocket server with a browser frontend |
+| **Demo** | Fully in-browser with WASM SQLite — no server, no setup |
+
+## Features
+
+**Data grid** — Virtualized scrolling for large tables. Sort, filter (including raw WHERE), paginate, transpose, reorder columns, aggregate over selections (COUNT, SUM, AVG, MIN, MAX), and copy anything.
+
+**Inline editing** — Edit cells directly in the grid or open a row detail panel. Batch edit multiple rows. Insert, delete, review all pending changes before committing. Foreign key picker for related records.
+
+**SQL editor** — Full CodeMirror editor with syntax highlighting, autocomplete, multi-statement execution, and EXPLAIN plan visualization. AI-assisted SQL generation from plain text. Transaction support with commit/rollback and a change log. Warns you before running destructive queries.
+
+**Export & import** — Export to CSV, JSON, SQL INSERT, SQL UPDATE, Markdown, HTML, or XML. Configurable delimiters, encoding, and BOM. Preview before saving. Import from CSV and JSON.
+
+**Navigation** — Connection tree with databases, schemas, and tables. Schema viewer showing columns, indexes, and foreign keys. Command palette, query history, saved views, bookmarks, cross-table search. Dark theme throughout.
+
+## Getting started
+
+Requirements: [Bun](https://bun.sh/) v1.1+
+
+```bash
+git clone https://github.com/contember/dotaz.git
+cd dotaz
+bun install
+```
+
+Then pick a mode:
+
+```bash
+# Desktop (Electrobun) — Linux only for now
+bun run dev
+
+# Web
+bun run dev:web
+
+# Demo (browser-only, no server)
+bun run dev:demo
+```
+
+### Running tests
+
+```bash
+# SQLite (no setup needed)
+bun test
+
+# PostgreSQL (needs Docker)
+docker compose up -d
+bun test tests/pg-smoke.test.ts
+```
+
+## License
+
+MIT — see [LICENSE](LICENSE)
+
+Copyright (c) 2025 [Contember Limited](https://www.contember.com/)
