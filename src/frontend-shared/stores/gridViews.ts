@@ -25,6 +25,7 @@ export function createGridViewActions(
 	async function applyViewConfig(tabId: string, config: SavedViewConfig) {
 		const tab = ensureTab(tabId)
 
+		setState('tabs', tabId, 'autoJoins', config.autoJoins ?? [])
 		setState('tabs', tabId, 'sort', config.sort ?? [])
 
 		setState('tabs', tabId, 'filters', config.filters ?? [])
@@ -53,6 +54,7 @@ export function createGridViewActions(
 
 	async function resetToDefault(tabId: string) {
 		ensureTab(tabId)
+		setState('tabs', tabId, 'autoJoins', [])
 		setState('tabs', tabId, 'sort', [])
 		setState('tabs', tabId, 'filters', [])
 		setState('tabs', tabId, 'customFilter', '')
@@ -106,6 +108,11 @@ export function createGridViewActions(
 		const savedRules = JSON.stringify(savedConfig.rowColorRules ?? [])
 		if (currentRules !== savedRules) return true
 
+		// Compare auto-joins
+		const currentJoins = JSON.stringify(tab.autoJoins)
+		const savedJoins = JSON.stringify(savedConfig.autoJoins ?? [])
+		if (currentJoins !== savedJoins) return true
+
 		return false
 	}
 
@@ -126,6 +133,7 @@ export function createGridViewActions(
 			columnWidths: Object.keys(columnWidths).length > 0 ? columnWidths : undefined,
 			customFilter: tab.customFilter || undefined,
 			rowColorRules: tab.rowColorRules.length > 0 ? [...tab.rowColorRules] : undefined,
+			autoJoins: tab.autoJoins.length > 0 ? [...tab.autoJoins] : undefined,
 		}
 	}
 
