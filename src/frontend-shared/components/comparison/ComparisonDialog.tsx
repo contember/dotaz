@@ -5,8 +5,8 @@ import type { ColumnInfo, SchemaData } from '../../../shared/types/database'
 import { rpc } from '../../lib/rpc'
 import { connectionsStore } from '../../stores/connections'
 import Dialog from '../common/Dialog'
-import Select from '../common/Select'
 import Icon from '../common/Icon'
+import Select from '../common/Select'
 import './ComparisonDialog.css'
 
 interface ComparisonDialogProps {

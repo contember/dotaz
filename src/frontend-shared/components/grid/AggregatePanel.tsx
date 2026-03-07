@@ -87,15 +87,19 @@ export default function AggregatePanel(props: AggregatePanelProps) {
 
 	const hasAnyData = createMemo(() => aggregates().some((a) => a.count > 0))
 
-	const filteredAggregates = createMemo(() => aggregates().filter((agg) => {
-		const col = props.visibleColumns.find((c) => c.name === agg.column)
-		return col && agg.count > 0
-	}))
+	const filteredAggregates = createMemo(() =>
+		aggregates().filter((agg) => {
+			const col = props.visibleColumns.find((c) => c.name === agg.column)
+			return col && agg.count > 0
+		})
+	)
 
-	const hasNumeric = createMemo(() => filteredAggregates().some((agg) => {
-		const col = props.visibleColumns.find((c) => c.name === agg.column)
-		return col && isNumericType(col.dataType)
-	}))
+	const hasNumeric = createMemo(() =>
+		filteredAggregates().some((agg) => {
+			const col = props.visibleColumns.find((c) => c.name === agg.column)
+			return col && isNumericType(col.dataType)
+		})
+	)
 
 	return (
 		<Show when={hasAnyData()}>

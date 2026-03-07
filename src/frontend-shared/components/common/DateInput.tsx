@@ -62,7 +62,9 @@ export default function DateInput(props: DateInputProps) {
 		const p = parsed()
 		if (!p) return props.value
 		if (isDateTime()) {
-			return `${formatDate(p.year, p.month, p.day)} ${String(p.hours).padStart(2, '0')}:${String(p.minutes).padStart(2, '0')}:${String(p.seconds).padStart(2, '0')}`
+			return `${formatDate(p.year, p.month, p.day)} ${String(p.hours).padStart(2, '0')}:${String(p.minutes).padStart(2, '0')}:${
+				String(p.seconds).padStart(2, '0')
+			}`
 		}
 		return formatDate(p.year, p.month, p.day)
 	}

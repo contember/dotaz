@@ -758,7 +758,15 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 									connectionColor={conn.color}
 									loading={loading()}
 									badge={conn.readOnly ? <Lock size={11} class="tree-item__lock" /> : undefined}
-									actions={conn.state === 'connected' ? [sqlConsoleAction(conn.id, conn.name, CONNECTION_TYPE_META[conn.config.type].supportsMultiDatabase ? getDefaultDatabase(conn.config) : undefined)] : undefined}
+									actions={conn.state === 'connected'
+										? [
+											sqlConsoleAction(
+												conn.id,
+												conn.name,
+												CONNECTION_TYPE_META[conn.config.type].supportsMultiDatabase ? getDefaultDatabase(conn.config) : undefined,
+											),
+										]
+										: undefined}
 									onClick={() => toggleConnection(conn)}
 									onToggle={() => toggleConnection(conn)}
 									onContextMenu={(e) => showContextMenu(e, connectionMenuItems(conn))}

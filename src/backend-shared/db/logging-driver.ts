@@ -1,7 +1,7 @@
-import type { DatabaseDriver } from './driver'
 import type { ConnectionConfig } from '../../shared/types/connection'
 import type { SchemaData } from '../../shared/types/database'
 import type { QueryResult } from '../../shared/types/query'
+import type { DatabaseDriver } from './driver'
 
 /**
  * A DatabaseDriver wrapper that logs all SQL queries to the console.
@@ -69,21 +69,55 @@ export class LoggingDriver implements DatabaseDriver {
 	}
 
 	// Delegated methods
-	connect(config: ConnectionConfig): Promise<void> { return this.inner.connect(config) }
-	disconnect(): Promise<void> { return this.inner.disconnect() }
-	isConnected(): boolean { return this.inner.isConnected() }
-	reserveSession(sessionId: string): Promise<void> { return this.inner.reserveSession(sessionId) }
-	releaseSession(sessionId: string): Promise<void> { return this.inner.releaseSession(sessionId) }
-	getSessionIds(): string[] { return this.inner.getSessionIds() }
-	cancel(sessionId?: string): Promise<void> { return this.inner.cancel(sessionId) }
-	loadSchema(sessionId?: string): Promise<SchemaData> { return this.inner.loadSchema(sessionId) }
-	beginTransaction(sessionId?: string): Promise<void> { return this.inner.beginTransaction(sessionId) }
-	commit(sessionId?: string): Promise<void> { return this.inner.commit(sessionId) }
-	rollback(sessionId?: string): Promise<void> { return this.inner.rollback(sessionId) }
-	inTransaction(sessionId?: string): boolean { return this.inner.inTransaction(sessionId) }
-	getDriverType(): 'postgresql' | 'sqlite' | 'mysql' { return (this.inner as any).getDriverType() }
-	quoteIdentifier(name: string): string { return this.inner.quoteIdentifier(name) }
-	qualifyTable(schema: string, table: string): string { return this.inner.qualifyTable(schema, table) }
-	emptyInsertSql(qualifiedTable: string): string { return this.inner.emptyInsertSql(qualifiedTable) }
-	placeholder(index: number): string { return this.inner.placeholder(index) }
+	connect(config: ConnectionConfig): Promise<void> {
+		return this.inner.connect(config)
+	}
+	disconnect(): Promise<void> {
+		return this.inner.disconnect()
+	}
+	isConnected(): boolean {
+		return this.inner.isConnected()
+	}
+	reserveSession(sessionId: string): Promise<void> {
+		return this.inner.reserveSession(sessionId)
+	}
+	releaseSession(sessionId: string): Promise<void> {
+		return this.inner.releaseSession(sessionId)
+	}
+	getSessionIds(): string[] {
+		return this.inner.getSessionIds()
+	}
+	cancel(sessionId?: string): Promise<void> {
+		return this.inner.cancel(sessionId)
+	}
+	loadSchema(sessionId?: string): Promise<SchemaData> {
+		return this.inner.loadSchema(sessionId)
+	}
+	beginTransaction(sessionId?: string): Promise<void> {
+		return this.inner.beginTransaction(sessionId)
+	}
+	commit(sessionId?: string): Promise<void> {
+		return this.inner.commit(sessionId)
+	}
+	rollback(sessionId?: string): Promise<void> {
+		return this.inner.rollback(sessionId)
+	}
+	inTransaction(sessionId?: string): boolean {
+		return this.inner.inTransaction(sessionId)
+	}
+	getDriverType(): 'postgresql' | 'sqlite' | 'mysql' {
+		return (this.inner as any).getDriverType()
+	}
+	quoteIdentifier(name: string): string {
+		return this.inner.quoteIdentifier(name)
+	}
+	qualifyTable(schema: string, table: string): string {
+		return this.inner.qualifyTable(schema, table)
+	}
+	emptyInsertSql(qualifiedTable: string): string {
+		return this.inner.emptyInsertSql(qualifiedTable)
+	}
+	placeholder(index: number): string {
+		return this.inner.placeholder(index)
+	}
 }

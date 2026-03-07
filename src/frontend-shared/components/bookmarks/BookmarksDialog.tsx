@@ -9,8 +9,8 @@ import { connectionsStore } from '../../stores/connections'
 import { editorStore } from '../../stores/editor'
 import { tabsStore } from '../../stores/tabs'
 import Dialog from '../common/Dialog'
-import Select from '../common/Select'
 import Icon from '../common/Icon'
+import Select from '../common/Select'
 import './BookmarksDialog.css'
 
 interface BookmarksDialogProps {

@@ -115,8 +115,8 @@ export default function Select(props: SelectProps) {
 
 	function handleClickOutside(e: MouseEvent) {
 		if (
-			triggerRef && !triggerRef.contains(e.target as Node) &&
-			listRef && !listRef.contains(e.target as Node)
+			triggerRef && !triggerRef.contains(e.target as Node)
+			&& listRef && !listRef.contains(e.target as Node)
 		) {
 			setOpen(false)
 		}

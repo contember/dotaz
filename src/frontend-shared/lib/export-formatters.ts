@@ -200,12 +200,19 @@ export function formatPreview(
 	const effectiveColumns = columns.length > 0 ? columns : collectAllColumns(rows)
 	const tableName = qualifyTable(schema, table)
 	switch (format) {
-		case 'csv': return formatCsv(rows, effectiveColumns, delimiter, includeHeaders)
-		case 'json': return formatJson(rows)
-		case 'sql': return formatSqlInsert(rows, effectiveColumns, tableName, batchSize)
-		case 'markdown': return formatMarkdown(rows, effectiveColumns)
-		case 'sql_update': return formatSqlUpdate(rows, effectiveColumns, tableName)
-		case 'html': return formatHtml(rows, effectiveColumns)
-		case 'xml': return formatXml(rows, effectiveColumns)
+		case 'csv':
+			return formatCsv(rows, effectiveColumns, delimiter, includeHeaders)
+		case 'json':
+			return formatJson(rows)
+		case 'sql':
+			return formatSqlInsert(rows, effectiveColumns, tableName, batchSize)
+		case 'markdown':
+			return formatMarkdown(rows, effectiveColumns)
+		case 'sql_update':
+			return formatSqlUpdate(rows, effectiveColumns, tableName)
+		case 'html':
+			return formatHtml(rows, effectiveColumns)
+		case 'xml':
+			return formatXml(rows, effectiveColumns)
 	}
 }

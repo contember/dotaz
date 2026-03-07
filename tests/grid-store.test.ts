@@ -101,7 +101,9 @@ mock.module('../src/frontend-shared/lib/rpc', () => {
 // ── Mock settings store (needed by grid store) ───────────
 mock.module('../src/frontend-shared/stores/settings', () => ({
 	settingsStore: {
-		get gridConfig() { return { autoCount: false } },
+		get gridConfig() {
+			return { autoCount: false }
+		},
 	},
 }))
 
