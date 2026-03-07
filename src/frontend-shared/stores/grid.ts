@@ -1,11 +1,13 @@
 import { createStore } from 'solid-js/store'
-import { buildCountQuery, buildQuickSearchClause, buildReadableSelectQuery, buildSelectQuery } from '../../shared/sql'
+import { buildCountQuery, buildQuickSearchClause, buildReadableSelectQuery, buildSelectQuery, createColumnResolver } from '../../shared/sql'
+import type { JoinedColumnSet } from '../../shared/sql'
 import type { ForeignKeyInfo } from '../../shared/types/database'
-import type { ColumnFilter, GridColumnDef, SortColumn } from '../../shared/types/grid'
+import type { AutoJoinDef, ColumnFilter, GridColumnDef, SortColumn } from '../../shared/types/grid'
 import type { RowColorRule } from '../../shared/types/rpc'
 import { rpc } from '../lib/rpc'
 import { createTabHelpers } from '../lib/tab-store-helpers'
 import { connectionsStore } from './connections'
+import { createGridAutoJoinActions } from './gridAutoJoin'
 import { computePinStyles, createGridColumnActions, getOrderedColumns, getVisibleColumns } from './gridColumns'
 import { createDefaultPendingChanges, createGridEditingActions } from './gridEditing'
 import { createGridFkActions } from './gridFk'
@@ -305,6 +307,7 @@ export interface TabGridState {
 	heatmapColumns: Record<string, HeatmapMode>
 	rowColorRules: RowColorRule[]
 	rowColoringEnabled: boolean
+	autoJoins: AutoJoinDef[]
 }
 
 function createDefaultTabState(
@@ -346,6 +349,7 @@ function createDefaultTabState(
 		heatmapColumns: {},
 		rowColorRules: [],
 		rowColoringEnabled: true,
+		autoJoins: [],
 	}
 }
 
@@ -394,6 +398,7 @@ async function fetchData(tabId: string) {
 	setState('tabs', tabId, 'countLoading', false)
 	try {
 		const dialect = connectionsStore.getDialect(tab.connectionId)
+		const hasJoins = tab.autoJoins.length > 0
 
 		// Get column metadata from cached schema
 		const cachedColumns = connectionsStore.getColumns(
@@ -409,6 +414,35 @@ async function fetchData(tabId: string) {
 			isPrimaryKey: c.isPrimaryKey,
 		}))
 
+		// Build joined columns metadata
+		let joinedColumnSets: JoinedColumnSet[] = []
+		if (hasJoins) {
+			for (const join of tab.autoJoins) {
+				const refCols = connectionsStore.getColumns(
+					tab.connectionId,
+					join.referencedSchema,
+					join.referencedTable,
+					tab.database,
+				)
+				const colNames = refCols.map((c) => c.name)
+				joinedColumnSets.push({
+					alias: join.alias,
+					table: join.referencedTable,
+					columns: colNames,
+				})
+				for (const c of refCols) {
+					gridColumns.push({
+						name: `${join.referencedTable}.${c.name}`,
+						dataType: c.dataType,
+						nullable: true, // joined columns are always nullable (LEFT JOIN)
+						isPrimaryKey: false,
+						joinAlias: join.alias,
+						sourceTable: join.referencedTable,
+					})
+				}
+			}
+		}
+
 		// Build quick search clause if search term is provided
 		const filters = tab.filters.length > 0 ? tab.filters : undefined
 		const sort = tab.sort.length > 0 ? tab.sort : undefined
@@ -419,17 +453,21 @@ async function fetchData(tabId: string) {
 			}
 			return sum + 1
 		}, 0)
+
+		const resolver = hasJoins ? createColumnResolver(tab.autoJoins, dialect) : undefined
 		const quickSearchClause = tab.quickSearch
 			? buildQuickSearchClause(
 				gridColumns,
 				tab.quickSearch,
 				dialect,
 				filterParamCount,
+				resolver,
 			)
 			: undefined
 
 		// Build and execute data query
 		const customFilter = tab.customFilter || undefined
+		const autoJoins = hasJoins ? tab.autoJoins : undefined
 		const selectQuery = buildSelectQuery(
 			tab.schema,
 			tab.table,
@@ -440,6 +478,8 @@ async function fetchData(tabId: string) {
 			dialect,
 			quickSearchClause,
 			customFilter,
+			autoJoins,
+			joinedColumnSets.length > 0 ? joinedColumnSets : undefined,
 		)
 
 		// Execute data query (and optionally count query)
@@ -457,6 +497,7 @@ async function fetchData(tabId: string) {
 				dialect,
 				quickSearchClause,
 				customFilter,
+				autoJoins,
 			)
 			const [dr, cr] = await Promise.all([
 				rpc.query.execute({
@@ -517,6 +558,14 @@ async function fetchData(tabId: string) {
 	}
 }
 
+const autoJoinActions = createGridAutoJoinActions(
+	state,
+	setState,
+	ensureTab,
+	createDefaultSelection,
+	fetchData,
+)
+
 const viewActions = createGridViewActions(
 	state,
 	setState,
@@ -555,11 +604,13 @@ async function fetchGridCount(tabId: string) {
 			}
 			return sum + 1
 		}, 0)
+		const hasJoins = tab.autoJoins.length > 0
+		const resolver = hasJoins ? createColumnResolver(tab.autoJoins, dialect) : undefined
 		const quickSearchClause = tab.quickSearch
-			? buildQuickSearchClause(gridColumns, tab.quickSearch, dialect, filterParamCount)
+			? buildQuickSearchClause(gridColumns, tab.quickSearch, dialect, filterParamCount, resolver)
 			: undefined
 		const customFilter = tab.customFilter || undefined
-		const countQuery = buildCountQuery(tab.schema, tab.table, filters, dialect, quickSearchClause, customFilter)
+		const countQuery = buildCountQuery(tab.schema, tab.table, filters, dialect, quickSearchClause, customFilter, hasJoins ? tab.autoJoins : undefined)
 		const sessionId = sessionStore.getSessionForTab(tabId)
 		const results = await rpc.query.execute({
 			connectionId: tab.connectionId,
@@ -963,7 +1014,33 @@ function getCurrentSql(tabId: string): string | null {
 	const filters = tab.filters.length > 0 ? tab.filters : undefined
 	const sort = tab.sort.length > 0 ? tab.sort : undefined
 	const customFilter = tab.customFilter || undefined
-	return buildReadableSelectQuery(tab.schema, tab.table, tab.currentPage, tab.pageSize, sort, filters, dialect, customFilter)
+
+	const autoJoins = tab.autoJoins.length > 0 ? tab.autoJoins : undefined
+	let joinedColumnSets: JoinedColumnSet[] | undefined
+	if (autoJoins) {
+		joinedColumnSets = autoJoins.map((join) => {
+			const refCols = connectionsStore.getColumns(
+				tab.connectionId,
+				join.referencedSchema,
+				join.referencedTable,
+				tab.database,
+			)
+			return { alias: join.alias, table: join.referencedTable, columns: refCols.map((c) => c.name) }
+		})
+	}
+
+	return buildReadableSelectQuery(
+		tab.schema,
+		tab.table,
+		tab.currentPage,
+		tab.pageSize,
+		sort,
+		filters,
+		dialect,
+		customFilter,
+		autoJoins,
+		joinedColumnSets,
+	)
 }
 
 // ── Editing: deleteSelectedRows wrapper ──────────────────
@@ -1055,6 +1132,11 @@ export const gridStore = {
 	fkPanelResize: fkActions.fkPanelResize,
 	fkPanelSetPage: fkActions.fkPanelSetPage,
 	fkPanelSetRowIndex: fkActions.fkPanelSetRowIndex,
+
+	// Auto-join
+	addAutoJoin: autoJoinActions.addAutoJoin,
+	removeAutoJoin: autoJoinActions.removeAutoJoin,
+	removeAllAutoJoins: autoJoinActions.removeAllAutoJoins,
 
 	// Saved views
 	setActiveView: viewActions.setActiveView,
