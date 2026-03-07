@@ -586,7 +586,10 @@ export default function ExportDialog(props: ExportDialogProps) {
 							<div class="export-dialog__progress-bar-fill" />
 						</div>
 						<span class="export-dialog__progress-text">
-							Exporting... {(() => { const p = phase(); return p.status === 'exporting' && p.rows > 0 ? `${formatNumber(p.rows)} rows` : '' })()}
+							Exporting... {(() => {
+								const p = phase()
+								return p.status === 'exporting' && p.rows > 0 ? `${formatNumber(p.rows)} rows` : ''
+							})()}
 						</span>
 					</div>
 				</Show>

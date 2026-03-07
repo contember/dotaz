@@ -122,15 +122,18 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 				const ssl: SSLMode = typeof rawSsl === 'boolean'
 					? (rawSsl ? 'require' : 'disable')
 					: (rawSsl ?? 'prefer')
-				setConn('pgFields', reconcile({
-					name: conn.name,
-					host: conn.config.host,
-					port: String(conn.config.port),
-					database: conn.config.database,
-					user: conn.config.user,
-					password: conn.config.password,
-					ssl,
-				}))
+				setConn(
+					'pgFields',
+					reconcile({
+						name: conn.name,
+						host: conn.config.host,
+						port: String(conn.config.port),
+						database: conn.config.database,
+						user: conn.config.user,
+						password: conn.config.password,
+						ssl,
+					}),
+				)
 				// Load SSH tunnel config if present
 				if (conn.config.type === 'postgresql' && conn.config.sshTunnel) {
 					const t = conn.config.sshTunnel
@@ -150,10 +153,13 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 					setSsh(reconcile({ ...defaultSshFields(), expanded: false }))
 				}
 			} else {
-				setConn('sqliteFields', reconcile({
-					name: conn.name,
-					path: conn.config.path,
-				}))
+				setConn(
+					'sqliteFields',
+					reconcile({
+						name: conn.name,
+						path: conn.config.path,
+					}),
+				)
 				setSsh(reconcile({ ...defaultSshFields(), expanded: false }))
 			}
 		} else {
@@ -375,10 +381,13 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 		const parsed = parseConnectionString(value)
 		if (parsed) {
 			setConn('type', parsed.type)
-			setConn('pgFields', reconcile({
-				...parsed.fields,
-				name: conn.pgFields.name || parsed.fields.name,
-			}))
+			setConn(
+				'pgFields',
+				reconcile({
+					...parsed.fields,
+					name: conn.pgFields.name || parsed.fields.name,
+				}),
+			)
 		}
 	}
 

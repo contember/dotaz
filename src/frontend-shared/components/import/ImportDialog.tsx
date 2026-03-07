@@ -522,7 +522,9 @@ export default function ImportDialog(props: ImportDialogProps) {
 							<div class="import-dialog__progress-bar-fill" />
 						</div>
 						<span class="import-dialog__progress-text">
-							Importing... {(phase() as Extract<ImportPhase, { status: 'importing' }>).rows > 0 ? `${formatNumber((phase() as Extract<ImportPhase, { status: 'importing' }>).rows)} rows` : ''}
+							Importing... {(phase() as Extract<ImportPhase, { status: 'importing' }>).rows > 0
+								? `${formatNumber((phase() as Extract<ImportPhase, { status: 'importing' }>).rows)} rows`
+								: ''}
 						</span>
 					</div>
 				</Show>

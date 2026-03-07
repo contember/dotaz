@@ -73,7 +73,9 @@ export default function BookmarksDialog(props: BookmarksDialogProps) {
 	})
 
 	function resetForm() {
-		setFormState(reconcile({ name: '', description: '', sql: '', database: undefined as string | undefined, error: null as string | null, saving: false }))
+		setFormState(
+			reconcile({ name: '', description: '', sql: '', database: undefined as string | undefined, error: null as string | null, saving: false }),
+		)
 	}
 
 	async function loadBookmarks(connId?: string) {
