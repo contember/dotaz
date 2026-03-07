@@ -1,5 +1,5 @@
 import { MySQL, PostgreSQL, sql, SQLite } from '@codemirror/lang-sql'
-import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { foldService, HighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/language'
 import { Compartment, EditorSelection, EditorState, Prec, StateEffect, StateField } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, keymap, placeholder } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
@@ -181,6 +181,61 @@ const errorHighlightField = StateField.define<DecorationSet>({
 		return value
 	},
 	provide: (f) => EditorView.decorations.from(f),
+})
+
+// ── Custom SQL fold service ───────────────────────────────
+// Adds folding for parenthesized subqueries and CASE…END blocks
+// (Statement and BlockComment folding is already provided by the SQL grammar)
+
+const sqlFoldService = foldService.of((state, lineStart, lineEnd) => {
+	const tree = syntaxTree(state)
+	// Fold parenthesized expressions (subqueries) that span multiple lines
+	let result: { from: number; to: number } | null = null
+	tree.iterate({
+		from: lineStart,
+		to: lineEnd,
+		enter(node) {
+			if (result) return false
+			if (node.name === 'Parens' && node.from >= lineStart && node.from <= lineEnd) {
+				const startLine = state.doc.lineAt(node.from)
+				const endLine = state.doc.lineAt(node.to)
+				if (startLine.number < endLine.number) {
+					// Fold from after opening paren to before closing paren
+					result = { from: node.from + 1, to: node.to - 1 }
+				}
+				return false
+			}
+		},
+	})
+	if (result) return result
+
+	// Fold CASE…END blocks
+	const lineText = state.doc.sliceString(lineStart, lineEnd)
+	const caseMatch = lineText.match(/\b(CASE)\b/i)
+	if (caseMatch) {
+		const caseFrom = lineStart + caseMatch.index!
+		const doc = state.doc.toString()
+		let depth = 1
+		// Simple keyword scanner from after CASE to find matching END
+		const rest = doc.slice(caseFrom + 4)
+		const kwRe = /\b(CASE|END)\b/gi
+		let m: RegExpExecArray | null
+		while ((m = kwRe.exec(rest)) !== null) {
+			if (m[1].toUpperCase() === 'CASE') depth++
+			else depth--
+			if (depth === 0) {
+				const endPos = caseFrom + 4 + m.index
+				const caseLine = state.doc.lineAt(caseFrom)
+				const endLine = state.doc.lineAt(endPos)
+				if (caseLine.number < endLine.number) {
+					return { from: caseLine.to, to: endPos }
+				}
+				break
+			}
+		}
+	}
+
+	return null
 })
 
 const DIALECT_MAP: Record<ConnectionType, typeof PostgreSQL> = {
@@ -373,6 +428,7 @@ export default function SqlEditor(props: SqlEditorProps) {
 				errorHighlightField,
 				customCompletionExtension,
 				sqlLinterExtension,
+				sqlFoldService,
 				placeholder('Write your SQL query here...'),
 				EditorView.lineWrapping,
 			],
