@@ -1,0 +1,226 @@
+.er-diagram {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	background: var(--bg-primary);
+}
+
+.er-diagram__toolbar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 12px;
+	border-bottom: 1px solid var(--border-primary);
+	background: var(--bg-secondary);
+	flex-shrink: 0;
+}
+
+.er-diagram__toolbar-group {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.er-diagram__toolbar-separator {
+	width: 1px;
+	height: 20px;
+	background: var(--border-primary);
+	margin: 0 4px;
+}
+
+.er-diagram__toolbar button {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 8px;
+	border: 1px solid var(--border-primary);
+	border-radius: 4px;
+	background: var(--bg-primary);
+	color: var(--text-primary);
+	cursor: pointer;
+	font-size: 12px;
+	white-space: nowrap;
+}
+
+.er-diagram__toolbar button:hover {
+	background: var(--bg-hover);
+}
+
+.er-diagram__toolbar button.active {
+	background: var(--accent-bg);
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
+.er-diagram__canvas-wrap {
+	flex: 1;
+	overflow: hidden;
+	position: relative;
+	cursor: grab;
+}
+
+.er-diagram__canvas-wrap.grabbing {
+	cursor: grabbing;
+}
+
+.er-diagram__canvas {
+	position: absolute;
+	top: 0;
+	left: 0;
+	transform-origin: 0 0;
+}
+
+.er-diagram__empty {
+	flex: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-secondary);
+	font-size: 14px;
+}
+
+/* Table nodes */
+.er-table {
+	position: absolute;
+	background: var(--bg-secondary);
+	border: 1px solid var(--border-primary);
+	border-radius: 6px;
+	min-width: 180px;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+	user-select: none;
+	cursor: pointer;
+	transition: box-shadow 0.15s;
+}
+
+.er-table:hover {
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.er-table.highlighted {
+	border-color: var(--accent);
+	box-shadow: 0 0 0 1px var(--accent), 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.er-table__header {
+	padding: 8px 10px;
+	font-weight: 600;
+	font-size: 13px;
+	color: var(--text-primary);
+	border-bottom: 1px solid var(--border-primary);
+	background: var(--bg-tertiary);
+	border-radius: 6px 6px 0 0;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.er-table__header-icon {
+	color: var(--text-secondary);
+	flex-shrink: 0;
+}
+
+.er-table__columns {
+	padding: 4px 0;
+	max-height: 300px;
+	overflow-y: auto;
+}
+
+.er-table__column {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 10px;
+	font-size: 12px;
+	color: var(--text-primary);
+}
+
+.er-table__column-icon {
+	flex-shrink: 0;
+	width: 14px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.er-table__column-icon--pk {
+	color: var(--warning, #e5a100);
+}
+
+.er-table__column-icon--fk {
+	color: var(--accent);
+}
+
+.er-table__column-name {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.er-table__column-type {
+	color: var(--text-secondary);
+	font-size: 11px;
+	flex-shrink: 0;
+}
+
+/* Relationship lines (SVG) */
+.er-diagram__edges {
+	position: absolute;
+	top: 0;
+	left: 0;
+	pointer-events: none;
+	overflow: visible;
+}
+
+.er-diagram__edge {
+	fill: none;
+	stroke: var(--border-secondary, #555);
+	stroke-width: 1.5;
+}
+
+.er-diagram__edge.highlighted {
+	stroke: var(--accent);
+	stroke-width: 2;
+}
+
+.er-diagram__edge-label {
+	font-size: 10px;
+	fill: var(--text-secondary);
+}
+
+/* Zoom controls */
+.er-diagram__zoom-controls {
+	position: absolute;
+	bottom: 12px;
+	right: 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	z-index: 10;
+}
+
+.er-diagram__zoom-controls button {
+	width: 32px;
+	height: 32px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border: 1px solid var(--border-primary);
+	border-radius: 4px;
+	background: var(--bg-secondary);
+	color: var(--text-primary);
+	cursor: pointer;
+	font-size: 16px;
+}
+
+.er-diagram__zoom-controls button:hover {
+	background: var(--bg-hover);
+}
+
+.er-diagram__zoom-label {
+	font-size: 11px;
+	text-align: center;
+	color: var(--text-secondary);
+	padding: 2px 0;
+}

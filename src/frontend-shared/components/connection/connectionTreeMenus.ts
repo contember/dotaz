@@ -207,6 +207,23 @@ export function tableMenuItems(connectionId: string, schemaName: string, tableNa
 	return items
 }
 
+export function schemaMenuItems(connectionId: string, schemaName: string, database?: string): ContextMenuEntry[] {
+	return [
+		{
+			label: 'ER Diagram',
+			action: () => {
+				tabsStore.openTab({
+					type: 'er-diagram',
+					title: `ER — ${schemaName}`,
+					connectionId,
+					schema: schemaName,
+					database,
+				})
+			},
+		},
+	]
+}
+
 export function viewMenuItems(connectionId: string, view: SavedView, callbacks: TreeMenuCallbacks, database?: string): ContextMenuEntry[] {
 	return [
 		{

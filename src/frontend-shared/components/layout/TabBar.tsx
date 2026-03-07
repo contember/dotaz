@@ -30,6 +30,7 @@ const TAB_ICONS: Record<TabType, IconName> = {
 	'schema-viewer': 'schema',
 	'comparison': 'compare',
 	'row-detail': 'edit',
+	'er-diagram': 'er-diagram',
 }
 
 export default function TabBar(props: TabBarProps) {

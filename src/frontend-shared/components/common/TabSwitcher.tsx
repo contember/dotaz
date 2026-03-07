@@ -14,6 +14,7 @@ const TAB_ICONS: Record<TabType, IconName> = {
 	'schema-viewer': 'schema',
 	'comparison': 'compare',
 	'row-detail': 'edit',
+	'er-diagram': 'er-diagram',
 }
 
 /** Simple fuzzy match: all characters of query appear in label in order (case-insensitive). */

@@ -37,6 +37,7 @@ import Table from 'lucide-solid/icons/table'
 import Trash2 from 'lucide-solid/icons/trash-2'
 import TriangleAlert from 'lucide-solid/icons/triangle-alert'
 import Upload from 'lucide-solid/icons/upload'
+import Workflow from 'lucide-solid/icons/workflow'
 import X from 'lucide-solid/icons/x'
 import { type JSX, Show } from 'solid-js'
 import type { JSX as SolidJSX } from 'solid-js/jsx-runtime'
@@ -93,6 +94,7 @@ export type IconName =
 	| 'compare'
 	| 'bookmark'
 	| 'sparkles'
+	| 'er-diagram'
 	| 'spinner'
 
 interface IconProps {
@@ -149,6 +151,7 @@ const ICON_MAP: Record<Exclude<IconName, 'spinner'>, LucideComponent> = {
 	compare: GitCompareArrows,
 	bookmark: Bookmark,
 	sparkles: Sparkles,
+	'er-diagram': Workflow,
 }
 
 export default function Icon(props: IconProps) {

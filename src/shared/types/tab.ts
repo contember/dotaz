@@ -1,6 +1,6 @@
 // Tab types
 
-export type TabType = 'data-grid' | 'sql-console' | 'schema-viewer' | 'comparison' | 'row-detail'
+export type TabType = 'data-grid' | 'sql-console' | 'schema-viewer' | 'comparison' | 'row-detail' | 'er-diagram'
 
 export interface TabInfo {
 	id: string

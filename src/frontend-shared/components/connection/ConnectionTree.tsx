@@ -24,6 +24,7 @@ import ContextMenu, { type ContextMenuEntry } from '../common/ContextMenu'
 import {
 	connectionMenuItems,
 	databaseMenuItems,
+	schemaMenuItems,
 	tableMenuItems,
 	viewMenuItems,
 	type TreeMenuCallbacks,
@@ -544,6 +545,7 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 									hasChildren={tables().length > 0}
 									onToggle={() => toggleSchema(sKey())}
 									onClick={() => toggleSchema(sKey())}
+									onContextMenu={(e) => showContextMenu(e, schemaMenuItems(conn.id, schema.name, database))}
 								/>
 
 								<Show when={sExpanded()}>

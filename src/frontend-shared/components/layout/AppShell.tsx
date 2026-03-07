@@ -39,6 +39,7 @@ import ConnectionTree from '../connection/ConnectionTree'
 import DatabasePicker from '../connection/DatabasePicker'
 import PasswordDialog from '../connection/PasswordDialog'
 import RowDetailTab from '../edit/RowDetailTab'
+import ErDiagram from '../er-diagram/ErDiagram'
 import AiPrompt from '../editor/AiPrompt'
 import DestructiveQueryDialog from '../editor/DestructiveQueryDialog'
 import QueryToolbar from '../editor/QueryToolbar'
@@ -592,6 +593,14 @@ export default function AppShell() {
 										<ComparisonView
 											tabId={tab.id}
 											initialParams={getComparisonParams(tab.id)}
+										/>
+									</Match>
+									<Match when={tab.type === 'er-diagram'}>
+										<ErDiagram
+											tabId={tab.id}
+											connectionId={tab.connectionId}
+											schema={tab.schema!}
+											database={tab.database}
 										/>
 									</Match>
 								</Switch>
