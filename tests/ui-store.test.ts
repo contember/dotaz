@@ -88,4 +88,3 @@ describe('uiStore', () => {
 		expect(uiStore.toasts).toHaveLength(1)
 	})
 })
-
