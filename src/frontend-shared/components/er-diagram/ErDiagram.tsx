@@ -1,4 +1,4 @@
-import ELK, { type ElkExtendedEdge, type ElkNode } from 'elkjs'
+import ELK, { type ElkExtendedEdge, type ElkNode } from 'elkjs/lib/elk.bundled.js'
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js'
 import type { ColumnInfo, ForeignKeyInfo, SchemaData, TableInfo } from '../../../shared/types/database'
 import { connectionsStore } from '../../stores/connections'

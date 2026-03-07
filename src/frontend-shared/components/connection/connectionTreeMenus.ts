@@ -70,6 +70,22 @@ export function connectionMenuItems(conn: ConnectionInfo, callbacks: TreeMenuCal
 		disabled: !isConnected,
 	})
 
+	if (!supportsMultiDb) {
+		const schema = connectionsStore.getSchemaTree(conn.id)?.schemas?.[0]?.name ?? 'main'
+		items.push({
+			label: 'ER Diagram',
+			action: () => {
+				tabsStore.openTab({
+					type: 'er-diagram',
+					title: `ER — ${conn.name}`,
+					connectionId: conn.id,
+					schema,
+				})
+			},
+			disabled: !isConnected,
+		})
+	}
+
 	items.push(
 		'separator',
 		{
@@ -142,6 +158,20 @@ export function databaseMenuItems(connectionId: string, dbName: string, isDefaul
 			},
 		},
 	]
+
+	const schema = connectionsStore.getSchemaTree(connectionId, dbName)?.schemas?.[0]?.name ?? 'public'
+	items.push('separator', {
+		label: 'ER Diagram',
+		action: () => {
+			tabsStore.openTab({
+				type: 'er-diagram',
+				title: `ER — ${dbName}`,
+				connectionId,
+				schema,
+				database: dbName,
+			})
+		},
+	})
 
 	if (!isDefault) {
 		items.push('separator')
