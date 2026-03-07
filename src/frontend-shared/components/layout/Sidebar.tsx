@@ -1,4 +1,5 @@
 import { type JSX, Show } from 'solid-js'
+import appIcon from '../../../../assets/icon.png'
 import Icon from '../common/Icon'
 import './Sidebar.css'
 
@@ -8,6 +9,7 @@ interface SidebarProps {
 	onToggleCollapse: () => void
 	onAdd?: () => void
 	onOpenSettings?: () => void
+	onLogoClick?: () => void
 	children?: JSX.Element
 }
 
@@ -20,7 +22,10 @@ export default function Sidebar(props: SidebarProps) {
 		>
 			<Show when={!props.collapsed}>
 				<div class="sidebar-header">
-					<span class="sidebar-header__title">Connections</span>
+					<button class="sidebar-header__logo" onClick={props.onLogoClick} title="Go to dashboard">
+						<img src={appIcon} alt="Dotaz" class="sidebar-header__logo-icon" />
+						<span>Dotaz</span>
+					</button>
 					<div class="sidebar-header__actions">
 						<Show when={props.onAdd}>
 							<button

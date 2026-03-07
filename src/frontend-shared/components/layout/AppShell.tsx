@@ -980,6 +980,7 @@ export default function AppShell() {
 					onToggleCollapse={toggleCollapse}
 					onAdd={openAddConnectionDialog}
 					onOpenSettings={() => setModal({ type: 'settings', section: 'data-format' })}
+					onLogoClick={tabsStore.closeAllTabs}
 				>
 					<ConnectionTree
 						onAddConnection={openAddConnectionDialog}
