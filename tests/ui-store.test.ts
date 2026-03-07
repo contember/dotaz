@@ -31,7 +31,7 @@ const { uiStore } = await import('../src/frontend-shared/stores/ui')
 describe('uiStore', () => {
 	beforeEach(() => {
 		// Clear all toasts between tests
-		storeState.toasts = []
+		;[...uiStore.toasts].forEach((t) => uiStore.removeToast(t.id))
 	})
 
 	test('addToast adds a toast and returns its id', () => {

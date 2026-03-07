@@ -20,7 +20,7 @@ export class RpcError extends Error {
 
 /** Map common DB/connection error patterns to user-friendly messages */
 export function friendlyErrorMessage(err: unknown): string {
-	const raw = err instanceof Error ? err.message : String(err)
+	const raw = typeof (err as any)?.message === 'string' ? (err as any).message : String(err)
 
 	// If we have a typed error code, use the centralized mapping
 	const code = (err as any)?.code as DatabaseErrorCode | undefined
