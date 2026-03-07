@@ -10,6 +10,7 @@ import EyeOff from 'lucide-solid/icons/eye-off'
 import FilterIcon from 'lucide-solid/icons/funnel'
 import FilterXIcon from 'lucide-solid/icons/funnel-x'
 import Link from 'lucide-solid/icons/link'
+import LinkIcon from 'lucide-solid/icons/link-2'
 import PinLeft from 'lucide-solid/icons/panel-left-close'
 import PanelRight from 'lucide-solid/icons/panel-right'
 import PinRight from 'lucide-solid/icons/panel-right-close'
@@ -18,8 +19,10 @@ import Pencil from 'lucide-solid/icons/pencil'
 import Rows3 from 'lucide-solid/icons/rows-3'
 import Thermometer from 'lucide-solid/icons/thermometer'
 import Trash2 from 'lucide-solid/icons/trash-2'
+import Unlink from 'lucide-solid/icons/unlink'
 import { createSignal, Show } from 'solid-js'
 import { isNumericType } from '../../../shared/column-types'
+import { isJoinedColumn, parseJoinedColumn } from '../../../shared/sql'
 import type { GridColumnDef } from '../../../shared/types/grid'
 import type { FkTarget } from '../../stores/grid'
 import { gridStore, isCellInSelection } from '../../stores/grid'
@@ -452,6 +455,44 @@ export default function DataGridContextMenu(
 					},
 				],
 			})
+		}
+
+		// Auto-join / Remove join / nested join for FK columns
+		const fkTarget = props.fkMap().get(column)
+		const alreadyJoined = t?.autoJoins.some((j) => j.fkColumn === column)
+		const parentJoin = isJoinedColumn(column)
+			? t?.autoJoins.find((j) => j.referencedTable === parseJoinedColumn(column).table)
+			: undefined
+
+		if (fkTarget || parentJoin) {
+			items.push('separator')
+			items.push({ type: 'label', label: 'Foreign Key' })
+
+			// Show "Auto Join" or "Remove Join" for this column's FK
+			if (fkTarget) {
+				if (alreadyJoined) {
+					items.push({
+						label: `Remove Join ${fkTarget.table}`,
+						icon: () => <Unlink size={14} />,
+						action: () => gridStore.removeAutoJoin(props.tabId, column),
+					})
+				} else {
+					items.push({
+						label: `Auto Join ${fkTarget.table}`,
+						icon: () => <LinkIcon size={14} />,
+						action: () => gridStore.addAutoJoin(props.tabId, column),
+					})
+				}
+			}
+
+			// For joined columns: also show "Remove Join" for the parent join
+			if (parentJoin && !alreadyJoined) {
+				items.push({
+					label: `Remove Join ${parentJoin.referencedTable}`,
+					icon: () => <Unlink size={14} />,
+					action: () => gridStore.removeAutoJoin(props.tabId, parentJoin.fkColumn),
+				})
+			}
 		}
 
 		return items

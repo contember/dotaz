@@ -213,6 +213,15 @@ export default function DataGridToolbar(props: DataGridToolbarProps) {
 								onReorder={(order) => gridStore.setColumnOrder(props.tabId, order)}
 								onReset={() => gridStore.resetColumnConfig(props.tabId)}
 							/>
+							<Show when={tabState().autoJoins.length > 0}>
+								<button
+									class="data-grid__toolbar-btn data-grid__toolbar-btn--badge"
+									onClick={() => gridStore.removeAllAutoJoins(props.tabId)}
+									title={`${tabState().autoJoins.length} active join(s) — click to remove all`}
+								>
+									<Icon name="link" size={12} /> {tabState().autoJoins.length} Join{tabState().autoJoins.length > 1 ? 's' : ''}
+								</button>
+							</Show>
 							<button
 								class="data-grid__toolbar-btn"
 								onClick={handleRefresh}

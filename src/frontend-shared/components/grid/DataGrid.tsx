@@ -71,7 +71,9 @@ export default function DataGrid(props: DataGridProps) {
 
 	const tab = () => gridStore.getTab(props.tabId)
 	const tabInfo = () => tabsStore.openTabs.find((t) => t.id === props.tabId)
-	const isReadOnly = () => connectionsStore.isReadOnly(props.connectionId)
+	const isReadOnly = () =>
+		connectionsStore.isReadOnly(props.connectionId)
+		|| (tab()?.autoJoins.length ?? 0) > 0
 
 	const currentSchema = () => tab()?.schema ?? props.schema
 	const currentTable = () => tab()?.table ?? props.table
@@ -235,8 +237,44 @@ export default function DataGrid(props: DataGridProps) {
 				fkCols.add(col)
 			}
 		}
-		setFkState({ columns: fkCols, keys: fks, map: buildFkLookup(fks) })
+		const map = buildFkLookup(fks)
+
+		// Include FKs from joined tables (prefixed with tableName.)
+		const t = gridStore.getTab(props.tabId)
+		if (t && t.autoJoins.length > 0) {
+			for (const join of t.autoJoins) {
+				const joinedFks = connectionsStore.getForeignKeys(
+					props.connectionId,
+					join.referencedSchema,
+					join.referencedTable,
+					props.database,
+				)
+				for (const fk of joinedFks) {
+					if (fk.columns.length === 1) {
+						const prefixedCol = `${join.referencedTable}.${fk.columns[0]}`
+						fkCols.add(prefixedCol)
+						map.set(prefixedCol, {
+							schema: fk.referencedSchema,
+							table: fk.referencedTable,
+							column: fk.referencedColumns[0],
+						})
+					}
+				}
+			}
+		}
+
+		setFkState({ columns: fkCols, keys: fks, map })
 	}
+
+	// Rebuild FK map when auto-joins change
+	createEffect(() => {
+		const t = tab()
+		const joinCount = t?.autoJoins.length ?? 0
+		// Touch joinCount to track reactivity, then rebuild
+		if (joinCount >= 0 && t) {
+			loadForeignKeys(t.schema, t.table)
+		}
+	})
 
 	// ── Mouse handling ──────────────────────────────────
 
