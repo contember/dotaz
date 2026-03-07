@@ -1,5 +1,5 @@
 import { createStore } from 'solid-js/store'
-import { buildCountQuery, buildQuickSearchClause, buildSelectQuery, generateChangesPreview, generateChangeSql } from '../../shared/sql'
+import { buildCountQuery, buildQuickSearchClause, buildReadableSelectQuery, buildSelectQuery, generateChangesPreview, generateChangeSql } from '../../shared/sql'
 import type { ForeignKeyInfo } from '../../shared/types/database'
 import type { ColumnFilter, GridColumnDef, SortColumn } from '../../shared/types/grid'
 import type { DataChange, SavedViewConfig } from '../../shared/types/rpc'
@@ -2296,10 +2296,24 @@ function getSelectedCellData(
 	return { rows: snapshot.rows, columns: snapshot.columns }
 }
 
+// ── Current SQL ──────────────────────────────────────────
+
+function getCurrentSql(tabId: string): string | null {
+	const tab = getTab(tabId)
+	if (!tab) return null
+	const dialect = connectionsStore.getDialect(tab.connectionId)
+	if (!dialect) return null
+	const filters = tab.filters.length > 0 ? tab.filters : undefined
+	const sort = tab.sort.length > 0 ? tab.sort : undefined
+	const customFilter = tab.customFilter || undefined
+	return buildReadableSelectQuery(tab.schema, tab.table, tab.currentPage, tab.pageSize, sort, filters, dialect, customFilter)
+}
+
 // ── Export ────────────────────────────────────────────────
 
 export const gridStore = {
 	getTab,
+	getCurrentSql,
 
 	loadTableData,
 	refreshData,

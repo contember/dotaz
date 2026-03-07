@@ -268,6 +268,76 @@ export function buildSelectQuery(
 }
 
 /**
+ * Build a human-readable SELECT query with values inlined (no parameter placeholders).
+ * Intended for display, copy-to-clipboard, or pre-filling a SQL console — NOT for execution.
+ */
+export function buildReadableSelectQuery(
+	schema: string,
+	table: string,
+	page: number,
+	pageSize: number,
+	sort: SortColumn[] | undefined,
+	filters: ColumnFilter[] | undefined,
+	dialect: SqlDialect,
+	customFilter?: string,
+): string {
+	const from = dialect.qualifyTable(schema, table)
+	const orderBy = buildOrderByClause(sort, dialect)
+	const offset = (page - 1) * pageSize
+
+	const parts = [`SELECT * FROM ${from}`]
+
+	const whereConditions: string[] = []
+
+	if (filters && filters.length > 0) {
+		for (const filter of filters) {
+			const col = dialect.quoteIdentifier(filter.column)
+			switch (filter.operator) {
+				case 'eq': whereConditions.push(`${col} = ${sqlLiteral(filter.value)}`); break
+				case 'neq': whereConditions.push(`${col} != ${sqlLiteral(filter.value)}`); break
+				case 'gt': whereConditions.push(`${col} > ${sqlLiteral(filter.value)}`); break
+				case 'gte': whereConditions.push(`${col} >= ${sqlLiteral(filter.value)}`); break
+				case 'lt': whereConditions.push(`${col} < ${sqlLiteral(filter.value)}`); break
+				case 'lte': whereConditions.push(`${col} <= ${sqlLiteral(filter.value)}`); break
+				case 'like': whereConditions.push(`${col} LIKE ${sqlLiteral(filter.value)}`); break
+				case 'notLike': whereConditions.push(`${col} NOT LIKE ${sqlLiteral(filter.value)}`); break
+				case 'in': {
+					const vals = (Array.isArray(filter.value) ? filter.value : [filter.value]).map(sqlLiteral)
+					whereConditions.push(`${col} IN (${vals.join(', ')})`)
+					break
+				}
+				case 'notIn': {
+					const vals = (Array.isArray(filter.value) ? filter.value : [filter.value]).map(sqlLiteral)
+					whereConditions.push(`${col} NOT IN (${vals.join(', ')})`)
+					break
+				}
+				case 'isNull': whereConditions.push(`${col} IS NULL`); break
+				case 'isNotNull': whereConditions.push(`${col} IS NOT NULL`); break
+			}
+		}
+	}
+
+	if (customFilter) {
+		whereConditions.push(`(${customFilter})`)
+	}
+
+	if (whereConditions.length > 0) {
+		parts.push(`WHERE ${whereConditions.join(' AND ')}`)
+	}
+	if (orderBy) parts.push(orderBy)
+	parts.push(`LIMIT ${pageSize} OFFSET ${offset}`)
+
+	return parts.join('\n')
+}
+
+function sqlLiteral(value: unknown): string {
+	if (value === null || value === undefined) return 'NULL'
+	if (typeof value === 'number') return String(value)
+	if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE'
+	return `'${String(value).replace(/'/g, "''")}'`
+}
+
+/**
  * Build a COUNT(*) query with optional filtering.
  * Returns the SQL string and parameter values.
  */

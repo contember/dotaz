@@ -3,6 +3,7 @@ export {
 	buildCountQuery,
 	buildOrderByClause,
 	buildQuickSearchClause,
+	buildReadableSelectQuery,
 	buildSelectQuery,
 	buildWhereClause,
 	formatValueForPreview,
