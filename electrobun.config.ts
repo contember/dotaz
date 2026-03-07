@@ -19,7 +19,9 @@ export default {
 			bundleCEF: false,
 		},
 		linux: {
-			bundleCEF: false,
+			bundleCEF: true,
+			defaultRenderer: 'cef',
+			icon: 'assets/icon.png',
 		},
 		win: {
 			bundleCEF: false,
