@@ -42,3 +42,18 @@
 	background-color: rgba(239, 68, 68, 0.15);
 	border-bottom: 2px solid var(--error);
 }
+
+/* Live lint diagnostics */
+.cm-diagnostic-error {
+	border-left-color: var(--error);
+}
+
+.cm-lint-marker-error {
+	content: none;
+}
+
+.cm-tooltip-lint {
+	background-color: var(--surface-overlay);
+	border: 1px solid var(--edge-strong);
+	color: var(--ink);
+}

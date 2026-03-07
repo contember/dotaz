@@ -10,6 +10,7 @@ import { CONNECTION_TYPE_META } from '../../../shared/types/connection'
 import { createAliasCompletionSource } from '../../lib/alias-completion'
 import { commandRegistry } from '../../lib/commands'
 import { createJoinCompletionSource } from '../../lib/join-completion'
+import { createSqlLinter } from '../../lib/sql-linter'
 import { MIN_EDITOR_HEIGHT } from '../../lib/layout-constants'
 import { getNextStatementStart, getPreviousStatementStart } from '../../lib/sql-utils'
 import { connectionsStore } from '../../stores/connections'
@@ -109,6 +110,10 @@ function createDarkTheme() {
 			'.cm-placeholder': {
 				color: 'var(--ink-muted)',
 				fontStyle: 'italic',
+			},
+			'.cm-lintRange-error': {
+				backgroundImage: 'none',
+				borderBottom: '2px wavy var(--error)',
 			},
 		},
 		{ dark: true },
@@ -333,6 +338,7 @@ export default function SqlEditor(props: SqlEditorProps) {
 			{ autocomplete: joinCompletionSource },
 			{ autocomplete: aliasCompletionSource },
 		])
+		const sqlLinterExtension = createSqlLinter(props.connectionId, props.database, sqlite)
 
 		// Alt+Click to add cursor at clicked position (multi-cursor support)
 		const altClickCursor = EditorView.domEventHandlers({
@@ -366,6 +372,7 @@ export default function SqlEditor(props: SqlEditorProps) {
 				executedHighlightField,
 				errorHighlightField,
 				customCompletionExtension,
+				sqlLinterExtension,
 				placeholder('Write your SQL query here...'),
 				EditorView.lineWrapping,
 			],
