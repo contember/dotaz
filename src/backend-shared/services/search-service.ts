@@ -43,7 +43,7 @@ export async function searchDatabase(
 		if (opts.scope === 'schema' && opts.schemaName && schemaName !== opts.schemaName) continue
 
 		for (const table of tables) {
-			if (table.type === 'view') continue // skip views for performance
+			if (table.type !== 'table') continue // skip views and materialized views for performance
 			if (opts.scope === 'tables' && opts.tableNames) {
 				if (!opts.tableNames.includes(table.name)) continue
 			}

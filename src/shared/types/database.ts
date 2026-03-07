@@ -52,7 +52,7 @@ export interface SchemaInfo {
 export interface TableInfo {
 	schema: string
 	name: string
-	type: 'table' | 'view'
+	type: 'table' | 'view' | 'materialized-view'
 	rowCount?: number
 }
 

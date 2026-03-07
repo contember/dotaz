@@ -62,6 +62,24 @@ interface PgTableRow {
 	table_type: string
 }
 
+/** Row shape from pg_matviews */
+interface PgMatviewRow {
+	schemaname: string
+	matviewname: string
+}
+
+/** Row shape from pg_attribute column query for materialized views */
+interface PgMatviewColumnRow {
+	schema_name: string
+	table_name: string
+	column_name: string
+	data_type: string
+	udt_name: string
+	is_nullable: string
+	column_default: string | null
+	attnum: number
+}
+
 interface SessionState {
 	conn: ReservedSQL
 	txActive: boolean
@@ -268,7 +286,18 @@ export class PostgresDriver implements DatabaseDriver {
 
 		const tables: SchemaData['tables'] = {}
 		for (const schema of schemas) {
-			tables[schema.name] = await this.getTables(conn, schema.name)
+			const regularTables = await this.getTables(conn, schema.name)
+			const matviews = await this.getMaterializedViews(conn, schema.name)
+			tables[schema.name] = [...regularTables, ...matviews]
+		}
+
+		// Collect materialized view names per schema for column fetching
+		const matviewNames = new Map<string, string[]>()
+		for (const schema of schemas) {
+			const mvs = tables[schema.name].filter((t) => t.type === 'materialized-view')
+			if (mvs.length > 0) {
+				matviewNames.set(schema.name, mvs.map((t) => t.name))
+			}
 		}
 
 		const [allColumns, allIndexes, allForeignKeys, allReferencingForeignKeys] = await Promise.all([
@@ -394,6 +423,45 @@ export class PostgresDriver implements DatabaseDriver {
 			),
 		])
 
+		// Fetch materialized view columns from pg_attribute (not in information_schema)
+		for (const [schemaName, mvNames] of matviewNames) {
+			const mvRows = await conn.unsafe(
+				`SELECT
+					n.nspname AS schema_name,
+					c.relname AS table_name,
+					a.attname AS column_name,
+					pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type,
+					t.typname AS udt_name,
+					CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END AS is_nullable,
+					pg_catalog.pg_get_expr(d.adbin, d.adrelid) AS column_default,
+					a.attnum
+				FROM pg_catalog.pg_attribute a
+				JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+				JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+				JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
+				LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+				WHERE n.nspname = $1
+					AND c.relname = ANY($2)
+					AND a.attnum > 0
+					AND NOT a.attisdropped
+				ORDER BY n.nspname, c.relname, a.attnum`,
+				[schemaName, `{${mvNames.join(',')}}`],
+			)
+			for (const row of mvRows as PgMatviewColumnRow[]) {
+				;(allColumns as PgColumnRow[]).push({
+					table_schema: row.schema_name,
+					table_name: row.table_name,
+					column_name: row.column_name,
+					data_type: row.data_type,
+					udt_name: row.udt_name,
+					is_nullable: row.is_nullable,
+					column_default: row.column_default,
+					character_maximum_length: null,
+					is_primary_key: false,
+				})
+			}
+		}
+
 		// Group columns by schema.table
 		const columns: SchemaData['columns'] = {}
 		for (const row of allColumns as PgColumnRow[]) {
@@ -503,6 +571,22 @@ export class PostgresDriver implements DatabaseDriver {
 			schema,
 			name: row.name,
 			type: row.table_type === 'VIEW' ? ('view' as const) : ('table' as const),
+		}))
+	}
+
+	private async getMaterializedViews(conn: SQL | ReservedSQL, schema: string): Promise<TableInfo[]> {
+		this.ensureConnected()
+		const rows = await conn.unsafe(
+			`SELECT matviewname
+			FROM pg_matviews
+			WHERE schemaname = $1
+			ORDER BY matviewname`,
+			[schema],
+		)
+		return [...rows].map((row: PgMatviewRow) => ({
+			schema,
+			name: row.matviewname,
+			type: 'materialized-view' as const,
 		}))
 	}
 

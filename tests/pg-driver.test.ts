@@ -226,6 +226,24 @@ describe('PostgresDriver loadSchema', () => {
 		await driver.execute('DROP VIEW test_schema.active_users')
 	})
 
+	test('includes materialized views', async () => {
+		await driver.execute(
+			'CREATE MATERIALIZED VIEW test_schema.active_users_mat AS SELECT * FROM test_schema.users WHERE age IS NOT NULL',
+		)
+		const data = await driver.loadSchema()
+		const matview = data.tables.test_schema.find((t) => t.name === 'active_users_mat')
+		expect(matview).toBeDefined()
+		expect(matview!.type).toBe('materialized-view')
+
+		// Materialized view columns should be fetched
+		const columns = data.columns['test_schema.active_users_mat']
+		expect(columns).toBeDefined()
+		expect(columns.length).toBeGreaterThan(0)
+		expect(columns.find((c) => c.name === 'name')).toBeDefined()
+
+		await driver.execute('DROP MATERIALIZED VIEW test_schema.active_users_mat')
+	})
+
 	test('returns correct column info', async () => {
 		const data = await driver.loadSchema()
 		const columns = data.columns['test_schema.users']

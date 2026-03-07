@@ -479,7 +479,7 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 					label={table.name}
 					level={baseLevel}
 					type="table"
-					icon={table.type === 'view' ? <Eye size={14} /> : <Table size={14} />}
+					icon={table.type === 'view' ? <Eye size={14} /> : table.type === 'materialized-view' ? <Database size={14} /> : <Table size={14} />}
 					expanded={hasViews() ? tExpanded() : undefined}
 					hasChildren={hasViews()}
 					onClick={() => handleTableClick(conn.id, schema.name, table.name, database)}
