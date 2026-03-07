@@ -3,9 +3,9 @@ import { createStore, reconcile, unwrap } from 'solid-js/store'
 import type {
 	AiProvider,
 	ColorTheme,
-	DateFormat,
 	FormatProfile,
 } from '../../../shared/types/settings'
+import { formatDateWithProfile, formatNumberWithProfile } from '../../lib/cell-formatters'
 import type { SessionConfig } from '../../stores/settings'
 import { settingsStore } from '../../stores/settings'
 import Dialog from './Dialog'
@@ -58,13 +58,11 @@ export default function SettingsDialog(props: SettingsDialogProps) {
 	})
 
 	const numberPreview = createMemo(() => {
-		const num = 1234567.891
-		return formatNumberPreview(num, dataFormat.decimalSeparator, dataFormat.thousandsSeparator, dataFormat.decimalPlaces)
+		return formatNumberWithProfile(1234567.891, dataFormat)
 	})
 
 	const datePreview = createMemo(() => {
-		const now = new Date(2026, 2, 2, 14, 30, 45)
-		return formatDatePreview(now, dataFormat.dateFormat)
+		return formatDateWithProfile(new Date(2026, 2, 2, 14, 30, 45), dataFormat.dateFormat)
 	})
 
 	function defaultModel(): string {
@@ -206,50 +204,4 @@ export default function SettingsDialog(props: SettingsDialogProps) {
 			</div>
 		</Dialog>
 	)
-}
-
-// ── Preview helpers ──────────────────────────────────────
-
-function formatNumberPreview(num: number, decSep: string, thousSep: string, places: number): string {
-	let str: string
-	if (places >= 0) {
-		str = num.toFixed(places)
-	} else {
-		str = String(num)
-	}
-
-	const [intPart, fracPart] = str.split('.')
-
-	let formattedInt = intPart
-	if (thousSep) {
-		formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, thousSep)
-	}
-
-	if (fracPart !== undefined) {
-		return formattedInt + decSep + fracPart
-	}
-	return formattedInt
-}
-
-function formatDatePreview(d: Date, format: DateFormat): string {
-	const pad = (n: number) => String(n).padStart(2, '0')
-	const Y = d.getFullYear()
-	const M = pad(d.getMonth() + 1)
-	const D = pad(d.getDate())
-	const h = pad(d.getHours())
-	const m = pad(d.getMinutes())
-	const s = pad(d.getSeconds())
-
-	switch (format) {
-		case 'YYYY-MM-DD HH:mm:ss':
-			return `${Y}-${M}-${D} ${h}:${m}:${s}`
-		case 'DD.MM.YYYY HH:mm:ss':
-			return `${D}.${M}.${Y} ${h}:${m}:${s}`
-		case 'MM/DD/YYYY HH:mm:ss':
-			return `${M}/${D}/${Y} ${h}:${m}:${s}`
-		case 'YYYY-MM-DD':
-			return `${Y}-${M}-${D}`
-		case 'ISO 8601':
-			return d.toISOString()
-	}
 }
