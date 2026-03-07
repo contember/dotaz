@@ -1,5 +1,5 @@
-import ELK, { type ElkExtendedEdge, type ElkNode } from 'elkjs/lib/elk.bundled.js'
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js'
+import { computeGraphLayout } from './layout'
 import type { ColumnInfo, ForeignKeyInfo, SchemaData, TableInfo } from '../../../shared/types/database'
 import { connectionsStore } from '../../stores/connections'
 import { tabsStore } from '../../stores/tabs'
@@ -65,8 +65,6 @@ export default function ErDiagram(props: ErDiagramProps) {
 		return schemaTables.filter((t) => t.type === 'table').slice(0, MAX_TABLES)
 	})
 
-	const elk = new ELK()
-
 	function estimateTableWidth(table: TableInfo, columns: ColumnInfo[]): number {
 		const headerWidth = table.name.length * (CHAR_WIDTH + 1) + 30
 		let maxColWidth = 0
@@ -82,7 +80,7 @@ export default function ErDiagram(props: ErDiagramProps) {
 		return TABLE_HEADER_HEIGHT + TABLE_PADDING_Y + colCount * COLUMN_ROW_HEIGHT
 	}
 
-	async function computeLayout() {
+	function computeLayout() {
 		const data = schemaData()
 		const tbls = tables()
 		if (!data || tbls.length === 0) {
@@ -113,8 +111,7 @@ export default function ErDiagram(props: ErDiagramProps) {
 			}
 		}
 
-		// Build ELK graph
-		const elkNodes: ElkNode[] = tbls.map((table) => {
+		const graphNodes = tbls.map((table) => {
 			const key = `${table.schema}.${table.name}`
 			const columns = data.columns[key] ?? []
 			return {
@@ -124,64 +121,45 @@ export default function ErDiagram(props: ErDiagramProps) {
 			}
 		})
 
-		const elkEdges: ElkExtendedEdge[] = allEdges.map((e, i) => ({
+		const graphEdges = allEdges.map((e, i) => ({
 			id: `edge-${i}`,
-			sources: [e.source],
-			targets: [e.target],
+			source: e.source,
+			target: e.target,
 		}))
 
-		try {
-			const layout = await elk.layout({
-				id: 'root',
-				layoutOptions: {
-					'elk.algorithm': 'layered',
-					'elk.direction': 'RIGHT',
-					'elk.spacing.nodeNode': '40',
-					'elk.layered.spacing.nodeNodeBetweenLayers': '60',
-					'elk.edgeRouting': 'ORTHOGONAL',
-					'elk.layered.mergeEdges': 'true',
-				},
-				children: elkNodes,
-				edges: elkEdges,
-			})
+		const layout = computeGraphLayout(graphNodes, graphEdges)
 
-			const layoutNodes: TableNode[] = (layout.children ?? []).map((n) => {
-				const key = n.id
-				const columns = data.columns[key] ?? []
-				return {
-					id: key,
-					schema: key.split('.')[0],
-					name: key.split('.').slice(1).join('.'),
-					x: n.x ?? 0,
-					y: n.y ?? 0,
-					width: n.width ?? TABLE_MIN_WIDTH,
-					height: n.height ?? TABLE_HEADER_HEIGHT,
-					columns,
-					fkColumns: fkColumnsByTable.get(key) ?? new Set(),
-				}
-			})
+		const layoutNodes: TableNode[] = layout.nodes.map((n) => {
+			const columns = data.columns[n.id] ?? []
+			return {
+				id: n.id,
+				schema: n.id.split('.')[0],
+				name: n.id.split('.').slice(1).join('.'),
+				x: n.x,
+				y: n.y,
+				width: n.width,
+				height: n.height,
+				columns,
+				fkColumns: fkColumnsByTable.get(n.id) ?? new Set(),
+			}
+		})
 
-			const layoutEdges: Edge[] = (layout.edges ?? []).map((e, i) => {
-				const edgeData = allEdges[i]
-				return {
-					id: e.id,
-					sourceTable: edgeData.source,
-					sourceColumns: edgeData.fk.columns,
-					targetTable: edgeData.target,
-					targetColumns: edgeData.fk.referencedColumns,
-					label: edgeData.fk.name,
-					sections: (e as ElkExtendedEdge).sections ?? [],
-				}
-			})
+		const layoutEdges: Edge[] = layout.edges.map((e, i) => {
+			const edgeData = allEdges[i]
+			return {
+				id: e.id,
+				sourceTable: edgeData.source,
+				sourceColumns: edgeData.fk.columns,
+				targetTable: edgeData.target,
+				targetColumns: edgeData.fk.referencedColumns,
+				label: edgeData.fk.name,
+				sections: e.sections,
+			}
+		})
 
-			setNodes(layoutNodes)
-			setEdges(layoutEdges)
-			setLayoutReady(true)
-		} catch {
-			setNodes([])
-			setEdges([])
-			setLayoutReady(true)
-		}
+		setNodes(layoutNodes)
+		setEdges(layoutEdges)
+		setLayoutReady(true)
 	}
 
 	// Re-layout when schema data or compact mode changes
