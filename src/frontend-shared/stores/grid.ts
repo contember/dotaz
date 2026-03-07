@@ -1,15 +1,17 @@
 import { createStore } from 'solid-js/store'
-import { buildCountQuery, buildQuickSearchClause, buildReadableSelectQuery, buildSelectQuery, generateChangesPreview, generateChangeSql } from '../../shared/sql'
+import { buildCountQuery, buildQuickSearchClause, buildReadableSelectQuery, buildSelectQuery } from '../../shared/sql'
 import type { ForeignKeyInfo } from '../../shared/types/database'
 import type { ColumnFilter, GridColumnDef, SortColumn } from '../../shared/types/grid'
-import type { DataChange, RowColorRule, SavedViewConfig } from '../../shared/types/rpc'
-import { DEFAULT_COLUMN_WIDTH } from '../lib/layout-constants'
+import type { RowColorRule } from '../../shared/types/rpc'
 import { rpc } from '../lib/rpc'
 import { createTabHelpers } from '../lib/tab-store-helpers'
 import { connectionsStore } from './connections'
+import { createGridColumnActions, getOrderedColumns, getVisibleColumns, computePinStyles } from './gridColumns'
+import { createGridEditingActions, createDefaultPendingChanges } from './gridEditing'
 import { createGridFkActions } from './gridFk'
 import { createGridHeatmapActions, computeHeatmapStats, computeHeatmapColor } from './gridHeatmap'
 import { createGridSelectionActions } from './gridSelection'
+import { createGridViewActions } from './gridViews'
 import { sessionStore } from './session'
 import { settingsStore } from './settings'
 
@@ -305,14 +307,6 @@ export interface TabGridState {
 	rowColoringEnabled: boolean
 }
 
-function createDefaultPendingChanges(): PendingChanges {
-	return {
-		cellEdits: {},
-		newRows: new Set(),
-		deletedRows: new Set(),
-	}
-}
-
 function createDefaultTabState(
 	connectionId: string,
 	schema: string,
@@ -372,10 +366,23 @@ const latestFetchId = new Map<string, number>()
 let fetchSequence = 0
 
 const { getTab, ensureTab } = createTabHelpers(() => state.tabs, 'Grid')
+
+// ── Domain module wiring ─────────────────────────────────
+
 const heatmapActions = createGridHeatmapActions(state, setState, ensureTab)
 const selectionActions = createGridSelectionActions(setState, ensureTab, normalizeRange, createDefaultSelection)
 const fkActions = createGridFkActions(state, setState, ensureTab, getTab)
+const columnActions = createGridColumnActions(state, setState, ensureTab)
+const editingActions = createGridEditingActions(
+	state,
+	setState,
+	ensureTab,
+	getTab,
+	getVisibleColumns,
+	selectionActions.clearSelection,
+)
 
+// fetchData is defined before viewActions since viewActions needs it
 async function fetchData(tabId: string) {
 	const tab = ensureTab(tabId)
 	const requestId = ++fetchSequence
@@ -509,6 +516,18 @@ async function fetchData(tabId: string) {
 		throw err
 	}
 }
+
+const viewActions = createGridViewActions(
+	state,
+	setState,
+	ensureTab,
+	getTab,
+	getVisibleColumns,
+	createDefaultSelection,
+	fetchData,
+)
+
+// ── Data fetching & pagination ───────────────────────────
 
 async function fetchGridCount(tabId: string) {
 	const tab = getTab(tabId)
@@ -685,7 +704,7 @@ function getSelectedData(tabId: string): Record<string, unknown>[] {
 	return indices.filter((i) => tab.rows[i] != null).map((i) => tab.rows[i])
 }
 
-/** Format a cell value for TSV clipboard export. NULL → empty string. */
+/** Format a cell value for TSV clipboard export. NULL -> empty string. */
 function formatCellForClipboard(value: unknown): string {
 	if (value === null || value === undefined) return ''
 	if (typeof value === 'object') return JSON.stringify(value)
@@ -710,7 +729,7 @@ function buildClipboardTsv(
 	const selectedRows = getSelectedRowIndices(sel)
 	const selectedCols = getSelectedColIndices(sel)
 
-	// Single cell → copy just the cell value
+	// Single cell -> copy just the cell value
 	if (selectedRows.length === 1 && selectedCols.length === 1) {
 		const row = tab.rows[selectedRows[0]]
 		if (!row) return null
@@ -719,7 +738,7 @@ function buildClipboardTsv(
 		return { text: formatCellForClipboard(row[colName]), rowCount: 0 }
 	}
 
-	// Full row selection or multi-cell → copy selected cells as TSV
+	// Full row selection or multi-cell -> copy selected cells as TSV
 	const colNames = selectedCols
 		.map((i) => visibleColumns[i]?.name)
 		.filter(Boolean) as string[]
@@ -827,654 +846,7 @@ function buildAdvancedCopyText(
 	return lines.join('\n')
 }
 
-function setColumnWidth(tabId: string, column: string, width: number) {
-	const tab = ensureTab(tabId)
-	const existing = tab.columnConfig[column]
-	setState('tabs', tabId, 'columnConfig', {
-		...tab.columnConfig,
-		[column]: {
-			visible: existing?.visible ?? true,
-			width: Math.max(50, width),
-			pinned: existing?.pinned,
-		},
-	})
-}
-
-function setColumnVisibility(tabId: string, column: string, visible: boolean) {
-	const tab = ensureTab(tabId)
-	const existing = tab.columnConfig[column]
-	setState('tabs', tabId, 'columnConfig', {
-		...tab.columnConfig,
-		[column]: {
-			visible,
-			width: existing?.width,
-			pinned: existing?.pinned,
-		},
-	})
-}
-
-function setColumnPinned(
-	tabId: string,
-	column: string,
-	pinned: 'left' | 'right' | undefined,
-) {
-	const tab = ensureTab(tabId)
-	const existing = tab.columnConfig[column]
-	setState('tabs', tabId, 'columnConfig', {
-		...tab.columnConfig,
-		[column]: {
-			visible: existing?.visible ?? true,
-			width: existing?.width,
-			pinned,
-		},
-	})
-}
-
-function setColumnOrder(tabId: string, order: string[]) {
-	setState('tabs', tabId, 'columnOrder', order)
-}
-
-function resetColumnConfig(tabId: string) {
-	ensureTab(tabId)
-	setState('tabs', tabId, 'columnConfig', {})
-	setState('tabs', tabId, 'columnOrder', [])
-}
-
-/** Returns all columns in user-defined order (or natural order). Includes hidden columns. */
-function getOrderedColumns(tab: TabGridState): GridColumnDef[] {
-	if (tab.columnOrder.length === 0) return tab.columns
-	const orderMap = new Map(tab.columnOrder.map((name, i) => [name, i]))
-	return [...tab.columns].sort((a, b) => {
-		const ai = orderMap.get(a.name) ?? Number.MAX_SAFE_INTEGER
-		const bi = orderMap.get(b.name) ?? Number.MAX_SAFE_INTEGER
-		return ai - bi
-	})
-}
-
-/** Returns visible columns ordered for rendering: left-pinned, normal, right-pinned. */
-function getVisibleColumns(tab: TabGridState): GridColumnDef[] {
-	const ordered = getOrderedColumns(tab)
-	const visible = ordered.filter(
-		(col) => tab.columnConfig[col.name]?.visible !== false,
-	)
-
-	const left: GridColumnDef[] = []
-	const normal: GridColumnDef[] = []
-	const right: GridColumnDef[] = []
-
-	for (const col of visible) {
-		const pin = tab.columnConfig[col.name]?.pinned
-		if (pin === 'left') left.push(col)
-		else if (pin === 'right') right.push(col)
-		else normal.push(col)
-	}
-
-	return [...left, ...normal, ...right]
-}
-
-/** Computes sticky position styles for pinned columns. */
-function computePinStyles(
-	columns: GridColumnDef[],
-	columnConfig: Record<string, ColumnConfig>,
-): Map<string, Record<string, string>> {
-	const styles = new Map<string, Record<string, string>>()
-
-	// Start after the row number column (40px)
-	let leftOffset = 40
-	for (const col of columns) {
-		if (columnConfig[col.name]?.pinned === 'left') {
-			styles.set(col.name, {
-				position: 'sticky',
-				left: `${leftOffset}px`,
-				'z-index': '3',
-				background: 'var(--surface-raised)',
-			})
-			leftOffset += columnConfig[col.name]?.width ?? DEFAULT_COLUMN_WIDTH
-		}
-	}
-
-	let rightOffset = 0
-	for (let i = columns.length - 1; i >= 0; i--) {
-		const col = columns[i]
-		if (columnConfig[col.name]?.pinned === 'right') {
-			styles.set(col.name, {
-				position: 'sticky',
-				right: `${rightOffset}px`,
-				'z-index': '3',
-				background: 'var(--surface-raised)',
-			})
-			rightOffset += columnConfig[col.name]?.width ?? DEFAULT_COLUMN_WIDTH
-		}
-	}
-
-	return styles
-}
-
-// ── Editing actions ───────────────────────────────────────
-
-function startEditing(tabId: string, row: number, column: string) {
-	ensureTab(tabId)
-	setState('tabs', tabId, 'editingCell', { row, column })
-}
-
-function stopEditing(tabId: string) {
-	ensureTab(tabId)
-	setState('tabs', tabId, 'editingCell', null)
-}
-
-function setCellValue(
-	tabId: string,
-	rowIndex: number,
-	column: string,
-	newValue: unknown,
-) {
-	const tab = ensureTab(tabId)
-	const key = `${rowIndex}:${column}`
-	const existing = tab.pendingChanges.cellEdits[key]
-	const oldValue = existing ? existing.oldValue : tab.rows[rowIndex]?.[column]
-
-	// If reverting to original value, remove the edit
-	if (oldValue === newValue) {
-		const next = { ...tab.pendingChanges.cellEdits }
-		delete next[key]
-		setState('tabs', tabId, 'pendingChanges', 'cellEdits', next)
-	} else {
-		setState('tabs', tabId, 'pendingChanges', 'cellEdits', key, {
-			rowIndex,
-			column,
-			oldValue,
-			newValue,
-		})
-	}
-
-	// Also update the actual row data for display
-	setState('tabs', tabId, 'rows', rowIndex, column, newValue)
-}
-
-function addNewRow(tabId: string) {
-	const tab = ensureTab(tabId)
-	const emptyRow: Record<string, unknown> = {}
-	for (const col of tab.columns) {
-		emptyRow[col.name] = null
-	}
-	const newIndex = tab.rows.length
-	setState('tabs', tabId, 'rows', [...tab.rows, emptyRow])
-	const next = new Set(tab.pendingChanges.newRows)
-	next.add(newIndex)
-	setState('tabs', tabId, 'pendingChanges', 'newRows', next)
-	return newIndex
-}
-
-/**
- * Paste parsed clipboard data into the grid starting at the given cell.
- * Overwrites existing rows and creates new INSERT rows when pasting beyond the last row.
- * Each pasted cell becomes a pending change (same as inline editing).
- */
-function pasteCells(
-	tabId: string,
-	startRow: number,
-	startColumn: string,
-	data: unknown[][],
-) {
-	const tab = ensureTab(tabId)
-	const visibleCols = getVisibleColumns(tab)
-	const colNames = visibleCols.map((c) => c.name)
-	const startColIdx = colNames.indexOf(startColumn)
-	if (startColIdx < 0) return
-
-	for (let r = 0; r < data.length; r++) {
-		const rowIndex = startRow + r
-		// Create new row if we're past the end
-		if (rowIndex >= tab.rows.length) {
-			addNewRow(tabId)
-		}
-		const pasteRow = data[r]
-		for (let c = 0; c < pasteRow.length; c++) {
-			const colIdx = startColIdx + c
-			if (colIdx >= colNames.length) break // skip columns beyond visible range
-			const colName = colNames[colIdx]
-			setCellValue(tabId, rowIndex, colName, pasteRow[c])
-		}
-	}
-}
-
-function deleteSelectedRows(tabId: string) {
-	const tab = ensureTab(tabId)
-	const selectedIndices = getSelectedRowIndices(tab.selection)
-	if (selectedIndices.length === 0) return
-	const next = new Set(tab.pendingChanges.deletedRows)
-
-	// Collect new-row indices to remove from the rows array
-	const newRowIndicesToRemove: number[] = []
-
-	for (const idx of selectedIndices) {
-		if (tab.pendingChanges.newRows.has(idx)) {
-			newRowIndicesToRemove.push(idx)
-		} else {
-			next.add(idx)
-		}
-	}
-
-	// Remove new rows from rows array (process in reverse to preserve indices)
-	if (newRowIndicesToRemove.length > 0) {
-		newRowIndicesToRemove.sort((a, b) => b - a)
-		for (const idx of newRowIndicesToRemove) {
-			// Remove cell edits for this row
-			const edits = { ...tab.pendingChanges.cellEdits }
-			for (const key of Object.keys(edits)) {
-				if (key.startsWith(`${idx}:`)) delete edits[key]
-			}
-			setState('tabs', tabId, 'pendingChanges', 'cellEdits', edits)
-
-			// Remove from newRows
-			const nextNew = new Set(tab.pendingChanges.newRows)
-			nextNew.delete(idx)
-			setState('tabs', tabId, 'pendingChanges', 'newRows', nextNew)
-
-			// Remove row from array
-			const filteredRows = tab.rows.filter((_, i) => i !== idx)
-			setState('tabs', tabId, 'rows', filteredRows)
-
-			// Adjust indices for remaining pending changes
-			adjustIndicesAfterRemoval(tabId, idx)
-		}
-	}
-
-	setState('tabs', tabId, 'pendingChanges', 'deletedRows', next)
-	selectionActions.clearSelection(tabId)
-}
-
-function hasPendingChanges(tabId: string): boolean {
-	const tab = getTab(tabId)
-	if (!tab) return false
-	return (
-		Object.keys(tab.pendingChanges.cellEdits).length > 0
-		|| tab.pendingChanges.newRows.size > 0
-		|| tab.pendingChanges.deletedRows.size > 0
-	)
-}
-
-/** Count total number of distinct changes (grouped by type: update rows, inserts, deletes). */
-function pendingChangesCount(tabId: string): number {
-	const tab = getTab(tabId)
-	if (!tab) return 0
-
-	// Count distinct rows with cell edits (excluding new/deleted rows)
-	const editedRows = new Set<number>()
-	for (const edit of Object.values(tab.pendingChanges.cellEdits)) {
-		if (
-			!tab.pendingChanges.newRows.has(edit.rowIndex)
-			&& !tab.pendingChanges.deletedRows.has(edit.rowIndex)
-		) {
-			editedRows.add(edit.rowIndex)
-		}
-	}
-
-	return (
-		editedRows.size
-		+ tab.pendingChanges.newRows.size
-		+ tab.pendingChanges.deletedRows.size
-	)
-}
-
-/** Revert all cell edits for a specific existing row (undo UPDATE). */
-function revertRowUpdate(tabId: string, rowIndex: number) {
-	const tab = ensureTab(tabId)
-	const edits = { ...tab.pendingChanges.cellEdits }
-	for (const [key, edit] of Object.entries(edits)) {
-		if (edit.rowIndex === rowIndex) {
-			setState('tabs', tabId, 'rows', rowIndex, edit.column, edit.oldValue)
-			delete edits[key]
-		}
-	}
-	setState('tabs', tabId, 'pendingChanges', 'cellEdits', edits)
-}
-
-/** Revert a new row (undo INSERT). */
-function revertNewRow(tabId: string, rowIndex: number) {
-	const tab = ensureTab(tabId)
-
-	// Remove cell edits for this row
-	const edits = { ...tab.pendingChanges.cellEdits }
-	for (const key of Object.keys(edits)) {
-		if (key.startsWith(`${rowIndex}:`)) delete edits[key]
-	}
-	setState('tabs', tabId, 'pendingChanges', 'cellEdits', edits)
-
-	// Remove from newRows
-	const nextNew = new Set(tab.pendingChanges.newRows)
-	nextNew.delete(rowIndex)
-	setState('tabs', tabId, 'pendingChanges', 'newRows', nextNew)
-
-	// Remove the row from rows array and adjust indices in pendingChanges
-	const filteredRows = tab.rows.filter((_, i) => i !== rowIndex)
-	setState('tabs', tabId, 'rows', filteredRows)
-
-	// Adjust indices for all pending changes that reference rows after the removed one
-	adjustIndicesAfterRemoval(tabId, rowIndex)
-}
-
-/** Revert a deleted row (undo DELETE). */
-function revertDeletedRow(tabId: string, rowIndex: number) {
-	const tab = ensureTab(tabId)
-	const next = new Set(tab.pendingChanges.deletedRows)
-	next.delete(rowIndex)
-	setState('tabs', tabId, 'pendingChanges', 'deletedRows', next)
-}
-
-/** Adjust all pending change indices after a row removal. */
-function adjustIndicesAfterRemoval(tabId: string, removedIndex: number) {
-	const tab = ensureTab(tabId)
-
-	// Adjust cellEdits keys
-	const oldEdits = tab.pendingChanges.cellEdits
-	const newEdits: Record<string, CellChange> = {}
-	for (const [, edit] of Object.entries(oldEdits)) {
-		if (edit.rowIndex > removedIndex) {
-			const adjusted = { ...edit, rowIndex: edit.rowIndex - 1 }
-			newEdits[`${adjusted.rowIndex}:${adjusted.column}`] = adjusted
-		} else {
-			newEdits[`${edit.rowIndex}:${edit.column}`] = edit
-		}
-	}
-	setState('tabs', tabId, 'pendingChanges', 'cellEdits', newEdits)
-
-	// Adjust newRows
-	const newNewRows = new Set<number>()
-	for (const idx of tab.pendingChanges.newRows) {
-		newNewRows.add(idx > removedIndex ? idx - 1 : idx)
-	}
-	setState('tabs', tabId, 'pendingChanges', 'newRows', newNewRows)
-
-	// Adjust deletedRows
-	const newDeletedRows = new Set<number>()
-	for (const idx of tab.pendingChanges.deletedRows) {
-		newDeletedRows.add(idx > removedIndex ? idx - 1 : idx)
-	}
-	setState('tabs', tabId, 'pendingChanges', 'deletedRows', newDeletedRows)
-}
-
-function isCellChanged(
-	tabId: string,
-	rowIndex: number,
-	column: string,
-): boolean {
-	const tab = getTab(tabId)
-	if (!tab) return false
-	return `${rowIndex}:${column}` in tab.pendingChanges.cellEdits
-}
-
-function isRowNew(tabId: string, rowIndex: number): boolean {
-	const tab = getTab(tabId)
-	if (!tab) return false
-	return tab.pendingChanges.newRows.has(rowIndex)
-}
-
-function isRowDeleted(tabId: string, rowIndex: number): boolean {
-	const tab = getTab(tabId)
-	if (!tab) return false
-	return tab.pendingChanges.deletedRows.has(rowIndex)
-}
-
-/**
- * Build DataChange array from pending changes for backend submission.
- */
-function buildDataChanges(tabId: string): DataChange[] {
-	const tab = ensureTab(tabId)
-	const changes: DataChange[] = []
-	const pkColumns = tab.columns
-		.filter((c) => c.isPrimaryKey)
-		.map((c) => c.name)
-
-	// Collect updates: group cell edits by row
-	const editsByRow = new Map<number, Record<string, unknown>>()
-	for (const edit of Object.values(tab.pendingChanges.cellEdits)) {
-		if (tab.pendingChanges.newRows.has(edit.rowIndex)) continue // new rows handled separately
-		if (tab.pendingChanges.deletedRows.has(edit.rowIndex)) continue // deleted rows handled separately
-		let rowEdits = editsByRow.get(edit.rowIndex)
-		if (!rowEdits) {
-			rowEdits = {}
-			editsByRow.set(edit.rowIndex, rowEdits)
-		}
-		rowEdits[edit.column] = edit.newValue
-	}
-
-	for (const [rowIndex, values] of editsByRow) {
-		const row = tab.rows[rowIndex]
-		const primaryKeys: Record<string, unknown> = {}
-		for (const pk of pkColumns) {
-			// Use original value if the PK was edited, otherwise current value
-			const cellEdit = tab.pendingChanges.cellEdits[`${rowIndex}:${pk}`]
-			primaryKeys[pk] = cellEdit ? cellEdit.oldValue : row[pk]
-		}
-		changes.push({
-			type: 'update',
-			schema: tab.schema,
-			table: tab.table,
-			primaryKeys,
-			values,
-		})
-	}
-
-	// Collect inserts (new rows)
-	for (const rowIndex of tab.pendingChanges.newRows) {
-		const row = tab.rows[rowIndex]
-		if (!row) continue
-		const values: Record<string, unknown> = {}
-		for (const col of tab.columns) {
-			if (row[col.name] !== null && row[col.name] !== undefined) {
-				values[col.name] = row[col.name]
-			}
-		}
-		changes.push({
-			type: 'insert',
-			schema: tab.schema,
-			table: tab.table,
-			values,
-		})
-	}
-
-	// Collect deletes
-	for (const rowIndex of tab.pendingChanges.deletedRows) {
-		const row = tab.rows[rowIndex]
-		if (!row) continue
-		const primaryKeys: Record<string, unknown> = {}
-		for (const pk of pkColumns) {
-			primaryKeys[pk] = row[pk]
-		}
-		changes.push({
-			type: 'delete',
-			schema: tab.schema,
-			table: tab.table,
-			primaryKeys,
-		})
-	}
-
-	return changes
-}
-
-async function applyChanges(tabId: string, database?: string) {
-	const tab = ensureTab(tabId)
-	const changes = buildDataChanges(tabId)
-	if (changes.length === 0) return
-
-	const dialect = connectionsStore.getDialect(tab.connectionId)
-	const statements = changes.map((change) => generateChangeSql(change, dialect))
-	const sessionId = sessionStore.getSessionForTab(tabId)
-	await rpc.query.execute({
-		connectionId: tab.connectionId,
-		sql: '',
-		queryId: '',
-		statements,
-		database,
-		sessionId,
-	})
-}
-
-function generateSqlPreview(tabId: string): string {
-	const tab = ensureTab(tabId)
-	const changes = buildDataChanges(tabId)
-	if (changes.length === 0) return ''
-	const dialect = connectionsStore.getDialect(tab.connectionId)
-	return generateChangesPreview(changes, dialect)
-}
-
-function revertChanges(tabId: string) {
-	const tab = ensureTab(tabId)
-
-	// Revert cell edits to original values
-	for (const edit of Object.values(tab.pendingChanges.cellEdits)) {
-		if (!tab.pendingChanges.newRows.has(edit.rowIndex)) {
-			setState(
-				'tabs',
-				tabId,
-				'rows',
-				edit.rowIndex,
-				edit.column,
-				edit.oldValue,
-			)
-		}
-	}
-
-	// Remove new rows from end
-	const newRowIndices = [...tab.pendingChanges.newRows].sort((a, b) => b - a)
-	if (newRowIndices.length > 0) {
-		const filteredRows = tab.rows.filter(
-			(_, i) => !tab.pendingChanges.newRows.has(i),
-		)
-		setState('tabs', tabId, 'rows', filteredRows)
-	}
-
-	// Clear all pending changes
-	setState('tabs', tabId, 'pendingChanges', createDefaultPendingChanges())
-	setState('tabs', tabId, 'editingCell', null)
-}
-
-/** Clear pending changes tracking without reverting cell values (used after successful apply). */
-function clearPendingChanges(tabId: string) {
-	ensureTab(tabId)
-	setState('tabs', tabId, 'pendingChanges', createDefaultPendingChanges())
-	setState('tabs', tabId, 'editingCell', null)
-}
-
-// ── Saved view actions ────────────────────────────────────
-
-function setActiveView(
-	tabId: string,
-	viewId: string | null,
-	viewName: string | null,
-) {
-	ensureTab(tabId)
-	setState('tabs', tabId, 'activeViewId', viewId)
-	setState('tabs', tabId, 'activeViewName', viewName)
-}
-
-async function applyViewConfig(tabId: string, config: SavedViewConfig) {
-	const tab = ensureTab(tabId)
-
-	setState('tabs', tabId, 'sort', config.sort ?? [])
-
-	setState('tabs', tabId, 'filters', config.filters ?? [])
-	setState('tabs', tabId, 'customFilter', config.customFilter ?? '')
-
-	if (config.columns) {
-		const visibleSet = new Set(config.columns)
-		const newConfig: Record<string, ColumnConfig> = {}
-		for (const col of tab.columns) {
-			newConfig[col.name] = {
-				visible: visibleSet.has(col.name),
-				width: config.columnWidths?.[col.name],
-				pinned: tab.columnConfig[col.name]?.pinned,
-			}
-		}
-		setState('tabs', tabId, 'columnConfig', newConfig)
-		setState('tabs', tabId, 'columnOrder', config.columns)
-	}
-
-	setState('tabs', tabId, 'rowColorRules', config.rowColorRules ?? [])
-
-	setState('tabs', tabId, 'currentPage', 1)
-	setState('tabs', tabId, 'selection', createDefaultSelection())
-	await fetchData(tabId)
-}
-
-async function resetToDefault(tabId: string) {
-	ensureTab(tabId)
-	setState('tabs', tabId, 'sort', [])
-	setState('tabs', tabId, 'filters', [])
-	setState('tabs', tabId, 'customFilter', '')
-	setState('tabs', tabId, 'quickSearch', '')
-	setState('tabs', tabId, 'columnConfig', {})
-	setState('tabs', tabId, 'columnOrder', [])
-	setState('tabs', tabId, 'rowColorRules', [])
-	setState('tabs', tabId, 'activeViewId', null)
-	setState('tabs', tabId, 'activeViewName', null)
-	setState('tabs', tabId, 'currentPage', 1)
-	setState('tabs', tabId, 'selection', createDefaultSelection())
-	await fetchData(tabId)
-}
-
-/** Compare current grid state against a saved view config. Ignores columnWidths to reduce noise. */
-function isViewModified(tabId: string, savedConfig: SavedViewConfig): boolean {
-	const tab = getTab(tabId)
-	if (!tab) return false
-
-	// Compare sort
-	const currentSort = tab.sort
-		.map((s) => `${s.column}:${s.direction}`)
-		.join(',')
-	const savedSort = (savedConfig.sort ?? [])
-		.map((s) => `${s.column}:${s.direction}`)
-		.join(',')
-	if (currentSort !== savedSort) return true
-
-	// Compare filters
-	const currentFilters = tab.filters
-		.map((f) => `${f.column}:${f.operator}:${f.value}`)
-		.join(',')
-	const savedFilters = (savedConfig.filters ?? [])
-		.map((f) => `${f.column}:${f.operator}:${f.value}`)
-		.join(',')
-	if (currentFilters !== savedFilters) return true
-
-	// Compare custom filter
-	if ((tab.customFilter || '') !== (savedConfig.customFilter || '')) {
-		return true
-	}
-
-	// Compare visible columns (order matters)
-	if (savedConfig.columns) {
-		const visibleCols = getVisibleColumns(tab).map((c) => c.name)
-		if (visibleCols.join(',') !== savedConfig.columns.join(',')) return true
-	}
-
-	// Compare row color rules
-	const currentRules = JSON.stringify(tab.rowColorRules)
-	const savedRules = JSON.stringify(savedConfig.rowColorRules ?? [])
-	if (currentRules !== savedRules) return true
-
-	return false
-}
-
-function captureViewConfig(tabId: string): SavedViewConfig {
-	const tab = ensureTab(tabId)
-	const visible = getVisibleColumns(tab)
-	const columnWidths: Record<string, number> = {}
-	for (const col of tab.columns) {
-		if (tab.columnConfig[col.name]?.width) {
-			columnWidths[col.name] = tab.columnConfig[col.name].width!
-		}
-	}
-
-	return {
-		columns: visible.map((c) => c.name),
-		sort: [...tab.sort],
-		filters: [...tab.filters],
-		columnWidths: Object.keys(columnWidths).length > 0 ? columnWidths : undefined,
-		customFilter: tab.customFilter || undefined,
-		rowColorRules: tab.rowColorRules.length > 0 ? [...tab.rowColorRules] : undefined,
-	}
-}
+// ── Transpose & value editor ─────────────────────────────
 
 function toggleTranspose(tabId: string) {
 	const tab = ensureTab(tabId)
@@ -1594,6 +966,14 @@ function getCurrentSql(tabId: string): string | null {
 	return buildReadableSelectQuery(tab.schema, tab.table, tab.currentPage, tab.pageSize, sort, filters, dialect, customFilter)
 }
 
+// ── Editing: deleteSelectedRows wrapper ──────────────────
+
+function deleteSelectedRows(tabId: string) {
+	const tab = ensureTab(tabId)
+	const selectedIndices = getSelectedRowIndices(tab.selection)
+	editingActions.deleteSelectedRows(tabId, selectedIndices)
+}
+
 // ── Export ────────────────────────────────────────────────
 
 export const gridStore = {
@@ -1630,11 +1010,11 @@ export const gridStore = {
 	buildClipboardTsv,
 	buildAdvancedCopyText,
 	formatCellForClipboard,
-	setColumnWidth,
-	setColumnVisibility,
-	setColumnPinned,
-	setColumnOrder,
-	resetColumnConfig,
+	setColumnWidth: columnActions.setColumnWidth,
+	setColumnVisibility: columnActions.setColumnVisibility,
+	setColumnPinned: columnActions.setColumnPinned,
+	setColumnOrder: columnActions.setColumnOrder,
+	resetColumnConfig: columnActions.resetColumnConfig,
 	getOrderedColumns,
 	getVisibleColumns,
 	computePinStyles,
@@ -1677,34 +1057,34 @@ export const gridStore = {
 	fkPanelSetRowIndex: fkActions.fkPanelSetRowIndex,
 
 	// Saved views
-	setActiveView,
-	applyViewConfig,
-	resetToDefault,
-	captureViewConfig,
-	isViewModified,
+	setActiveView: viewActions.setActiveView,
+	applyViewConfig: viewActions.applyViewConfig,
+	resetToDefault: viewActions.resetToDefault,
+	captureViewConfig: viewActions.captureViewConfig,
+	isViewModified: viewActions.isViewModified,
 
 	// Aggregation
 	getSelectedCellData,
 	getSelectionSnapshot,
 
 	// Editing
-	startEditing,
-	stopEditing,
-	setCellValue,
-	addNewRow,
-	pasteCells,
+	startEditing: editingActions.startEditing,
+	stopEditing: editingActions.stopEditing,
+	setCellValue: editingActions.setCellValue,
+	addNewRow: editingActions.addNewRow,
+	pasteCells: editingActions.pasteCells,
 	deleteSelectedRows,
-	hasPendingChanges,
-	pendingChangesCount,
-	isCellChanged,
-	isRowNew,
-	isRowDeleted,
-	buildDataChanges,
-	applyChanges,
-	generateSqlPreview,
-	revertChanges,
-	clearPendingChanges,
-	revertRowUpdate,
-	revertNewRow,
-	revertDeletedRow,
+	hasPendingChanges: editingActions.hasPendingChanges,
+	pendingChangesCount: editingActions.pendingChangesCount,
+	isCellChanged: editingActions.isCellChanged,
+	isRowNew: editingActions.isRowNew,
+	isRowDeleted: editingActions.isRowDeleted,
+	buildDataChanges: editingActions.buildDataChanges,
+	applyChanges: editingActions.applyChanges,
+	generateSqlPreview: editingActions.generateSqlPreview,
+	revertChanges: editingActions.revertChanges,
+	clearPendingChanges: editingActions.clearPendingChanges,
+	revertRowUpdate: editingActions.revertRowUpdate,
+	revertNewRow: editingActions.revertNewRow,
+	revertDeletedRow: editingActions.revertDeletedRow,
 }
