@@ -1,6 +1,6 @@
 import type { ConnectionConfig, ConnectionInfo } from '../../shared/types/connection'
 import type { DatabaseInfo } from '../../shared/types/database'
-import type { ExportOptions, ExportPreviewRequest, ExportResult } from '../../shared/types/export'
+import type { ExportOptions, ExportPreviewRequest, ExportRawPreviewRequest, ExportRawPreviewResponse, ExportResult } from '../../shared/types/export'
 import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from '../../shared/types/import'
 import type { ExplainResult, QueryHistoryEntry, QueryResult } from '../../shared/types/query'
 import type {
@@ -89,6 +89,7 @@ export interface RpcAdapter {
 	// ── Export ────────────────────────────────────────────
 	exportData(opts: ExportOptions): Promise<ExportResult>
 	exportPreview(req: ExportPreviewRequest): Promise<string>
+	exportPreviewRows(req: ExportRawPreviewRequest): Promise<ExportRawPreviewResponse>
 
 	// ── Import ────────────────────────────────────────────
 	importData(opts: ImportOptions): Promise<ImportResult>

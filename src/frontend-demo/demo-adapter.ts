@@ -1,7 +1,7 @@
 import type { DatabaseDriver } from '../backend-shared/db/driver'
 import type { RpcAdapter } from '../backend-shared/rpc/adapter'
 import { buildSchemaContext, generateSql } from '../backend-shared/services/ai-sql'
-import { exportPreview as generateExportPreview, exportToStream } from '../backend-shared/services/export-service'
+import { buildExportSelectQuery, exportPreview as generateExportPreview, exportToStream } from '../backend-shared/services/export-service'
 import type { ExportWriter } from '../backend-shared/services/export-service'
 import { importFromStream, importPreviewFromStream } from '../backend-shared/services/import-service'
 import { searchDatabase } from '../backend-shared/services/search-service'
@@ -9,7 +9,7 @@ import { formatSql } from '../backend-shared/services/sql-formatter'
 import { splitStatements } from '../shared/sql/statements'
 import type { ConnectionConfig, ConnectionInfo } from '../shared/types/connection'
 import type { DatabaseInfo } from '../shared/types/database'
-import type { ExportOptions, ExportPreviewRequest, ExportResult } from '../shared/types/export'
+import type { ExportOptions, ExportPreviewRequest, ExportRawPreviewRequest, ExportRawPreviewResponse, ExportResult } from '../shared/types/export'
 import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from '../shared/types/import'
 import type { ExplainNode, ExplainResult, QueryHistoryEntry, QueryHistoryStatus, QueryResult } from '../shared/types/query'
 import type {
@@ -432,6 +432,20 @@ export class DemoAdapter implements RpcAdapter {
 			sort: req.sort,
 			limit: req.limit,
 		})
+	}
+
+	async exportPreviewRows(req: ExportRawPreviewRequest): Promise<ExportRawPreviewResponse> {
+		const d = this.getConnectedDriver(req.connectionId)
+		const { sql: baseSql, params: queryParams } = buildExportSelectQuery(
+			{ schema: req.schema, table: req.table, format: 'csv', columns: req.columns, filters: req.filters, sort: req.sort },
+			d,
+		)
+		const paramIndex = queryParams.length + 1
+		const sql = `${baseSql} LIMIT ${d.placeholder(paramIndex)}`
+		const result = await d.execute(sql, [...queryParams, req.limit])
+		const rows = result.rows
+		const columns = rows.length > 0 ? Object.keys(rows[0]) : (req.columns ?? [])
+		return { rows, columns }
 	}
 
 	// ── Import ────────────────────────────────────────────

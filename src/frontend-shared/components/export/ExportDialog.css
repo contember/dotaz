@@ -1,8 +1,12 @@
+.export-dialog-modal {
+	max-width: 680px;
+}
+
 .export-dialog {
 	display: flex;
 	flex-direction: column;
 	gap: var(--spacing-md);
-	min-width: 420px;
+	min-width: 620px;
 }
 
 .export-dialog__section {
@@ -22,25 +26,24 @@
 .export-dialog__format-group {
 	display: flex;
 	flex-wrap: wrap;
+	gap: 1px;
+	background: var(--edge-strong);
 	border: 1px solid var(--edge-strong);
 	border-radius: var(--radius-sm);
 	overflow: hidden;
 }
 
 .export-dialog__format-btn {
-	flex: 1;
-	padding: var(--spacing-sm) var(--spacing-md);
+	flex: 1 1 calc(25% - 4px);
+	padding: var(--spacing-xs) var(--spacing-sm);
 	border: none;
-	border-right: 1px solid var(--edge);
-	background: transparent;
+	background: var(--surface-overlay);
 	color: var(--ink-secondary);
 	font-size: var(--font-size-sm);
 	cursor: pointer;
+	white-space: nowrap;
+	text-align: center;
 	transition: background 0.15s, color 0.15s;
-}
-
-.export-dialog__format-btn:last-child {
-	border-right: none;
 }
 
 .export-dialog__format-btn:hover {
@@ -58,12 +61,22 @@
 	filter: brightness(1.1);
 }
 
+/* Two-column layout for scope + options */
+
+.export-dialog__row {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: var(--spacing-lg);
+	align-items: start;
+}
+
 /* Scope radio group */
 
 .export-dialog__scope-group {
 	display: flex;
-	flex-direction: column;
-	gap: var(--spacing-xs);
+	flex-direction: row;
+	flex-wrap: wrap;
+	gap: var(--spacing-xs) var(--spacing-md);
 }
 
 .export-dialog__radio-label {
@@ -198,6 +211,16 @@
 	color: var(--ink-muted);
 	font-family: inherit;
 	white-space: normal;
+}
+
+.export-dialog__preview--empty {
+	padding: var(--spacing-md);
+	background: var(--surface);
+	border: 1px dashed var(--edge);
+	border-radius: 4px;
+	font-size: var(--font-size-xs);
+	color: var(--ink-muted);
+	text-align: center;
 }
 
 /* Progress */

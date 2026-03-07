@@ -1,6 +1,6 @@
 import type { ConnectionConfig, ConnectionInfo } from '../../shared/types/connection'
 import type { DatabaseInfo } from '../../shared/types/database'
-import type { ExportOptions, ExportPreviewRequest, ExportResult } from '../../shared/types/export'
+import type { ExportOptions, ExportPreviewRequest, ExportRawPreviewRequest, ExportRawPreviewResponse, ExportResult } from '../../shared/types/export'
 import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from '../../shared/types/import'
 import type { ExplainResult, QueryHistoryEntry, QueryResult } from '../../shared/types/query'
 import type {
@@ -22,7 +22,7 @@ import type { DatabaseDriver } from '../db/driver'
 import { buildSchemaContext, generateSql } from '../services/ai-sql'
 import type { ConnectionManager } from '../services/connection-manager'
 import type { EncryptionService } from '../services/encryption'
-import { exportPreview, exportToFile } from '../services/export-service'
+import { buildExportSelectQuery, exportPreview, exportToFile } from '../services/export-service'
 import { importFromStream, importPreviewFromStream } from '../services/import-service'
 import type { QueryExecutor } from '../services/query-executor'
 import { searchDatabase } from '../services/search-service'
@@ -362,6 +362,20 @@ export class BackendAdapter implements RpcAdapter {
 			sort: req.sort,
 			limit: req.limit,
 		})
+	}
+
+	async exportPreviewRows(req: ExportRawPreviewRequest): Promise<ExportRawPreviewResponse> {
+		const driver = this.cm.getDriver(req.connectionId, req.database)
+		const { sql: baseSql, params: queryParams } = buildExportSelectQuery(
+			{ schema: req.schema, table: req.table, format: 'csv', columns: req.columns, filters: req.filters, sort: req.sort },
+			driver,
+		)
+		const paramIndex = queryParams.length + 1
+		const sql = `${baseSql} LIMIT ${driver.placeholder(paramIndex)}`
+		const result = await driver.execute(sql, [...queryParams, req.limit])
+		const rows = result.rows
+		const columns = rows.length > 0 ? Object.keys(rows[0]) : (req.columns ?? [])
+		return { rows, columns }
 	}
 
 	// ── Import ────────────────────────────────────────────

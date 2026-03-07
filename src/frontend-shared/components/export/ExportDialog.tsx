@@ -1,10 +1,11 @@
 import ClipboardCopy from 'lucide-solid/icons/clipboard-copy'
 import Download from 'lucide-solid/icons/download'
 import Eye from 'lucide-solid/icons/eye'
-import { createEffect, createSignal, For, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
 import type { CsvDelimiter, CsvEncoding, ExportFormat, ExportPreviewRequest } from '../../../shared/types/export'
 import type { ColumnFilter, SortColumn } from '../../../shared/types/grid'
 import { getCapabilities } from '../../lib/capabilities'
+import { formatPreview } from '../../lib/export-formatters'
 import { rpc } from '../../lib/rpc'
 import { transport } from '../../lib/transport'
 import { gridStore } from '../../stores/grid'
@@ -65,8 +66,12 @@ export default function ExportDialog(props: ExportDialogProps) {
 	const [utf8Bom, setUtf8Bom] = createSignal(false)
 	const [includeHeaders, setIncludeHeaders] = createSignal(true)
 	const [batchSize, setBatchSize] = createSignal(100)
-	const [preview, setPreview] = createSignal('')
+	const [previewRows, setPreviewRows] = createSignal<Record<string, unknown>[] | null>(null)
+	const [previewColumns, setPreviewColumns] = createSignal<string[]>([])
 	const [previewLoading, setPreviewLoading] = createSignal(false)
+	const preview = createMemo(() =>
+		formatPreview(previewRows(), previewColumns(), format(), delimiter(), includeHeaders(), batchSize(), props.schema, props.table),
+	)
 	const [exporting, setExporting] = createSignal(false)
 	const [progressRows, setProgressRows] = createSignal(0)
 	const [exportResult, setExportResult] = createSignal<
@@ -126,7 +131,8 @@ export default function ExportDialog(props: ExportDialogProps) {
 			setUtf8Bom(false)
 			setIncludeHeaders(true)
 			setBatchSize(100)
-			setPreview('')
+			setPreviewRows(null)
+			setPreviewColumns([])
 			setPreviewLoading(false)
 			setExporting(false)
 			setProgressRows(0)
@@ -184,25 +190,23 @@ export default function ExportDialog(props: ExportDialogProps) {
 
 	async function loadPreview() {
 		setPreviewLoading(true)
-		setPreview('')
+		setPreviewRows(null)
+		setPreviewColumns([])
 		setError(null)
 
 		try {
-			const params: ExportPreviewRequest = {
+			const result = await rpc.export.previewRows({
 				connectionId: props.connectionId,
 				schema: props.schema,
 				table: props.table,
-				format: format(),
 				limit: 10,
 				columns: scope() === 'selected' ? selectedColumnNames() : undefined,
-				delimiter: format() === 'csv' ? delimiter() : undefined,
 				filters: getExportFilters(),
 				sort: getExportSort(),
 				database: props.database,
-			}
-
-			const result = await rpc.export.preview(params)
-			setPreview(result.content)
+			})
+			setPreviewRows(result.rows)
+			setPreviewColumns(result.columns)
 		} catch (err) {
 			setError(err instanceof Error ? err.message : String(err))
 		} finally {
@@ -401,7 +405,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 	}
 
 	return (
-		<Dialog open={props.open} title="Export Data" onClose={props.onClose}>
+		<Dialog open={props.open} title="Export Data" onClose={props.onClose} class="export-dialog-modal">
 			<div class="export-dialog">
 				{/* Format selection */}
 				<div class="export-dialog__section">
@@ -425,129 +429,129 @@ export default function ExportDialog(props: ExportDialogProps) {
 					</div>
 				</div>
 
-				{/* Scope selection */}
-				<div class="export-dialog__section">
-					<label class="export-dialog__label">Scope</label>
-					<div class="export-dialog__scope-group">
-						<label class="export-dialog__radio-label">
-							<input
-								type="radio"
-								name="scope"
-								value="all"
-								checked={scope() === 'all'}
-								onChange={() => setScope('all')}
-							/>
-							Entire table
-						</label>
-						<label class="export-dialog__radio-label">
-							<input
-								type="radio"
-								name="scope"
-								value="view"
-								checked={scope() === 'view'}
-								onChange={() => setScope('view')}
-							/>
-							Current view (with filters)
-						</label>
-						<label
-							class="export-dialog__radio-label"
-							classList={{
-								'export-dialog__radio-label--disabled': !hasSelection() || !hasPrimaryKey(),
-							}}
-						>
-							<input
-								type="radio"
-								name="scope"
-								value="selected"
-								checked={scope() === 'selected'}
-								disabled={!hasSelection() || !hasPrimaryKey()}
-								onChange={() => setScope('selected')}
-							/>
-							Selected rows ({selectedRowCount()})
-						</label>
-					</div>
-				</div>
-
-				{/* Format-specific options */}
-				<Show when={format() === 'csv'}>
+				{/* Scope + Options */}
+				<div class="export-dialog__row">
 					<div class="export-dialog__section">
-						<label class="export-dialog__label">Options</label>
-						<div class="export-dialog__options">
-							<div class="export-dialog__field">
-								<label class="export-dialog__field-label">Delimiter</label>
-								<Select
-									class="export-dialog__select"
-									value={delimiter()}
-									onChange={(v) => setDelimiter(v as CsvDelimiter)}
-									options={Object.entries(DELIMITER_LABELS).map(
-										([value, label]) => ({ value, label }),
-									)}
-								/>
-							</div>
-							<div class="export-dialog__field">
-								<label class="export-dialog__field-label">Encoding</label>
-								<Select
-									class="export-dialog__select"
-									value={encoding()}
-									onChange={(v) => setEncoding(v as CsvEncoding)}
-									options={Object.entries(ENCODING_LABELS).map(
-										([value, label]) => ({ value, label }),
-									)}
-								/>
-							</div>
-							<label class="export-dialog__checkbox-label">
+						<label class="export-dialog__label">Scope</label>
+						<div class="export-dialog__scope-group">
+							<label class="export-dialog__radio-label">
 								<input
-									type="checkbox"
-									checked={includeHeaders()}
-									onChange={(e) => setIncludeHeaders(e.currentTarget.checked)}
+									type="radio"
+									name="scope"
+									value="all"
+									checked={scope() === 'all'}
+									onChange={() => setScope('all')}
 								/>
-								Include column headers
+								Entire table
 							</label>
-							<Show when={encoding() === 'utf-8'}>
+							<label class="export-dialog__radio-label">
+								<input
+									type="radio"
+									name="scope"
+									value="view"
+									checked={scope() === 'view'}
+									onChange={() => setScope('view')}
+								/>
+								Current view
+							</label>
+							<label
+								class="export-dialog__radio-label"
+								classList={{
+									'export-dialog__radio-label--disabled': !hasSelection() || !hasPrimaryKey(),
+								}}
+							>
+								<input
+									type="radio"
+									name="scope"
+									value="selected"
+									checked={scope() === 'selected'}
+									disabled={!hasSelection() || !hasPrimaryKey()}
+									onChange={() => setScope('selected')}
+								/>
+								Selected ({selectedRowCount()})
+							</label>
+						</div>
+					</div>
+
+					<Show when={format() === 'csv'}>
+						<div class="export-dialog__section">
+							<label class="export-dialog__label">Options</label>
+							<div class="export-dialog__options">
+								<div class="export-dialog__field">
+									<label class="export-dialog__field-label">Delimiter</label>
+									<Select
+										class="export-dialog__select"
+										value={delimiter()}
+										onChange={(v) => setDelimiter(v as CsvDelimiter)}
+										options={Object.entries(DELIMITER_LABELS).map(
+											([value, label]) => ({ value, label }),
+										)}
+									/>
+								</div>
+								<div class="export-dialog__field">
+									<label class="export-dialog__field-label">Encoding</label>
+									<Select
+										class="export-dialog__select"
+										value={encoding()}
+										onChange={(v) => setEncoding(v as CsvEncoding)}
+										options={Object.entries(ENCODING_LABELS).map(
+											([value, label]) => ({ value, label }),
+										)}
+									/>
+								</div>
 								<label class="export-dialog__checkbox-label">
 									<input
 										type="checkbox"
-										checked={utf8Bom()}
-										onChange={(e) => setUtf8Bom(e.currentTarget.checked)}
+										checked={includeHeaders()}
+										onChange={(e) => setIncludeHeaders(e.currentTarget.checked)}
 									/>
-									Include BOM (byte order mark)
+									Include headers
 								</label>
-							</Show>
-						</div>
-					</div>
-				</Show>
-
-				<Show when={format() === 'sql'}>
-					<div class="export-dialog__section">
-						<label class="export-dialog__label">Options</label>
-						<div class="export-dialog__options">
-							<div class="export-dialog__field">
-								<label class="export-dialog__field-label">
-									Rows per INSERT
-								</label>
-								<input
-									class="export-dialog__input export-dialog__input--small"
-									type="number"
-									min={1}
-									max={10000}
-									value={batchSize()}
-									onInput={(e) => {
-										const v = parseInt(e.currentTarget.value, 10)
-										if (!Number.isNaN(v) && v > 0) setBatchSize(v)
-									}}
-								/>
+								<Show when={encoding() === 'utf-8'}>
+									<label class="export-dialog__checkbox-label">
+										<input
+											type="checkbox"
+											checked={utf8Bom()}
+											onChange={(e) => setUtf8Bom(e.currentTarget.checked)}
+										/>
+										Include BOM
+									</label>
+								</Show>
 							</div>
 						</div>
-					</div>
-				</Show>
+					</Show>
 
-				<Show when={format() === 'sql_update'}>
-					<div class="export-dialog__section">
-						<div class="export-dialog__note">
-							Uses the first column as the primary key for the WHERE clause.
+					<Show when={format() === 'sql'}>
+						<div class="export-dialog__section">
+							<label class="export-dialog__label">Options</label>
+							<div class="export-dialog__options">
+								<div class="export-dialog__field">
+									<label class="export-dialog__field-label">Rows per INSERT</label>
+									<input
+										class="export-dialog__input export-dialog__input--small"
+										type="number"
+										min={1}
+										max={10000}
+										value={batchSize()}
+										onInput={(e) => {
+											const v = parseInt(e.currentTarget.value, 10)
+											if (!Number.isNaN(v) && v > 0) setBatchSize(v)
+										}}
+									/>
+								</div>
+							</div>
 						</div>
-					</div>
-				</Show>
+					</Show>
+
+					<Show when={format() === 'sql_update'}>
+						<div class="export-dialog__section">
+							<label class="export-dialog__label">Options</label>
+							<p class="export-dialog__note">
+								First column used as the primary key in the WHERE clause.
+							</p>
+						</div>
+					</Show>
+				</div>
 
 				{/* Preview */}
 				<div class="export-dialog__section">
@@ -561,12 +565,17 @@ export default function ExportDialog(props: ExportDialogProps) {
 							<Eye size={12} /> {previewLoading() ? 'Loading...' : 'Load Preview'}
 						</button>
 					</div>
-					<Show when={preview()}>
-						<pre class="export-dialog__preview">{preview()}</pre>
-					</Show>
 					<Show when={previewLoading()}>
 						<div class="export-dialog__preview export-dialog__preview--loading">
 							Loading preview...
+						</div>
+					</Show>
+					<Show when={!previewLoading() && !!preview()}>
+						<pre class="export-dialog__preview">{preview()}</pre>
+					</Show>
+					<Show when={!previewLoading() && previewRows() === null}>
+						<div class="export-dialog__preview--empty">
+							Click "Load Preview" to see a sample of the exported data
 						</div>
 					</Show>
 				</div>

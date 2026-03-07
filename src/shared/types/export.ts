@@ -55,6 +55,23 @@ export interface ExportPreviewRequest {
 	sort?: SortColumn[]
 }
 
+export interface ExportRawPreviewRequest {
+	connectionId: string
+	schema: string
+	table: string
+	database?: string
+	sessionId?: string
+	limit: number
+	columns?: string[]
+	filters?: ColumnFilter[]
+	sort?: SortColumn[]
+}
+
+export interface ExportRawPreviewResponse {
+	rows: Record<string, unknown>[]
+	columns: string[]
+}
+
 export interface ExportResult {
 	rowCount: number
 	filePath?: string

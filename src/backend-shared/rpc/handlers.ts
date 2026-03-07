@@ -1,5 +1,5 @@
 import type { ConnectionConfig } from '../../shared/types/connection'
-import type { ExportOptions, ExportPreviewRequest } from '../../shared/types/export'
+import type { ExportOptions, ExportPreviewRequest, ExportRawPreviewRequest } from '../../shared/types/export'
 import type { ImportOptions, ImportPreviewRequest } from '../../shared/types/import'
 import type {
 	AiGenerateSqlParams,
@@ -133,6 +133,9 @@ export function createHandlers(adapter: RpcAdapter) {
 		'export.preview': async (req: ExportPreviewRequest) => {
 			const content = await adapter.exportPreview(req)
 			return { content }
+		},
+		'export.previewRows': async (req: ExportRawPreviewRequest) => {
+			return adapter.exportPreviewRows(req)
 		},
 
 		// ── Import ────────────────────────────────────────
