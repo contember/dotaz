@@ -72,7 +72,7 @@ export function createHandlers(adapter: RpcAdapter) {
 		},
 
 		// ── Query Execution ──────────────────────────────
-		'query.execute': async ({ connectionId, sql, queryId, params, database, statements, sessionId }: {
+		'query.execute': async ({ connectionId, sql, queryId, params, database, statements, sessionId, searchPath }: {
 			connectionId: string
 			sql: string
 			queryId: string
@@ -80,11 +80,12 @@ export function createHandlers(adapter: RpcAdapter) {
 			database?: string
 			statements?: { sql: string; params?: unknown[] }[]
 			sessionId?: string
+			searchPath?: string
 		}) => {
 			if (statements && statements.length > 0) {
 				return adapter.executeStatements(connectionId, statements, database, sessionId)
 			}
-			return adapter.executeQuery(connectionId, sql, params, queryId, database, sessionId)
+			return adapter.executeQuery(connectionId, sql, params, queryId, database, sessionId, searchPath)
 		},
 		'query.cancel': async ({ queryId }: { queryId: string }) => {
 			await adapter.cancelQuery(queryId)
@@ -92,14 +93,15 @@ export function createHandlers(adapter: RpcAdapter) {
 		'query.format': ({ sql }: { sql: string }) => {
 			return { sql: adapter.formatSql(sql) }
 		},
-		'query.explain': async ({ connectionId, sql, analyze, database, sessionId }: {
+		'query.explain': async ({ connectionId, sql, analyze, database, sessionId, searchPath }: {
 			connectionId: string
 			sql: string
 			analyze?: boolean
 			database?: string
 			sessionId?: string
+			searchPath?: string
 		}) => {
-			return adapter.explainQuery(connectionId, sql, analyze ?? false, database, sessionId)
+			return adapter.explainQuery(connectionId, sql, analyze ?? false, database, sessionId, searchPath)
 		},
 
 		// ── Transactions ─────────────────────────────────

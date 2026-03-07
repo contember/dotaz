@@ -77,6 +77,8 @@ export interface TabEditorState {
 	aiGenerating: boolean
 	/** Error from AI generation */
 	aiError: string | null
+	/** PostgreSQL search_path override for this tab (null = server default) */
+	searchPath: string | null
 }
 
 function createDefaultEditorState(connectionId: string, database?: string): TabEditorState {
@@ -108,6 +110,7 @@ function createDefaultEditorState(connectionId: string, database?: string): TabE
 		aiPromptOpen: false,
 		aiGenerating: false,
 		aiError: null,
+		searchPath: null,
 	}
 }
 
@@ -257,7 +260,7 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit =
 	try {
 		// Resolve session (auto-pin if configured)
 		const sessionId = await sessionStore.resolveSessionForExecution(tabId, tab.connectionId, sql, tab.database)
-		const results = await rpc.query.execute({ connectionId: tab.connectionId, sql: executeSql, queryId, database: tab.database, sessionId })
+		const results = await rpc.query.execute({ connectionId: tab.connectionId, sql: executeSql, queryId, database: tab.database, sessionId, searchPath: tab.searchPath ?? undefined })
 
 		// Discard stale results if a newer query was started
 		if (state.tabs[tabId]?.queryId !== queryId) return
@@ -412,6 +415,12 @@ async function formatSql(tabId: string) {
 	}
 }
 
+function setSearchPath(tabId: string, searchPath: string | null) {
+	ensureTab(tabId)
+	setState('tabs', tabId, 'searchPath', searchPath)
+	scheduleWorkspaceSave()
+}
+
 function setTxMode(tabId: string, mode: TxMode) {
 	ensureTab(tabId)
 	setState('tabs', tabId, 'txMode', mode)
@@ -486,6 +495,7 @@ async function explainQuery(tabId: string, analyze = false) {
 			analyze,
 			database: tab.database,
 			sessionId,
+			searchPath: tab.searchPath ?? undefined,
 		})
 
 		setState('tabs', tabId, {
@@ -968,6 +978,7 @@ export const editorStore = {
 	cancelQuery,
 	explainQuery,
 	formatSql,
+	setSearchPath,
 	setTxMode,
 	beginTransaction,
 	commitTransaction,

@@ -377,6 +377,11 @@ export const connectionsStore = {
 	getAvailableDatabases(connectionId: string): DatabaseInfo[] {
 		return state.availableDatabases[connectionId] ?? []
 	},
+	getSchemaNames(connectionId: string, database?: string): string[] {
+		const tree = this.getSchemaTree(connectionId, database)
+		if (!tree) return []
+		return tree.schemas.map((s) => s.name)
+	},
 	getConnectionType(connectionId: string): ConnectionType | undefined {
 		const conn = state.connections.find((c) => c.id === connectionId)
 		return conn?.config.type

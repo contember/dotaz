@@ -375,6 +375,7 @@ export default function AppShell() {
 					wsTab.editorContent = editor.content
 					wsTab.editorCursorPosition = editor.cursorPosition
 					wsTab.editorTxMode = editor.txMode
+					wsTab.editorSearchPath = editor.searchPath ?? undefined
 				}
 			}
 			if (tab.type === 'data-grid') {
@@ -454,6 +455,9 @@ export default function AppShell() {
 				}
 				if (wsTab.editorTxMode === 'manual') {
 					editorStore.setTxMode(wsTab.id, 'manual')
+				}
+				if (wsTab.editorSearchPath) {
+					editorStore.setSearchPath(wsTab.id, wsTab.editorSearchPath)
 				}
 			}
 		}

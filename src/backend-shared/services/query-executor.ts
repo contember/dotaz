@@ -117,6 +117,7 @@ export class QueryExecutor {
 		queryId?: string,
 		database?: string,
 		sessionId?: string,
+		searchPath?: string,
 	): Promise<QueryResult[]> {
 		const driver = this.connectionManager.getDriver(connectionId, database)
 		const statements = splitStatements(sql)
@@ -126,9 +127,9 @@ export class QueryExecutor {
 		}
 
 		// Auto-reserve an ephemeral session for multi-statement batches
-		// so all statements run on the same connection.
+		// or when search_path needs to be set/restored on the same connection.
 		let ephemeralSessionId: string | undefined
-		if (!sessionId && statements.length > 1) {
+		if (!sessionId && (statements.length > 1 || searchPath)) {
 			ephemeralSessionId = `__ephemeral_${crypto.randomUUID()}`
 			await driver.reserveSession(ephemeralSessionId)
 		}
@@ -141,7 +142,15 @@ export class QueryExecutor {
 		const timeout = timeoutMs ?? this.defaultTimeoutMs
 		const results: QueryResult[] = []
 
+		let savedSearchPath: string | undefined
 		try {
+			// Set search_path if requested (save original for restore)
+			if (searchPath && effectiveSessionId !== undefined) {
+				const spResult = await driver.execute('SHOW search_path', undefined, effectiveSessionId)
+				savedSearchPath = spResult.rows[0]?.['search_path'] as string | undefined
+				await driver.execute(`SET search_path TO ${searchPath}`, undefined, effectiveSessionId)
+			}
+
 			for (const stmt of statements) {
 				if (entry.cancelled) {
 					results.push(makeCancelledResult())
@@ -164,6 +173,12 @@ export class QueryExecutor {
 				}
 			}
 		} finally {
+			// Restore original search_path
+			if (savedSearchPath !== undefined && effectiveSessionId !== undefined) {
+				try {
+					await driver.execute(`SET search_path TO ${savedSearchPath}`, undefined, effectiveSessionId)
+				} catch { /* best effort */ }
+			}
 			this.runningQueries.delete(id)
 			if (ephemeralSessionId) {
 				await driver.releaseSession(ephemeralSessionId)
@@ -235,15 +250,31 @@ export class QueryExecutor {
 		analyze: boolean,
 		database?: string,
 		sessionId?: string,
+		searchPath?: string,
 	): Promise<ExplainResult> {
 		const driver = this.connectionManager.getDriver(connectionId, database)
 		const driverType = driver.getDriverType()
 		const start = performance.now()
 
+		// Reserve ephemeral session for search_path wrapping
+		let ephemeralSessionId: string | undefined
+		if (!sessionId && searchPath) {
+			ephemeralSessionId = `__ephemeral_${crypto.randomUUID()}`
+			await driver.reserveSession(ephemeralSessionId)
+		}
+		const effectiveSessionId = sessionId ?? ephemeralSessionId
+		let savedSearchPath: string | undefined
+
 		try {
+			// Set search_path if requested
+			if (searchPath && effectiveSessionId !== undefined) {
+				const spResult = await driver.execute('SHOW search_path', undefined, effectiveSessionId)
+				savedSearchPath = spResult.rows[0]?.['search_path'] as string | undefined
+				await driver.execute(`SET search_path TO ${searchPath}`, undefined, effectiveSessionId)
+			}
 			if (driverType === 'sqlite') {
-				const result = sessionId !== undefined
-					? await driver.execute(`EXPLAIN QUERY PLAN ${sql}`, undefined, sessionId)
+				const result = effectiveSessionId !== undefined
+					? await driver.execute(`EXPLAIN QUERY PLAN ${sql}`, undefined, effectiveSessionId)
 					: await driver.execute(`EXPLAIN QUERY PLAN ${sql}`)
 				const durationMs = Math.round(performance.now() - start)
 				const nodes = parseSqliteExplain(result.rows)
@@ -257,8 +288,8 @@ export class QueryExecutor {
 			const prefix = analyze
 				? 'EXPLAIN (ANALYZE, FORMAT JSON)'
 				: 'EXPLAIN (FORMAT JSON)'
-			const result = sessionId !== undefined
-				? await driver.execute(`${prefix} ${sql}`, undefined, sessionId)
+			const result = effectiveSessionId !== undefined
+				? await driver.execute(`${prefix} ${sql}`, undefined, effectiveSessionId)
 				: await driver.execute(`${prefix} ${sql}`)
 			const durationMs = Math.round(performance.now() - start)
 
@@ -274,8 +305,8 @@ export class QueryExecutor {
 			let rawText: string
 			try {
 				const textPrefix = analyze ? 'EXPLAIN (ANALYZE)' : 'EXPLAIN'
-				const textResult = sessionId !== undefined
-					? await driver.execute(`${textPrefix} ${sql}`, undefined, sessionId)
+				const textResult = effectiveSessionId !== undefined
+					? await driver.execute(`${textPrefix} ${sql}`, undefined, effectiveSessionId)
 					: await driver.execute(`${textPrefix} ${sql}`)
 				rawText = textResult.rows
 					.map((r) => Object.values(r)[0])
@@ -292,6 +323,15 @@ export class QueryExecutor {
 				rawText: '',
 				durationMs,
 				error: err instanceof Error ? err.message : String(err),
+			}
+		} finally {
+			if (savedSearchPath !== undefined && effectiveSessionId !== undefined) {
+				try {
+					await driver.execute(`SET search_path TO ${savedSearchPath}`, undefined, effectiveSessionId)
+				} catch { /* best effort */ }
+			}
+			if (ephemeralSessionId) {
+				await driver.releaseSession(ephemeralSessionId)
 			}
 		}
 	}

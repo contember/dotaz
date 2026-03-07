@@ -7,7 +7,7 @@ import Play from 'lucide-solid/icons/play'
 import RotateCcw from 'lucide-solid/icons/rotate-ccw'
 import ScrollText from 'lucide-solid/icons/scroll-text'
 import AlignLeft from 'lucide-solid/icons/text-align-start'
-import { Show } from 'solid-js'
+import { For, Show } from 'solid-js'
 import { connectionsStore } from '../../stores/connections'
 import { editorStore, type TxMode } from '../../stores/editor'
 import { sessionStore } from '../../stores/session'
@@ -35,6 +35,9 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 	const inTransaction = () => tab()?.inTransaction ?? false
 	const isPinned = () => sessionStore.isTabPinned(props.tabId)
 	const sessionLabel = () => sessionStore.getSessionLabelForTab(props.tabId)
+	const isPostgres = () => connectionsStore.getConnectionType(props.connectionId) === 'postgresql'
+	const schemaNames = () => connectionsStore.getSchemaNames(props.connectionId, props.database)
+	const searchPath = () => tab()?.searchPath ?? null
 
 	function handleRun() {
 		editorStore.executeQuery(props.tabId)
@@ -74,6 +77,11 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 
 	function handleRollback() {
 		editorStore.rollbackTransaction(props.tabId)
+	}
+
+	function handleSearchPathChange(e: Event) {
+		const value = (e.target as HTMLSelectElement).value
+		editorStore.setSearchPath(props.tabId, value === '' ? null : value)
 	}
 
 	function handleTogglePin() {
@@ -265,6 +273,22 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 						<RotateCcw size={12} /> Rollback
 					</button>
 				</Show>
+			</Show>
+
+			{/* Schema (search_path) — PostgreSQL only */}
+			<Show when={isPostgres() && schemaNames().length > 0}>
+				<div class="query-toolbar__separator" />
+				<select
+					class="query-toolbar__schema-select"
+					value={searchPath() ?? ''}
+					onChange={handleSearchPathChange}
+					title="Search path (schema)"
+				>
+					<option value="">Default</option>
+					<For each={schemaNames()}>
+						{(name) => <option value={`"${name}"`}>{name}</option>}
+					</For>
+				</select>
 			</Show>
 
 			<div class="query-toolbar__separator" />

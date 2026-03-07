@@ -45,7 +45,7 @@ export interface RpcAdapter {
 	deactivateDatabase(connectionId: string, database: string): Promise<void>
 
 	// ── Query execution ───────────────────────────────────
-	executeQuery(connectionId: string, sql: string, params?: unknown[], queryId?: string, database?: string, sessionId?: string): Promise<QueryResult[]>
+	executeQuery(connectionId: string, sql: string, params?: unknown[], queryId?: string, database?: string, sessionId?: string, searchPath?: string): Promise<QueryResult[]>
 	/** Execute a batch of parameterized statements sequentially, auto-wrapped in transaction. */
 	executeStatements(
 		connectionId: string,
@@ -54,7 +54,7 @@ export interface RpcAdapter {
 		sessionId?: string,
 	): Promise<QueryResult[]>
 	cancelQuery(queryId: string): Promise<void>
-	explainQuery(connectionId: string, sql: string, analyze: boolean, database?: string, sessionId?: string): Promise<ExplainResult>
+	explainQuery(connectionId: string, sql: string, analyze: boolean, database?: string, sessionId?: string, searchPath?: string): Promise<ExplainResult>
 
 	// ── Transactions ──────────────────────────────────────
 	beginTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void>

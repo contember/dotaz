@@ -158,8 +158,9 @@ export class BackendAdapter implements RpcAdapter {
 		queryId?: string,
 		database?: string,
 		sessionId?: string,
+		searchPath?: string,
 	): Promise<QueryResult[]> {
-		return this.queryExecutor.executeQuery(connectionId, sql, params, undefined, queryId, database, sessionId)
+		return this.queryExecutor.executeQuery(connectionId, sql, params, undefined, queryId, database, sessionId, searchPath)
 	}
 
 	async executeStatements(
@@ -202,8 +203,8 @@ export class BackendAdapter implements RpcAdapter {
 		await this.queryExecutor.cancelQuery(queryId)
 	}
 
-	async explainQuery(connectionId: string, sql: string, analyze: boolean, database?: string, sessionId?: string): Promise<ExplainResult> {
-		return this.queryExecutor.explainQuery(connectionId, sql, analyze, database, sessionId)
+	async explainQuery(connectionId: string, sql: string, analyze: boolean, database?: string, sessionId?: string, searchPath?: string): Promise<ExplainResult> {
+		return this.queryExecutor.explainQuery(connectionId, sql, analyze, database, sessionId, searchPath)
 	}
 
 	// ── Transactions ──────────────────────────────────────

@@ -25,6 +25,8 @@ export interface WorkspaceTab {
 	editorCursorPosition?: number
 	/** Transaction mode: "auto-commit" | "manual" (sql-console tabs only) */
 	editorTxMode?: string
+	/** PostgreSQL search_path override (sql-console tabs only) */
+	editorSearchPath?: string
 	/** Current grid page (data-grid tabs only) */
 	gridPage?: number
 	/** Grid page size (data-grid tabs only) */
