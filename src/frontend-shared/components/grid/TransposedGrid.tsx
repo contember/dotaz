@@ -27,6 +27,7 @@ interface TransposedGridProps {
 	onCellMoveDown?: (rowIndex: number, column: string) => void
 	onFkClick?: (rowIndex: number, column: string, anchorEl?: HTMLElement) => void
 	onPkClick?: (rowIndex: number, column: string, anchorEl?: HTMLElement) => void
+	onCellBrowseFk?: (rowIndex: number, column: string) => void
 }
 
 /** Width of the row-header (column name) column in transposed view. */
@@ -129,8 +130,9 @@ export default function TransposedGrid(props: TransposedGridProps) {
 											onMoveNext={() => props.onCellMoveNext?.(rowIdx(), col.name)}
 											onMoveDown={() => props.onCellMoveDown?.(rowIdx(), col.name)}
 											onFkClick={props.fkMap?.has(col.name) ? (anchorEl) => props.onFkClick?.(rowIdx(), col.name, anchorEl) : undefined}
-										pkColumn={col.isPrimaryKey}
-										onPkClick={col.isPrimaryKey ? (anchorEl) => props.onPkClick?.(rowIdx(), col.name, anchorEl) : undefined}
+											pkColumn={col.isPrimaryKey}
+											onPkClick={col.isPrimaryKey ? (anchorEl) => props.onPkClick?.(rowIdx(), col.name, anchorEl) : undefined}
+											onBrowseFk={props.fkMap?.has(col.name) ? () => props.onCellBrowseFk?.(rowIdx(), col.name) : undefined}
 										/>
 									</div>
 								)

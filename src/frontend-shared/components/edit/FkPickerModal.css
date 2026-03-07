@@ -1,0 +1,158 @@
+.fk-picker-modal {
+	min-width: 640px;
+	max-width: 82vw;
+	width: 760px;
+}
+
+.fk-picker-modal .dialog__body {
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.fk-picker {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	flex: 1;
+}
+
+/* ── Toolbar (search + FilterBar) ───────────────── */
+
+.fk-picker__toolbar {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-xs);
+	padding: 0 var(--spacing-md);
+	border-bottom: 1px solid var(--edge);
+	background: var(--surface-raised);
+	min-height: 36px;
+}
+
+.fk-picker__search {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-xs);
+	flex-shrink: 0;
+	border: 1px solid var(--edge);
+	border-radius: var(--radius-sm);
+	padding: 0 var(--spacing-sm);
+	height: 24px;
+}
+
+.fk-picker__search:focus-within {
+	border-color: var(--accent);
+}
+
+.fk-picker__search-icon {
+	color: var(--ink-muted);
+	flex-shrink: 0;
+}
+
+.fk-picker__search-input {
+	border: none;
+	outline: none;
+	background: transparent;
+	color: var(--ink);
+	font-size: var(--font-size-xs);
+	font-family: var(--font-mono);
+	width: 160px;
+	padding: 0;
+}
+
+.fk-picker__search-input::placeholder {
+	color: var(--ink-muted);
+}
+
+.fk-picker__search-clear {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 14px;
+	height: 14px;
+	border: none;
+	border-radius: 50%;
+	background: var(--ink-muted);
+	color: var(--surface);
+	cursor: pointer;
+	padding: 0;
+	flex-shrink: 0;
+}
+
+.fk-picker__search-clear:hover {
+	background: var(--ink-secondary);
+}
+
+/* FilterBar fills remaining space, no own border */
+.fk-picker__toolbar .filter-bar {
+	flex: 1;
+	border-bottom: none;
+}
+
+/* ── Status / empty ─────────────────────────────── */
+
+.fk-picker__status {
+	padding: var(--spacing-lg);
+	text-align: center;
+	color: var(--ink-secondary);
+	font-size: var(--font-size-sm);
+}
+
+.fk-picker__status--error {
+	color: var(--color-error, #f87171);
+}
+
+/* ── Table ──────────────────────────────────────── */
+
+.fk-picker__table-wrap {
+	overflow: auto;
+	max-height: 55vh;
+}
+
+.fk-picker__table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: var(--font-size-sm);
+	font-family: var(--font-mono);
+}
+
+.fk-picker__th {
+	position: sticky;
+	top: 0;
+	padding: var(--spacing-xs) var(--spacing-sm);
+	text-align: left;
+	font-weight: 600;
+	font-size: var(--font-size-xs);
+	color: var(--ink-secondary);
+	background: var(--surface-overlay);
+	border-bottom: 1px solid var(--edge-strong);
+	white-space: nowrap;
+}
+
+.fk-picker__th--target {
+	color: var(--accent);
+}
+
+.fk-picker__tr {
+	cursor: pointer;
+}
+
+.fk-picker__tr:hover {
+	background: var(--surface-hover);
+}
+
+.fk-picker__td {
+	padding: var(--spacing-xs) var(--spacing-sm);
+	border-bottom: 1px solid var(--edge);
+	max-width: 240px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--ink);
+}
+
+.fk-picker__td--target {
+	color: var(--accent);
+	font-weight: 500;
+}

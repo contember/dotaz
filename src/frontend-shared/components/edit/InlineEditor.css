@@ -77,3 +77,32 @@
 	position: static;
 	transform: none;
 }
+
+.inline-editor__browse-btn {
+	position: absolute;
+	right: 22px;
+	top: 50%;
+	transform: translateY(-50%);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	background: var(--surface-active);
+	color: var(--ink-muted);
+	border: 1px solid var(--edge);
+	border-radius: 2px;
+	cursor: pointer;
+	z-index: 1;
+	padding: 0;
+}
+
+.inline-editor__browse-btn:hover {
+	color: var(--ink);
+	background: var(--surface-hover);
+}
+
+.inline-editor--boolean .inline-editor__browse-btn {
+	position: static;
+	transform: none;
+}

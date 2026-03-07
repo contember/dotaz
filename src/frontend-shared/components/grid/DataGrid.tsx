@@ -14,6 +14,7 @@ import { getSelectedRowIndices, gridStore } from '../../stores/grid'
 import { tabsStore } from '../../stores/tabs'
 import { viewsStore } from '../../stores/views'
 import Icon from '../common/Icon'
+import FkPickerModal from '../edit/FkPickerModal'
 import PendingChanges from '../edit/PendingChanges'
 import ExportDialog from '../export/ExportDialog'
 import ImportDialog from '../import/ImportDialog'
@@ -75,6 +76,14 @@ export default function DataGrid(props: DataGridProps) {
 		} | null
 	>(null)
 	const [showBatchEdit, setShowBatchEdit] = createSignal(false)
+	const [fkPickerOpen, setFkPickerOpen] = createSignal(false)
+	const [fkPickerContext, setFkPickerContext] = createSignal<
+		{
+			rowIndex: number
+			column: string
+			target: FkTarget
+		} | null
+	>(null)
 	const [exportInitialScope, setExportInitialScope] = createSignal<
 		'selected' | undefined
 	>(undefined)
@@ -373,6 +382,22 @@ export default function DataGrid(props: DataGridProps) {
 		} else {
 			gridStore.stopEditing(props.tabId)
 		}
+	}
+
+	function handleBrowseFkForInline(rowIndex: number, column: string) {
+		const target = fkMap().get(column)
+		if (!target) return
+		gridStore.stopEditing(props.tabId)
+		setFkPickerContext({ rowIndex, column, target })
+		setFkPickerOpen(true)
+	}
+
+	function handleFkPickerSelect(value: unknown) {
+		const ctx = fkPickerContext()
+		if (!ctx) return
+		gridStore.setCellValue(props.tabId, ctx.rowIndex, ctx.column, value)
+		setFkPickerOpen(false)
+		setFkPickerContext(null)
 	}
 
 	function handleAddNewRow() {
@@ -1046,6 +1071,7 @@ export default function DataGrid(props: DataGridProps) {
 																column,
 																anchorEl,
 															)}
+														onCellBrowseFk={handleBrowseFkForInline}
 													/>
 												</>
 											}
@@ -1079,6 +1105,7 @@ export default function DataGrid(props: DataGridProps) {
 														column,
 														anchorEl,
 													)}
+												onCellBrowseFk={handleBrowseFkForInline}
 											/>
 										</Show>
 
@@ -1275,6 +1302,9 @@ export default function DataGrid(props: DataGridProps) {
 							tabId={props.tabId}
 							columns={t.columns}
 							selectedRows={new Set(getSelectedRowIndices(t.selection))}
+							fkMap={fkMap()}
+							connectionId={props.connectionId}
+							database={props.database}
 							onClose={() => setShowBatchEdit(false)}
 						/>
 					)
@@ -1319,6 +1349,27 @@ export default function DataGrid(props: DataGridProps) {
 				onFkClick={(rowIndex, column) => sidePanelHandle()?.handleFkClick(rowIndex, column)}
 				onSetSidePanelOpen={(open) => sidePanelHandle()?.setSidePanelOpen(open)}
 			/>
+
+			<Show when={fkPickerOpen() && fkPickerContext()}>
+				{(_) => {
+					const ctx = fkPickerContext()!
+					return (
+						<FkPickerModal
+							open={true}
+							onClose={() => {
+								setFkPickerOpen(false)
+								setFkPickerContext(null)
+							}}
+							onSelect={handleFkPickerSelect}
+							connectionId={props.connectionId}
+							schema={ctx.target.schema}
+							table={ctx.target.table}
+							column={ctx.target.column}
+							database={props.database}
+						/>
+					)
+				}}
+			</Show>
 		</div>
 	)
 }

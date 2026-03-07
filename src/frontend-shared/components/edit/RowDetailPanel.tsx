@@ -6,16 +6,13 @@ import Pencil from 'lucide-solid/icons/pencil'
 import X from 'lucide-solid/icons/x'
 import { createEffect, createMemo, createSignal, For, on, Show } from 'solid-js'
 import { buildCountQuery } from '../../../shared/sql'
-import { DatabaseDataType, isSqlDefault, SQL_DEFAULT } from '../../../shared/types/database'
 import type { ForeignKeyInfo, ReferencingForeignKeyInfo } from '../../../shared/types/database'
 import type { ColumnFilter, GridColumnDef } from '../../../shared/types/grid'
-import { isBooleanType, isDateType, isNumericType, isTextType } from '../../lib/column-types'
-import { isQuickValueModifier, quickValueModifierLabel } from '../../lib/keyboard'
 import { rpc } from '../../lib/rpc'
 import { connectionsStore } from '../../stores/connections'
 import type { FkBreadcrumb } from '../../stores/grid'
-import DateInput from '../common/DateInput'
 import Resizer from '../layout/Resizer'
+import RowDetailEditFields from './RowDetailEditFields'
 import './RowDetailPanel.css'
 
 interface RowDetailPanelProps {
@@ -82,38 +79,6 @@ function formatDisplayValue(value: unknown): string {
 	return str.length > 200 ? str.slice(0, 200) + '...' : str
 }
 
-function valueToString(value: unknown): string {
-	if (value === null || value === undefined) return ''
-	if (isSqlDefault(value)) return ''
-	if (typeof value === 'object') return JSON.stringify(value, null, 2)
-	return String(value)
-}
-
-function parseValue(text: string, column: GridColumnDef): unknown {
-	if (text === '') return column.nullable ? null : text
-	if (isNumericType(column.dataType)) {
-		const n = Number(text)
-		return Number.isNaN(n) ? text : n
-	}
-	if (isBooleanType(column.dataType)) {
-		const lower = text.toLowerCase()
-		if (lower === 'true' || lower === '1' || lower === 't') return true
-		if (lower === 'false' || lower === '0' || lower === 'f') return false
-		return text
-	}
-	return text
-}
-
-function dateInputValue(value: unknown, dataType: DatabaseDataType): string {
-	if (value === null || value === undefined || isSqlDefault(value)) return ''
-	const str = String(value)
-	if (dataType === DatabaseDataType.Date) {
-		return str.substring(0, 10)
-	}
-	const d = new Date(str)
-	if (Number.isNaN(d.getTime())) return str
-	return d.toISOString().substring(0, 19)
-}
 
 export default function RowDetailPanel(props: RowDetailPanelProps) {
 	const [editing, setEditing] = createSignal(false)
@@ -135,7 +100,10 @@ export default function RowDetailPanel(props: RowDetailPanelProps) {
 	// ── Referenced By ────────────────────────────────────────
 	const referencingFks = createMemo(() =>
 		connectionsStore.getReferencingForeignKeys(
-			props.connectionId, props.schema, props.table, props.database,
+			props.connectionId,
+			props.schema,
+			props.table,
+			props.database,
 		)
 	)
 	const [referencingCounts, setReferencingCounts] = createSignal<Record<string, number | null>>({})
@@ -206,15 +174,6 @@ export default function RowDetailPanel(props: RowDetailPanelProps) {
 		return props.row ? props.row[column] : null
 	}
 
-	function isFieldNull(column: string): boolean {
-		const v = getValue(column)
-		return v === null || v === undefined
-	}
-
-	function isFieldDefault(column: string): boolean {
-		return isSqlDefault(getValue(column))
-	}
-
 	function isChanged(column: string): boolean {
 		if (column in localEdits()) return true
 		return props.pendingChangedColumns?.has(column) ?? false
@@ -222,35 +181,6 @@ export default function RowDetailPanel(props: RowDetailPanelProps) {
 
 	function setFieldValue(column: string, value: unknown) {
 		setLocalEdits((prev) => ({ ...prev, [column]: value }))
-	}
-
-	function setNull(column: string) {
-		setFieldValue(column, null)
-	}
-
-	function setDefault(column: string) {
-		setFieldValue(column, SQL_DEFAULT)
-	}
-
-	function handleFieldKeyDown(e: KeyboardEvent, col: GridColumnDef) {
-		const modifierActive = isQuickValueModifier(e)
-		if (!modifierActive) return
-		const key = e.key.toLowerCase()
-		if (pkColumns().has(col.name)) return
-
-		if (key === 'n' && col.nullable) {
-			e.preventDefault()
-			setNull(col.name)
-		} else if (key === 't' && isBooleanType(col.dataType)) {
-			e.preventDefault()
-			setFieldValue(col.name, true)
-		} else if (key === 'f' && isBooleanType(col.dataType)) {
-			e.preventDefault()
-			setFieldValue(col.name, false)
-		} else if (key === 'd') {
-			e.preventDefault()
-			setDefault(col.name)
-		}
 	}
 
 	// ── Save / Cancel ────────────────────────────────────────
@@ -317,102 +247,6 @@ export default function RowDetailPanel(props: RowDetailPanelProps) {
 			e.preventDefault()
 			handleNext()
 		}
-	}
-
-	// ── Render edit input ────────────────────────────────────
-	function renderEditInput(col: GridColumnDef) {
-		const isPk = pkColumns().has(col.name)
-		const readOnly = isPk
-		const value = getValue(col.name)
-		const isNull = isFieldNull(col.name)
-		const isDef = isFieldDefault(col.name)
-		const specialPlaceholder = isDef ? 'DEFAULT' : isNull ? 'NULL' : ''
-
-		if (isBooleanType(col.dataType)) {
-			return (
-				<div class="row-detail__checkbox-row" onKeyDown={(e) => handleFieldKeyDown(e, col)}>
-					<input
-						type="checkbox"
-						checked={!!value && !isNull && !isDef}
-						disabled={readOnly}
-						onChange={(e) => setFieldValue(col.name, e.target.checked)}
-					/>
-					<span style={{ 'font-size': 'var(--font-size-sm)', color: 'var(--ink-secondary)' }}>
-						{isDef ? 'DEFAULT' : isNull ? 'NULL' : value ? 'true' : 'false'}
-					</span>
-				</div>
-			)
-		}
-
-		if (isDateType(col.dataType)) {
-			return (
-				<div class="row-detail__input-row">
-					<DateInput
-						class="row-detail__input"
-						value={isNull || isDef ? '' : dateInputValue(value, col.dataType)}
-						onChange={(v) => {
-							if (v === '') {
-								if (col.nullable) setFieldValue(col.name, null)
-							} else {
-								setFieldValue(col.name, v)
-							}
-						}}
-						mode={col.dataType === DatabaseDataType.Date ? 'date' : 'datetime'}
-						readOnly={readOnly}
-						placeholder={specialPlaceholder}
-						onKeyDown={(e) => handleFieldKeyDown(e, col)}
-					/>
-				</div>
-			)
-		}
-
-		if (isTextType(col.dataType)) {
-			return (
-				<div class="row-detail__input-row">
-					<Show when={(isNull || isDef) && readOnly}>
-						<input
-							class="row-detail__input row-detail__input--null"
-							type="text"
-							value={isDef ? 'DEFAULT' : 'NULL'}
-							readOnly
-						/>
-					</Show>
-					<Show when={!((isNull || isDef) && readOnly)}>
-						<textarea
-							class="row-detail__textarea"
-							classList={{
-								'row-detail__input--null': isNull,
-								'row-detail__input--default': isDef,
-							}}
-							value={isNull || isDef ? '' : valueToString(value)}
-							readOnly={readOnly}
-							placeholder={specialPlaceholder}
-							onKeyDown={(e) => handleFieldKeyDown(e, col)}
-							onInput={(e) => setFieldValue(col.name, parseValue(e.target.value, col))}
-						/>
-					</Show>
-				</div>
-			)
-		}
-
-		return (
-			<div class="row-detail__input-row">
-				<input
-					class="row-detail__input"
-					classList={{
-						'row-detail__input--null': isNull,
-						'row-detail__input--default': isDef,
-					}}
-					type="text"
-					inputMode={isNumericType(col.dataType) ? 'numeric' : undefined}
-					value={isNull || isDef ? '' : valueToString(value)}
-					readOnly={readOnly}
-					placeholder={specialPlaceholder}
-					onKeyDown={(e) => handleFieldKeyDown(e, col)}
-					onInput={(e) => setFieldValue(col.name, parseValue(e.target.value, col))}
-				/>
-			</div>
-		)
 	}
 
 	// ── Render ───────────────────────────────────────────────
@@ -565,61 +399,16 @@ export default function RowDetailPanel(props: RowDetailPanelProps) {
 						{/* Edit mode */}
 						<Show when={editing()}>
 							<div class="row-detail-panel__edit-fields">
-								<For each={props.columns}>
-									{(col) => {
-										const fk = () => {
-											const lookup = fkLookup()
-											return lookup.has(col.name) ? props.foreignKeys.find((f) => f.columns.includes(col.name)) : undefined
-										}
-										return (
-											<div
-												class="row-detail__field"
-												classList={{ 'row-detail__field--changed': isChanged(col.name) }}
-											>
-												<div class="row-detail__label">
-													<span class="row-detail__label-name">{col.name}</span>
-													<span class="row-detail__label-type">{col.dataType}</span>
-													<Show when={col.isPrimaryKey}>
-														<span class="row-detail__label-badge row-detail__label-badge--pk">PK</span>
-													</Show>
-													<Show when={fk()}>
-														<span class="row-detail__label-badge row-detail__label-badge--fk">FK</span>
-													</Show>
-													<Show when={!pkColumns().has(col.name)}>
-														<div class="row-detail__label-actions">
-															<Show when={col.nullable}>
-																<button
-																	class="row-detail__set-btn"
-																	classList={{ 'row-detail__set-btn--active': isFieldNull(col.name) }}
-																	onClick={() => setNull(col.name)}
-																	title={`Set NULL (${quickValueModifierLabel()}+N)`}
-																>
-																	NULL
-																</button>
-															</Show>
-															<button
-																class="row-detail__set-btn"
-																classList={{ 'row-detail__set-btn--active': isFieldDefault(col.name) }}
-																onClick={() => setDefault(col.name)}
-																title={`Set DEFAULT (${quickValueModifierLabel()}+D)`}
-															>
-																DEF
-															</button>
-														</div>
-													</Show>
-												</div>
-												<Show when={fk()}>
-													{(fkInfo) => (
-														<span class="row-detail__fk-target">
-															&#x2192; {fkInfo().referencedTable}.{fkInfo().referencedColumns.join(', ')}
-														</span>
-													)}
-												</Show>
-												{renderEditInput(col)}
-											</div>
-										)
-									}}
-								</For>
+								<RowDetailEditFields
+									columns={props.columns}
+									fkLookup={fkLookup()}
+									pkColumns={pkColumns()}
+									getValue={getValue}
+									isChanged={isChanged}
+									setFieldValue={setFieldValue}
+									connectionId={props.connectionId}
+									database={props.database}
+								/>
 							</div>
 						</Show>
 

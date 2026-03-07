@@ -2,10 +2,12 @@ import { createSignal, For, Show } from 'solid-js'
 import { DatabaseDataType, SQL_DEFAULT } from '../../../shared/types/database'
 import type { GridColumnDef } from '../../../shared/types/grid'
 import { isBooleanType, isDateType, isNumericType, isTextType } from '../../lib/column-types'
+import type { FkTarget } from '../../stores/grid'
 import { gridStore } from '../../stores/grid'
 import DateInput from '../common/DateInput'
 import Dialog from '../common/Dialog'
 import Select from '../common/Select'
+import FkPickerModal from '../edit/FkPickerModal'
 import './BatchEditDialog.css'
 
 interface BatchEditDialogProps {
@@ -13,6 +15,9 @@ interface BatchEditDialogProps {
 	tabId: string
 	columns: GridColumnDef[]
 	selectedRows: Set<number>
+	fkMap?: Map<string, FkTarget>
+	connectionId?: string
+	database?: string
 	onClose: () => void
 }
 
@@ -57,19 +62,27 @@ function getModesForColumn(col: GridColumnDef): FieldMode[] {
 
 function modeLabel(mode: FieldMode): string {
 	switch (mode) {
-		case 'keep': return 'Keep'
-		case 'set': return 'Set'
-		case 'null': return 'NULL'
-		case 'default': return 'DEFAULT'
-		case 'now': return 'NOW'
-		case 'inc': return '+ Inc'
-		case 'dec': return '− Dec'
+		case 'keep':
+			return 'Keep'
+		case 'set':
+			return 'Set'
+		case 'null':
+			return 'NULL'
+		case 'default':
+			return 'DEFAULT'
+		case 'now':
+			return 'NOW'
+		case 'inc':
+			return '+ Inc'
+		case 'dec':
+			return '− Dec'
 	}
 }
 
 export default function BatchEditDialog(props: BatchEditDialogProps) {
 	const [modes, setModes] = createSignal<Record<string, FieldMode>>({})
 	const [values, setValues] = createSignal<Record<string, unknown>>({})
+	const [pickerCol, setPickerCol] = createSignal<string | null>(null)
 
 	const getMode = (col: string): FieldMode => modes()[col] ?? 'keep'
 
@@ -200,87 +213,126 @@ export default function BatchEditDialog(props: BatchEditDialogProps) {
 	}
 
 	return (
-		<Dialog
-			open={props.open}
-			title="Batch Edit"
-			onClose={props.onClose}
-		>
-			<div class="batch-edit">
-				<div class="batch-edit__fields">
-					<For each={props.columns}>
-						{(col) => {
-							const availableModes = getModesForColumn(col)
-							const isPk = col.isPrimaryKey
-							const mode = () => getMode(col.name)
+		<>
+			<Dialog
+				open={props.open}
+				title="Batch Edit"
+				onClose={props.onClose}
+			>
+				<div class="batch-edit">
+					<div class="batch-edit__fields">
+						<For each={props.columns}>
+							{(col) => {
+								const availableModes = getModesForColumn(col)
+								const isPk = col.isPrimaryKey
+								const mode = () => getMode(col.name)
 
-							return (
-								<div
-									class="batch-edit__row"
-									classList={{ 'batch-edit__row--active': mode() !== 'keep' }}
-								>
-									<div class="batch-edit__col-info">
-										<span class="batch-edit__col-name">{col.name}</span>
-										<span class="batch-edit__col-type">{col.dataType}</span>
-										<Show when={isPk}>
-											<span class="batch-edit__badge batch-edit__badge--pk">PK</span>
-										</Show>
+								return (
+									<div
+										class="batch-edit__row"
+										classList={{ 'batch-edit__row--active': mode() !== 'keep' }}
+									>
+										<div class="batch-edit__col-info">
+											<span class="batch-edit__col-name">{col.name}</span>
+											<span class="batch-edit__col-type">{col.dataType}</span>
+											<Show when={isPk}>
+												<span class="batch-edit__badge batch-edit__badge--pk">PK</span>
+											</Show>
+										</div>
+										<div class="batch-edit__col-controls">
+											<Select
+												class="batch-edit__mode-select"
+												value={mode()}
+												disabled={isPk}
+												onChange={(v) => setMode(col.name, v as FieldMode)}
+												options={availableModes.map((m) => ({ value: m, label: modeLabel(m) }))}
+											/>
+											<Show when={mode() === 'set'}>
+												<div class="batch-edit__input-wrap">
+													{renderInput(col)}
+													<Show when={props.fkMap?.has(col.name) && props.connectionId}>
+														{(_) => {
+															const fkTarget = props.fkMap!.get(col.name)!
+															return (
+																<button
+																	class="batch-edit__browse-btn"
+																	onClick={() => setPickerCol(col.name)}
+																	title={`Browse ${fkTarget.table}`}
+																>
+																	...
+																</button>
+															)
+														}}
+													</Show>
+												</div>
+											</Show>
+											<Show when={mode() === 'inc' || mode() === 'dec'}>
+												<div class="batch-edit__input-wrap">
+													<input
+														class="row-detail__input"
+														type="text"
+														inputMode="numeric"
+														value={values()[col.name] != null ? String(values()[col.name]) : ''}
+														placeholder="1"
+														onInput={(e) => {
+															const n = Number(e.target.value)
+															setValue(col.name, Number.isNaN(n) ? 0 : n)
+														}}
+													/>
+												</div>
+											</Show>
+										</div>
 									</div>
-									<div class="batch-edit__col-controls">
-										<Select
-											class="batch-edit__mode-select"
-											value={mode()}
-											disabled={isPk}
-											onChange={(v) => setMode(col.name, v as FieldMode)}
-											options={availableModes.map((m) => ({ value: m, label: modeLabel(m) }))}
-										/>
-										<Show when={mode() === 'set'}>
-											<div class="batch-edit__input-wrap">
-												{renderInput(col)}
-											</div>
-										</Show>
-										<Show when={mode() === 'inc' || mode() === 'dec'}>
-											<div class="batch-edit__input-wrap">
-												<input
-													class="row-detail__input"
-													type="text"
-													inputMode="numeric"
-													value={values()[col.name] != null ? String(values()[col.name]) : ''}
-													placeholder="1"
-													onInput={(e) => {
-														const n = Number(e.target.value)
-														setValue(col.name, Number.isNaN(n) ? 0 : n)
-													}}
-												/>
-											</div>
-										</Show>
-									</div>
-								</div>
-							)
-						}}
-					</For>
-				</div>
+								)
+							}}
+						</For>
+					</div>
 
-				<div class="batch-edit__footer">
-					<span class="batch-edit__info">
-						Will update {activeRowCount()} row{activeRowCount() !== 1 ? 's' : ''}
-						<Show when={changedColumnCount() > 0}>
-							{' '}across {changedColumnCount()} column{changedColumnCount() !== 1 ? 's' : ''}
-						</Show>
-					</span>
-					<div class="batch-edit__actions">
-						<button class="btn btn--secondary" onClick={props.onClose}>
-							Cancel
-						</button>
-						<button
-							class="btn btn--primary"
-							onClick={handleApply}
-							disabled={activeRowCount() === 0 || changedColumnCount() === 0}
-						>
-							Apply
-						</button>
+					<div class="batch-edit__footer">
+						<span class="batch-edit__info">
+							Will update {activeRowCount()} row{activeRowCount() !== 1 ? 's' : ''}
+							<Show when={changedColumnCount() > 0}>
+								{' '}across {changedColumnCount()} column{changedColumnCount() !== 1 ? 's' : ''}
+							</Show>
+						</span>
+						<div class="batch-edit__actions">
+							<button class="btn btn--secondary" onClick={props.onClose}>
+								Cancel
+							</button>
+							<button
+								class="btn btn--primary"
+								onClick={handleApply}
+								disabled={activeRowCount() === 0 || changedColumnCount() === 0}
+							>
+								Apply
+							</button>
+						</div>
 					</div>
 				</div>
-			</div>
-		</Dialog>
+			</Dialog>
+
+			<Show when={pickerCol() !== null && props.connectionId}>
+				{(_) => {
+					const col = pickerCol()!
+					const target = props.fkMap?.get(col)
+					if (!target) return null
+					return (
+						<FkPickerModal
+							open={true}
+							onClose={() => setPickerCol(null)}
+							onSelect={(value) => {
+								setValue(col, value)
+								setPickerCol(null)
+							}}
+							connectionId={props.connectionId!}
+							schema={target.schema}
+							table={target.table}
+							column={target.column}
+							database={props.database}
+						/>
+					)
+				}}
+			</Show>
+		</>
 	)
 }

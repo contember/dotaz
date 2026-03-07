@@ -1,8 +1,10 @@
-import { createSignal, onMount } from 'solid-js'
+import Search from 'lucide-solid/icons/search'
+import { createSignal, onMount, Show } from 'solid-js'
 import { DatabaseDataType, isSqlDefault, SQL_DEFAULT } from '../../../shared/types/database'
 import type { GridColumnDef } from '../../../shared/types/grid'
 import { isBooleanType, isDateType, isNumericType, isTextType } from '../../lib/column-types'
 import { isQuickValueModifier } from '../../lib/keyboard'
+import type { FkTarget } from '../../stores/grid'
 import DateInput from '../common/DateInput'
 import './InlineEditor.css'
 
@@ -14,6 +16,8 @@ interface InlineEditorProps {
 	onCancel: () => void
 	onMoveNext: () => void
 	onMoveDown: () => void
+	fkTarget?: FkTarget
+	onBrowseFk?: () => void
 }
 
 function valueToString(value: unknown): string {
@@ -200,6 +204,23 @@ export default function InlineEditor(props: InlineEditorProps) {
 		return d.toISOString().substring(0, 19)
 	}
 
+	const browseBtn = () => (
+		<Show when={props.fkTarget && props.onBrowseFk}>
+			<button
+				class="inline-editor__browse-btn"
+				onClick={(e) => {
+					e.preventDefault()
+					e.stopPropagation()
+					props.onBrowseFk?.()
+				}}
+				title={`Browse ${props.fkTarget?.table}`}
+				tabIndex={-1}
+			>
+				<Search size={10} />
+			</button>
+		</Show>
+	)
+
 	if (isBool()) {
 		return (
 			<div
@@ -221,6 +242,7 @@ export default function InlineEditor(props: InlineEditorProps) {
 						NULL
 					</button>
 				)}
+				{browseBtn()}
 			</div>
 		)
 	}
@@ -247,6 +269,7 @@ export default function InlineEditor(props: InlineEditorProps) {
 						NULL
 					</button>
 				)}
+				{browseBtn()}
 			</div>
 		)
 	}
@@ -272,6 +295,7 @@ export default function InlineEditor(props: InlineEditorProps) {
 						NULL
 					</button>
 				)}
+				{browseBtn()}
 			</div>
 		)
 	}
@@ -302,6 +326,7 @@ export default function InlineEditor(props: InlineEditorProps) {
 						NULL
 					</button>
 				)}
+				{browseBtn()}
 			</div>
 		)
 	}
@@ -326,6 +351,7 @@ export default function InlineEditor(props: InlineEditorProps) {
 					NULL
 				</button>
 			)}
+			{browseBtn()}
 		</div>
 	)
 }

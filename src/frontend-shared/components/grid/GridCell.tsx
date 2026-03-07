@@ -30,6 +30,7 @@ interface GridCellProps {
 	onMoveDown?: () => void
 	onFkClick?: (anchorEl: HTMLElement) => void
 	onPkClick?: (anchorEl: HTMLElement) => void
+	onBrowseFk?: () => void
 }
 
 function formatTimestamp(value: unknown, fmt: DateFormat): string {
@@ -200,6 +201,8 @@ export default function GridCell(props: GridCellProps) {
 					onCancel={props.onCancel!}
 					onMoveNext={props.onMoveNext!}
 					onMoveDown={props.onMoveDown!}
+					fkTarget={props.fkTarget}
+					onBrowseFk={props.onBrowseFk}
 				/>
 			}
 		>
@@ -229,13 +232,16 @@ export default function GridCell(props: GridCellProps) {
 				data-column={props.column.name}
 				onClick={isJson() && !isNull() ? handleJsonClick : undefined}
 			>
-				<Show when={isFk()} fallback={
-					<Show when={isPk()} fallback={displayValue()}>
-						<span class="grid-cell__pk-link" onClick={handlePkClick}>
-							{displayValue()}
-						</span>
-					</Show>
-				}>
+				<Show
+					when={isFk()}
+					fallback={
+						<Show when={isPk()} fallback={displayValue()}>
+							<span class="grid-cell__pk-link" onClick={handlePkClick}>
+								{displayValue()}
+							</span>
+						</Show>
+					}
+				>
 					<span class="grid-cell__fk-link" onClick={handleFkClick}>
 						{displayValue()}
 					</span>
