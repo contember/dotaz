@@ -23,6 +23,7 @@ import Icon from '../common/Icon'
 import type { SettingsSection } from '../common/SettingsDialog'
 import SettingsDialog from '../common/SettingsDialog'
 import TabSwitcher from '../common/TabSwitcher'
+import Tips from '../common/Tips'
 import ToastContainer from '../common/Toast'
 import ComparisonDialog from '../comparison/ComparisonDialog'
 import ComparisonView from '../comparison/ComparisonView'
@@ -61,58 +62,30 @@ const MIN_WIDTH = 150
 const MAX_WIDTH = 500
 const DEFAULT_WIDTH = 250
 
+type CompareLeft = { connectionId: string; schema: string; table: string; database?: string }
+
+type AppModal =
+	| null
+	| { type: 'history' }
+	| { type: 'palette' }
+	| { type: 'tab-switcher' }
+	| { type: 'connection'; conn: ConnectionInfo | null }
+	| { type: 'db-picker'; conn: ConnectionInfo }
+	| { type: 'bookmarks'; sql?: string; connId?: string; db?: string }
+	| { type: 'compare'; initialLeft?: CompareLeft }
+	| { type: 'search'; connId?: string; scope?: SearchScope; schema?: string; table?: string; db?: string }
+	| { type: 'settings'; section: SettingsSection }
+	| { type: 'tx-warning'; tabId: string; context: 'close' | 'disconnect'; connId: string }
+
 export default function AppShell() {
 	const [sidebarWidth, setSidebarWidth] = createSignal(DEFAULT_WIDTH)
 	const [sidebarCollapsed, setSidebarCollapsed] = createSignal(false)
-	const [dialogOpen, setDialogOpen] = createSignal(false)
-	const [connectionToEdit, setConnectionToEdit] = createSignal<ConnectionInfo | null>(null)
-	const [dbPickerOpen, setDbPickerOpen] = createSignal(false)
-	const [dbPickerConnection, setDbPickerConnection] = createSignal<ConnectionInfo | null>(null)
-	const [historyOpen, setHistoryOpen] = createSignal(false)
-	const [bookmarksOpen, setBookmarksOpen] = createSignal(false)
-	const [bookmarksInitialSql, setBookmarksInitialSql] = createSignal<
-		string | undefined
-	>(undefined)
-	const [bookmarksInitialConn, setBookmarksInitialConn] = createSignal<
-		string | undefined
-	>(undefined)
-	const [bookmarksInitialDb, setBookmarksInitialDb] = createSignal<
-		string | undefined
-	>(undefined)
-	const [paletteOpen, setPaletteOpen] = createSignal(false)
-	const [tabSwitcherOpen, setTabSwitcherOpen] = createSignal(false)
-	const [compareOpen, setCompareOpen] = createSignal(false)
-	const [compareInitialLeft, setCompareInitialLeft] = createSignal<
-		| { connectionId: string; schema: string; table: string; database?: string }
-		| undefined
-	>(undefined)
-	const [searchOpen, setSearchOpen] = createSignal(false)
-	const [searchInitialConn, setSearchInitialConn] = createSignal<
-		string | undefined
-	>(undefined)
-	const [searchInitialScope, setSearchInitialScope] = createSignal<
-		SearchScope | undefined
-	>(undefined)
-	const [searchInitialSchema, setSearchInitialSchema] = createSignal<
-		string | undefined
-	>(undefined)
-	const [searchInitialTable, setSearchInitialTable] = createSignal<
-		string | undefined
-	>(undefined)
-	const [searchInitialDatabase, setSearchInitialDatabase] = createSignal<
-		string | undefined
-	>(undefined)
-	const [settingsOpen, setSettingsOpen] = createSignal(false)
-	const [settingsSection, setSettingsSection] = createSignal<SettingsSection>('data-format')
+	const [modal, setModal] = createSignal<AppModal>(null)
+	function modalAs<T extends NonNullable<AppModal>['type']>(type: T): Extract<NonNullable<AppModal>, { type: T }> | undefined {
+		const m = modal()
+		return m?.type === type ? m as Extract<NonNullable<AppModal>, { type: T }> : undefined
+	}
 	const [txLogOpen, setTxLogOpen] = createSignal(false)
-	const [txWarningOpen, setTxWarningOpen] = createSignal(false)
-	const [txWarningTabId, setTxWarningTabId] = createSignal<string | null>(null)
-	const [txWarningContext, setTxWarningContext] = createSignal<
-		'close' | 'disconnect'
-	>('close')
-	const [txWarningConnectionId, setTxWarningConnectionId] = createSignal<
-		string | null
-	>(null)
 
 	function handleResize(deltaX: number) {
 		setSidebarWidth((w) => Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, w + deltaX)))
@@ -125,18 +98,15 @@ export default function AppShell() {
 	}
 
 	function openAddConnectionDialog() {
-		setConnectionToEdit(null)
-		setDialogOpen(true)
+		setModal({ type: 'connection', conn: null })
 	}
 
 	function openEditConnectionDialog(conn: ConnectionInfo) {
-		setConnectionToEdit(conn)
-		setDialogOpen(true)
+		setModal({ type: 'connection', conn })
 	}
 
 	function openManageDatabases(conn: ConnectionInfo) {
-		setDbPickerConnection(conn)
-		setDbPickerOpen(true)
+		setModal({ type: 'db-picker', conn })
 	}
 
 	function handleCompare(
@@ -152,17 +122,12 @@ export default function AppShell() {
 			connectionId: left.connectionId,
 		})
 		setComparisonParams(tabId, params)
-		setCompareOpen(false)
+		setModal(null)
 	}
 
 	function handleOpenCompare(e: Event) {
 		const detail = (e as CustomEvent).detail
-		if (detail) {
-			setCompareInitialLeft(detail)
-		} else {
-			setCompareInitialLeft(undefined)
-		}
-		setCompareOpen(true)
+		setModal({ type: 'compare', initialLeft: detail || undefined })
 	}
 
 	function handleOpenSearch(e: Event) {
@@ -175,12 +140,14 @@ export default function AppShell() {
 				database?: string
 			}
 			| undefined
-		setSearchInitialConn(detail?.connectionId)
-		setSearchInitialScope(detail?.scope)
-		setSearchInitialSchema(detail?.schema)
-		setSearchInitialTable(detail?.table)
-		setSearchInitialDatabase(detail?.database)
-		setSearchOpen(true)
+		setModal({
+			type: 'search',
+			connId: detail?.connectionId,
+			scope: detail?.scope,
+			schema: detail?.schema,
+			table: detail?.table,
+			db: detail?.database,
+		})
 	}
 
 	let removeMenuListener: (() => void) | undefined
@@ -322,10 +289,7 @@ export default function AppShell() {
 			if (tab.type === 'sql-console') {
 				const editorTab = editorStore.getTab(tab.id)
 				if (editorTab?.inTransaction) {
-					setTxWarningTabId(tab.id)
-					setTxWarningConnectionId(tab.connectionId)
-					setTxWarningContext('close')
-					setTxWarningOpen(true)
+					setModal({ type: 'tx-warning', tabId: tab.id, context: 'close', connId: tab.connectionId })
 					return false // Prevent close — dialog will handle it
 				}
 			}
@@ -341,10 +305,7 @@ export default function AppShell() {
 				) {
 					const editorTab = editorStore.getTab(openTab.id)
 					if (editorTab?.inTransaction) {
-						setTxWarningTabId(openTab.id)
-						setTxWarningConnectionId(connectionId)
-						setTxWarningContext('disconnect')
-						setTxWarningOpen(true)
+						setModal({ type: 'tx-warning', tabId: openTab.id, context: 'disconnect', connId: connectionId })
 						return false // Prevent disconnect — dialog will handle it
 					}
 				}
@@ -507,7 +468,7 @@ export default function AppShell() {
 			label: 'Command Palette',
 			shortcut: 'Ctrl+Shift+P',
 			category: 'Navigation',
-			handler: () => setPaletteOpen((v) => !v),
+			handler: () => setModal((m) => m?.type === 'palette' ? null : { type: 'palette' }),
 		})
 
 		commandRegistry.register({
@@ -515,7 +476,7 @@ export default function AppShell() {
 			label: 'Switch Tab',
 			shortcut: platformShortcut('tab-switcher'),
 			category: 'Navigation',
-			handler: () => setTabSwitcherOpen((v) => !v),
+			handler: () => setModal((m) => m?.type === 'tab-switcher' ? null : { type: 'tab-switcher' }),
 		})
 
 		commandRegistry.register({
@@ -637,10 +598,7 @@ export default function AppShell() {
 				if (tab?.type === 'sql-console') {
 					const editorTab = editorStore.getTab(tab.id)
 					const sql = editorTab?.content.trim()
-					setBookmarksInitialSql(sql || undefined)
-					setBookmarksInitialConn(tab.connectionId)
-					setBookmarksInitialDb(tab.database)
-					setBookmarksOpen(true)
+					setModal({ type: 'bookmarks', sql: sql || undefined, connId: tab.connectionId, db: tab.database })
 				}
 			},
 		})
@@ -651,12 +609,11 @@ export default function AppShell() {
 			category: 'Query',
 			handler: () => {
 				const tab = tabsStore.activeTab
-				setBookmarksInitialSql(undefined)
-				setBookmarksInitialConn(tab?.connectionId)
-				setBookmarksInitialDb(
-					tab?.type === 'sql-console' ? tab.database : undefined,
-				)
-				setBookmarksOpen(true)
+				setModal({
+					type: 'bookmarks',
+					connId: tab?.connectionId,
+					db: tab?.type === 'sql-console' ? tab.database : undefined,
+				})
 			},
 		})
 
@@ -834,17 +791,10 @@ export default function AppShell() {
 			category: 'Grid',
 			handler: () => {
 				const tab = tabsStore.activeTab
-				if (tab?.type === 'data-grid' && tab.schema && tab.table) {
-					setCompareInitialLeft({
-						connectionId: tab.connectionId,
-						schema: tab.schema,
-						table: tab.table,
-						database: tab.database,
-					})
-				} else {
-					setCompareInitialLeft(undefined)
-				}
-				setCompareOpen(true)
+				const initialLeft = tab?.type === 'data-grid' && tab.schema && tab.table
+					? { connectionId: tab.connectionId, schema: tab.schema, table: tab.table, database: tab.database }
+					: undefined
+				setModal({ type: 'compare', initialLeft })
 			},
 		})
 
@@ -854,12 +804,7 @@ export default function AppShell() {
 			category: 'Connection',
 			handler: () => {
 				const conn = connectionsStore.activeConnection
-				setSearchInitialConn(conn?.id)
-				setSearchInitialScope(undefined)
-				setSearchInitialSchema(undefined)
-				setSearchInitialTable(undefined)
-				setSearchInitialDatabase(undefined)
-				setSearchOpen(true)
+				setModal({ type: 'search', connId: conn?.id })
 			},
 		})
 
@@ -933,20 +878,14 @@ export default function AppShell() {
 			id: 'settings',
 			label: 'Settings',
 			category: 'View',
-			handler: () => {
-				setSettingsSection('data-format')
-				setSettingsOpen(true)
-			},
+			handler: () => setModal({ type: 'settings', section: 'data-format' }),
 		})
 
 		commandRegistry.register({
 			id: 'settings-data-format',
 			label: 'Settings: Data Format',
 			category: 'View',
-			handler: () => {
-				setSettingsSection('data-format')
-				setSettingsOpen(true)
-			},
+			handler: () => setModal({ type: 'settings', section: 'data-format' }),
 		})
 
 		commandRegistry.register({
@@ -966,20 +905,14 @@ export default function AppShell() {
 			id: 'ai-settings',
 			label: 'Settings: AI',
 			category: 'View',
-			handler: () => {
-				setSettingsSection('ai')
-				setSettingsOpen(true)
-			},
+			handler: () => setModal({ type: 'settings', section: 'ai' }),
 		})
 
 		commandRegistry.register({
 			id: 'session-settings',
 			label: 'Settings: Session',
 			category: 'View',
-			handler: () => {
-				setSettingsSection('session')
-				setSettingsOpen(true)
-			},
+			handler: () => setModal({ type: 'settings', section: 'session' }),
 		})
 	}
 
@@ -1046,10 +979,7 @@ export default function AppShell() {
 					collapsed={sidebarCollapsed()}
 					onToggleCollapse={toggleCollapse}
 					onAdd={openAddConnectionDialog}
-					onOpenSettings={() => {
-						setSettingsSection('data-format')
-						setSettingsOpen(true)
-					}}
+					onOpenSettings={() => setModal({ type: 'settings', section: 'data-format' })}
 				>
 					<ConnectionTree
 						onAddConnection={openAddConnectionDialog}
@@ -1118,6 +1048,9 @@ export default function AppShell() {
 								>
 									Add Connection
 								</button>
+								<div class="welcome-screen__tips">
+									<Tips />
+								</div>
 							</div>
 						</Show>
 						<Show when={tabsStore.activeTab} keyed>
@@ -1138,13 +1071,8 @@ export default function AppShell() {
 												tabId={tab.id}
 												connectionId={tab.connectionId}
 												database={tab.database}
-												onOpenHistory={() => setHistoryOpen(true)}
-												onOpenBookmarks={() => {
-													setBookmarksInitialSql(undefined)
-													setBookmarksInitialConn(tab.connectionId)
-													setBookmarksInitialDb(tab.database)
-													setBookmarksOpen(true)
-												}}
+												onOpenHistory={() => setModal({ type: 'history' })}
+												onOpenBookmarks={() => setModal({ type: 'bookmarks', connId: tab.connectionId, db: tab.database })}
 												onToggleTransactionLog={() => setTxLogOpen((v) => !v)}
 												transactionLogOpen={txLogOpen()}
 											/>
@@ -1201,40 +1129,40 @@ export default function AppShell() {
 			</div>
 
 			<ConnectionDialog
-				open={dialogOpen()}
-				connection={connectionToEdit()}
-				onClose={() => setDialogOpen(false)}
+				open={modal()?.type === 'connection'}
+				connection={modalAs('connection')?.conn ?? null}
+				onClose={() => setModal(null)}
 			/>
 
 			<DatabasePicker
-				open={dbPickerOpen()}
-				connection={dbPickerConnection()}
-				onClose={() => setDbPickerOpen(false)}
+				open={modal()?.type === 'db-picker'}
+				connection={modalAs('db-picker')?.conn ?? null}
+				onClose={() => setModal(null)}
 			/>
 
 			<PasswordDialog />
 
 			<QueryHistory
-				open={historyOpen()}
-				onClose={() => setHistoryOpen(false)}
+				open={modal()?.type === 'history'}
+				onClose={() => setModal(null)}
 			/>
 
 			<BookmarksDialog
-				open={bookmarksOpen()}
-				onClose={() => setBookmarksOpen(false)}
-				initialSql={bookmarksInitialSql()}
-				initialConnectionId={bookmarksInitialConn()}
-				initialDatabase={bookmarksInitialDb()}
+				open={modal()?.type === 'bookmarks'}
+				onClose={() => setModal(null)}
+				initialSql={modalAs('bookmarks')?.sql}
+				initialConnectionId={modalAs('bookmarks')?.connId}
+				initialDatabase={modalAs('bookmarks')?.db}
 			/>
 
 			<CommandPalette
-				open={paletteOpen()}
-				onClose={() => setPaletteOpen(false)}
+				open={modal()?.type === 'palette'}
+				onClose={() => setModal(null)}
 			/>
 
 			<TabSwitcher
-				open={tabSwitcherOpen()}
-				onClose={() => setTabSwitcherOpen(false)}
+				open={modal()?.type === 'tab-switcher'}
+				onClose={() => setModal(null)}
 			/>
 
 			<DestructiveQueryDialog
@@ -1245,60 +1173,54 @@ export default function AppShell() {
 			/>
 
 			<TransactionWarningDialog
-				open={txWarningOpen()}
-				context={txWarningContext()}
+				open={modal()?.type === 'tx-warning'}
+				context={modalAs('tx-warning')?.context ?? 'close'}
 				onCommit={async () => {
-					const tabId = txWarningTabId()
-					const connId = txWarningConnectionId()
-					if (tabId) {
-						await editorStore.commitTransaction(tabId)
-					}
-					setTxWarningOpen(false)
-					// Now complete the original action
-					if (txWarningContext() === 'close' && tabId) {
-						tabsStore.closeTab(tabId)
-					} else if (txWarningContext() === 'disconnect' && connId) {
-						connectionsStore.disconnectFrom(connId)
+					const m = modal()
+					if (m?.type !== 'tx-warning') return
+					await editorStore.commitTransaction(m.tabId)
+					setModal(null)
+					if (m.context === 'close') {
+						tabsStore.closeTab(m.tabId)
+					} else if (m.context === 'disconnect') {
+						connectionsStore.disconnectFrom(m.connId)
 					}
 				}}
 				onRollback={async () => {
-					const tabId = txWarningTabId()
-					const connId = txWarningConnectionId()
-					if (tabId) {
-						await editorStore.rollbackTransaction(tabId)
-					}
-					setTxWarningOpen(false)
-					// Now complete the original action
-					if (txWarningContext() === 'close' && tabId) {
-						tabsStore.closeTab(tabId)
-					} else if (txWarningContext() === 'disconnect' && connId) {
-						connectionsStore.disconnectFrom(connId)
+					const m = modal()
+					if (m?.type !== 'tx-warning') return
+					await editorStore.rollbackTransaction(m.tabId)
+					setModal(null)
+					if (m.context === 'close') {
+						tabsStore.closeTab(m.tabId)
+					} else if (m.context === 'disconnect') {
+						connectionsStore.disconnectFrom(m.connId)
 					}
 				}}
-				onCancel={() => setTxWarningOpen(false)}
+				onCancel={() => setModal(null)}
 			/>
 
 			<ComparisonDialog
-				open={compareOpen()}
-				onClose={() => setCompareOpen(false)}
+				open={modal()?.type === 'compare'}
+				onClose={() => setModal(null)}
 				onCompare={handleCompare}
-				initialLeft={compareInitialLeft()}
+				initialLeft={modalAs('compare')?.initialLeft}
 			/>
 
 			<DatabaseSearchDialog
-				open={searchOpen()}
-				onClose={() => setSearchOpen(false)}
-				initialConnectionId={searchInitialConn()}
-				initialScope={searchInitialScope()}
-				initialSchema={searchInitialSchema()}
-				initialTable={searchInitialTable()}
-				initialDatabase={searchInitialDatabase()}
+				open={modal()?.type === 'search'}
+				onClose={() => setModal(null)}
+				initialConnectionId={modalAs('search')?.connId}
+				initialScope={modalAs('search')?.scope}
+				initialSchema={modalAs('search')?.schema}
+				initialTable={modalAs('search')?.table}
+				initialDatabase={modalAs('search')?.db}
 			/>
 
 			<SettingsDialog
-				open={settingsOpen()}
-				onClose={() => setSettingsOpen(false)}
-				initialSection={settingsSection()}
+				open={modal()?.type === 'settings'}
+				onClose={() => setModal(null)}
+				initialSection={modalAs('settings')?.section}
 			/>
 
 			<ToastContainer />

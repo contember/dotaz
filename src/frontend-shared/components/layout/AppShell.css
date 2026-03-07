@@ -57,6 +57,10 @@
 	margin-top: var(--spacing-md);
 }
 
+.welcome-screen__tips {
+	margin-top: var(--spacing-xl);
+}
+
 .sql-console {
 	display: flex;
 	flex-direction: column;
