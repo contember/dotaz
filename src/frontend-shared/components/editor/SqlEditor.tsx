@@ -7,6 +7,7 @@ import { basicSetup } from 'codemirror'
 import { createEffect, createSignal, onCleanup, onMount, Show } from 'solid-js'
 import type { ConnectionType } from '../../../shared/types/connection'
 import { CONNECTION_TYPE_META } from '../../../shared/types/connection'
+import { createAliasCompletionSource } from '../../lib/alias-completion'
 import { commandRegistry } from '../../lib/commands'
 import { createJoinCompletionSource } from '../../lib/join-completion'
 import { MIN_EDITOR_HEIGHT } from '../../lib/layout-constants'
@@ -323,8 +324,14 @@ export default function SqlEditor(props: SqlEditorProps) {
 			props.database,
 			sqlite,
 		)
-		const joinCompletionExtension = EditorState.languageData.of(() => [
+		const aliasCompletionSource = createAliasCompletionSource(
+			props.connectionId,
+			props.database,
+			sqlite,
+		)
+		const customCompletionExtension = EditorState.languageData.of(() => [
 			{ autocomplete: joinCompletionSource },
+			{ autocomplete: aliasCompletionSource },
 		])
 
 		// Alt+Click to add cursor at clicked position (multi-cursor support)
@@ -358,7 +365,7 @@ export default function SqlEditor(props: SqlEditorProps) {
 				updateListener,
 				executedHighlightField,
 				errorHighlightField,
-				joinCompletionExtension,
+				customCompletionExtension,
 				placeholder('Write your SQL query here...'),
 				EditorView.lineWrapping,
 			],
