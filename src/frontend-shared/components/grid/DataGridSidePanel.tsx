@@ -9,7 +9,7 @@ import type { FkTarget } from '../../stores/grid'
 import { getSelectedRowIndices, gridStore, hasFullRowSelection } from '../../stores/grid'
 import { tabsStore } from '../../stores/tabs'
 import FkPeekPopover from './FkPeekPopover'
-import type { SidePanelMode } from './SidePanel'
+import type { SidePanelMode, SidePanelProps } from './SidePanel'
 import SidePanel from './SidePanel'
 
 export interface DataGridSidePanelProps {
@@ -534,6 +534,135 @@ export default function DataGridSidePanel(
 			})
 	}
 
+	// ── Build grouped props for SidePanel ──
+
+	function buildFkPanelProps(): SidePanelProps['fkPanel'] {
+		const fk = selectedFkContext()
+		if (!fk) return undefined
+
+		const panel = tab()?.fkPanel
+		const root = panel?.breadcrumbs[0]
+		const panelMatches = !!panel
+			&& !!root
+			&& root.schema === fk.target.schema
+			&& root.table === fk.target.table
+			&& root.column === fk.target.column
+			&& String(root.value) === String(fk.value)
+
+		return {
+			connectionId: props.connectionId,
+			schema: fk.target.schema,
+			table: fk.target.table,
+			database: props.database,
+			columns: panelMatches ? panel.columns : [],
+			row: panelMatches
+				? (panel.rows[panel.currentRowIndex] ?? null)
+				: null,
+			foreignKeys: panelMatches ? panel.foreignKeys : [],
+			loading: panelMatches ? panel.loading : true,
+			readOnly: props.isReadOnly(),
+			rowLabel: panelMatches ? fkPanelRowLabel() : '',
+			canGoPrev: panelMatches ? fkPanelCanPrev() : false,
+			canGoNext: panelMatches ? fkPanelCanNext() : false,
+			onPrev: fkPanelPrev,
+			onNext: fkPanelNext,
+			breadcrumbs: panelMatches
+				? panel.breadcrumbs
+				: [
+					{
+						schema: fk.target.schema,
+						table: fk.target.table,
+						column: fk.target.column,
+						value: fk.value,
+					},
+				],
+			onBack: () => {
+				if (panelMatches) void gridStore.fkPanelBack(props.tabId)
+			},
+			onSave: handleFkPanelSave,
+			onFkNavigate: (schema, table, column, value) => {
+				void gridStore.fkPanelNavigate(
+					props.tabId,
+					schema,
+					table,
+					column,
+					value,
+				)
+			},
+			onReferencingNavigate: openReferencingTab,
+			onOpenInTab: fkPanelOpenInTab,
+			subtitle: panelMatches ? fkPanelSubtitle() : '',
+			onClose: closeSidePanel,
+			panelWidth: panelMatches ? panel.width : 500,
+			onPanelResize: (delta) =>
+				gridStore.fkPanelResize(
+					props.tabId,
+					(panel?.width ?? 500) + delta,
+				),
+		}
+	}
+
+	function buildRowDetailProps(): SidePanelProps['rowDetail'] {
+		const mode = sidePanelMode()
+		if (mode?.type !== 'row-detail') return undefined
+
+		const tabData = tab()
+		if (!tabData) return undefined
+
+		const idx = mode.rowIndex
+		return {
+			connectionId: props.connectionId,
+			schema: props.currentSchema,
+			table: props.currentTable,
+			database: props.database,
+			columns: tabData.columns,
+			row: tabData.rows[idx] ?? null,
+			foreignKeys: props.foreignKeys(),
+			readOnly: props.isReadOnly(),
+			rowLabel: `Row ${idx + 1} of ${tabData.rows.length}`,
+			canGoPrev: idx > 0,
+			canGoNext: idx < tabData.rows.length - 1,
+			onPrev: () => handleRowDetailNavigate('prev'),
+			onNext: () => handleRowDetailNavigate('next'),
+			onSave: handleRowDetailSave,
+			pendingChangedColumns: rowDetailPendingColumns(),
+			onReferencingNavigate: openReferencingTab,
+			onOpenInTab: rowDetailOpenInTab,
+			subtitle: rowDetailSubtitle(),
+			onClose: closeSidePanel,
+		}
+	}
+
+	function buildValueProps(): SidePanelProps['valueProps'] {
+		const mode = sidePanelMode()
+		if (mode?.type !== 'value') return undefined
+
+		return {
+			readOnly: props.isReadOnly(),
+			onSave: (value) => {
+				gridStore.setCellValue(
+					props.tabId,
+					mode.rowIndex,
+					mode.column.name,
+					value,
+				)
+			},
+		}
+	}
+
+	function buildSelectionProps(): SidePanelProps['selectionProps'] {
+		const mode = sidePanelMode()
+		if (mode?.type !== 'selection') return undefined
+
+		return {
+			readOnly: props.isReadOnly(),
+			onDelete: () => gridStore.deleteSelectedRows(props.tabId),
+			onExport: props.onExportSelected,
+			onBatchEdit: props.onBatchEdit,
+			visibleColumns: mode.columns,
+		}
+	}
+
 	// Expose handle to parent
 	props.ref?.({
 		openForSelection,
@@ -550,39 +679,17 @@ export default function DataGridSidePanel(
 
 	return (
 		<>
-			{/* Side panel content — rendered in data-grid__body */}
+			{/* Side panel content */}
 			<Show when={mode()}>
 				<SidePanelContent
-					tabId={props.tabId}
-					connectionId={props.connectionId}
-					currentSchema={props.currentSchema}
-					currentTable={props.currentTable}
-					database={props.database}
 					mode={mode}
-					selectedFkContext={selectedFkContext}
-					tabState={tabState}
 					width={sidePanelWidth()}
 					onResize={(delta) => setSidePanelWidth((w) => Math.min(1200, Math.max(250, w - delta)))}
 					onClose={closeSidePanel}
-					foreignKeys={props.foreignKeys}
-					visibleColumns={props.visibleColumns}
-					isReadOnly={props.isReadOnly}
-					fkPanelRowLabel={fkPanelRowLabel}
-					fkPanelCanPrev={fkPanelCanPrev}
-					fkPanelCanNext={fkPanelCanNext}
-					fkPanelPrev={fkPanelPrev}
-					fkPanelNext={fkPanelNext}
-					handleFkPanelSave={handleFkPanelSave}
-					fkPanelOpenInTab={fkPanelOpenInTab}
-					fkPanelSubtitle={fkPanelSubtitle}
-					openReferencingTab={openReferencingTab}
-					handleRowDetailSave={handleRowDetailSave}
-					handleRowDetailNavigate={handleRowDetailNavigate}
-					rowDetailPendingColumns={rowDetailPendingColumns}
-					rowDetailOpenInTab={rowDetailOpenInTab}
-					rowDetailSubtitle={rowDetailSubtitle}
-					onExportSelected={props.onExportSelected}
-					onBatchEdit={props.onBatchEdit}
+					fkPanel={buildFkPanelProps}
+					rowDetail={buildRowDetailProps}
+					valueProps={buildValueProps}
+					selectionProps={buildSelectionProps}
 				/>
 			</Show>
 
@@ -712,199 +819,29 @@ export default function DataGridSidePanel(
 	)
 }
 
-// Inner component that renders without the stale `{(mode) => ...}` pattern.
-// All props are read as reactive accessors directly — no captured callback values.
+// Inner component that ensures reactive reads happen inside the render scope.
+// Receives builder functions (accessors) for each mode's props, calls them
+// reactively so SidePanel always sees fresh data.
 function SidePanelContent(props: {
-	tabId: string
-	connectionId: string
-	currentSchema: string
-	currentTable: string
-	database?: string
 	mode: () => SidePanelMode | null
-	selectedFkContext: () => {
-		rowIndex: number
-		column: GridColumnDef
-		value: unknown
-		target: FkTarget
-	} | null
-	tabState: () => ReturnType<typeof gridStore.getTab>
 	width: number
 	onResize: (delta: number) => void
 	onClose: () => void
-	foreignKeys: () => ForeignKeyInfo[]
-	visibleColumns: () => GridColumnDef[]
-	isReadOnly: () => boolean
-	fkPanelRowLabel: () => string
-	fkPanelCanPrev: () => boolean
-	fkPanelCanNext: () => boolean
-	fkPanelPrev: () => void
-	fkPanelNext: () => void
-	handleFkPanelSave: (changes: Record<string, unknown>) => Promise<void>
-	fkPanelOpenInTab: () => void
-	fkPanelSubtitle: () => string
-	openReferencingTab: (
-		schema: string,
-		table: string,
-		filters: ColumnFilter[],
-	) => void
-	handleRowDetailSave: (changes: Record<string, unknown>) => void
-	handleRowDetailNavigate: (direction: 'prev' | 'next') => void
-	rowDetailPendingColumns: () => Set<string>
-	rowDetailOpenInTab: () => void
-	rowDetailSubtitle: () => string
-	onExportSelected: () => void
-	onBatchEdit: () => void
+	fkPanel: () => SidePanelProps['fkPanel']
+	rowDetail: () => SidePanelProps['rowDetail']
+	valueProps: () => SidePanelProps['valueProps']
+	selectionProps: () => SidePanelProps['selectionProps']
 }) {
-	const mode = () => props.mode()
-	const fkMode = () => mode()?.type === 'fk'
-	const rowDetailMode = () =>
-		mode()?.type === 'row-detail'
-			? (mode() as { type: 'row-detail'; rowIndex: number })
-			: null
-	const valueMode = () =>
-		mode()?.type === 'value'
-			? (mode() as {
-				type: 'value'
-				rowIndex: number
-				column: GridColumnDef
-				value: unknown
-			})
-			: null
-	const selectionMode = () =>
-		mode()?.type === 'selection'
-			? (mode() as {
-				type: 'selection'
-				rowCount: number
-				cellCount: number
-				fallbackToAll: boolean
-				rows: Record<string, unknown>[]
-				columns: GridColumnDef[]
-			})
-			: null
-	const t = () => props.tabState()
-
 	return (
 		<SidePanel
-			mode={mode()}
+			mode={props.mode()}
 			width={props.width}
 			onResize={props.onResize}
 			onClose={props.onClose}
-			fkPanel={fkMode() && props.selectedFkContext()
-				? (() => {
-					const fk = props.selectedFkContext()!
-					const panel = t()?.fkPanel
-					const root = panel?.breadcrumbs[0]
-					const panelMatches = !!panel
-						&& !!root
-						&& root.schema === fk.target.schema
-						&& root.table === fk.target.table
-						&& root.column === fk.target.column
-						&& String(root.value) === String(fk.value)
-
-					return {
-						connectionId: props.connectionId,
-						schema: fk.target.schema,
-						table: fk.target.table,
-						database: props.database,
-						columns: panelMatches ? panel.columns : [],
-						row: panelMatches
-							? (panel.rows[panel.currentRowIndex] ?? null)
-							: null,
-						foreignKeys: panelMatches ? panel.foreignKeys : [],
-						loading: panelMatches ? panel.loading : true,
-						readOnly: props.isReadOnly(),
-						rowLabel: panelMatches ? props.fkPanelRowLabel() : '',
-						canGoPrev: panelMatches ? props.fkPanelCanPrev() : false,
-						canGoNext: panelMatches ? props.fkPanelCanNext() : false,
-						onPrev: props.fkPanelPrev,
-						onNext: props.fkPanelNext,
-						breadcrumbs: panelMatches
-							? panel.breadcrumbs
-							: [
-								{
-									schema: fk.target.schema,
-									table: fk.target.table,
-									column: fk.target.column,
-									value: fk.value,
-								},
-							],
-						onBack: () => {
-							if (panelMatches) void gridStore.fkPanelBack(props.tabId)
-						},
-						onSave: props.handleFkPanelSave,
-						onFkNavigate: (schema, table, column, value) => {
-							void gridStore.fkPanelNavigate(
-								props.tabId,
-								schema,
-								table,
-								column,
-								value,
-							)
-						},
-						onReferencingNavigate: props.openReferencingTab,
-						onOpenInTab: props.fkPanelOpenInTab,
-						subtitle: panelMatches ? props.fkPanelSubtitle() : '',
-						onClose: props.onClose,
-						panelWidth: panelMatches ? panel.width : 500,
-						onPanelResize: (delta) =>
-							gridStore.fkPanelResize(
-								props.tabId,
-								(panel?.width ?? 500) + delta,
-							),
-					}
-				})()
-				: undefined}
-			rowDetail={rowDetailMode()
-				? (() => {
-					const tabData = t()!
-					const idx = rowDetailMode()!.rowIndex
-					return {
-						connectionId: props.connectionId,
-						schema: props.currentSchema,
-						table: props.currentTable,
-						database: props.database,
-						columns: tabData.columns,
-						row: tabData.rows[idx] ?? null,
-						foreignKeys: props.foreignKeys(),
-						readOnly: props.isReadOnly(),
-						rowLabel: `Row ${idx + 1} of ${tabData.rows.length}`,
-						canGoPrev: idx > 0,
-						canGoNext: idx < tabData.rows.length - 1,
-						onPrev: () => props.handleRowDetailNavigate('prev'),
-						onNext: () => props.handleRowDetailNavigate('next'),
-						onSave: props.handleRowDetailSave,
-						pendingChangedColumns: props.rowDetailPendingColumns(),
-						onReferencingNavigate: props.openReferencingTab,
-						onOpenInTab: props.rowDetailOpenInTab,
-						subtitle: props.rowDetailSubtitle(),
-						onClose: props.onClose,
-					}
-				})()
-				: undefined}
-			valueProps={valueMode()
-				? {
-					readOnly: props.isReadOnly(),
-					onSave: (value) => {
-						const m = valueMode()
-						if (!m) return
-						gridStore.setCellValue(
-							props.tabId,
-							m.rowIndex,
-							m.column.name,
-							value,
-						)
-					},
-				}
-				: undefined}
-			selectionProps={selectionMode()
-				? {
-					readOnly: props.isReadOnly(),
-					onDelete: () => gridStore.deleteSelectedRows(props.tabId),
-					onExport: props.onExportSelected,
-					onBatchEdit: props.onBatchEdit,
-					visibleColumns: selectionMode()!.columns,
-				}
-				: undefined}
+			fkPanel={props.fkPanel()}
+			rowDetail={props.rowDetail()}
+			valueProps={props.valueProps()}
+			selectionProps={props.selectionProps()}
 		/>
 	)
 }
