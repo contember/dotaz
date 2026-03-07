@@ -7,7 +7,7 @@ import type { ColumnFilter, SortColumn } from '../../../shared/types/grid'
 import { getCapabilities } from '../../lib/capabilities'
 import { rpc } from '../../lib/rpc'
 import { transport } from '../../lib/transport'
-import { getSelectedRowIndices, gridStore } from '../../stores/grid'
+import { gridStore } from '../../stores/grid'
 import Dialog from '../common/Dialog'
 import Select from '../common/Select'
 import './ExportDialog.css'
@@ -84,8 +84,8 @@ export default function ExportDialog(props: ExportDialogProps) {
 	const tab = () => gridStore.getTab(props.tabId)
 
 	const hasSelection = () => {
-		const t = tab()
-		return t ? getSelectedRowIndices(t.selection).length > 0 : false
+		const snapshot = gridStore.getSelectionSnapshot(props.tabId)
+		return !!snapshot && snapshot.rowCount > 0 && snapshot.columns.length > 0
 	}
 
 	const hasPrimaryKey = () => {
@@ -95,8 +95,17 @@ export default function ExportDialog(props: ExportDialogProps) {
 	}
 
 	const selectedRowCount = () => {
-		const t = tab()
-		return t ? getSelectedRowIndices(t.selection).length : 0
+		return gridStore.getSelectionSnapshot(props.tabId)?.rowCount ?? 0
+	}
+
+	const selectedCellCount = () => {
+		return gridStore.getSelectionSnapshot(props.tabId)?.cellCount ?? 0
+	}
+
+	const selectedColumnNames = () => {
+		return gridStore
+			.getSelectionSnapshot(props.tabId)
+			?.columns.map((column) => column.name)
 	}
 
 	const rowCountForScope = () => {
@@ -139,10 +148,13 @@ export default function ExportDialog(props: ExportDialogProps) {
 
 		// Selected rows: construct IN filter from PK values
 		if (scope() === 'selected') {
+			const selectedColumns = selectedColumnNames()
+			if (!selectedColumns || selectedColumns.length === 0) return undefined
+
 			const pkCols = t.columns.filter((c) => c.isPrimaryKey)
 			if (pkCols.length === 0) return undefined
 
-			const selectedIndices = getSelectedRowIndices(t.selection)
+			const selectedIndices = gridStore.getSelectionSnapshot(props.tabId)?.rowIndices ?? []
 			const filters: ColumnFilter[] = []
 
 			for (const pkCol of pkCols) {
@@ -182,6 +194,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 				table: props.table,
 				format: format(),
 				limit: 10,
+				columns: scope() === 'selected' ? selectedColumnNames() : undefined,
 				delimiter: format() === 'csv' ? delimiter() : undefined,
 				filters: getExportFilters(),
 				sort: getExportSort(),
@@ -244,6 +257,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 				table: props.table,
 				format: format(),
 				filePath: exportFilePath ?? defaultName,
+				columns: scope() === 'selected' ? selectedColumnNames() : undefined,
 				delimiter: format() === 'csv' ? delimiter() : undefined,
 				encoding: format() === 'csv' ? encoding() : undefined,
 				utf8Bom: format() === 'csv' && encoding() === 'utf-8' ? utf8Bom() : undefined,
@@ -284,20 +298,26 @@ export default function ExportDialog(props: ExportDialogProps) {
 
 		try {
 			// Get a stream token via WS RPC
-			const { token } = await transport.call<{ token: string }>('stream.createExportToken', {
-				connectionId: props.connectionId,
-				database: props.database,
-				schema: props.schema,
-				table: props.table,
-				format: format(),
-				delimiter: format() === 'csv' ? delimiter() : undefined,
-				encoding: format() === 'csv' ? encoding() : undefined,
-				utf8Bom: format() === 'csv' && encoding() === 'utf-8' ? utf8Bom() : undefined,
-				includeHeaders: format() === 'csv' ? includeHeaders() : undefined,
-				batchSize: format() === 'sql' ? batchSize() : undefined,
-				filters: getExportFilters(),
-				sort: getExportSort(),
-			})
+			const { token } = await transport.call<{ token: string }>(
+				'stream.createExportToken',
+				{
+					connectionId: props.connectionId,
+					database: props.database,
+					schema: props.schema,
+					table: props.table,
+					format: format(),
+					columns: scope() === 'selected' ? selectedColumnNames() : undefined,
+					delimiter: format() === 'csv' ? delimiter() : undefined,
+					encoding: format() === 'csv' ? encoding() : undefined,
+					utf8Bom: format() === 'csv' && encoding() === 'utf-8'
+						? utf8Bom()
+						: undefined,
+					includeHeaders: format() === 'csv' ? includeHeaders() : undefined,
+					batchSize: format() === 'sql' ? batchSize() : undefined,
+					filters: getExportFilters(),
+					sort: getExportSort(),
+				},
+			)
 
 			// Trigger browser download via hidden anchor tag
 			const a = document.createElement('a')
@@ -352,6 +372,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 				table: props.table,
 				format: format(),
 				limit: Number.MAX_SAFE_INTEGER,
+				columns: scope() === 'selected' ? selectedColumnNames() : undefined,
 				delimiter: format() === 'csv' ? delimiter() : undefined,
 				filters: getExportFilters(),
 				sort: getExportSort(),
@@ -380,21 +401,21 @@ export default function ExportDialog(props: ExportDialogProps) {
 	}
 
 	return (
-		<Dialog
-			open={props.open}
-			title="Export Data"
-			onClose={props.onClose}
-		>
+		<Dialog open={props.open} title="Export Data" onClose={props.onClose}>
 			<div class="export-dialog">
 				{/* Format selection */}
 				<div class="export-dialog__section">
 					<label class="export-dialog__label">Format</label>
 					<div class="export-dialog__format-group">
-						<For each={Object.entries(FORMAT_LABELS) as [ExportFormat, string][]}>
+						<For
+							each={Object.entries(FORMAT_LABELS) as [ExportFormat, string][]}
+						>
 							{([fmt, label]) => (
 								<button
 									class="export-dialog__format-btn"
-									classList={{ 'export-dialog__format-btn--active': format() === fmt }}
+									classList={{
+										'export-dialog__format-btn--active': format() === fmt,
+									}}
 									onClick={() => setFormat(fmt)}
 								>
 									{label}
@@ -430,7 +451,9 @@ export default function ExportDialog(props: ExportDialogProps) {
 						</label>
 						<label
 							class="export-dialog__radio-label"
-							classList={{ 'export-dialog__radio-label--disabled': !hasSelection() || !hasPrimaryKey() }}
+							classList={{
+								'export-dialog__radio-label--disabled': !hasSelection() || !hasPrimaryKey(),
+							}}
 						>
 							<input
 								type="radio"
@@ -456,7 +479,9 @@ export default function ExportDialog(props: ExportDialogProps) {
 									class="export-dialog__select"
 									value={delimiter()}
 									onChange={(v) => setDelimiter(v as CsvDelimiter)}
-									options={Object.entries(DELIMITER_LABELS).map(([value, label]) => ({ value, label }))}
+									options={Object.entries(DELIMITER_LABELS).map(
+										([value, label]) => ({ value, label }),
+									)}
 								/>
 							</div>
 							<div class="export-dialog__field">
@@ -465,7 +490,9 @@ export default function ExportDialog(props: ExportDialogProps) {
 									class="export-dialog__select"
 									value={encoding()}
 									onChange={(v) => setEncoding(v as CsvEncoding)}
-									options={Object.entries(ENCODING_LABELS).map(([value, label]) => ({ value, label }))}
+									options={Object.entries(ENCODING_LABELS).map(
+										([value, label]) => ({ value, label }),
+									)}
 								/>
 							</div>
 							<label class="export-dialog__checkbox-label">
@@ -495,7 +522,9 @@ export default function ExportDialog(props: ExportDialogProps) {
 						<label class="export-dialog__label">Options</label>
 						<div class="export-dialog__options">
 							<div class="export-dialog__field">
-								<label class="export-dialog__field-label">Rows per INSERT</label>
+								<label class="export-dialog__field-label">
+									Rows per INSERT
+								</label>
 								<input
 									class="export-dialog__input export-dialog__input--small"
 									type="number"
@@ -558,8 +587,11 @@ export default function ExportDialog(props: ExportDialogProps) {
 				<Show when={exportResult()}>
 					{(result) => (
 						<div class="export-dialog__result">
-							Exported {formatNumber(result().rowCount)} row{result().rowCount !== 1 ? 's' : ''}
-							{result().sizeBytes > 0 ? ` (${formatFileSize(result().sizeBytes)})` : ''}
+							Exported {formatNumber(result().rowCount)} row
+							{result().rowCount !== 1 ? 's' : ''}
+							{result().sizeBytes > 0
+								? ` (${formatFileSize(result().sizeBytes)})`
+								: ''}
 						</div>
 					)}
 				</Show>
@@ -572,16 +604,13 @@ export default function ExportDialog(props: ExportDialogProps) {
 				{/* Info about row count */}
 				<div class="export-dialog__info">
 					{scope() === 'selected'
-						? `${selectedRowCount()} row${selectedRowCount() !== 1 ? 's' : ''} selected`
+						? `${selectedRowCount()} row${selectedRowCount() !== 1 ? 's' : ''}, ${selectedCellCount()} cell${selectedCellCount() !== 1 ? 's' : ''} selected`
 						: `${rowCountForScope()} row${rowCountForScope() !== 1 ? 's' : ''} to export`}
 				</div>
 
 				{/* Actions */}
 				<div class="export-dialog__actions">
-					<button
-						class="btn btn--secondary"
-						onClick={props.onClose}
-					>
+					<button class="btn btn--secondary" onClick={props.onClose}>
 						Close
 					</button>
 					<button
@@ -589,7 +618,11 @@ export default function ExportDialog(props: ExportDialogProps) {
 						onClick={handleCopyToClipboard}
 						disabled={copying() || exporting()}
 					>
-						<ClipboardCopy size={14} /> {copying() ? 'Copying...' : copied() ? 'Copied!' : 'Copy to Clipboard'}
+						<ClipboardCopy size={14} /> {copying()
+							? 'Copying...'
+							: copied()
+							? 'Copied!'
+							: 'Copy to Clipboard'}
 					</button>
 					<button
 						class="btn btn--primary"

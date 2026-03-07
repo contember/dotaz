@@ -48,7 +48,12 @@ function createDefaultSelection(): CellSelection {
 	return { focusedCell: null, ranges: [], anchor: null, selectMode: 'cells' }
 }
 
-function normalizeRange(startRow: number, endRow: number, startCol: number, endCol: number): NormalizedRange {
+function normalizeRange(
+	startRow: number,
+	endRow: number,
+	startCol: number,
+	endCol: number,
+): NormalizedRange {
 	return {
 		minRow: Math.min(startRow, endRow),
 		maxRow: Math.max(startRow, endRow),
@@ -57,9 +62,20 @@ function normalizeRange(startRow: number, endRow: number, startCol: number, endC
 	}
 }
 
-export function isCellInSelection(sel: CellSelection, row: number, col: number): boolean {
+export function isCellInSelection(
+	sel: CellSelection,
+	row: number,
+	col: number,
+): boolean {
 	for (const r of sel.ranges) {
-		if (row >= r.minRow && row <= r.maxRow && col >= r.minCol && col <= r.maxCol) return true
+		if (
+			row >= r.minRow
+			&& row <= r.maxRow
+			&& col >= r.minCol
+			&& col <= r.maxCol
+		) {
+			return true
+		}
 	}
 	return false
 }
@@ -80,9 +96,100 @@ export function getSelectedColIndices(sel: CellSelection): number[] {
 	return [...cols].sort((a, b) => a - b)
 }
 
-export function hasFullRowSelection(sel: CellSelection, totalCols: number): boolean {
+export function hasFullRowSelection(
+	sel: CellSelection,
+	totalCols: number,
+): boolean {
 	if (sel.ranges.length === 0) return false
 	return sel.ranges.some((r) => r.minCol === 0 && r.maxCol === totalCols - 1)
+}
+
+export interface SelectionSnapshot {
+	rowIndices: number[]
+	colIndices: number[]
+	rowCount: number
+	cellCount: number
+	columns: GridColumnDef[]
+	rows: Record<string, unknown>[]
+	hasExplicitSelection: boolean
+	fallbackToAll: boolean
+}
+
+function projectRowToColumns(
+	row: Record<string, unknown>,
+	columns: GridColumnDef[],
+): Record<string, unknown> {
+	const projected: Record<string, unknown> = {}
+	for (const column of columns) {
+		projected[column.name] = row[column.name]
+	}
+	return projected
+}
+
+function getSelectionSnapshot(
+	tabId: string,
+	fallbackToAll = false,
+): SelectionSnapshot | null {
+	const tab = getTab(tabId)
+	if (!tab) return null
+
+	const visibleColumns = getVisibleColumns(tab)
+	const selection = tab.selection
+
+	if (selection.ranges.length === 0) {
+		if (!fallbackToAll || visibleColumns.length === 0) return null
+
+		const rowIndices = tab.rows
+			.map((_, index) => index)
+			.filter((index) => tab.rows[index] != null)
+
+		return {
+			rowIndices,
+			colIndices: visibleColumns.map((_, index) => index),
+			rowCount: rowIndices.length,
+			cellCount: rowIndices.length * visibleColumns.length,
+			columns: visibleColumns,
+			rows: rowIndices.map((index) => projectRowToColumns(tab.rows[index], visibleColumns)),
+			hasExplicitSelection: false,
+			fallbackToAll: true,
+		}
+	}
+
+	const colIndices = getSelectedColIndices(selection).filter(
+		(index) => visibleColumns[index] != null,
+	)
+	if (colIndices.length === 0) return null
+
+	const rowIndices = getSelectedRowIndices(selection).filter(
+		(index) => tab.rows[index] != null,
+	)
+	const columns = colIndices.map((index) => visibleColumns[index])
+	let cellCount = 0
+
+	const rows = rowIndices.map((rowIndex) => {
+		const row = tab.rows[rowIndex]
+		const projected: Record<string, unknown> = {}
+
+		for (const colIndex of colIndices) {
+			if (!isCellInSelection(selection, rowIndex, colIndex)) continue
+			const column = visibleColumns[colIndex]
+			projected[column.name] = row[column.name]
+			cellCount++
+		}
+
+		return projected
+	})
+
+	return {
+		rowIndices,
+		colIndices,
+		rowCount: rowIndices.length,
+		cellCount,
+		columns,
+		rows,
+		hasExplicitSelection: true,
+		fallbackToAll: false,
+	}
 }
 
 // ── Per-tab grid state ───────────────────────────────────
@@ -267,7 +374,12 @@ async function fetchData(tabId: string) {
 		const dialect = connectionsStore.getDialect(tab.connectionId)
 
 		// Get column metadata from cached schema
-		const cachedColumns = connectionsStore.getColumns(tab.connectionId, tab.schema, tab.table, tab.database)
+		const cachedColumns = connectionsStore.getColumns(
+			tab.connectionId,
+			tab.schema,
+			tab.table,
+			tab.database,
+		)
 		const gridColumns: GridColumnDef[] = cachedColumns.map((c) => ({
 			name: c.name,
 			dataType: c.dataType,
@@ -286,7 +398,12 @@ async function fetchData(tabId: string) {
 			return sum + 1
 		}, 0)
 		const quickSearchClause = tab.quickSearch
-			? buildQuickSearchClause(gridColumns, tab.quickSearch, dialect, filterParamCount)
+			? buildQuickSearchClause(
+				gridColumns,
+				tab.quickSearch,
+				dialect,
+				filterParamCount,
+			)
 			: undefined
 
 		// Build and execute data query
@@ -302,7 +419,14 @@ async function fetchData(tabId: string) {
 			quickSearchClause,
 			customFilter,
 		)
-		const countQuery = buildCountQuery(tab.schema, tab.table, filters, dialect, quickSearchClause, customFilter)
+		const countQuery = buildCountQuery(
+			tab.schema,
+			tab.table,
+			filters,
+			dialect,
+			quickSearchClause,
+			customFilter,
+		)
 
 		// Execute both queries
 		const queryId = `grid-${tabId}-${requestId}`
@@ -365,7 +489,11 @@ async function loadTableData(
 	database?: string,
 ) {
 	if (!getTab(tabId)) {
-		setState('tabs', tabId, createDefaultTabState(connectionId, schema, table, database))
+		setState(
+			'tabs',
+			tabId,
+			createDefaultTabState(connectionId, schema, table, database),
+		)
 	}
 	await fetchData(tabId)
 }
@@ -532,7 +660,12 @@ function selectFullRow(tabId: string, rowIndex: number, totalCols: number) {
 	})
 }
 
-function selectFullRowRange(tabId: string, from: number, to: number, totalCols: number) {
+function selectFullRowRange(
+	tabId: string,
+	from: number,
+	to: number,
+	totalCols: number,
+) {
 	const tab = ensureTab(tabId)
 	const anchor = tab.selection.anchor ?? { row: from, col: 0 }
 	const range = normalizeRange(anchor.row, to, 0, totalCols - 1)
@@ -549,7 +682,11 @@ function toggleFullRow(tabId: string, rowIndex: number, totalCols: number) {
 	const range = normalizeRange(rowIndex, rowIndex, 0, totalCols - 1)
 	// Check if this row is already fully selected
 	const alreadySelected = tab.selection.ranges.some(
-		(r) => r.minRow <= rowIndex && r.maxRow >= rowIndex && r.minCol === 0 && r.maxCol === totalCols - 1,
+		(r) =>
+			r.minRow <= rowIndex
+			&& r.maxRow >= rowIndex
+			&& r.minCol === 0
+			&& r.maxCol === totalCols - 1,
 	)
 	if (alreadySelected) {
 		// Remove ranges that fully cover this row
@@ -583,7 +720,11 @@ function selectFullColumn(tabId: string, colIndex: number, totalRows: number) {
 	})
 }
 
-function selectFullColumnRange(tabId: string, toColIndex: number, totalRows: number) {
+function selectFullColumnRange(
+	tabId: string,
+	toColIndex: number,
+	totalRows: number,
+) {
 	const tab = ensureTab(tabId)
 	const anchor = tab.selection.anchor ?? { row: 0, col: toColIndex }
 	const range = normalizeRange(0, totalRows - 1, anchor.col, toColIndex)
@@ -599,7 +740,11 @@ function toggleFullColumn(tabId: string, colIndex: number, totalRows: number) {
 	const tab = ensureTab(tabId)
 	const range = normalizeRange(0, totalRows - 1, colIndex, colIndex)
 	const alreadySelected = tab.selection.ranges.some(
-		(r) => r.minCol <= colIndex && r.maxCol >= colIndex && r.minRow === 0 && r.maxRow === totalRows - 1,
+		(r) =>
+			r.minCol <= colIndex
+			&& r.maxCol >= colIndex
+			&& r.minRow === 0
+			&& r.maxRow === totalRows - 1,
 	)
 	if (alreadySelected) {
 		const filtered = tab.selection.ranges.filter(
@@ -633,7 +778,13 @@ function selectAll(tabId: string, totalRows: number, totalCols: number) {
 	})
 }
 
-function moveFocus(tabId: string, dRow: number, dCol: number, totalRows: number, totalCols: number) {
+function moveFocus(
+	tabId: string,
+	dRow: number,
+	dCol: number,
+	totalRows: number,
+	totalCols: number,
+) {
 	const tab = ensureTab(tabId)
 	const current = tab.selection.focusedCell ?? { row: 0, col: 0 }
 	const row = Math.max(0, Math.min(totalRows - 1, current.row + dRow))
@@ -641,7 +792,13 @@ function moveFocus(tabId: string, dRow: number, dCol: number, totalRows: number,
 	selectCell(tabId, row, col)
 }
 
-function extendFocus(tabId: string, dRow: number, dCol: number, totalRows: number, totalCols: number) {
+function extendFocus(
+	tabId: string,
+	dRow: number,
+	dCol: number,
+	totalRows: number,
+	totalCols: number,
+) {
 	const tab = ensureTab(tabId)
 	const current = tab.selection.focusedCell ?? { row: 0, col: 0 }
 	const row = Math.max(0, Math.min(totalRows - 1, current.row + dRow))
@@ -655,10 +812,17 @@ function clearSelection(tabId: string) {
 }
 
 /** Legacy compatibility: set focused cell by column name */
-function setFocusedCell(tabId: string, cell: FocusedCell | null, visibleColumns?: GridColumnDef[]) {
+function setFocusedCell(
+	tabId: string,
+	cell: FocusedCell | null,
+	visibleColumns?: GridColumnDef[],
+) {
 	const tab = ensureTab(tabId)
 	if (!cell) {
-		setState('tabs', tabId, 'selection', { ...tab.selection, focusedCell: null })
+		setState('tabs', tabId, 'selection', {
+			...tab.selection,
+			focusedCell: null,
+		})
 		return
 	}
 	const colIdx = visibleColumns
@@ -677,7 +841,10 @@ function getSelectedData(tabId: string): Record<string, unknown>[] {
 function formatCellForClipboard(value: unknown): string {
 	if (value === null || value === undefined) return ''
 	if (typeof value === 'object') return JSON.stringify(value)
-	return String(value).replace(/\t/g, ' ').replace(/\n/g, ' ').replace(/\r/g, '')
+	return String(value)
+		.replace(/\t/g, ' ')
+		.replace(/\n/g, ' ')
+		.replace(/\r/g, '')
 }
 
 /**
@@ -705,7 +872,9 @@ function buildClipboardTsv(
 	}
 
 	// Full row selection or multi-cell → copy selected cells as TSV
-	const colNames = selectedCols.map((i) => visibleColumns[i]?.name).filter(Boolean) as string[]
+	const colNames = selectedCols
+		.map((i) => visibleColumns[i]?.name)
+		.filter(Boolean) as string[]
 	const header = colNames.join('\t')
 	const rows = selectedRows
 		.filter((i) => tab.rows[i] != null)
@@ -719,7 +888,12 @@ function buildClipboardTsv(
 
 // ── Advanced copy ─────────────────────────────────────────
 
-export type AdvancedCopyDelimiter = 'tab' | 'comma' | 'semicolon' | 'pipe' | 'custom'
+export type AdvancedCopyDelimiter =
+	| 'tab'
+	| 'comma'
+	| 'semicolon'
+	| 'pipe'
+	| 'custom'
 export type AdvancedCopyValueFormat = 'displayed' | 'raw' | 'quoted'
 
 export interface AdvancedCopyOptions {
@@ -731,7 +905,10 @@ export interface AdvancedCopyOptions {
 	nullRepresentation: string
 }
 
-const DELIMITER_MAP: Record<Exclude<AdvancedCopyDelimiter, 'custom'>, string> = {
+const DELIMITER_MAP: Record<
+	Exclude<AdvancedCopyDelimiter, 'custom'>,
+	string
+> = {
 	tab: '\t',
 	comma: ',',
 	semicolon: ';',
@@ -744,7 +921,10 @@ function getDelimiterChar(options: AdvancedCopyOptions): string {
 		: DELIMITER_MAP[options.delimiter]
 }
 
-function formatAdvancedCellValue(value: unknown, options: AdvancedCopyOptions): string {
+function formatAdvancedCellValue(
+	value: unknown,
+	options: AdvancedCopyOptions,
+): string {
 	if (value === null || value === undefined) return options.nullRepresentation
 
 	const str = typeof value === 'object' ? JSON.stringify(value) : String(value)
@@ -773,11 +953,15 @@ function buildAdvancedCopyText(
 	const delim = getDelimiterChar(options)
 	const selectedRows = getSelectedRowIndices(sel)
 	const selectedCols = getSelectedColIndices(sel)
-	const colNames = selectedCols.map((i) => visibleColumns[i]?.name).filter(Boolean) as string[]
+	const colNames = selectedCols
+		.map((i) => visibleColumns[i]?.name)
+		.filter(Boolean) as string[]
 	const lines: string[] = []
 
 	if (options.includeHeaders) {
-		const headerParts = options.includeRowNumbers ? ['#', ...colNames] : colNames
+		const headerParts = options.includeRowNumbers
+			? ['#', ...colNames]
+			: colNames
 		lines.push(headerParts.join(delim))
 	}
 
@@ -930,7 +1114,12 @@ function stopEditing(tabId: string) {
 	setState('tabs', tabId, 'editingCell', null)
 }
 
-function setCellValue(tabId: string, rowIndex: number, column: string, newValue: unknown) {
+function setCellValue(
+	tabId: string,
+	rowIndex: number,
+	column: string,
+	newValue: unknown,
+) {
 	const tab = ensureTab(tabId)
 	const key = `${rowIndex}:${column}`
 	const existing = tab.pendingChanges.cellEdits[key]
@@ -1073,7 +1262,11 @@ function pendingChangesCount(tabId: string): number {
 		}
 	}
 
-	return editedRows.size + tab.pendingChanges.newRows.size + tab.pendingChanges.deletedRows.size
+	return (
+		editedRows.size
+		+ tab.pendingChanges.newRows.size
+		+ tab.pendingChanges.deletedRows.size
+	)
 }
 
 /** Revert all cell edits for a specific existing row (undo UPDATE). */
@@ -1153,7 +1346,11 @@ function adjustIndicesAfterRemoval(tabId: string, removedIndex: number) {
 	setState('tabs', tabId, 'pendingChanges', 'deletedRows', newDeletedRows)
 }
 
-function isCellChanged(tabId: string, rowIndex: number, column: string): boolean {
+function isCellChanged(
+	tabId: string,
+	rowIndex: number,
+	column: string,
+): boolean {
 	const tab = getTab(tabId)
 	if (!tab) return false
 	return `${rowIndex}:${column}` in tab.pendingChanges.cellEdits
@@ -1177,7 +1374,9 @@ function isRowDeleted(tabId: string, rowIndex: number): boolean {
 function buildDataChanges(tabId: string): DataChange[] {
 	const tab = ensureTab(tabId)
 	const changes: DataChange[] = []
-	const pkColumns = tab.columns.filter((c) => c.isPrimaryKey).map((c) => c.name)
+	const pkColumns = tab.columns
+		.filter((c) => c.isPrimaryKey)
+		.map((c) => c.name)
 
 	// Collect updates: group cell edits by row
 	const editsByRow = new Map<number, Record<string, unknown>>()
@@ -1254,7 +1453,14 @@ async function applyChanges(tabId: string, database?: string) {
 	const dialect = connectionsStore.getDialect(tab.connectionId)
 	const statements = changes.map((change) => generateChangeSql(change, dialect))
 	const sessionId = sessionStore.getSessionForTab(tabId)
-	await rpc.query.execute({ connectionId: tab.connectionId, sql: '', queryId: '', statements, database, sessionId })
+	await rpc.query.execute({
+		connectionId: tab.connectionId,
+		sql: '',
+		queryId: '',
+		statements,
+		database,
+		sessionId,
+	})
 }
 
 function generateSqlPreview(tabId: string): string {
@@ -1271,14 +1477,23 @@ function revertChanges(tabId: string) {
 	// Revert cell edits to original values
 	for (const edit of Object.values(tab.pendingChanges.cellEdits)) {
 		if (!tab.pendingChanges.newRows.has(edit.rowIndex)) {
-			setState('tabs', tabId, 'rows', edit.rowIndex, edit.column, edit.oldValue)
+			setState(
+				'tabs',
+				tabId,
+				'rows',
+				edit.rowIndex,
+				edit.column,
+				edit.oldValue,
+			)
 		}
 	}
 
 	// Remove new rows from end
 	const newRowIndices = [...tab.pendingChanges.newRows].sort((a, b) => b - a)
 	if (newRowIndices.length > 0) {
-		const filteredRows = tab.rows.filter((_, i) => !tab.pendingChanges.newRows.has(i))
+		const filteredRows = tab.rows.filter(
+			(_, i) => !tab.pendingChanges.newRows.has(i),
+		)
 		setState('tabs', tabId, 'rows', filteredRows)
 	}
 
@@ -1296,7 +1511,11 @@ function clearPendingChanges(tabId: string) {
 
 // ── Saved view actions ────────────────────────────────────
 
-function setActiveView(tabId: string, viewId: string | null, viewName: string | null) {
+function setActiveView(
+	tabId: string,
+	viewId: string | null,
+	viewName: string | null,
+) {
 	ensureTab(tabId)
 	setState('tabs', tabId, 'activeViewId', viewId)
 	setState('tabs', tabId, 'activeViewName', viewName)
@@ -1350,21 +1569,31 @@ function isViewModified(tabId: string, savedConfig: SavedViewConfig): boolean {
 	if (!tab) return false
 
 	// Compare sort
-	const currentSort = tab.sort.map(s => `${s.column}:${s.direction}`).join(',')
-	const savedSort = (savedConfig.sort ?? []).map(s => `${s.column}:${s.direction}`).join(',')
+	const currentSort = tab.sort
+		.map((s) => `${s.column}:${s.direction}`)
+		.join(',')
+	const savedSort = (savedConfig.sort ?? [])
+		.map((s) => `${s.column}:${s.direction}`)
+		.join(',')
 	if (currentSort !== savedSort) return true
 
 	// Compare filters
-	const currentFilters = tab.filters.map(f => `${f.column}:${f.operator}:${f.value}`).join(',')
-	const savedFilters = (savedConfig.filters ?? []).map(f => `${f.column}:${f.operator}:${f.value}`).join(',')
+	const currentFilters = tab.filters
+		.map((f) => `${f.column}:${f.operator}:${f.value}`)
+		.join(',')
+	const savedFilters = (savedConfig.filters ?? [])
+		.map((f) => `${f.column}:${f.operator}:${f.value}`)
+		.join(',')
 	if (currentFilters !== savedFilters) return true
 
 	// Compare custom filter
-	if ((tab.customFilter || '') !== (savedConfig.customFilter || '')) return true
+	if ((tab.customFilter || '') !== (savedConfig.customFilter || '')) {
+		return true
+	}
 
 	// Compare visible columns (order matters)
 	if (savedConfig.columns) {
-		const visibleCols = getVisibleColumns(tab).map(c => c.name)
+		const visibleCols = getVisibleColumns(tab).map((c) => c.name)
 		if (visibleCols.join(',') !== savedConfig.columns.join(',')) return true
 	}
 
@@ -1382,7 +1611,7 @@ function captureViewConfig(tabId: string): SavedViewConfig {
 	}
 
 	return {
-		columns: visible.map(c => c.name),
+		columns: visible.map((c) => c.name),
 		sort: [...tab.sort],
 		filters: [...tab.filters],
 		columnWidths: Object.keys(columnWidths).length > 0 ? columnWidths : undefined,
@@ -1399,11 +1628,22 @@ async function fetchFkRowData(
 	column: string,
 	value: unknown,
 	database?: string,
-): Promise<{ rows: Record<string, unknown>[]; columns: GridColumnDef[]; foreignKeys: ForeignKeyInfo[] }> {
+): Promise<{
+	rows: Record<string, unknown>[]
+	columns: GridColumnDef[]
+	foreignKeys: ForeignKeyInfo[]
+}> {
 	const dialect = connectionsStore.getDialect(connectionId)
-	const filters: ColumnFilter[] = [{ column, operator: 'eq', value: String(value) }]
+	const filters: ColumnFilter[] = [
+		{ column, operator: 'eq', value: String(value) },
+	]
 
-	const cachedColumns = connectionsStore.getColumns(connectionId, schema, table, database)
+	const cachedColumns = connectionsStore.getColumns(
+		connectionId,
+		schema,
+		table,
+		database,
+	)
 	const gridColumns: GridColumnDef[] = cachedColumns.map((c) => ({
 		name: c.name,
 		dataType: c.dataType,
@@ -1411,7 +1651,15 @@ async function fetchFkRowData(
 		isPrimaryKey: c.isPrimaryKey,
 	}))
 
-	const selectQuery = buildSelectQuery(schema, table, 1, 50, undefined, filters, dialect)
+	const selectQuery = buildSelectQuery(
+		schema,
+		table,
+		1,
+		50,
+		undefined,
+		filters,
+		dialect,
+	)
 	const results = await rpc.query.execute({
 		connectionId,
 		sql: selectQuery.sql,
@@ -1420,7 +1668,12 @@ async function fetchFkRowData(
 		database,
 	})
 
-	const foreignKeys = connectionsStore.getForeignKeys(connectionId, schema, table, database)
+	const foreignKeys = connectionsStore.getForeignKeys(
+		connectionId,
+		schema,
+		table,
+		database,
+	)
 
 	return {
 		rows: results[0]?.rows ?? [],
@@ -1451,7 +1704,14 @@ async function openFkPeek(
 	})
 
 	try {
-		const data = await fetchFkRowData(tab.connectionId, schema, table, column, value, tab.database)
+		const data = await fetchFkRowData(
+			tab.connectionId,
+			schema,
+			table,
+			column,
+			value,
+			tab.database,
+		)
 		// Check peek is still open (user might have closed it)
 		if (!state.tabs[tabId]?.fkPeek) return
 		setState('tabs', tabId, 'fkPeek', {
@@ -1478,13 +1738,20 @@ function openPkPeek(
 	const row = tab.rows[rowIndex]
 	if (!row) return
 
-	const foreignKeys = connectionsStore.getForeignKeys(tab.connectionId, tab.schema, tab.table, tab.database)
+	const foreignKeys = connectionsStore.getForeignKeys(
+		tab.connectionId,
+		tab.schema,
+		tab.table,
+		tab.database,
+	)
 
 	setState('tabs', tabId, 'fkPeek', {
 		anchorRect,
 		rows: [row],
 		columns: tab.columns,
-		breadcrumbs: [{ schema: tab.schema, table: tab.table, column: '', value: null }],
+		breadcrumbs: [
+			{ schema: tab.schema, table: tab.table, column: '', value: null },
+		],
 		foreignKeys,
 		schema: tab.schema,
 		table: tab.table,
@@ -1508,7 +1775,10 @@ async function fkPeekNavigate(
 	const peek = tab.fkPeek
 	if (!peek) return
 
-	const newBreadcrumbs = [...peek.breadcrumbs, { schema, table, column, value }]
+	const newBreadcrumbs = [
+		...peek.breadcrumbs,
+		{ schema, table, column, value },
+	]
 	setState('tabs', tabId, 'fkPeek', {
 		...peek,
 		loading: true,
@@ -1516,7 +1786,14 @@ async function fkPeekNavigate(
 	})
 
 	try {
-		const data = await fetchFkRowData(tab.connectionId, schema, table, column, value, tab.database)
+		const data = await fetchFkRowData(
+			tab.connectionId,
+			schema,
+			table,
+			column,
+			value,
+			tab.database,
+		)
 		if (!state.tabs[tabId]?.fkPeek) return
 		setState('tabs', tabId, 'fkPeek', {
 			anchorRect: peek.anchorRect,
@@ -1548,7 +1825,14 @@ function fkPeekBack(tabId: string) {
 		breadcrumbs: prevBreadcrumbs,
 	})
 
-	fetchFkRowData(tab.connectionId, prev.schema, prev.table, prev.column, prev.value, tab.database)
+	fetchFkRowData(
+		tab.connectionId,
+		prev.schema,
+		prev.table,
+		prev.column,
+		prev.value,
+		tab.database,
+	)
 		.then((data) => {
 			if (!state.tabs[tabId]?.fkPeek) return
 			setState('tabs', tabId, 'fkPeek', {
@@ -1617,7 +1901,12 @@ async function fetchFkPanelData(tabId: string) {
 
 	try {
 		const dialect = connectionsStore.getDialect(tab.connectionId)
-		const cachedColumns = connectionsStore.getColumns(tab.connectionId, panel.schema, panel.table, tab.database)
+		const cachedColumns = connectionsStore.getColumns(
+			tab.connectionId,
+			panel.schema,
+			panel.table,
+			tab.database,
+		)
 		const gridColumns: GridColumnDef[] = cachedColumns.map((c) => ({
 			name: c.name,
 			dataType: c.dataType,
@@ -1626,8 +1915,21 @@ async function fetchFkPanelData(tabId: string) {
 		}))
 
 		const filters = panel.filters.length > 0 ? panel.filters : undefined
-		const selectQuery = buildSelectQuery(panel.schema, panel.table, panel.currentPage, panel.pageSize, undefined, filters, dialect)
-		const countQuery = buildCountQuery(panel.schema, panel.table, filters, dialect)
+		const selectQuery = buildSelectQuery(
+			panel.schema,
+			panel.table,
+			panel.currentPage,
+			panel.pageSize,
+			undefined,
+			filters,
+			dialect,
+		)
+		const countQuery = buildCountQuery(
+			panel.schema,
+			panel.table,
+			filters,
+			dialect,
+		)
 
 		const [dataResults, countResults] = await Promise.all([
 			rpc.query.execute({
@@ -1647,7 +1949,12 @@ async function fetchFkPanelData(tabId: string) {
 		])
 
 		if (!state.tabs[tabId]?.fkPanel) return
-		const foreignKeys = connectionsStore.getForeignKeys(tab.connectionId, panel.schema, panel.table, tab.database)
+		const foreignKeys = connectionsStore.getForeignKeys(
+			tab.connectionId,
+			panel.schema,
+			panel.table,
+			tab.database,
+		)
 
 		setState('tabs', tabId, 'fkPanel', {
 			...panel,
@@ -1685,8 +1992,13 @@ async function fkPanelNavigate(
 	const panel = tab.fkPanel
 	if (!panel) return
 
-	const newFilters: ColumnFilter[] = [{ column, operator: 'eq', value: String(value) }]
-	const newBreadcrumbs = [...panel.breadcrumbs, { schema, table, column, value }]
+	const newFilters: ColumnFilter[] = [
+		{ column, operator: 'eq', value: String(value) },
+	]
+	const newBreadcrumbs = [
+		...panel.breadcrumbs,
+		{ schema, table, column, value },
+	]
 
 	setState('tabs', tabId, 'fkPanel', {
 		...panel,
@@ -1714,7 +2026,9 @@ async function fkPanelBack(tabId: string) {
 		...panel,
 		schema: prev.schema,
 		table: prev.table,
-		filters: [{ column: prev.column, operator: 'eq', value: String(prev.value) }],
+		filters: [
+			{ column: prev.column, operator: 'eq', value: String(prev.value) },
+		],
 		breadcrumbs: prevBreadcrumbs,
 		currentPage: 1,
 		currentRowIndex: 0,
@@ -1727,7 +2041,13 @@ async function fkPanelBack(tabId: string) {
 function fkPanelResize(tabId: string, width: number) {
 	const tab = ensureTab(tabId)
 	if (!tab.fkPanel) return
-	setState('tabs', tabId, 'fkPanel', 'width', Math.min(1200, Math.max(250, width)))
+	setState(
+		'tabs',
+		tabId,
+		'fkPanel',
+		'width',
+		Math.min(1200, Math.max(250, width)),
+	)
 }
 
 async function fkPanelSetPage(tabId: string, page: number) {
@@ -1743,7 +2063,13 @@ function fkPanelSetRowIndex(tabId: string, index: number) {
 	const tab = ensureTab(tabId)
 	if (!tab.fkPanel) return
 	const maxIndex = Math.max(0, tab.fkPanel.rows.length - 1)
-	setState('tabs', tabId, 'fkPanel', 'currentRowIndex', Math.min(Math.max(0, index), maxIndex))
+	setState(
+		'tabs',
+		tabId,
+		'fkPanel',
+		'currentRowIndex',
+		Math.min(Math.max(0, index), maxIndex),
+	)
 }
 
 function toggleTranspose(tabId: string) {
@@ -1762,7 +2088,12 @@ function toggleValueEditor(tabId: string) {
 
 function setValueEditorWidth(tabId: string, width: number) {
 	ensureTab(tabId)
-	setState('tabs', tabId, 'valueEditorWidth', Math.min(800, Math.max(200, width)))
+	setState(
+		'tabs',
+		tabId,
+		'valueEditorWidth',
+		Math.min(800, Math.max(200, width)),
+	)
 }
 
 // ── Heatmap actions ───────────────────────────────────────
@@ -1772,7 +2103,10 @@ function setHeatmap(tabId: string, column: string, mode: HeatmapMode) {
 	// Only allow heatmaps on numeric columns
 	const col = tab.columns.find((c) => c.name === column)
 	if (!col || !isNumericType(col.dataType)) return
-	setState('tabs', tabId, 'heatmapColumns', { ...tab.heatmapColumns, [column]: mode })
+	setState('tabs', tabId, 'heatmapColumns', {
+		...tab.heatmapColumns,
+		[column]: mode,
+	})
 }
 
 function removeHeatmap(tabId: string, column: string) {
@@ -1808,7 +2142,10 @@ function computeHeatmapStats(tab: TabGridState): Map<string, HeatmapInfo> {
 }
 
 /** Compute a CSS background color for a heatmap cell. */
-function computeHeatmapColor(value: unknown, info: HeatmapInfo): string | undefined {
+function computeHeatmapColor(
+	value: unknown,
+	info: HeatmapInfo,
+): string | undefined {
 	if (value === null || value === undefined) return undefined
 	const num = Number(value)
 	if (Number.isNaN(num)) return undefined
@@ -1838,13 +2175,12 @@ function removeTab(tabId: string) {
 // ── Aggregate selection data ──────────────────────────────
 
 /** Return selected rows data and columns for aggregate computation. */
-function getSelectedCellData(tabId: string): { rows: Record<string, unknown>[]; columns: GridColumnDef[] } | null {
-	const tab = getTab(tabId)
-	if (!tab) return null
-	const indices = getSelectedRowIndices(tab.selection)
-	if (indices.length < 2) return null
-	const rows = indices.filter((i) => tab.rows[i] != null).map((i) => tab.rows[i])
-	return { rows, columns: tab.columns }
+function getSelectedCellData(
+	tabId: string,
+): { rows: Record<string, unknown>[]; columns: GridColumnDef[] } | null {
+	const snapshot = getSelectionSnapshot(tabId)
+	if (!snapshot || snapshot.rowCount < 2) return null
+	return { rows: snapshot.rows, columns: snapshot.columns }
 }
 
 // ── Export ────────────────────────────────────────────────
@@ -1930,6 +2266,7 @@ export const gridStore = {
 
 	// Aggregation
 	getSelectedCellData,
+	getSelectionSnapshot,
 
 	// Editing
 	startEditing,
