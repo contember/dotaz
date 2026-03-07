@@ -4,6 +4,8 @@
 	"type": "module",
 	"main": "dist-electron/main.mjs",
 	"description": "Desktop database client built on Electrobun",
+	"author": "Contember Limited",
+	"license": "MIT",
 	"scripts": {
 		"start": "vite build && WEBKIT_DISABLE_COMPOSITING_MODE=1 electrobun dev",
 		"dev": "concurrently \"vite --port 6400\" \"WEBKIT_DISABLE_COMPOSITING_MODE=1 electrobun dev --watch\"",

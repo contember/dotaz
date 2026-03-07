@@ -96,7 +96,8 @@ render(() => <App />, document.getElementById('app')!)
 
 This project may have multiple agents working concurrently. Follow these rules strictly:
 
-- **Never revert or stash changes** that you did not author in the current task
+- **Never use `git stash`**. To commit selectively, stage only the files you need with `git add <file>` — leave everything else unstaged.
+- **Never revert or discard changes** you did not author in the current task
 - **Never assume a conflict is an error** — another agent may have legitimately modified the file
 - If a merge conflict, unexpected state, or test failure appears to be caused by concurrent edits:
   1. **Wait between 30-90 seconds (jitter)** (eg `sleep 53`) and retry the failed operation - repeat up to three times
