@@ -100,6 +100,7 @@ export default function InlineEditor(props: InlineEditorProps) {
 	)
 	const [isDefault, setIsDefault] = createSignal(isSqlDefault(props.value))
 	let inputRef: HTMLInputElement | HTMLTextAreaElement | undefined
+	let cancelled = false
 
 	const dataType = () => props.column.dataType
 	const isBool = () => isBooleanType(dataType())
@@ -119,6 +120,7 @@ export default function InlineEditor(props: InlineEditorProps) {
 	})
 
 	function save() {
+		if (cancelled) return
 		if (isNull()) {
 			props.onSave(null)
 			return
@@ -158,6 +160,7 @@ export default function InlineEditor(props: InlineEditorProps) {
 		if (e.key === 'Escape') {
 			e.preventDefault()
 			e.stopPropagation()
+			cancelled = true
 			props.onCancel()
 		} else if (e.key === 'Tab') {
 			e.preventDefault()
