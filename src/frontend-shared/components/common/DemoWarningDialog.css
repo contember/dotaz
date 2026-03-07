@@ -1,0 +1,17 @@
+.demo-warning-dialog__content p {
+	margin: 0 0 var(--spacing-md);
+	color: var(--ink);
+	line-height: 1.5;
+}
+
+.demo-warning-dialog__content ul {
+	margin: 0 0 var(--spacing-lg);
+	padding-left: var(--spacing-lg);
+	color: var(--ink-secondary);
+	line-height: 1.8;
+}
+
+.demo-warning-dialog__actions {
+	display: flex;
+	justify-content: flex-end;
+}

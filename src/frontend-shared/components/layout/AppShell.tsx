@@ -1,8 +1,10 @@
 import { createSignal, Match, onCleanup, onMount, Show, Switch } from 'solid-js'
+import appIcon from '../../../../assets/icon.png'
 import type { ComparisonColumnMapping, ComparisonSource } from '../../../shared/types/comparison'
 import type { ConnectionInfo } from '../../../shared/types/connection'
 import type { SearchScope } from '../../../shared/types/rpc'
 import type { WorkspaceState, WorkspaceTab } from '../../../shared/types/workspace'
+import { getCapabilities } from '../../lib/capabilities'
 import { commandRegistry } from '../../lib/commands'
 import type { ShortcutContext } from '../../lib/keyboard'
 import { keyboardManager, platformShortcut } from '../../lib/keyboard'
@@ -19,6 +21,7 @@ import { tabsStore } from '../../stores/tabs'
 import { uiStore } from '../../stores/ui'
 import BookmarksDialog from '../bookmarks/BookmarksDialog'
 import CommandPalette from '../common/CommandPalette'
+import DemoWarningDialog from '../common/DemoWarningDialog'
 import KeyboardShortcutsDialog from '../common/KeyboardShortcutsDialog'
 import type { SettingsSection } from '../common/SettingsDialog'
 import SettingsDialog from '../common/SettingsDialog'
@@ -43,7 +46,6 @@ import DataGrid from '../grid/DataGrid'
 import QueryHistory from '../history/QueryHistory'
 import SchemaViewer from '../schema/SchemaViewer'
 import DatabaseSearchDialog from '../search/DatabaseSearchDialog'
-import appIcon from '../../../../assets/icon.png'
 import Resizer from './Resizer'
 import Sidebar, { SidebarExpandButton } from './Sidebar'
 import type { TabStatus } from './TabBar'
@@ -78,6 +80,7 @@ type AppModal =
 	| { type: 'settings'; section: SettingsSection }
 	| { type: 'tx-warning'; tabId: string; context: 'close' | 'disconnect'; connId: string }
 	| { type: 'keyboard-shortcuts' }
+	| { type: 'demo-warning' }
 
 export default function AppShell() {
 	const [sidebarWidth, setSidebarWidth] = createSignal(DEFAULT_WIDTH)
@@ -285,6 +288,11 @@ export default function AppShell() {
 		handleMediaChange(mediaQuery)
 		mediaQuery.addEventListener('change', handleMediaChange)
 		removeResizeListener = () => mediaQuery.removeEventListener('change', handleMediaChange)
+
+		// Show demo mode warning
+		if (getCapabilities().isDemo) {
+			setModal({ type: 'demo-warning' })
+		}
 
 		// Transaction warning on tab close — shows Commit/Rollback/Cancel dialog
 		tabsStore.setBeforeCloseHook((tab) => {
@@ -1238,6 +1246,11 @@ export default function AppShell() {
 
 			<KeyboardShortcutsDialog
 				open={modal()?.type === 'keyboard-shortcuts'}
+				onClose={() => setModal(null)}
+			/>
+
+			<DemoWarningDialog
+				open={modal()?.type === 'demo-warning'}
 				onClose={() => setModal(null)}
 			/>
 

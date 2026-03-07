@@ -10,6 +10,6 @@ import App from '../frontend-shared/App'
 
 setTransport(createInlineTransport())
 setStorage(new RpcAppStateStorage())
-setCapabilities({ hasFileSystem: false, hasHttpStreaming: false, hasNativeDialogs: false })
+setCapabilities({ hasFileSystem: false, hasHttpStreaming: false, hasNativeDialogs: false, isDemo: true })
 setShortcutMode('browser')
 render(() => <App />, document.getElementById('app')!)
