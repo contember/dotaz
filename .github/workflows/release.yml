@@ -132,7 +132,7 @@ jobs:
 
           # Convert PNG to ICO
           $iconIco = Join-Path $buildDir "app-icon.ico"
-          node -e "const p=require('$($tempDir -replace '\\','/')'+'/node_modules/png-to-ico');const fs=require('fs');p('$($iconPng -replace '\\','/')').then(b=>fs.writeFileSync('$($iconIco -replace '\\','/')',b))"
+          node --input-type=module -e "import p from '$($tempDir -replace '\\','/')/node_modules/png-to-ico/index.js';import{writeFileSync as w}from'fs';const b=await p('$($iconPng -replace '\\','/')');w('$($iconIco -replace '\\','/')',b);"
 
           # Embed icon into executables and copy .ico for shortcuts
           $rcedit = Join-Path $tempDir "node_modules\rcedit\bin\rcedit-x64.exe"
