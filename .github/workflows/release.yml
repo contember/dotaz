@@ -118,13 +118,24 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          npm install --no-save rcedit png-to-ico
           $buildDir = "build/${{ needs.prepare.outputs.electrobun-env }}-${{ matrix.platform }}"
           $appDir = Get-ChildItem -Path $buildDir -Directory -Filter "Dotaz*" | Select-Object -First 1
-          $rcedit = Join-Path (Get-Location) "node_modules\rcedit\bin\rcedit-x64.exe"
-          $iconPng = Join-Path (Get-Location) "assets\icon.png"
+          $iconPng = Resolve-Path "assets\icon.png"
+
+          # Install rcedit and png-to-ico in isolated temp dir (avoids workspace:* conflict)
+          $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "icon-tools"
+          New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+          Push-Location $tempDir
+          npm init -y | Out-Null
+          npm install rcedit png-to-ico --silent
+          Pop-Location
+
+          # Convert PNG to ICO
           $iconIco = Join-Path $buildDir "app-icon.ico"
-          npx png-to-ico $iconPng > $iconIco
+          node -e "const p=require('$($tempDir -replace '\\','/')'+'/node_modules/png-to-ico');const fs=require('fs');p('$($iconPng -replace '\\','/')').then(b=>fs.writeFileSync('$($iconIco -replace '\\','/')',b))"
+
+          # Embed icon into executables and copy .ico for shortcuts
+          $rcedit = Join-Path $tempDir "node_modules\rcedit\bin\rcedit-x64.exe"
           & $rcedit "$($appDir.FullName)\bin\launcher.exe" --set-icon $iconIco
           & $rcedit "$($appDir.FullName)\bin\bun.exe" --set-icon $iconIco
           Copy-Item $iconIco "$($appDir.FullName)\Resources\app.ico"
