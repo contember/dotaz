@@ -24,7 +24,8 @@ import {
 } from './session'
 
 const PORT = Number(process.env.DOTAZ_PORT) || 6401
-const DIST_DIR = resolve(import.meta.dir, '../../dist')
+const HOST = process.env.DOTAZ_HOST || 'localhost'
+const DIST_DIR = process.env.DOTAZ_DIST_DIR || resolve(import.meta.dir, '../../dist')
 
 const ENCRYPTION_KEY = process.env.DOTAZ_ENCRYPTION_KEY
 if (!ENCRYPTION_KEY) {
@@ -230,7 +231,7 @@ async function handleImportStream(req: Request, token: string): Promise<Response
 
 const server = Bun.serve<Session>({
 	port: PORT,
-	hostname: 'localhost',
+	hostname: HOST,
 
 	async fetch(req, server) {
 		const url = new URL(req.url)
@@ -375,4 +376,4 @@ const server = Bun.serve<Session>({
 	},
 })
 
-console.log(`Dotaz web server running at http://localhost:${server.port}`)
+console.log(`Dotaz web server running at http://${HOST}:${server.port}`)

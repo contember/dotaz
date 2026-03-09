@@ -10,6 +10,8 @@
 		"start": "vite build && WEBKIT_DISABLE_COMPOSITING_MODE=1 electrobun dev",
 		"dev": "concurrently \"vite --port 6400\" \"WEBKIT_DISABLE_COMPOSITING_MODE=1 electrobun dev --watch\"",
 		"build:canary": "vite build && electrobun build --env=canary",
+		"build:server": "bun scripts/build-server.ts",
+		"build:docker": "docker build -t dotaz .",
 		"test": "bun test",
 		"test:sqlite": "bun test tests/sqlite-smoke.test.ts",
 		"test:pg": "bun test tests/pg-smoke.test.ts",
