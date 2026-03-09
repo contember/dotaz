@@ -114,6 +114,22 @@ jobs:
             Remove-Item -Recurse -Force $extractDir
           }
 
+      - name: Embed icon into Windows executables
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          npm install --no-save rcedit png-to-ico
+          $buildDir = "build/${{ needs.prepare.outputs.electrobun-env }}-${{ matrix.platform }}"
+          $appDir = Get-ChildItem -Path $buildDir -Directory -Filter "Dotaz*" | Select-Object -First 1
+          $rcedit = Join-Path (Get-Location) "node_modules\rcedit\bin\rcedit-x64.exe"
+          $iconPng = Join-Path (Get-Location) "assets\icon.png"
+          $iconIco = Join-Path $buildDir "app-icon.ico"
+          npx png-to-ico $iconPng > $iconIco
+          & $rcedit "$($appDir.FullName)\bin\launcher.exe" --set-icon $iconIco
+          & $rcedit "$($appDir.FullName)\bin\bun.exe" --set-icon $iconIco
+          Copy-Item $iconIco "$($appDir.FullName)\Resources\app.ico"
+          Write-Host "Icon embedded into launcher.exe and bun.exe"
+
       - name: Package artifact (Unix)
         if: runner.os != 'Windows'
         run: |
