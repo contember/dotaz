@@ -1,6 +1,6 @@
-import { createMemo, For, Show } from 'solid-js'
 import { isNumericType } from '@dotaz/shared/column-types'
 import type { GridColumnDef } from '@dotaz/shared/types/grid'
+import { createMemo, For, Show } from 'solid-js'
 import './AggregatePanel.css'
 
 export interface AggregateResult {

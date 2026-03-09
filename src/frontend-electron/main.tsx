@@ -5,8 +5,8 @@ import { IndexedDbAppStateStorage } from '@dotaz/frontend-shared/lib/storage/ind
 import { setTransport } from '@dotaz/frontend-shared/lib/transport'
 import { createWebSocketTransport } from '@dotaz/frontend-web/transport'
 import '../frontend-shared/styles/global.css'
-import { render } from 'solid-js/web'
 import App from '@dotaz/frontend-shared/App'
+import { render } from 'solid-js/web'
 
 setTransport(createWebSocketTransport())
 setStorage(new IndexedDbAppStateStorage())

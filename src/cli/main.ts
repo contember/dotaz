@@ -2,9 +2,9 @@
 // CLI entry point for `bunx @dotaz/server`
 // Parses arguments, manages encryption key via OS keychain, and starts the web server
 
+import { secrets } from 'bun'
 import { randomBytes } from 'node:crypto'
 import { resolve } from 'node:path'
-import { secrets } from 'bun'
 
 const SERVICE = 'dev.dotaz.server'
 const KEY_NAME = 'encryption-key'

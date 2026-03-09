@@ -1,6 +1,6 @@
-import type { SetStoreFunction } from 'solid-js/store'
 import { generateChangesPreview, generateChangeSql } from '@dotaz/shared/sql'
 import type { DataChange } from '@dotaz/shared/types/rpc'
+import type { SetStoreFunction } from 'solid-js/store'
 import { rpc } from '../lib/rpc'
 import { connectionsStore } from './connections'
 import type { CellChange, GridStoreState, PendingChanges, TabGridState } from './grid'

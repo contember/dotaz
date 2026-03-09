@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test'
 import { analyzeSelectSource } from '@dotaz/shared/sql/editability'
+import { describe, expect, test } from 'bun:test'
 
 describe('analyzeSelectSource', () => {
 	// ── Simple editable SELECTs ──────────────────────────

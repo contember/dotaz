@@ -1,4 +1,3 @@
-import { describe, expect, test } from 'bun:test'
 import {
 	coerceValue,
 	type CsvBatch,
@@ -7,6 +6,7 @@ import {
 	MAX_BUFFER_SIZE,
 	parseCsvStream,
 } from '@dotaz/backend-shared/services/csv-stream-parser'
+import { describe, expect, test } from 'bun:test'
 
 // ── Helpers ────────────────────────────────────────────────
 

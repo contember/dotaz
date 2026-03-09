@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test'
 import { friendlyErrorMessage, RpcError } from '@dotaz/frontend-shared/lib/rpc-errors'
+import { describe, expect, test } from 'bun:test'
 
 describe('friendlyErrorMessage', () => {
 	test('connection refused', () => {

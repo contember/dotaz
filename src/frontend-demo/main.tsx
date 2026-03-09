@@ -5,8 +5,8 @@ import { RpcAppStateStorage } from '@dotaz/frontend-shared/lib/storage/rpc'
 import { setTransport } from '@dotaz/frontend-shared/lib/transport'
 import { createInlineTransport } from './transport'
 import '../frontend-shared/styles/global.css'
-import { render } from 'solid-js/web'
 import App from '@dotaz/frontend-shared/App'
+import { render } from 'solid-js/web'
 
 setTransport(createInlineTransport())
 setStorage(new RpcAppStateStorage())

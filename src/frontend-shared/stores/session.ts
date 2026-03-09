@@ -1,5 +1,5 @@
-import { createStore } from 'solid-js/store'
 import type { SessionInfo } from '@dotaz/shared/types/rpc'
+import { createStore } from 'solid-js/store'
 import { rpc } from '../lib/rpc'
 import { settingsStore } from './settings'
 import { uiStore } from './ui'

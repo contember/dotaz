@@ -1,7 +1,7 @@
+import type { ExplainNode, ExplainResult } from '@dotaz/shared/types/query'
 import ChevronDown from 'lucide-solid/icons/chevron-down'
 import ChevronRight from 'lucide-solid/icons/chevron-right'
 import { createSignal, For, Show } from 'solid-js'
-import type { ExplainNode, ExplainResult } from '@dotaz/shared/types/query'
 import './ExplainPanel.css'
 
 interface ExplainPanelProps {

@@ -1,7 +1,15 @@
 import type { DatabaseDriver } from '@dotaz/backend-shared/db/driver'
 import type { ConnectionConfig } from '@dotaz/shared/types/connection'
 import { DatabaseDataType } from '@dotaz/shared/types/database'
-import type { ColumnInfo, ForeignKeyInfo, IndexInfo, ReferencingForeignKeyInfo, SchemaData, SchemaInfo, TableInfo } from '@dotaz/shared/types/database'
+import type {
+	ColumnInfo,
+	ForeignKeyInfo,
+	IndexInfo,
+	ReferencingForeignKeyInfo,
+	SchemaData,
+	SchemaInfo,
+	TableInfo,
+} from '@dotaz/shared/types/database'
 import type { QueryResult, QueryResultColumn } from '@dotaz/shared/types/query'
 
 /** Map SQLite type affinity strings to DatabaseDataType. */

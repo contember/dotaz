@@ -1,5 +1,5 @@
-import type { SetStoreFunction } from 'solid-js/store'
 import type { GridColumnDef } from '@dotaz/shared/types/grid'
+import type { SetStoreFunction } from 'solid-js/store'
 import type { CellSelection, FocusedCell, GridStoreState, NormalizedRange, TabGridState } from './grid'
 
 export function createGridSelectionActions(

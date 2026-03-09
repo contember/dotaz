@@ -1,8 +1,8 @@
+import type { SshAuthMethod } from '@dotaz/shared/types/connection'
 import ChevronDown from 'lucide-solid/icons/chevron-down'
 import ChevronRight from 'lucide-solid/icons/chevron-right'
 import FolderOpen from 'lucide-solid/icons/folder-open'
 import { Show } from 'solid-js'
-import type { SshAuthMethod } from '@dotaz/shared/types/connection'
 
 export interface SshTunnelFields {
 	enabled: boolean

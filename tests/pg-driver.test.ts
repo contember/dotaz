@@ -7,10 +7,10 @@
  *
  * Run: bun test tests/pg-driver.test.ts
  */
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { PostgresDriver } from '@dotaz/backend-shared/drivers/postgres-driver'
 import type { PostgresConnectionConfig } from '@dotaz/shared/types/connection'
 import { DatabaseDataType } from '@dotaz/shared/types/database'
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { seedPostgres } from './helpers'
 
 const config: PostgresConnectionConfig = {

@@ -1,6 +1,6 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { PostgresDriver } from '@dotaz/backend-shared/drivers/postgres-driver'
 import type { ConnectionConfig } from '@dotaz/shared/types/connection'
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { seedPostgres } from './helpers'
 
 const config: ConnectionConfig = {

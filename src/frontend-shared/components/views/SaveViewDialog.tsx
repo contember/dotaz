@@ -1,5 +1,5 @@
-import { createEffect, createSignal, Show } from 'solid-js'
 import type { SavedViewConfig } from '@dotaz/shared/types/rpc'
+import { createEffect, createSignal, Show } from 'solid-js'
 import { rpc } from '../../lib/rpc'
 import { gridStore } from '../../stores/grid'
 import Dialog from '../common/Dialog'

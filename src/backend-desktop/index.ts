@@ -1,12 +1,12 @@
-import Electrobun from 'electrobun/bun'
-import { ApplicationMenu, BrowserView, BrowserWindow, Updater, Utils } from 'electrobun/bun'
-import { existsSync, mkdirSync } from 'node:fs'
-import { join } from 'node:path'
 import { createHandlers } from '@dotaz/backend-shared/rpc/rpc-handlers'
 import { ConnectionManager } from '@dotaz/backend-shared/services/connection-manager'
 import { createLocalKey } from '@dotaz/backend-shared/services/encryption'
 import { AppDatabase, setDefaultDbPath } from '@dotaz/backend-shared/storage/app-db'
 import type { DotazRPC } from '@dotaz/backend-types'
+import Electrobun from 'electrobun/bun'
+import { ApplicationMenu, BrowserView, BrowserWindow, Updater, Utils } from 'electrobun/bun'
+import { existsSync, mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 
 const DEV_SERVER_PORT = 6400
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`

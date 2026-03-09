@@ -1,8 +1,8 @@
+import type { SshTunnelConfig } from '@dotaz/shared/types/connection'
 import { Subprocess } from 'bun'
 import { chmodSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { SshTunnelConfig } from '@dotaz/shared/types/connection'
 
 const SSH_CONNECT_TIMEOUT_MS = 15_000
 const PORT_CHECK_INTERVAL_MS = 100

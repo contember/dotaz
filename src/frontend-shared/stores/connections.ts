@@ -1,5 +1,3 @@
-import { createSignal } from 'solid-js'
-import { createStore } from 'solid-js/store'
 import type { SqlDialect } from '@dotaz/shared/sql'
 import { MysqlDialect, PostgresDialect, SqliteDialect } from '@dotaz/shared/sql'
 import type { ConnectionConfig, ConnectionInfo, ConnectionState } from '@dotaz/shared/types/connection'
@@ -15,6 +13,8 @@ import type {
 	SchemaInfo,
 	TableInfo,
 } from '@dotaz/shared/types/database'
+import { createSignal } from 'solid-js'
+import { createStore } from 'solid-js/store'
 import { friendlyErrorMessage, messages, rpc } from '../lib/rpc'
 import { storage } from '../lib/storage'
 import { uiStore } from './ui'

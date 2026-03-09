@@ -1,5 +1,5 @@
-import type { Accessor } from 'solid-js'
 import type { GridColumnDef } from '@dotaz/shared/types/grid'
+import type { Accessor } from 'solid-js'
 import { createKeyHandler } from '../../lib/keyboard'
 import { gridStore } from '../../stores/grid'
 import type { DataGridSidePanelHandle } from './DataGridSidePanel'

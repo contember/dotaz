@@ -1,6 +1,6 @@
-import { createEffect, createSignal, For, Show } from 'solid-js'
 import type { ComparisonColumnMapping, ComparisonSource } from '@dotaz/shared/types/comparison'
 import type { ColumnInfo, SchemaData } from '@dotaz/shared/types/database'
+import { createEffect, createSignal, For, Show } from 'solid-js'
 import { rpc } from '../../lib/rpc'
 import { connectionsStore } from '../../stores/connections'
 import Dialog from '../common/Dialog'

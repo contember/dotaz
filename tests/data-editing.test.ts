@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import type { DatabaseDriver } from '@dotaz/backend-shared/db/driver'
 import { createHandlers } from '@dotaz/backend-shared/rpc/rpc-handlers'
 import { ConnectionManager } from '@dotaz/backend-shared/services/connection-manager'
@@ -14,6 +13,7 @@ import { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
 import type { SqliteConnectionConfig } from '@dotaz/shared/types/connection'
 import { isSqlDefault, SQL_DEFAULT } from '@dotaz/shared/types/database'
 import type { DataChange, DeleteChange, InsertChange, UpdateChange } from '@dotaz/shared/types/rpc'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 // ── Helpers ──────────────────────────────────────────────────
 

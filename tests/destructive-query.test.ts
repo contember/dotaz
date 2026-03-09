@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test'
 import { detectDestructiveWithoutWhere } from '@dotaz/shared/sql/statements'
+import { describe, expect, test } from 'bun:test'
 
 describe('detectDestructiveWithoutWhere', () => {
 	// ── DELETE cases ─────────────────────────────────────

@@ -1,6 +1,6 @@
-import type { SetStoreFunction } from 'solid-js/store'
 import type { GridColumnDef } from '@dotaz/shared/types/grid'
 import type { SavedViewConfig } from '@dotaz/shared/types/rpc'
+import type { SetStoreFunction } from 'solid-js/store'
 import type { CellSelection, ColumnConfig, GridStoreState, TabGridState } from './grid'
 
 export function createGridViewActions(

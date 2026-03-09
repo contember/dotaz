@@ -1,9 +1,17 @@
-import { SQL } from 'bun'
 import type { ConnectionConfig } from '@dotaz/shared/types/connection'
 import { DatabaseDataType } from '@dotaz/shared/types/database'
-import type { ColumnInfo, ForeignKeyInfo, IndexInfo, ReferencingForeignKeyInfo, SchemaData, SchemaInfo, TableInfo } from '@dotaz/shared/types/database'
+import type {
+	ColumnInfo,
+	ForeignKeyInfo,
+	IndexInfo,
+	ReferencingForeignKeyInfo,
+	SchemaData,
+	SchemaInfo,
+	TableInfo,
+} from '@dotaz/shared/types/database'
 import { DatabaseError } from '@dotaz/shared/types/errors'
 import type { QueryResult, QueryResultColumn } from '@dotaz/shared/types/query'
+import { SQL } from 'bun'
 import type { DatabaseDriver } from '../db/driver'
 import { mapSqliteError } from '../db/error-mapping'
 import { getAffectedRowCount } from '../db/result-utils'

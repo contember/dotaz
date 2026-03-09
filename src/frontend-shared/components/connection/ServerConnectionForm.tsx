@@ -1,6 +1,6 @@
-import { Show } from 'solid-js'
 import type { ConnectionType } from '@dotaz/shared/types/connection'
 import { CONNECTION_TYPE_META, SSL_MODES } from '@dotaz/shared/types/connection'
+import { Show } from 'solid-js'
 import { storage } from '../../lib/storage'
 import Select from '../common/Select'
 

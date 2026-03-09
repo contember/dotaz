@@ -1,5 +1,5 @@
-import { createStore } from 'solid-js/store'
 import type { ComparisonColumnMapping, ComparisonSource } from '@dotaz/shared/types/comparison'
+import { createStore } from 'solid-js/store'
 import { tabsStore } from './tabs'
 
 export interface ComparisonTabParams {

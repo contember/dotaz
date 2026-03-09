@@ -1,5 +1,5 @@
-import bookstoreDbUrl from '../../scripts/seed/bookstore.db?url'
 import { createHandlers } from '@dotaz/backend-shared/rpc/handlers'
+import bookstoreDbUrl from '../../scripts/seed/bookstore.db?url'
 import { DemoAdapter } from './demo-adapter'
 import { DemoAppState } from './demo-state'
 import { WasmSqliteDriver } from './wasm-sqlite-driver'

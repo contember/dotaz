@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'bun:test'
 import { parseCteNames, resolveTableKey } from '@dotaz/frontend-shared/lib/alias-completion'
+import { describe, expect, it } from 'bun:test'
 
 // ── resolveTableKey ──────────────────────────────────────
 

@@ -1,7 +1,7 @@
-import type { SetStoreFunction } from 'solid-js/store'
 import { buildCountQuery, buildSelectQuery } from '@dotaz/shared/sql'
 import type { GridColumnDef } from '@dotaz/shared/types/grid'
 import type { ColumnFilter } from '@dotaz/shared/types/grid'
+import type { SetStoreFunction } from 'solid-js/store'
 import { rpc } from '../lib/rpc'
 import { connectionsStore } from './connections'
 import type { FkBreadcrumb, GridStoreState, TabGridState } from './grid'

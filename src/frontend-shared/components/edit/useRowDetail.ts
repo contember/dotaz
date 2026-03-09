@@ -1,7 +1,7 @@
-import { type Accessor, createEffect, createMemo, createSignal, on } from 'solid-js'
 import { buildCountQuery } from '@dotaz/shared/sql'
 import type { ForeignKeyInfo, ReferencingForeignKeyInfo } from '@dotaz/shared/types/database'
 import type { ColumnFilter, GridColumnDef } from '@dotaz/shared/types/grid'
+import { type Accessor, createEffect, createMemo, createSignal, on } from 'solid-js'
 import { buildFkLookup } from '../../lib/fk-utils'
 import { rpc } from '../../lib/rpc'
 import { connectionsStore } from '../../stores/connections'

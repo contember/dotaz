@@ -1,4 +1,3 @@
-import { describe, expect, test } from 'bun:test'
 import {
 	DEFAULT_AI_CONFIG,
 	DEFAULT_FORMAT_PROFILE,
@@ -7,6 +6,7 @@ import {
 	settingsToFormatProfile,
 } from '@dotaz/shared/types/settings'
 import type { FormatProfile } from '@dotaz/shared/types/settings'
+import { describe, expect, test } from 'bun:test'
 
 describe('formatProfileToSettings', () => {
 	test('converts default profile to settings', () => {

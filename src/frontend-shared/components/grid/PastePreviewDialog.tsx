@@ -1,5 +1,5 @@
-import { createMemo, createSignal, For, Show } from 'solid-js'
 import type { GridColumnDef } from '@dotaz/shared/types/grid'
+import { createMemo, createSignal, For, Show } from 'solid-js'
 import Dialog from '../common/Dialog'
 import './PastePreviewDialog.css'
 

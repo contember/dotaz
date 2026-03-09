@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test'
 import { getNextStatementStart, getPreviousStatementStart, getStatementAtCursor } from '@dotaz/frontend-shared/lib/sql-utils'
+import { describe, expect, test } from 'bun:test'
 
 describe('getStatementAtCursor', () => {
 	test('single statement, cursor at start', () => {

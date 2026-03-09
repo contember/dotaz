@@ -1,5 +1,5 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js'
 import type { TabInfo, TabType } from '@dotaz/shared/types/tab'
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js'
 import { createListKeyboardHandler } from '../../lib/use-list-keyboard-nav'
 import { connectionsStore } from '../../stores/connections'
 import { tabsStore } from '../../stores/tabs'

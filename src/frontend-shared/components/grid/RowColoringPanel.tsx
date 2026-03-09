@@ -1,10 +1,10 @@
-import Plus from 'lucide-solid/icons/plus'
-import X from 'lucide-solid/icons/x'
-import { createSignal, For, Show } from 'solid-js'
 import { getColumnCategory } from '@dotaz/shared/column-types'
 import type { DatabaseDataType } from '@dotaz/shared/types/database'
 import type { FilterOperator, GridColumnDef } from '@dotaz/shared/types/grid'
 import type { RowColorRule } from '@dotaz/shared/types/rpc'
+import Plus from 'lucide-solid/icons/plus'
+import X from 'lucide-solid/icons/x'
+import { createSignal, For, Show } from 'solid-js'
 import Select from '../common/Select'
 import './RowColoringPanel.css'
 

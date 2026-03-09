@@ -1,8 +1,8 @@
-import Database from 'bun:sqlite'
 import type { ConnectionConfig, ConnectionInfo } from '@dotaz/shared/types/connection'
 import { isServerConfig } from '@dotaz/shared/types/connection'
 import type { QueryHistoryEntry, QueryHistoryStatus } from '@dotaz/shared/types/query'
 import type { HistoryListParams, QueryBookmark, SavedView, SavedViewConfig } from '@dotaz/shared/types/rpc'
+import Database from 'bun:sqlite'
 import { decryptLocalPassword, encryptLocalPassword, isEncryptedPassword } from '../services/encryption'
 import { runMigrations } from './migrations'
 

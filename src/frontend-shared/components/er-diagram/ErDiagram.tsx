@@ -1,9 +1,9 @@
-import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js'
-import { computeGraphLayout } from './layout'
 import type { ColumnInfo, ForeignKeyInfo, SchemaData, TableInfo } from '@dotaz/shared/types/database'
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from 'solid-js'
 import { connectionsStore } from '../../stores/connections'
 import { tabsStore } from '../../stores/tabs'
 import Icon from '../common/Icon'
+import { computeGraphLayout } from './layout'
 import './ErDiagram.css'
 
 interface ErDiagramProps {

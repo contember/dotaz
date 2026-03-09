@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { ConnectionManager } from '@dotaz/backend-shared/services/connection-manager'
 import type { StatusChangeEvent } from '@dotaz/backend-shared/services/connection-manager'
 import { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
 import type { ConnectionConfig, PostgresConnectionConfig, SqliteConnectionConfig } from '@dotaz/shared/types/connection'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { tmpSqlitePath } from './helpers'
 
 // ── Helpers ──────────────────────────────────────────────────

@@ -1,7 +1,7 @@
-import { describe, expect, test } from 'bun:test'
 import { buildSchemaContext } from '@dotaz/backend-shared/services/ai-sql'
 import type { SchemaData } from '@dotaz/shared/types/database'
 import { DatabaseDataType } from '@dotaz/shared/types/database'
+import { describe, expect, test } from 'bun:test'
 
 describe('buildSchemaContext', () => {
 	test('generates context for tables with columns and FKs', () => {

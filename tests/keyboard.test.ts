@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { commandRegistry } from '@dotaz/frontend-shared/lib/commands'
 import { comboFromEvent, createKeyHandler, keyboardManager, normalizeCombo } from '@dotaz/frontend-shared/lib/keyboard'
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 
 function makeKeyEvent(overrides: Partial<KeyboardEvent> = {}): KeyboardEvent {
 	return {

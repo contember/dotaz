@@ -4,9 +4,9 @@
  *
  * Run: bun test tests/sqlite-driver.test.ts
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { SqliteDriver } from '@dotaz/backend-shared/drivers/sqlite-driver'
 import { DatabaseDataType } from '@dotaz/shared/types/database'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 let driver: SqliteDriver
 

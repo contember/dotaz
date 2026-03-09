@@ -1,5 +1,5 @@
-import type { SetStoreFunction } from 'solid-js/store'
 import type { GridColumnDef } from '@dotaz/shared/types/grid'
+import type { SetStoreFunction } from 'solid-js/store'
 import { DEFAULT_COLUMN_WIDTH } from '../lib/layout-constants'
 import type { ColumnConfig, GridStoreState, TabGridState } from './grid'
 

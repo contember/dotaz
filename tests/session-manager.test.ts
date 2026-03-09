@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { ConnectionManager } from '@dotaz/backend-shared/services/connection-manager'
 import { SessionManager } from '@dotaz/backend-shared/services/session-manager'
 import { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
 import type { SqliteConnectionConfig } from '@dotaz/shared/types/connection'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 const sqliteConfig: SqliteConnectionConfig = {
 	type: 'sqlite',

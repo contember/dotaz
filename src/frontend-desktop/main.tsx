@@ -4,8 +4,8 @@ import { RpcAppStateStorage } from '@dotaz/frontend-shared/lib/storage/rpc'
 import { setTransport } from '@dotaz/frontend-shared/lib/transport'
 import { createElectrobunTransport } from './transport'
 import '../frontend-shared/styles/global.css'
-import { render } from 'solid-js/web'
 import App from '@dotaz/frontend-shared/App'
+import { render } from 'solid-js/web'
 
 setTransport(createElectrobunTransport())
 setStorage(new RpcAppStateStorage())

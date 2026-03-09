@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test'
 import { autoMapColumns, compareData } from '@dotaz/shared/comparison'
+import { describe, expect, test } from 'bun:test'
 
 // ── Identical tables ─────────────────────────────────────────
 
