@@ -44,6 +44,8 @@ jobs:
   # ── Desktop builds (Electrobun) ───────────────────────────
   desktop:
     needs: prepare
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
