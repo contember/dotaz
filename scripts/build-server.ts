@@ -30,8 +30,8 @@ await $`chmod +x ${resolve(OUT, 'bin/dotaz.js')}`
 
 // Write package.json for npm publishing
 const serverPkg = {
-	name: 'dotaz',
-	version: pkg.version,
+	name: '@dotaz/server',
+	version: process.env.VERSION || pkg.version,
 	description: 'Desktop database client — server mode',
 	license: pkg.license,
 	author: pkg.author,
