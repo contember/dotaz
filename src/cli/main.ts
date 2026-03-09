@@ -1,9 +1,13 @@
 #!/usr/bin/env bun
-// CLI entry point for `bunx dotaz`
-// Parses arguments, auto-generates encryption key, and starts the web server
+// CLI entry point for `bunx @dotaz/server`
+// Parses arguments, manages encryption key via OS keychain, and starts the web server
 
 import { randomBytes } from 'node:crypto'
 import { resolve } from 'node:path'
+import { secrets } from 'bun'
+
+const SERVICE = 'dev.dotaz.server'
+const KEY_NAME = 'encryption-key'
 
 const args = process.argv.slice(2)
 
@@ -30,9 +34,20 @@ Options:
 	}
 }
 
-// Auto-generate encryption key for session security
+// Resolve encryption key: env > OS keychain > auto-generate and persist
 if (!process.env.DOTAZ_ENCRYPTION_KEY) {
-	process.env.DOTAZ_ENCRYPTION_KEY = randomBytes(32).toString('hex')
+	let key = await secrets.get({ service: SERVICE, name: KEY_NAME })
+
+	if (!key) {
+		key = randomBytes(32).toString('hex')
+		try {
+			await secrets.set({ service: SERVICE, name: KEY_NAME, value: key })
+		} catch {
+			// OS keychain unavailable (e.g. headless server, Docker) — key lives only in memory
+		}
+	}
+
+	process.env.DOTAZ_ENCRYPTION_KEY = key
 }
 
 process.env.DOTAZ_PORT = String(port)
