@@ -9,9 +9,7 @@ on:
         description: 'Tag to release (e.g. v0.1.0)'
         required: true
 
-permissions:
-  contents: write
-  packages: write
+permissions: {}
 
 env:
   TAG: ${{ github.event.inputs.tag || github.ref_name }}
@@ -106,6 +104,9 @@ jobs:
   docker:
     needs: prepare
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
 
@@ -153,6 +154,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
+          node-version: '24.x'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
@@ -171,6 +173,8 @@ jobs:
   release:
     needs: [prepare, desktop, docker, npm]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Download all desktop artifacts
         uses: actions/download-artifact@v4
