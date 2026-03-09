@@ -45,6 +45,9 @@ interface ReconnectState {
 	hadTransaction: boolean
 }
 
+export type DriverFactory = (config: ConnectionConfig) => DatabaseDriver
+export type SshTunnelFactory = typeof createSshTunnel
+
 export class ConnectionManager {
 	// Nested map: connectionId → databaseName → driver
 	private drivers = new Map<string, Map<string, DatabaseDriver>>()
@@ -57,6 +60,8 @@ export class ConnectionManager {
 	private listeners: StatusChangeListener[] = []
 	private appDb: AppDatabase
 	private opts: Required<ConnectionManagerOptions>
+	private driverFactory: DriverFactory
+	private sshTunnelFactory: SshTunnelFactory
 
 	// SSH tunnels keyed by connectionId
 	private tunnels = new Map<string, SshTunnel>()
@@ -67,9 +72,16 @@ export class ConnectionManager {
 	// Monotonic counter to detect stale connect() calls
 	private connectAttempt = new Map<string, number>()
 
-	constructor(appDb: AppDatabase, opts?: ConnectionManagerOptions) {
+	constructor(
+		appDb: AppDatabase,
+		opts?: ConnectionManagerOptions,
+		driverFactory?: DriverFactory,
+		sshTunnelFactory?: SshTunnelFactory,
+	) {
 		this.appDb = appDb
 		this.opts = { ...DEFAULTS, ...opts }
+		this.driverFactory = driverFactory ?? createDriver
+		this.sshTunnelFactory = sshTunnelFactory ?? createSshTunnel
 	}
 
 	// ── Connection lifecycle ────────────────────────────────
@@ -111,7 +123,7 @@ export class ConnectionManager {
 			config = await this.setupSshTunnel(connectionId, config)
 
 			const defaultDb = getDefaultDatabase(config)
-			const driver = createDriver(config)
+			const driver = this.driverFactory(config)
 			await driver.connect(config)
 
 			// A newer connect() was initiated while we were awaiting — discard this result
@@ -372,11 +384,11 @@ export class ConnectionManager {
 		try {
 			// Set up SSH tunnel if configured
 			if (config.type === 'postgresql' && config.sshTunnel?.enabled) {
-				tunnel = await createSshTunnel(config.sshTunnel, config.host, config.port)
+				tunnel = await this.sshTunnelFactory(config.sshTunnel, config.host, config.port)
 				effectiveConfig = { ...config, host: '127.0.0.1', port: tunnel.localPort }
 			}
 
-			const driver = createDriver(effectiveConfig)
+			const driver = this.driverFactory(effectiveConfig)
 			await driver.connect(effectiveConfig)
 			await driver.disconnect()
 			return { success: true }
@@ -532,7 +544,7 @@ export class ConnectionManager {
 			config = await this.setupSshTunnel(connectionId, config)
 
 			const defaultDb = getDefaultDatabase(config)
-			const driver = createDriver(config)
+			const driver = this.driverFactory(config)
 			await driver.connect(config)
 
 			if (rs.cancelled) {
@@ -630,7 +642,7 @@ export class ConnectionManager {
 			: {}
 
 		const config: PostgresConnectionConfig = { ...baseConfig, ...tunnelOverride, database }
-		const driver = createDriver(config)
+		const driver = this.driverFactory(config)
 		await driver.connect(config)
 		driverMap.set(database, driver)
 	}
@@ -644,7 +656,7 @@ export class ConnectionManager {
 			return config
 		}
 
-		const tunnel = await createSshTunnel(config.sshTunnel, config.host, config.port)
+		const tunnel = await this.sshTunnelFactory(config.sshTunnel, config.host, config.port)
 		this.tunnels.set(connectionId, tunnel)
 
 		return { ...config, host: '127.0.0.1', port: tunnel.localPort }

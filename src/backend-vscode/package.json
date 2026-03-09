@@ -1,0 +1,9 @@
+{
+	"name": "@dotaz/backend-vscode",
+	"private": true,
+	"version": "0.0.0",
+	"dependencies": {
+		"@dotaz/backend-shared": "workspace:*",
+		"@dotaz/shared": "workspace:*"
+	}
+}

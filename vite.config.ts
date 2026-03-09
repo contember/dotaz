@@ -6,8 +6,11 @@ export default defineConfig(({ mode }) => {
 	const isWeb = mode === 'web'
 	const isDemo = mode === 'demo'
 	const isElectron = mode === 'electron'
+	const isVscode = mode === 'vscode'
 
-	const root = isDemo
+	const root = isVscode
+		? 'src/frontend-vscode'
+		: isDemo
 		? 'src/frontend-demo'
 		: isElectron
 		? 'src/frontend-electron'
@@ -19,11 +22,11 @@ export default defineConfig(({ mode }) => {
 		plugins: [solid()],
 		root,
 		build: {
-			outDir: resolve(__dirname, 'dist'),
+			outDir: resolve(__dirname, isVscode ? 'dist-vscode/webview' : 'dist'),
 			emptyOutDir: true,
 		},
 		server: {
-			port: isDemo ? 6403 : isElectron ? 6404 : isWeb ? 6402 : 6400,
+			port: isVscode ? 6406 : isDemo ? 6403 : isElectron ? 6404 : isWeb ? 6402 : 6400,
 			strictPort: true,
 			proxy: isElectron
 				? {
