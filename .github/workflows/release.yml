@@ -80,6 +80,40 @@ jobs:
       - name: Build desktop app
         run: bunx electrobun build --env=${{ needs.prepare.outputs.electrobun-env }}
 
+      - name: Extract app from Electrobun installer (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          BUILD_DIR="build/${{ needs.prepare.outputs.electrobun-env }}-${{ matrix.platform }}"
+          APP_DIR=$(find "$BUILD_DIR" -maxdepth 1 -type d -name "Dotaz*" | head -1)
+          ARCHIVE=$(find "$APP_DIR/Resources" -name "*.tar.zst" 2>/dev/null | head -1)
+          if [ -n "$ARCHIVE" ]; then
+            echo "Extracting app from installer archive: $ARCHIVE"
+            EXTRACT_DIR=$(mktemp -d)
+            tar --zstd -xf "$ARCHIVE" -C "$EXTRACT_DIR"
+            rm -rf "$APP_DIR"
+            EXTRACTED=$(find "$EXTRACT_DIR" -maxdepth 1 -type d -name "Dotaz*" | head -1)
+            mv "$EXTRACTED" "$APP_DIR"
+            rm -rf "$EXTRACT_DIR"
+          fi
+
+      - name: Extract app from Electrobun installer (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $buildDir = "build/${{ needs.prepare.outputs.electrobun-env }}-${{ matrix.platform }}"
+          $appDir = Get-ChildItem -Path $buildDir -Directory -Filter "Dotaz*" | Select-Object -First 1
+          $archive = Get-ChildItem -Path "$($appDir.FullName)\Resources" -Filter "*.tar.zst" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($archive) {
+            Write-Host "Extracting app from installer archive: $($archive.FullName)"
+            $extractDir = Join-Path ([System.IO.Path]::GetTempPath()) "dotaz-extract-$(Get-Random)"
+            New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
+            tar --zstd -xf $archive.FullName -C $extractDir
+            Remove-Item -Recurse -Force $appDir.FullName
+            $extracted = Get-ChildItem -Path $extractDir -Directory -Filter "Dotaz*" | Select-Object -First 1
+            Move-Item -Path $extracted.FullName -Destination $appDir.FullName
+            Remove-Item -Recurse -Force $extractDir
+          }
+
       - name: Package artifact (Unix)
         if: runner.os != 'Windows'
         run: |
