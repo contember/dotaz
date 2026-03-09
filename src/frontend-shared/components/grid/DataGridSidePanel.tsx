@@ -758,60 +758,29 @@ export default function DataGridSidePanel(
 					}}
 					onOpenInTab={() => {
 						const peek = tabState()?.fkPeek
-						if (!peek) return
+						if (!peek || !peek.rows[0]) return
 
-						const bc = peek.breadcrumbs[peek.breadcrumbs.length - 1]
-						if (!bc) return
-
-						if (peek.breadcrumbs.length === 1 && !bc.column && peek.rows[0]) {
-							const row = peek.rows[0]
-							const pkCols = peek.columns.filter((c) => c.isPrimaryKey)
-							if (pkCols.length > 0) {
-								const pks: Record<string, unknown> = {}
-								for (const pk of pkCols) {
-									if (row[pk.name] === null || row[pk.name] === undefined) {
-										return
-									}
-									pks[pk.name] = row[pk.name]
+						const row = peek.rows[0]
+						const pkCols = peek.columns.filter((c) => c.isPrimaryKey)
+						if (pkCols.length > 0) {
+							const pks: Record<string, unknown> = {}
+							for (const pk of pkCols) {
+								if (row[pk.name] === null || row[pk.name] === undefined) {
+									return
 								}
-								tabsStore.openTab({
-									type: 'row-detail',
-									title: `${peek.table} — ${Object.values(pks).join(', ')}`,
-									connectionId: props.connectionId,
-									schema: peek.schema,
-									table: peek.table,
-									database: props.database,
-									primaryKeys: pks,
-								})
+								pks[pk.name] = row[pk.name]
 							}
-							gridStore.closeFkPeek(props.tabId)
-							return
-						}
-
-						const newTabId = tabsStore.openTab({
-							type: 'data-grid',
-							title: peek.table,
-							connectionId: props.connectionId,
-							schema: peek.schema,
-							table: peek.table,
-							database: props.database,
-						})
-						gridStore.closeFkPeek(props.tabId)
-						gridStore
-							.loadTableData(
-								newTabId,
-								props.connectionId,
-								peek.schema,
-								peek.table,
-								props.database,
-							)
-							.then(() => {
-								gridStore.setFilter(newTabId, {
-									column: bc.column,
-									operator: 'eq',
-									value: String(bc.value),
-								})
+							tabsStore.openTab({
+								type: 'row-detail',
+								title: `${peek.table} — ${Object.values(pks).join(', ')}`,
+								connectionId: props.connectionId,
+								schema: peek.schema,
+								table: peek.table,
+								database: props.database,
+								primaryKeys: pks,
 							})
+						}
+						gridStore.closeFkPeek(props.tabId)
 					}}
 				/>
 			</Show>
