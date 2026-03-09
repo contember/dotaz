@@ -1,6 +1,6 @@
 import type { RPCSchema } from 'electrobun/bun'
-import type { createHandlers } from '../backend-shared/rpc/handlers'
-import type { ConnectionState } from '../shared/types/connection'
+import type { createHandlers } from '@dotaz/backend-shared/rpc/handlers'
+import type { ConnectionState } from '@dotaz/shared/types/connection'
 
 // ── Handler type inference ──────────────────────────────
 

@@ -1,4 +1,4 @@
-import type { RpcTransport } from '../frontend-shared/lib/transport/types'
+import type { RpcTransport } from '@dotaz/frontend-shared/lib/transport/types'
 
 export function createInlineTransport(): RpcTransport {
 	const messageListeners = new Map<string, Set<(payload: any) => void>>()

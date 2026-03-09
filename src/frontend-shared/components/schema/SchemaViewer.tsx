@@ -1,5 +1,5 @@
 import { createMemo, Show } from 'solid-js'
-import type { ColumnInfo, ForeignKeyInfo, IndexInfo } from '../../../shared/types/database'
+import type { ColumnInfo, ForeignKeyInfo, IndexInfo } from '@dotaz/shared/types/database'
 import { connectionsStore } from '../../stores/connections'
 import { tabsStore } from '../../stores/tabs'
 import Icon from '../common/Icon'

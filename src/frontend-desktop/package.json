@@ -1,0 +1,9 @@
+{
+	"name": "@dotaz/frontend-desktop",
+	"private": true,
+	"version": "0.0.0",
+	"dependencies": {
+		"@dotaz/frontend-shared": "workspace:*",
+		"@dotaz/backend-types": "workspace:*"
+	}
+}

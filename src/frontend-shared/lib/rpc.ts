@@ -1,10 +1,10 @@
 // Frontend RPC client — Proxy-based, typed from handler definitions
 // Types inferred from createHandlers() via NamespacedRpcClient.
 
-import type { NamespacedRpcClient } from '../../backend-types'
-import type { ConnectionState } from '../../shared/types/connection'
-import type { DatabaseErrorCode } from '../../shared/types/errors'
-import type { SessionInfo } from '../../shared/types/rpc'
+import type { NamespacedRpcClient } from '@dotaz/backend-types'
+import type { ConnectionState } from '@dotaz/shared/types/connection'
+import type { DatabaseErrorCode } from '@dotaz/shared/types/errors'
+import type { SessionInfo } from '@dotaz/shared/types/rpc'
 import { transport } from './transport'
 
 export { friendlyErrorMessage, RpcError } from './rpc-errors'

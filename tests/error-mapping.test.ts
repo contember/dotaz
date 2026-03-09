@@ -5,7 +5,7 @@
  * Run: bun test tests/error-mapping.test.ts
  */
 import { describe, expect, test } from 'bun:test'
-import { mapMysqlError, mapPostgresError, mapSqliteError } from '../src/backend-shared/db/error-mapping'
+import { mapMysqlError, mapPostgresError, mapSqliteError } from '@dotaz/backend-shared/db/error-mapping'
 import {
 	AuthenticationError,
 	ConnectionError,
@@ -14,7 +14,7 @@ import {
 	friendlyMessageForCode,
 	QueryError,
 	serializeError,
-} from '../src/shared/types/errors'
+} from '@dotaz/shared/types/errors'
 
 // ── PostgreSQL error mapping ────────────────────────────────
 

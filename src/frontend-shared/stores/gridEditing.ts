@@ -1,6 +1,6 @@
 import type { SetStoreFunction } from 'solid-js/store'
-import { generateChangesPreview, generateChangeSql } from '../../shared/sql'
-import type { DataChange } from '../../shared/types/rpc'
+import { generateChangesPreview, generateChangeSql } from '@dotaz/shared/sql'
+import type { DataChange } from '@dotaz/shared/types/rpc'
 import { rpc } from '../lib/rpc'
 import { connectionsStore } from './connections'
 import type { CellChange, GridStoreState, PendingChanges, TabGridState } from './grid'
@@ -21,7 +21,7 @@ export function createGridEditingActions(
 	setState: SetStoreFunction<GridStoreState>,
 	ensureTab: (tabId: string) => TabGridState,
 	getTab: (tabId: string) => TabGridState | undefined,
-	getVisibleColumns: (tab: TabGridState) => import('../../shared/types/grid').GridColumnDef[],
+	getVisibleColumns: (tab: TabGridState) => import('@dotaz/shared/types/grid').GridColumnDef[],
 	clearSelection: (tabId: string) => void,
 ) {
 	function startEditing(tabId: string, row: number, column: string) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
-import { buildJoinCompletions, detectJoinContext, parseTableReferences } from '../src/frontend-shared/lib/join-completion'
-import type { SchemaData } from '../src/shared/types/database'
+import { buildJoinCompletions, detectJoinContext, parseTableReferences } from '@dotaz/frontend-shared/lib/join-completion'
+import type { SchemaData } from '@dotaz/shared/types/database'
 
 // ── Helper ────────────────────────────────────────────────
 

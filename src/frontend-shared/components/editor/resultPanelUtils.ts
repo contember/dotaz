@@ -1,5 +1,5 @@
-import type { GridColumnDef } from '../../../shared/types/grid'
-import type { QueryEditability, QueryResult, QueryResultColumn } from '../../../shared/types/query'
+import type { GridColumnDef } from '@dotaz/shared/types/grid'
+import type { QueryEditability, QueryResult, QueryResultColumn } from '@dotaz/shared/types/query'
 
 export function toGridColumn(col: QueryResultColumn, editability?: QueryEditability): GridColumnDef {
 	return {

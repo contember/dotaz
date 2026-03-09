@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { formatSql } from '../src/backend-shared/services/sql-formatter'
+import { formatSql } from '@dotaz/backend-shared/services/sql-formatter'
 
 describe('formatSql', () => {
 	test('empty string returns empty', () => {

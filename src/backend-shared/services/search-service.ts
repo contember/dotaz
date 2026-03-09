@@ -1,6 +1,6 @@
-import type { ColumnInfo, TableInfo } from '../../shared/types/database'
-import { DatabaseDataType } from '../../shared/types/database'
-import type { SearchMatch } from '../../shared/types/rpc'
+import type { ColumnInfo, TableInfo } from '@dotaz/shared/types/database'
+import { DatabaseDataType } from '@dotaz/shared/types/database'
+import type { SearchMatch } from '@dotaz/shared/types/rpc'
 import type { DatabaseDriver } from '../db/driver'
 
 export interface SearchDatabaseOptions {

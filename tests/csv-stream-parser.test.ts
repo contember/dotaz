@@ -6,7 +6,7 @@ import {
 	type CsvStreamOptions,
 	MAX_BUFFER_SIZE,
 	parseCsvStream,
-} from '../src/backend-shared/services/csv-stream-parser'
+} from '@dotaz/backend-shared/services/csv-stream-parser'
 
 // ── Helpers ────────────────────────────────────────────────
 

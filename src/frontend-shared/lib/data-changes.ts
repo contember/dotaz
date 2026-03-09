@@ -5,7 +5,7 @@
  * DataChange objects suitable for SQL generation.
  */
 
-import type { DataChange } from '../../shared/types/rpc.js'
+import type { DataChange } from '@dotaz/shared/types/rpc.js'
 import type { CellChange } from '../stores/grid.js'
 
 export interface PendingEdits {

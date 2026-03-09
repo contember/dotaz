@@ -1,6 +1,6 @@
-import type { ConnectionConfig, ConnectionInfo } from '../shared/types/connection'
-import type { QueryHistoryEntry, QueryHistoryStatus } from '../shared/types/query'
-import type { HistoryListParams, QueryBookmark, SavedView, SavedViewConfig } from '../shared/types/rpc'
+import type { ConnectionConfig, ConnectionInfo } from '@dotaz/shared/types/connection'
+import type { QueryHistoryEntry, QueryHistoryStatus } from '@dotaz/shared/types/query'
+import type { HistoryListParams, QueryBookmark, SavedView, SavedViewConfig } from '@dotaz/shared/types/rpc'
 
 const DEMO_CONNECTION_ID = 'demo-bookstore'
 

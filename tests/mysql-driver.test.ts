@@ -8,8 +8,8 @@
  * Run: bun test tests/mysql-driver.test.ts
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
-import { MysqlDriver } from '../src/backend-shared/drivers/mysql-driver'
-import type { MysqlConnectionConfig } from '../src/shared/types/connection'
+import { MysqlDriver } from '@dotaz/backend-shared/drivers/mysql-driver'
+import type { MysqlConnectionConfig } from '@dotaz/shared/types/connection'
 import { seedMysql } from './helpers'
 
 const config: MysqlConnectionConfig = {

@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, Show } from 'solid-js'
 import { createStore, reconcile, unwrap } from 'solid-js/store'
-import type { AiProvider, ColorTheme, FormatProfile } from '../../../shared/types/settings'
+import type { AiProvider, ColorTheme, FormatProfile } from '@dotaz/shared/types/settings'
 import { formatDateWithProfile, formatNumberWithProfile } from '../../lib/cell-formatters'
 import type { SessionConfig } from '../../stores/settings'
 import { settingsStore } from '../../stores/settings'

@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
-import { compareData, MAX_COMPARISON_ROWS } from '../../../shared/comparison'
-import type { ComparisonColumnMapping, ComparisonResult, ComparisonSource, DiffRowStatus } from '../../../shared/types/comparison'
+import { compareData, MAX_COMPARISON_ROWS } from '@dotaz/shared/comparison'
+import type { ComparisonColumnMapping, ComparisonResult, ComparisonSource, DiffRowStatus } from '@dotaz/shared/types/comparison'
 import { rpc } from '../../lib/rpc'
 import { connectionsStore } from '../../stores/connections'
 import { uiStore } from '../../stores/ui'

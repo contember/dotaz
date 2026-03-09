@@ -1,15 +1,15 @@
 // Session management and token registry for the web server
 // Extracted from server.ts for testability
 
-import type { createHandlers as createSharedHandlers } from '../backend-shared/rpc/handlers'
-import { createHandlers } from '../backend-shared/rpc/rpc-handlers'
-import { ConnectionManager } from '../backend-shared/services/connection-manager'
-import { EncryptionService } from '../backend-shared/services/encryption'
-import type { ExportParams } from '../backend-shared/services/export-service'
-import type { ImportStreamParams } from '../backend-shared/services/import-service'
-import { QueryExecutor } from '../backend-shared/services/query-executor'
-import type { SessionManager } from '../backend-shared/services/session-manager'
-import { AppDatabase } from '../backend-shared/storage/app-db'
+import type { createHandlers as createSharedHandlers } from '@dotaz/backend-shared/rpc/handlers'
+import { createHandlers } from '@dotaz/backend-shared/rpc/rpc-handlers'
+import { ConnectionManager } from '@dotaz/backend-shared/services/connection-manager'
+import { EncryptionService } from '@dotaz/backend-shared/services/encryption'
+import type { ExportParams } from '@dotaz/backend-shared/services/export-service'
+import type { ImportStreamParams } from '@dotaz/backend-shared/services/import-service'
+import { QueryExecutor } from '@dotaz/backend-shared/services/query-executor'
+import type { SessionManager } from '@dotaz/backend-shared/services/session-manager'
+import { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
 
 export const SESSION_TTL_MS = 5 * 60 * 1000 // 5 minutes
 export const TOKEN_EXPIRY_MS = 5 * 60 * 1000 // 5 minutes

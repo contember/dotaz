@@ -1,5 +1,5 @@
 import { createStore } from 'solid-js/store'
-import type { AiConfig, AppearanceConfig, ColorTheme, ConsoleConfig, FormatProfile } from '../../shared/types/settings'
+import type { AiConfig, AppearanceConfig, ColorTheme, ConsoleConfig, FormatProfile } from '@dotaz/shared/types/settings'
 import {
 	aiConfigToSettings,
 	appearanceConfigToSettings,
@@ -13,7 +13,7 @@ import {
 	settingsToAppearanceConfig,
 	settingsToConsoleConfig,
 	settingsToFormatProfile,
-} from '../../shared/types/settings'
+} from '@dotaz/shared/types/settings'
 import { rpc } from '../lib/rpc'
 import type { AutoPin, AutoUnpin, ConnectionMode } from './session'
 

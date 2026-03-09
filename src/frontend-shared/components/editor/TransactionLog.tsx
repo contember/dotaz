@@ -1,6 +1,6 @@
 import Trash2 from 'lucide-solid/icons/trash-2'
 import { createEffect, For, Show } from 'solid-js'
-import type { TransactionLogEntry, TransactionLogStatus } from '../../../shared/types/rpc'
+import type { TransactionLogEntry, TransactionLogStatus } from '@dotaz/shared/types/rpc'
 import { editorStore } from '../../stores/editor'
 import './TransactionLog.css'
 

@@ -21,7 +21,7 @@ mock.module('solid-js/store', () => ({
 }))
 
 // Must import after mock
-const { uiStore } = await import('../src/frontend-shared/stores/ui')
+const { uiStore } = await import('@dotaz/frontend-shared/stores/ui')
 
 // ── UI Store: toast management ──────────────────────────
 

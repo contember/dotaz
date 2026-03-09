@@ -1,5 +1,5 @@
 import { For, Show } from 'solid-js'
-import type { IndexInfo } from '../../../shared/types/database'
+import type { IndexInfo } from '@dotaz/shared/types/database'
 
 interface IndexListProps {
 	indexes: IndexInfo[]

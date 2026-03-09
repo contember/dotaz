@@ -1,4 +1,4 @@
-import type { ColorTheme } from '../../../shared/types/settings'
+import type { ColorTheme } from '@dotaz/shared/types/settings'
 import Select from './Select'
 
 export default function SettingsAppearance(props: {

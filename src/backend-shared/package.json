@@ -1,0 +1,8 @@
+{
+	"name": "@dotaz/backend-shared",
+	"private": true,
+	"version": "0.0.0",
+	"dependencies": {
+		"@dotaz/shared": "workspace:*"
+	}
+}

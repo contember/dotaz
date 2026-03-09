@@ -1,7 +1,7 @@
 import ArrowRight from 'lucide-solid/icons/arrow-right'
 import KeyRound from 'lucide-solid/icons/key-round'
 import { For, Show } from 'solid-js'
-import type { ColumnInfo, ForeignKeyInfo } from '../../../shared/types/database'
+import type { ColumnInfo, ForeignKeyInfo } from '@dotaz/shared/types/database'
 import { buildFkInfoLookup } from '../../lib/fk-utils'
 
 interface ColumnListProps {

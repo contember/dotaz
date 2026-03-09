@@ -1,4 +1,4 @@
-import type { SessionInfo } from '../../shared/types/rpc'
+import type { SessionInfo } from '@dotaz/shared/types/rpc'
 import type { AppDatabase } from '../storage/app-db'
 import { DEFAULT_SETTINGS } from '../storage/app-db'
 import type { ConnectionManager } from './connection-manager'

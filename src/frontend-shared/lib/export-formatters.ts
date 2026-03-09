@@ -1,5 +1,5 @@
-import { formatAll } from '../../shared/export/formatters'
-import type { CsvDelimiter, ExportFormat } from '../../shared/types/export'
+import { formatAll } from '@dotaz/shared/export/formatters'
+import type { CsvDelimiter, ExportFormat } from '@dotaz/shared/types/export'
 
 export function formatPreview(
 	rows: Record<string, unknown>[] | null,

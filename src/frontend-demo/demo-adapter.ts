@@ -1,17 +1,17 @@
-import type { DatabaseDriver } from '../backend-shared/db/driver'
-import type { RpcAdapter } from '../backend-shared/rpc/adapter'
-import { buildSchemaContext, generateSql } from '../backend-shared/services/ai-sql'
-import { buildExportSelectQuery, exportPreview as generateExportPreview, exportToStream } from '../backend-shared/services/export-service'
-import type { ExportWriter } from '../backend-shared/services/export-service'
-import { importFromStream, importPreviewFromStream } from '../backend-shared/services/import-service'
-import { searchDatabase } from '../backend-shared/services/search-service'
-import { formatSql } from '../backend-shared/services/sql-formatter'
-import { splitStatements } from '../shared/sql/statements'
-import type { ConnectionConfig, ConnectionInfo } from '../shared/types/connection'
-import type { DatabaseInfo } from '../shared/types/database'
-import type { ExportOptions, ExportPreviewRequest, ExportRawPreviewRequest, ExportRawPreviewResponse, ExportResult } from '../shared/types/export'
-import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from '../shared/types/import'
-import type { ExplainNode, ExplainResult, QueryHistoryEntry, QueryHistoryStatus, QueryResult } from '../shared/types/query'
+import type { DatabaseDriver } from '@dotaz/backend-shared/db/driver'
+import type { RpcAdapter } from '@dotaz/backend-shared/rpc/adapter'
+import { buildSchemaContext, generateSql } from '@dotaz/backend-shared/services/ai-sql'
+import { buildExportSelectQuery, exportPreview as generateExportPreview, exportToStream } from '@dotaz/backend-shared/services/export-service'
+import type { ExportWriter } from '@dotaz/backend-shared/services/export-service'
+import { importFromStream, importPreviewFromStream } from '@dotaz/backend-shared/services/import-service'
+import { searchDatabase } from '@dotaz/backend-shared/services/search-service'
+import { formatSql } from '@dotaz/backend-shared/services/sql-formatter'
+import { splitStatements } from '@dotaz/shared/sql/statements'
+import type { ConnectionConfig, ConnectionInfo } from '@dotaz/shared/types/connection'
+import type { DatabaseInfo } from '@dotaz/shared/types/database'
+import type { ExportOptions, ExportPreviewRequest, ExportRawPreviewRequest, ExportRawPreviewResponse, ExportResult } from '@dotaz/shared/types/export'
+import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from '@dotaz/shared/types/import'
+import type { ExplainNode, ExplainResult, QueryHistoryEntry, QueryHistoryStatus, QueryResult } from '@dotaz/shared/types/query'
 import type {
 	AiGenerateSqlParams,
 	AiGenerateSqlResult,
@@ -25,8 +25,8 @@ import type {
 	TransactionLogEntry,
 	TransactionLogParams,
 	TransactionLogResult,
-} from '../shared/types/rpc'
-import { settingsToAiConfig } from '../shared/types/settings'
+} from '@dotaz/shared/types/rpc'
+import { settingsToAiConfig } from '@dotaz/shared/types/settings'
 import type { DemoAppState } from './demo-state'
 type EmitMessage = (channel: string, payload: any) => void
 

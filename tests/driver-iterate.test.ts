@@ -8,9 +8,9 @@
  * Run: bun test tests/driver-iterate.test.ts
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test'
-import { PostgresDriver } from '../src/backend-shared/drivers/postgres-driver'
-import { SqliteDriver } from '../src/backend-shared/drivers/sqlite-driver'
-import type { PostgresConnectionConfig } from '../src/shared/types/connection'
+import { PostgresDriver } from '@dotaz/backend-shared/drivers/postgres-driver'
+import { SqliteDriver } from '@dotaz/backend-shared/drivers/sqlite-driver'
+import type { PostgresConnectionConfig } from '@dotaz/shared/types/connection'
 import { seedPostgres } from './helpers'
 
 // ─── SQLite iterate() ─────────────────────────────────────────────

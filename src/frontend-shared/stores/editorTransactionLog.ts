@@ -1,5 +1,5 @@
 import { createStore } from 'solid-js/store'
-import type { TransactionLogEntry, TransactionLogStatus } from '../../shared/types/rpc'
+import type { TransactionLogEntry, TransactionLogStatus } from '@dotaz/shared/types/rpc'
 import { rpc } from '../lib/rpc'
 import type { EditorStoreState } from './editor'
 

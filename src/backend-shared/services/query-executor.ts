@@ -1,13 +1,13 @@
-import { parseErrorPosition, splitStatements } from '../../shared/sql/statements'
-import { DatabaseError } from '../../shared/types/errors'
-import type { ExplainNode, ExplainResult, QueryResult } from '../../shared/types/query'
-import type { TransactionLogEntry, TransactionLogStatus } from '../../shared/types/rpc'
+import { parseErrorPosition, splitStatements } from '@dotaz/shared/sql/statements'
+import { DatabaseError } from '@dotaz/shared/types/errors'
+import type { ExplainNode, ExplainResult, QueryResult } from '@dotaz/shared/types/query'
+import type { TransactionLogEntry, TransactionLogStatus } from '@dotaz/shared/types/rpc'
 import type { DatabaseDriver } from '../db/driver'
 import type { AppDatabase } from '../storage/app-db'
 import type { ConnectionManager } from './connection-manager'
 
 // Re-export shared SQL utilities for backward compatibility
-export type { GeneratedStatement, WhereClauseResult } from '../../shared/sql/builders'
+export type { GeneratedStatement, WhereClauseResult } from '@dotaz/shared/sql/builders'
 export {
 	buildCountQuery,
 	buildOrderByClause,
@@ -20,8 +20,8 @@ export {
 	generateDelete,
 	generateInsert,
 	generateUpdate,
-} from '../../shared/sql/builders'
-export { detectDestructiveWithoutWhere, offsetToLineColumn, parseErrorPosition, splitStatements } from '../../shared/sql/statements'
+} from '@dotaz/shared/sql/builders'
+export { detectDestructiveWithoutWhere, offsetToLineColumn, parseErrorPosition, splitStatements } from '@dotaz/shared/sql/statements'
 
 // ── Session Log ───────────────────────────────────────────
 

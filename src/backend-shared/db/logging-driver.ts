@@ -1,6 +1,6 @@
-import type { ConnectionConfig } from '../../shared/types/connection'
-import type { SchemaData } from '../../shared/types/database'
-import type { QueryResult } from '../../shared/types/query'
+import type { ConnectionConfig } from '@dotaz/shared/types/connection'
+import type { SchemaData } from '@dotaz/shared/types/database'
+import type { QueryResult } from '@dotaz/shared/types/query'
 import type { DatabaseDriver } from './driver'
 
 /**

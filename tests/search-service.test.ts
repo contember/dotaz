@@ -4,8 +4,8 @@
  * Run: bun test tests/search-service.test.ts
  */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { SqliteDriver } from '../src/backend-shared/drivers/sqlite-driver'
-import { searchDatabase } from '../src/backend-shared/services/search-service'
+import { SqliteDriver } from '@dotaz/backend-shared/drivers/sqlite-driver'
+import { searchDatabase } from '@dotaz/backend-shared/services/search-service'
 
 let driver: SqliteDriver
 

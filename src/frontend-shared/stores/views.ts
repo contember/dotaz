@@ -1,5 +1,5 @@
 import { createStore } from 'solid-js/store'
-import type { SavedView } from '../../shared/types/rpc'
+import type { SavedView } from '@dotaz/shared/types/rpc'
 import { storage } from '../lib/storage'
 
 interface ViewsState {

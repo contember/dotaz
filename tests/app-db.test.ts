@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { hkdfSync } from 'node:crypto'
-import { isEncryptedPassword } from '../src/backend-shared/services/encryption'
-import { AppDatabase, DEFAULT_SETTINGS } from '../src/backend-shared/storage/app-db'
-import { getSchemaVersion } from '../src/backend-shared/storage/migrations'
-import type { PostgresConnectionConfig, SqliteConnectionConfig } from '../src/shared/types/connection'
+import { isEncryptedPassword } from '@dotaz/backend-shared/services/encryption'
+import { AppDatabase, DEFAULT_SETTINGS } from '@dotaz/backend-shared/storage/app-db'
+import { getSchemaVersion } from '@dotaz/backend-shared/storage/migrations'
+import type { PostgresConnectionConfig, SqliteConnectionConfig } from '@dotaz/shared/types/connection'
 
 describe('AppDatabase', () => {
 	let appDb: AppDatabase

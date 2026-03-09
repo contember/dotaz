@@ -1,5 +1,5 @@
 import { createStore } from 'solid-js/store'
-import type { TabInfo, TabType } from '../../shared/types/tab'
+import type { TabInfo, TabType } from '@dotaz/shared/types/tab'
 import { scheduleWorkspaceSave } from '../lib/workspace'
 import { editorStore } from './editor'
 

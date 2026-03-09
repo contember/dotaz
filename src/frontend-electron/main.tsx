@@ -1,12 +1,12 @@
-import { setCapabilities } from '../frontend-shared/lib/capabilities'
-import { setShortcutMode } from '../frontend-shared/lib/keyboard'
-import { setStorage } from '../frontend-shared/lib/storage'
-import { IndexedDbAppStateStorage } from '../frontend-shared/lib/storage/indexeddb'
-import { setTransport } from '../frontend-shared/lib/transport'
-import { createWebSocketTransport } from '../frontend-web/transport'
+import { setCapabilities } from '@dotaz/frontend-shared/lib/capabilities'
+import { setShortcutMode } from '@dotaz/frontend-shared/lib/keyboard'
+import { setStorage } from '@dotaz/frontend-shared/lib/storage'
+import { IndexedDbAppStateStorage } from '@dotaz/frontend-shared/lib/storage/indexeddb'
+import { setTransport } from '@dotaz/frontend-shared/lib/transport'
+import { createWebSocketTransport } from '@dotaz/frontend-web/transport'
 import '../frontend-shared/styles/global.css'
 import { render } from 'solid-js/web'
-import App from '../frontend-shared/App'
+import App from '@dotaz/frontend-shared/App'
 
 setTransport(createWebSocketTransport())
 setStorage(new IndexedDbAppStateStorage())

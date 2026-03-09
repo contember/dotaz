@@ -1,8 +1,8 @@
-import type { ConnectionConfig, ConnectionInfo } from '../../../shared/types/connection'
-import { isServerConfig } from '../../../shared/types/connection'
-import type { QueryHistoryEntry } from '../../../shared/types/query'
-import type { HistoryListParams, SavedView, SavedViewConfig } from '../../../shared/types/rpc'
-import type { WorkspaceState } from '../../../shared/types/workspace'
+import type { ConnectionConfig, ConnectionInfo } from '@dotaz/shared/types/connection'
+import { isServerConfig } from '@dotaz/shared/types/connection'
+import type { QueryHistoryEntry } from '@dotaz/shared/types/query'
+import type { HistoryListParams, SavedView, SavedViewConfig } from '@dotaz/shared/types/rpc'
+import type { WorkspaceState } from '@dotaz/shared/types/workspace'
 import type { AppStateStorage } from '../app-state-storage'
 import { rpc } from '../rpc'
 

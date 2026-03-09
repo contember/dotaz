@@ -3,8 +3,8 @@
  * Supports Anthropic Claude, OpenAI, and custom endpoints.
  */
 
-import type { SchemaData } from '../../shared/types/database'
-import type { AiConfig } from '../../shared/types/settings'
+import type { SchemaData } from '@dotaz/shared/types/database'
+import type { AiConfig } from '@dotaz/shared/types/settings'
 
 export interface AiSqlOptions {
 	prompt: string

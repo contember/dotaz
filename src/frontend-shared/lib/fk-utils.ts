@@ -1,4 +1,4 @@
-import type { ForeignKeyInfo } from '../../shared/types/database'
+import type { ForeignKeyInfo } from '@dotaz/shared/types/database'
 
 export interface FkTarget {
 	schema: string

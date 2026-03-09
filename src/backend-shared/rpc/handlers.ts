@@ -1,6 +1,6 @@
-import type { ConnectionConfig } from '../../shared/types/connection'
-import type { ExportOptions, ExportPreviewRequest, ExportRawPreviewRequest } from '../../shared/types/export'
-import type { ImportOptions, ImportPreviewRequest } from '../../shared/types/import'
+import type { ConnectionConfig } from '@dotaz/shared/types/connection'
+import type { ExportOptions, ExportPreviewRequest, ExportRawPreviewRequest } from '@dotaz/shared/types/export'
+import type { ImportOptions, ImportPreviewRequest } from '@dotaz/shared/types/import'
 import type {
 	AiGenerateSqlParams,
 	HistoryListParams,
@@ -9,7 +9,7 @@ import type {
 	SavedViewConfig,
 	SearchDatabaseParams,
 	TransactionLogParams,
-} from '../../shared/types/rpc'
+} from '@dotaz/shared/types/rpc'
 import type { RpcAdapter } from './adapter'
 export function createHandlers(adapter: RpcAdapter) {
 	return {

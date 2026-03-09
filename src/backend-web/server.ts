@@ -3,13 +3,13 @@
 // Each WebSocket connection gets its own isolated session (AppDatabase, ConnectionManager, handlers)
 
 import { resolve } from 'node:path'
-import type { DatabaseDriver } from '../backend-shared/db/driver'
-import { exportToStream } from '../backend-shared/services/export-service'
-import type { ExportParams, ExportWriter } from '../backend-shared/services/export-service'
-import { importFromStream } from '../backend-shared/services/import-service'
-import type { ImportStreamParams } from '../backend-shared/services/import-service'
-import { DatabaseError } from '../shared/types/errors'
-import type { ExportFormat } from '../shared/types/export'
+import type { DatabaseDriver } from '@dotaz/backend-shared/db/driver'
+import { exportToStream } from '@dotaz/backend-shared/services/export-service'
+import type { ExportParams, ExportWriter } from '@dotaz/backend-shared/services/export-service'
+import { importFromStream } from '@dotaz/backend-shared/services/import-service'
+import type { ImportStreamParams } from '@dotaz/backend-shared/services/import-service'
+import { DatabaseError } from '@dotaz/shared/types/errors'
+import type { ExportFormat } from '@dotaz/shared/types/export'
 import {
 	cleanupExpiredTokens,
 	consumeStreamToken,

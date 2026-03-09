@@ -1,7 +1,7 @@
 // Error handling utilities for RPC — separated from rpc.ts to avoid Electrobun dependency in tests
 
-import type { DatabaseErrorCode } from '../../shared/types/errors'
-import { friendlyMessageForCode } from '../../shared/types/errors'
+import type { DatabaseErrorCode } from '@dotaz/shared/types/errors'
+import { friendlyMessageForCode } from '@dotaz/shared/types/errors'
 
 function errProp(err: unknown, prop: string): unknown {
 	return (err as Record<string, unknown>)?.[prop]

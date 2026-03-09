@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
 import { existsSync, mkdtempSync, rmdirSync, unlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { DatabaseDriver } from '../src/backend-shared/db/driver'
-import { buildExportSelectQuery, exportPreview, exportToFile, exportToStream } from '../src/backend-shared/services/export-service'
-import type { ExportParams, ExportWriter } from '../src/backend-shared/services/export-service'
-import type { QueryResult } from '../src/shared/types/query'
+import type { DatabaseDriver } from '@dotaz/backend-shared/db/driver'
+import { buildExportSelectQuery, exportPreview, exportToFile, exportToStream } from '@dotaz/backend-shared/services/export-service'
+import type { ExportParams, ExportWriter } from '@dotaz/backend-shared/services/export-service'
+import type { QueryResult } from '@dotaz/shared/types/query'
 
 function makeResult(rows: Record<string, unknown>[]): QueryResult {
 	const columns = rows.length > 0

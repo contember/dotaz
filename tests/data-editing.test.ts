@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import type { DatabaseDriver } from '../src/backend-shared/db/driver'
-import { createHandlers } from '../src/backend-shared/rpc/rpc-handlers'
-import { ConnectionManager } from '../src/backend-shared/services/connection-manager'
+import type { DatabaseDriver } from '@dotaz/backend-shared/db/driver'
+import { createHandlers } from '@dotaz/backend-shared/rpc/rpc-handlers'
+import { ConnectionManager } from '@dotaz/backend-shared/services/connection-manager'
 import {
 	generateChangePreview,
 	generateChangesPreview,
@@ -9,11 +9,11 @@ import {
 	generateDelete,
 	generateInsert,
 	generateUpdate,
-} from '../src/backend-shared/services/query-executor'
-import { AppDatabase } from '../src/backend-shared/storage/app-db'
-import type { SqliteConnectionConfig } from '../src/shared/types/connection'
-import { isSqlDefault, SQL_DEFAULT } from '../src/shared/types/database'
-import type { DataChange, DeleteChange, InsertChange, UpdateChange } from '../src/shared/types/rpc'
+} from '@dotaz/backend-shared/services/query-executor'
+import { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
+import type { SqliteConnectionConfig } from '@dotaz/shared/types/connection'
+import { isSqlDefault, SQL_DEFAULT } from '@dotaz/shared/types/database'
+import type { DataChange, DeleteChange, InsertChange, UpdateChange } from '@dotaz/shared/types/rpc'
 
 // ── Helpers ──────────────────────────────────────────────────
 

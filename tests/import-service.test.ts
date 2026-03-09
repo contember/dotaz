@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from 'bun:test'
-import type { DatabaseDriver } from '../src/backend-shared/db/driver'
-import { importFromStream, importPreviewFromStream, parseJson } from '../src/backend-shared/services/import-service'
-import type { QueryResult } from '../src/shared/types/query'
+import type { DatabaseDriver } from '@dotaz/backend-shared/db/driver'
+import { importFromStream, importPreviewFromStream, parseJson } from '@dotaz/backend-shared/services/import-service'
+import type { QueryResult } from '@dotaz/shared/types/query'
 
 function stringToStream(content: string): ReadableStream<Uint8Array> {
 	return new ReadableStream<Uint8Array>({

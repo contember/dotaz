@@ -1,7 +1,7 @@
 import type { SetStoreFunction } from 'solid-js/store'
-import { buildCountQuery, buildSelectQuery } from '../../shared/sql'
-import type { GridColumnDef } from '../../shared/types/grid'
-import type { ColumnFilter } from '../../shared/types/grid'
+import { buildCountQuery, buildSelectQuery } from '@dotaz/shared/sql'
+import type { GridColumnDef } from '@dotaz/shared/types/grid'
+import type { ColumnFilter } from '@dotaz/shared/types/grid'
 import { rpc } from '../lib/rpc'
 import { connectionsStore } from './connections'
 import type { FkBreadcrumb, GridStoreState, TabGridState } from './grid'
@@ -23,7 +23,7 @@ export function createGridFkActions(
 	): Promise<{
 		rows: Record<string, unknown>[]
 		columns: GridColumnDef[]
-		foreignKeys: import('../../shared/types/database').ForeignKeyInfo[]
+		foreignKeys: import('@dotaz/shared/types/database').ForeignKeyInfo[]
 	}> {
 		const dialect = connectionsStore.getDialect(connectionId)
 		const filters: ColumnFilter[] = [

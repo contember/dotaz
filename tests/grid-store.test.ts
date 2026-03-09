@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
-import type { GridDataResponse } from '../src/shared/types/grid'
+import type { GridDataResponse } from '@dotaz/shared/types/grid'
 
 // ── Mock solid-js/store ──────────────────────────────────
 
@@ -126,7 +126,7 @@ mock.module('../src/frontend-shared/stores/connections', () => ({
 
 // ── Import after mocks ───────────────────────────────────
 
-const { gridStore } = await import('../src/frontend-shared/stores/grid')
+const { gridStore } = await import('@dotaz/frontend-shared/stores/grid')
 
 // ── Test helpers ─────────────────────────────────────────
 

@@ -1,5 +1,5 @@
 import type { CompletionContext, CompletionResult } from '@codemirror/autocomplete'
-import type { SchemaData } from '../../shared/types/database'
+import type { SchemaData } from '@dotaz/shared/types/database'
 import { parseTableReferences } from './join-completion'
 
 /**

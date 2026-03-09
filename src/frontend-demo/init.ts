@@ -1,5 +1,5 @@
 import bookstoreDbUrl from '../../scripts/seed/bookstore.db?url'
-import { createHandlers } from '../backend-shared/rpc/handlers'
+import { createHandlers } from '@dotaz/backend-shared/rpc/handlers'
 import { DemoAdapter } from './demo-adapter'
 import { DemoAppState } from './demo-state'
 import { WasmSqliteDriver } from './wasm-sqlite-driver'
@@ -57,7 +57,7 @@ export async function initDemo(emitMessage: EmitMessage) {
 
 	// 4. Create driver, state, and adapter
 	const baseDriver = new WasmSqliteDriver(db)
-	const { LoggingDriver } = await import('../backend-shared/db/logging-driver')
+	const { LoggingDriver } = await import('@dotaz/backend-shared/db/logging-driver')
 	const driver = new LoggingDriver(baseDriver)
 	const state = new DemoAppState()
 	const adapter = new DemoAdapter(driver, state, emitMessage)

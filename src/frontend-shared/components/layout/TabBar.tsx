@@ -1,5 +1,5 @@
 import { createSignal, For, Show } from 'solid-js'
-import type { TabInfo, TabType } from '../../../shared/types/tab'
+import type { TabInfo, TabType } from '@dotaz/shared/types/tab'
 import ContextMenu from '../common/ContextMenu'
 import type { ContextMenuEntry } from '../common/ContextMenu'
 import Icon, { type IconName } from '../common/Icon'

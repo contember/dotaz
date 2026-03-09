@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
-import { commandRegistry } from '../src/frontend-shared/lib/commands'
-import type { Command } from '../src/frontend-shared/lib/commands'
+import { commandRegistry } from '@dotaz/frontend-shared/lib/commands'
+import type { Command } from '@dotaz/frontend-shared/lib/commands'
 
 function makeCommand(overrides: Partial<Command> & { id: string; label: string }): Command {
 	return {

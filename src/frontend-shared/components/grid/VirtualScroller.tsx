@@ -1,6 +1,6 @@
 import { createVirtualizer } from '@tanstack/solid-virtual'
 import { createSignal, For, onMount, Show } from 'solid-js'
-import type { GridColumnDef } from '../../../shared/types/grid'
+import type { GridColumnDef } from '@dotaz/shared/types/grid'
 import { ROW_HEIGHT } from '../../lib/layout-constants'
 import type { CellSelection, ColumnConfig, EditingCell, FkTarget, HeatmapInfo } from '../../stores/grid'
 import { isCellInSelection } from '../../stores/grid'

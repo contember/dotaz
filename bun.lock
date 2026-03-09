@@ -5,9 +5,13 @@
     "": {
       "name": "electrobun-solid",
       "dependencies": {
+        "@codemirror/autocomplete": "^6.18.0",
         "@codemirror/lang-sql": "^6.8.0",
+        "@codemirror/language": "^6.12.0",
+        "@codemirror/lint": "^6.9.0",
         "@codemirror/state": "^6.5.2",
         "@codemirror/view": "^6.36.5",
+        "@lezer/highlight": "^1.2.0",
         "@sqlite.org/sqlite-wasm": "^3.51.2-build6",
         "@tanstack/solid-virtual": "^3.13.6",
         "codemirror": "^6.0.1",
@@ -29,6 +33,92 @@
         "vite-plugin-solid": "^2.11.0",
         "wait-on": "^8.0.0",
       },
+    },
+    "src/backend-desktop": {
+      "name": "@dotaz/backend-desktop",
+      "version": "0.0.0",
+      "dependencies": {
+        "@dotaz/backend-shared": "workspace:*",
+        "@dotaz/backend-types": "workspace:*",
+      },
+    },
+    "src/backend-shared": {
+      "name": "@dotaz/backend-shared",
+      "version": "0.0.0",
+      "dependencies": {
+        "@dotaz/shared": "workspace:*",
+      },
+    },
+    "src/backend-types": {
+      "name": "@dotaz/backend-types",
+      "version": "0.0.0",
+      "dependencies": {
+        "@dotaz/backend-shared": "workspace:*",
+        "@dotaz/shared": "workspace:*",
+      },
+    },
+    "src/backend-web": {
+      "name": "@dotaz/backend-web",
+      "version": "0.0.0",
+      "dependencies": {
+        "@dotaz/backend-shared": "workspace:*",
+        "@dotaz/shared": "workspace:*",
+      },
+    },
+    "src/cli": {
+      "name": "@dotaz/cli",
+      "version": "0.0.0",
+      "dependencies": {
+        "@dotaz/backend-web": "workspace:*",
+      },
+    },
+    "src/electron": {
+      "name": "@dotaz/electron",
+      "version": "0.0.0",
+    },
+    "src/frontend-demo": {
+      "name": "@dotaz/frontend-demo",
+      "version": "0.0.0",
+      "dependencies": {
+        "@dotaz/backend-shared": "workspace:*",
+        "@dotaz/frontend-shared": "workspace:*",
+        "@dotaz/shared": "workspace:*",
+      },
+    },
+    "src/frontend-desktop": {
+      "name": "@dotaz/frontend-desktop",
+      "version": "0.0.0",
+      "dependencies": {
+        "@dotaz/backend-types": "workspace:*",
+        "@dotaz/frontend-shared": "workspace:*",
+      },
+    },
+    "src/frontend-electron": {
+      "name": "@dotaz/frontend-electron",
+      "version": "0.0.0",
+      "dependencies": {
+        "@dotaz/frontend-shared": "workspace:*",
+        "@dotaz/frontend-web": "workspace:*",
+      },
+    },
+    "src/frontend-shared": {
+      "name": "@dotaz/frontend-shared",
+      "version": "0.0.0",
+      "dependencies": {
+        "@dotaz/backend-types": "workspace:*",
+        "@dotaz/shared": "workspace:*",
+      },
+    },
+    "src/frontend-web": {
+      "name": "@dotaz/frontend-web",
+      "version": "0.0.0",
+      "dependencies": {
+        "@dotaz/frontend-shared": "workspace:*",
+      },
+    },
+    "src/shared": {
+      "name": "@dotaz/shared",
+      "version": "0.0.0",
     },
   },
   "packages": {
@@ -105,6 +195,30 @@
     "@codemirror/view": ["@codemirror/view@6.39.15", "", { "dependencies": { "@codemirror/state": "^6.5.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-aCWjgweIIXLBHh7bY6cACvXuyrZ0xGafjQ2VInjp4RM4gMfscK5uESiNdrH0pE+e1lZr2B4ONGsjchl2KsKZzg=="],
 
     "@develar/schema-utils": ["@develar/schema-utils@2.6.5", "", { "dependencies": { "ajv": "^6.12.0", "ajv-keywords": "^3.4.1" } }, "sha512-0cp4PsWQ/9avqTVMCtZ+GirikIA36ikvjtHweU4/j8yLtgObI0+JUPhYFScgwlteveGB1rt3Cm8UhN04XayDig=="],
+
+    "@dotaz/backend-desktop": ["@dotaz/backend-desktop@workspace:src/backend-desktop"],
+
+    "@dotaz/backend-shared": ["@dotaz/backend-shared@workspace:src/backend-shared"],
+
+    "@dotaz/backend-types": ["@dotaz/backend-types@workspace:src/backend-types"],
+
+    "@dotaz/backend-web": ["@dotaz/backend-web@workspace:src/backend-web"],
+
+    "@dotaz/cli": ["@dotaz/cli@workspace:src/cli"],
+
+    "@dotaz/electron": ["@dotaz/electron@workspace:src/electron"],
+
+    "@dotaz/frontend-demo": ["@dotaz/frontend-demo@workspace:src/frontend-demo"],
+
+    "@dotaz/frontend-desktop": ["@dotaz/frontend-desktop@workspace:src/frontend-desktop"],
+
+    "@dotaz/frontend-electron": ["@dotaz/frontend-electron@workspace:src/frontend-electron"],
+
+    "@dotaz/frontend-shared": ["@dotaz/frontend-shared@workspace:src/frontend-shared"],
+
+    "@dotaz/frontend-web": ["@dotaz/frontend-web@workspace:src/frontend-web"],
+
+    "@dotaz/shared": ["@dotaz/shared@workspace:src/shared"],
 
     "@dprint/darwin-arm64": ["@dprint/darwin-arm64@0.51.1", "", { "os": "darwin", "cpu": "arm64" }, "sha512-C7fkaz0/NGf/X4G9Cq65izdJgerND5jWShOaPiOgGs4A0CyCMKMLRd45m3xKIttuO8x0IQiZVixD22qmVglXmQ=="],
 

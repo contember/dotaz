@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { hkdfSync } from 'node:crypto'
-import { ConnectionManager } from '../src/backend-shared/services/connection-manager'
-import { isEncryptedPassword } from '../src/backend-shared/services/encryption'
-import { AppDatabase } from '../src/backend-shared/storage/app-db'
-import type { PostgresConnectionConfig, SshTunnelConfig } from '../src/shared/types/connection'
+import { ConnectionManager } from '@dotaz/backend-shared/services/connection-manager'
+import { isEncryptedPassword } from '@dotaz/backend-shared/services/encryption'
+import { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
+import type { PostgresConnectionConfig, SshTunnelConfig } from '@dotaz/shared/types/connection'
 
 // ── Helpers ──────────────────────────────────────────────────
 

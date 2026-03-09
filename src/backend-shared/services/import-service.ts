@@ -1,4 +1,4 @@
-import type { ColumnMapping, CsvDelimiter, ImportFormat, ImportPreviewResult, ImportResult } from '../../shared/types/import'
+import type { ColumnMapping, CsvDelimiter, ImportFormat, ImportPreviewResult, ImportResult } from '@dotaz/shared/types/import'
 import type { DatabaseDriver } from '../db/driver'
 import { CsvParseError, parseCsvStream } from './csv-stream-parser'
 import type { CsvStreamOptions } from './csv-stream-parser'

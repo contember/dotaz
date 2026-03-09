@@ -1,6 +1,6 @@
 import { Electroview } from 'electrobun/view'
-import type { DotazRPC } from '../backend-types'
-import type { RpcTransport } from '../frontend-shared/lib/transport/types'
+import type { DotazRPC } from '@dotaz/backend-types'
+import type { RpcTransport } from '@dotaz/frontend-shared/lib/transport/types'
 
 /** String-keyed request dispatch — bridges generic transport to typed Electrobun RPC */
 type RequestDispatch = Record<string, (params: unknown) => Promise<unknown>>

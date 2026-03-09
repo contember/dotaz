@@ -1,6 +1,6 @@
-import { isBooleanType, isNumericType } from '../../shared/column-types'
-import { DatabaseDataType, isSqlDefault } from '../../shared/types/database'
-import type { GridColumnDef } from '../../shared/types/grid'
+import { isBooleanType, isNumericType } from '@dotaz/shared/column-types'
+import { DatabaseDataType, isSqlDefault } from '@dotaz/shared/types/database'
+import type { GridColumnDef } from '@dotaz/shared/types/grid'
 
 // --- Number & size formatting ---
 

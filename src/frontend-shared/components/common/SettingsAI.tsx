@@ -1,4 +1,4 @@
-import type { AiProvider } from '../../../shared/types/settings'
+import type { AiProvider } from '@dotaz/shared/types/settings'
 import Select from './Select'
 
 export default function SettingsAI(props: {

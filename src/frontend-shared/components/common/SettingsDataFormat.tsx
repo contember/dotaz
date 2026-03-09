@@ -1,4 +1,4 @@
-import type { BinaryDisplay, BooleanDisplay, DateFormat, DecimalSeparator, NullDisplay, ThousandsSeparator } from '../../../shared/types/settings'
+import type { BinaryDisplay, BooleanDisplay, DateFormat, DecimalSeparator, NullDisplay, ThousandsSeparator } from '@dotaz/shared/types/settings'
 import Select from './Select'
 
 export default function SettingsDataFormat(props: {

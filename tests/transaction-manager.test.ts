@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { ConnectionManager } from '../src/backend-shared/services/connection-manager'
-import { TransactionManager } from '../src/backend-shared/services/transaction-manager'
-import { AppDatabase } from '../src/backend-shared/storage/app-db'
-import type { SqliteConnectionConfig } from '../src/shared/types/connection'
+import { ConnectionManager } from '@dotaz/backend-shared/services/connection-manager'
+import { TransactionManager } from '@dotaz/backend-shared/services/transaction-manager'
+import { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
+import type { SqliteConnectionConfig } from '@dotaz/shared/types/connection'
 
 const sqliteConfig: SqliteConnectionConfig = {
 	type: 'sqlite',

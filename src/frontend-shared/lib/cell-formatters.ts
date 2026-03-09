@@ -1,4 +1,4 @@
-import type { DateFormat, FormatProfile } from '../../shared/types/settings'
+import type { DateFormat, FormatProfile } from '@dotaz/shared/types/settings'
 
 /**
  * Format a Date object according to a DateFormat profile.

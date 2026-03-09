@@ -1,0 +1,10 @@
+{
+	"name": "@dotaz/frontend-demo",
+	"private": true,
+	"version": "0.0.0",
+	"dependencies": {
+		"@dotaz/frontend-shared": "workspace:*",
+		"@dotaz/backend-shared": "workspace:*",
+		"@dotaz/shared": "workspace:*"
+	}
+}

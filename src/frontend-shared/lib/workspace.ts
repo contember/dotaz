@@ -1,4 +1,4 @@
-import type { WorkspaceState } from '../../shared/types/workspace'
+import type { WorkspaceState } from '@dotaz/shared/types/workspace'
 import { storage } from './storage'
 
 const SAVE_DEBOUNCE_MS = 1000

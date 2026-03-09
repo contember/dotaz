@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
-import { SessionLog } from '../src/backend-shared/services/query-executor'
+import { SessionLog } from '@dotaz/backend-shared/services/query-executor'
 
 describe('SessionLog', () => {
 	let log: SessionLog

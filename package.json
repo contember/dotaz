@@ -6,6 +6,9 @@
 	"description": "Desktop database client built on Electrobun",
 	"author": "Contember Limited",
 	"license": "MIT",
+	"workspaces": [
+		"src/*"
+	],
 	"scripts": {
 		"start": "vite build && WEBKIT_DISABLE_COMPOSITING_MODE=1 electrobun dev",
 		"dev": "concurrently \"vite --port 6400\" \"WEBKIT_DISABLE_COMPOSITING_MODE=1 electrobun dev --watch\"",
@@ -32,9 +35,13 @@
 		"format:check": "dprint check"
 	},
 	"dependencies": {
+		"@codemirror/autocomplete": "^6.18.0",
 		"@codemirror/lang-sql": "^6.8.0",
+		"@codemirror/language": "^6.12.0",
+		"@codemirror/lint": "^6.9.0",
 		"@codemirror/state": "^6.5.2",
 		"@codemirror/view": "^6.36.5",
+		"@lezer/highlight": "^1.2.0",
 		"@sqlite.org/sqlite-wasm": "^3.51.2-build6",
 		"@tanstack/solid-virtual": "^3.13.6",
 		"codemirror": "^6.0.1",

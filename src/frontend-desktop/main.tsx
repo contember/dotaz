@@ -1,11 +1,11 @@
-import { setCapabilities } from '../frontend-shared/lib/capabilities'
-import { setStorage } from '../frontend-shared/lib/storage'
-import { RpcAppStateStorage } from '../frontend-shared/lib/storage/rpc'
-import { setTransport } from '../frontend-shared/lib/transport'
+import { setCapabilities } from '@dotaz/frontend-shared/lib/capabilities'
+import { setStorage } from '@dotaz/frontend-shared/lib/storage'
+import { RpcAppStateStorage } from '@dotaz/frontend-shared/lib/storage/rpc'
+import { setTransport } from '@dotaz/frontend-shared/lib/transport'
 import { createElectrobunTransport } from './transport'
 import '../frontend-shared/styles/global.css'
 import { render } from 'solid-js/web'
-import App from '../frontend-shared/App'
+import App from '@dotaz/frontend-shared/App'
 
 setTransport(createElectrobunTransport())
 setStorage(new RpcAppStateStorage())

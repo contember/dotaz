@@ -40,4 +40,4 @@ process.env.DOTAZ_HOST = host
 process.env.DOTAZ_DIST_DIR = resolve(import.meta.dir, '../dist')
 
 // Start the server (side-effectful import)
-await import('../backend-web/server')
+await import('@dotaz/backend-web/server')

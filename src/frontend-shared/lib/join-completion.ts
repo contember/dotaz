@@ -1,5 +1,5 @@
 import type { Completion, CompletionContext, CompletionResult } from '@codemirror/autocomplete'
-import type { ForeignKeyInfo, ReferencingForeignKeyInfo, SchemaData } from '../../shared/types/database'
+import type { ForeignKeyInfo, ReferencingForeignKeyInfo, SchemaData } from '@dotaz/shared/types/database'
 
 // ── Types ─────────────────────────────────────────────────
 

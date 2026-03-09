@@ -1,7 +1,7 @@
-import type { SqlDialect } from '../../shared/sql/dialect'
-import type { ConnectionConfig } from '../../shared/types/connection'
-import type { SchemaData } from '../../shared/types/database'
-import type { QueryResult } from '../../shared/types/query'
+import type { SqlDialect } from '@dotaz/shared/sql/dialect'
+import type { ConnectionConfig } from '@dotaz/shared/types/connection'
+import type { SchemaData } from '@dotaz/shared/types/database'
+import type { QueryResult } from '@dotaz/shared/types/query'
 
 export interface DatabaseDriver extends SqlDialect {
 	// Lifecycle

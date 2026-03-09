@@ -1,5 +1,5 @@
 import { createMemo, For } from 'solid-js'
-import type { GridColumnDef } from '../../../shared/types/grid'
+import type { GridColumnDef } from '@dotaz/shared/types/grid'
 import { DEFAULT_COLUMN_WIDTH } from '../../lib/layout-constants'
 import type { ColumnConfig, EditingCell, FkTarget, HeatmapInfo } from '../../stores/grid'
 import { gridStore } from '../../stores/grid'

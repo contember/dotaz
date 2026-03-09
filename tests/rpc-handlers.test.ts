@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { createHandlers } from '../src/backend-shared/rpc/rpc-handlers'
-import { ConnectionManager } from '../src/backend-shared/services/connection-manager'
-import { AppDatabase } from '../src/backend-shared/storage/app-db'
-import type { SqliteConnectionConfig } from '../src/shared/types/connection'
+import { createHandlers } from '@dotaz/backend-shared/rpc/rpc-handlers'
+import { ConnectionManager } from '@dotaz/backend-shared/services/connection-manager'
+import { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
+import type { SqliteConnectionConfig } from '@dotaz/shared/types/connection'
 
 // ── Helpers ──────────────────────────────────────────────────
 

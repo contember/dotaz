@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from 'bun:test'
-import type { DatabaseDriver } from '../src/backend-shared/db/driver'
-import type { ConnectionManager } from '../src/backend-shared/services/connection-manager'
+import type { DatabaseDriver } from '@dotaz/backend-shared/db/driver'
+import type { ConnectionManager } from '@dotaz/backend-shared/services/connection-manager'
 import {
 	buildCountQuery,
 	buildOrderByClause,
@@ -14,10 +14,10 @@ import {
 	parseErrorPosition,
 	QueryExecutor,
 	splitStatements,
-} from '../src/backend-shared/services/query-executor'
-import { DatabaseDataType } from '../src/shared/types/database'
-import type { ColumnFilter, SortColumn } from '../src/shared/types/grid'
-import type { QueryResult } from '../src/shared/types/query'
+} from '@dotaz/backend-shared/services/query-executor'
+import { DatabaseDataType } from '@dotaz/shared/types/database'
+import type { ColumnFilter, SortColumn } from '@dotaz/shared/types/grid'
+import type { QueryResult } from '@dotaz/shared/types/query'
 
 // Minimal mock driver for quoteIdentifier, getDriverType, qualifyTable, emptyInsertSql, placeholder
 function mockDriver(type: 'postgresql' | 'sqlite' | 'mysql' = 'postgresql'): DatabaseDriver {

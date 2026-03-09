@@ -5,8 +5,8 @@ import {
 	formatProfileToSettings,
 	settingsToAiConfig,
 	settingsToFormatProfile,
-} from '../src/shared/types/settings'
-import type { FormatProfile } from '../src/shared/types/settings'
+} from '@dotaz/shared/types/settings'
+import type { FormatProfile } from '@dotaz/shared/types/settings'
 
 describe('formatProfileToSettings', () => {
 	test('converts default profile to settings', () => {
@@ -164,7 +164,7 @@ describe('settingsToAiConfig — invalid values fall back to defaults', () => {
 
 describe('AppDatabase settings integration', () => {
 	test('format settings stored and retrieved via AppDatabase', () => {
-		const { AppDatabase } = require('../src/backend-shared/storage/app-db') as typeof import('../src/backend-shared/storage/app-db')
+		const { AppDatabase } = require('../src/backend-shared/storage/app-db') as typeof import('@dotaz/backend-shared/storage/app-db')
 		const db = AppDatabase.create(':memory:')
 
 		try {

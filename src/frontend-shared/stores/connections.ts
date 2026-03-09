@@ -1,10 +1,10 @@
 import { createSignal } from 'solid-js'
 import { createStore } from 'solid-js/store'
-import type { SqlDialect } from '../../shared/sql'
-import { MysqlDialect, PostgresDialect, SqliteDialect } from '../../shared/sql'
-import type { ConnectionConfig, ConnectionInfo, ConnectionState } from '../../shared/types/connection'
-import { CONNECTION_TYPE_META, getDefaultDatabase } from '../../shared/types/connection'
-import type { ConnectionType } from '../../shared/types/connection'
+import type { SqlDialect } from '@dotaz/shared/sql'
+import { MysqlDialect, PostgresDialect, SqliteDialect } from '@dotaz/shared/sql'
+import type { ConnectionConfig, ConnectionInfo, ConnectionState } from '@dotaz/shared/types/connection'
+import { CONNECTION_TYPE_META, getDefaultDatabase } from '@dotaz/shared/types/connection'
+import type { ConnectionType } from '@dotaz/shared/types/connection'
 import type {
 	ColumnInfo,
 	DatabaseInfo,
@@ -14,7 +14,7 @@ import type {
 	SchemaData,
 	SchemaInfo,
 	TableInfo,
-} from '../../shared/types/database'
+} from '@dotaz/shared/types/database'
 import { friendlyErrorMessage, messages, rpc } from '../lib/rpc'
 import { storage } from '../lib/storage'
 import { uiStore } from './ui'

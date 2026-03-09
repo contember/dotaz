@@ -1,4 +1,4 @@
-import type { CsvDelimiter } from '../../shared/types/import'
+import type { CsvDelimiter } from '@dotaz/shared/types/import'
 
 export interface CsvStreamOptions {
 	delimiter: CsvDelimiter

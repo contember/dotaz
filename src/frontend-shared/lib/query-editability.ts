@@ -4,9 +4,9 @@
  * Takes SQL + schema metadata and produces editability info for each result set.
  */
 
-import { analyzeSelectSource } from '../../shared/sql/editability.js'
-import { splitStatements } from '../../shared/sql/statements.js'
-import type { QueryEditability, QueryResult } from '../../shared/types/query.js'
+import { analyzeSelectSource } from '@dotaz/shared/sql/editability.js'
+import { splitStatements } from '@dotaz/shared/sql/statements.js'
+import type { QueryEditability, QueryResult } from '@dotaz/shared/types/query.js'
 
 export interface SchemaLookup {
 	getColumns(connectionId: string, schema: string, table: string, database?: string): {

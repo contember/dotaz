@@ -1,5 +1,5 @@
 import { type Diagnostic, linter } from '@codemirror/lint'
-import type { SchemaData } from '../../shared/types/database'
+import type { SchemaData } from '@dotaz/shared/types/database'
 import { parseCteNames } from './alias-completion'
 import { parseTableReferences } from './join-completion'
 import { scanSqlRegions } from './sql-scanner'

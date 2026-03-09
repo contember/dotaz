@@ -1,8 +1,8 @@
-import type { ConnectionConfig, ConnectionInfo } from '../../shared/types/connection'
-import type { DatabaseInfo } from '../../shared/types/database'
-import type { ExportOptions, ExportPreviewRequest, ExportRawPreviewRequest, ExportRawPreviewResponse, ExportResult } from '../../shared/types/export'
-import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from '../../shared/types/import'
-import type { ExplainResult, QueryHistoryEntry, QueryResult } from '../../shared/types/query'
+import type { ConnectionConfig, ConnectionInfo } from '@dotaz/shared/types/connection'
+import type { DatabaseInfo } from '@dotaz/shared/types/database'
+import type { ExportOptions, ExportPreviewRequest, ExportRawPreviewRequest, ExportRawPreviewResponse, ExportResult } from '@dotaz/shared/types/export'
+import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from '@dotaz/shared/types/import'
+import type { ExplainResult, QueryHistoryEntry, QueryResult } from '@dotaz/shared/types/query'
 import type {
 	AiGenerateSqlParams,
 	AiGenerateSqlResult,
@@ -16,8 +16,8 @@ import type {
 	SessionInfo,
 	TransactionLogParams,
 	TransactionLogResult,
-} from '../../shared/types/rpc'
-import { settingsToAiConfig } from '../../shared/types/settings'
+} from '@dotaz/shared/types/rpc'
+import { settingsToAiConfig } from '@dotaz/shared/types/settings'
 import type { DatabaseDriver } from '../db/driver'
 import { buildSchemaContext, generateSql } from '../services/ai-sql'
 import type { ConnectionManager } from '../services/connection-manager'

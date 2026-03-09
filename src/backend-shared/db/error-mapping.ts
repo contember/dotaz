@@ -1,6 +1,6 @@
 // Map native database errors to domain error types
 
-import { AuthenticationError, ConnectionError, ConstraintError, DatabaseError, QueryError } from '../../shared/types/errors'
+import { AuthenticationError, ConnectionError, ConstraintError, DatabaseError, QueryError } from '@dotaz/shared/types/errors'
 
 /** Map a PostgreSQL error to a domain error. PostgreSQL errors carry a `code` property (SQLSTATE). */
 export function mapPostgresError(err: unknown): DatabaseError {

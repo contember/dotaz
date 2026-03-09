@@ -1,5 +1,5 @@
 import type { SetStoreFunction } from 'solid-js/store'
-import { isNumericType } from '../../shared/column-types'
+import { isNumericType } from '@dotaz/shared/column-types'
 import type { GridStoreState, HeatmapInfo, HeatmapMode, TabGridState } from './grid'
 
 export function createGridHeatmapActions(

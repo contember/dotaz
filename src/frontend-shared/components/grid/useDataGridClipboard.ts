@@ -1,6 +1,6 @@
 import { type Accessor, createSignal } from 'solid-js'
-import { cellValueToDbValue, parseClipboardText } from '../../../shared/clipboard-paste'
-import type { GridColumnDef } from '../../../shared/types/grid'
+import { cellValueToDbValue, parseClipboardText } from '@dotaz/shared/clipboard-paste'
+import type { GridColumnDef } from '@dotaz/shared/types/grid'
 import { gridStore } from '../../stores/grid'
 
 const COPY_FLASH_DURATION = 400

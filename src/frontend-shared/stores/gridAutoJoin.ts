@@ -1,6 +1,6 @@
 import type { SetStoreFunction } from 'solid-js/store'
-import { isJoinedColumn, parseJoinedColumn } from '../../shared/sql'
-import type { AutoJoinDef } from '../../shared/types/grid'
+import { isJoinedColumn, parseJoinedColumn } from '@dotaz/shared/sql'
+import type { AutoJoinDef } from '@dotaz/shared/types/grid'
 import { connectionsStore } from './connections'
 import type { CellSelection, GridStoreState, TabGridState } from './grid'
 

@@ -1,6 +1,6 @@
 import { createEffect, createSignal, For, Show } from 'solid-js'
-import type { ConnectionInfo } from '../../../shared/types/connection'
-import type { DatabaseInfo } from '../../../shared/types/database'
+import type { ConnectionInfo } from '@dotaz/shared/types/connection'
+import type { DatabaseInfo } from '@dotaz/shared/types/database'
 import { connectionsStore } from '../../stores/connections'
 import Dialog from '../common/Dialog'
 
