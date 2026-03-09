@@ -10,7 +10,6 @@
 </p>
 
 <p align="center">
-  <strong>Preview</strong> — Dotaz is under active development. No pre-built packages yet — build from source to try it out.<br>
   <a href="https://contember.github.io/dotaz/">Try the live demo</a> (runs entirely in your browser)
 </p>
 
@@ -40,7 +39,41 @@ It runs in three modes:
 
 **Navigation** — Connection tree with databases, schemas, and tables. Schema viewer showing columns, indexes, and foreign keys. Command palette, query history, saved views, bookmarks, cross-table search. Dark theme throughout.
 
-## Getting started
+## Install
+
+### Desktop app
+
+**macOS & Linux:**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/contember/dotaz/main/install.sh | sh
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/contember/dotaz/main/install.ps1 | iex
+```
+
+### Server mode
+
+Run as a web server accessible from your browser — no desktop app needed:
+
+```sh
+bunx @dotaz/server
+```
+
+Options: `--port <port>` (default: 6401), `--host <host>` (default: localhost)
+
+### Docker
+
+```sh
+docker run -p 6401:6401 -e DOTAZ_ENCRYPTION_KEY=<your-secret> ghcr.io/contember/dotaz
+```
+
+`DOTAZ_ENCRYPTION_KEY` is required — it encrypts saved database credentials in the browser. Use any random string (e.g. `openssl rand -hex 32`).
+
+## Development
 
 Requirements: [Bun](https://bun.sh/) v1.1+
 
@@ -50,10 +83,8 @@ cd dotaz
 bun install
 ```
 
-Then pick a mode:
-
 ```bash
-# Desktop (Electrobun) — Linux only for now
+# Desktop (Electrobun)
 bun run dev
 
 # Web
