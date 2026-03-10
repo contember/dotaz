@@ -4,7 +4,6 @@ dist-server/
 dist-electron/
 build/
 artifacts/
-.claude/
 .data/
 
 # Seed demo databases
