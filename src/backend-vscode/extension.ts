@@ -6,7 +6,10 @@ import { QueryExecutor } from '@dotaz/backend-shared/services/query-executor'
 import { SessionManager } from '@dotaz/backend-shared/services/session-manager'
 import { createLocalKey } from '@dotaz/backend-shared/services/encryption'
 import { createHandlers } from '@dotaz/backend-shared/rpc/handlers'
-import { NodeAppDatabase } from './node-app-db'
+import { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
+import type { SqliteCompat, SqliteStatement } from '@dotaz/backend-shared/storage/sqlite-compat'
+import Database from 'better-sqlite3'
+import { NodeMysqlDriver } from './node-mysql-driver'
 import { NodePostgresDriver } from './node-postgres-driver'
 import { NodeSqliteDriver } from './node-sqlite-driver'
 import { createSshTunnel } from './node-ssh-tunnel'
@@ -16,7 +19,17 @@ import * as vscode from 'vscode'
 import * as path from 'node:path'
 import * as fs from 'node:fs'
 
-let appDb: NodeAppDatabase | null = null
+function createNodeSqlite(dbPath: string): SqliteCompat {
+	const db = new Database(dbPath)
+	return {
+		exec: (sql: string) => { db.exec(sql) },
+		prepare: (sql: string) => db.prepare(sql) as unknown as SqliteStatement,
+		transaction: <T>(fn: () => T) => db.transaction(fn) as unknown as () => T,
+		close: () => db.close(),
+	}
+}
+
+let appDb: AppDatabase | null = null
 let connectionManager: ConnectionManager | null = null
 
 function createNodeDriver(config: ConnectionConfig): DatabaseDriver {
@@ -27,6 +40,9 @@ function createNodeDriver(config: ConnectionConfig): DatabaseDriver {
 			break
 		case 'sqlite':
 			driver = new NodeSqliteDriver()
+			break
+		case 'mysql':
+			driver = new NodeMysqlDriver()
 			break
 		default:
 			throw new Error(`Unsupported connection type: ${(config as any).type}`)
@@ -43,7 +59,7 @@ export function activate(context: vscode.ExtensionContext): void {
 	fs.mkdirSync(storagePath, { recursive: true })
 
 	const dbPath = path.join(storagePath, 'dotaz.db')
-	appDb = NodeAppDatabase.create(dbPath)
+	appDb = AppDatabase.create(createNodeSqlite(dbPath))
 
 	// Set up local encryption key for password storage
 	const localKey = createLocalKey()
@@ -51,9 +67,9 @@ export function activate(context: vscode.ExtensionContext): void {
 		appDb.setLocalKey(localKey)
 	}
 
-	connectionManager = new ConnectionManager(appDb as any, {}, createNodeDriver, createSshTunnel)
-	const queryExecutor = new QueryExecutor(connectionManager, undefined, appDb as any)
-	const sessionManager = new SessionManager(connectionManager, appDb as any)
+	connectionManager = new ConnectionManager(appDb, {}, createNodeDriver, createSshTunnel)
+	const queryExecutor = new QueryExecutor(connectionManager, undefined, appDb)
+	const sessionManager = new SessionManager(connectionManager, appDb)
 
 	// Forward connection status changes as messages
 	let rpcServer: RpcServer | null = null

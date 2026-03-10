@@ -4,25 +4,17 @@ import { getSchemaVersion } from '@dotaz/backend-shared/storage/migrations'
 import type { PostgresConnectionConfig, SqliteConnectionConfig } from '@dotaz/shared/types/connection'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { hkdfSync } from 'node:crypto'
+import { createTestAppDb } from './helpers'
 
 describe('AppDatabase', () => {
 	let appDb: AppDatabase
 
 	beforeEach(() => {
-		AppDatabase.resetInstance()
-		appDb = AppDatabase.getInstance(':memory:')
+		appDb = createTestAppDb()
 	})
 
 	afterEach(() => {
-		AppDatabase.resetInstance()
-	})
-
-	// ── Singleton ────────────────────────────────────────────
-
-	test('getInstance returns same instance on multiple calls', () => {
-		const a = AppDatabase.getInstance()
-		const b = AppDatabase.getInstance()
-		expect(a).toBe(b)
+		appDb.close()
 	})
 
 	// ── Migrations ───────────────────────────────────────────

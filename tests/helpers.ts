@@ -111,6 +111,14 @@ export async function seedSqlite(db: import('bun:sqlite').Database) {
  * Seed the test MySQL/MariaDB database with a sample schema + data.
  * Idempotent — safe to call multiple times.
  */
+import { createBunSqlite } from '@dotaz/backend-shared/storage/bun-sqlite'
+import { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
+
+/** Create a fresh in-memory AppDatabase for testing. */
+export function createTestAppDb(): AppDatabase {
+	return AppDatabase.create(createBunSqlite(':memory:'))
+}
+
 export async function seedMysql(url: string = MYSQL_URL) {
 	const { SQL } = await import('bun')
 	const db = new SQL({ url })

@@ -164,8 +164,9 @@ describe('settingsToAiConfig — invalid values fall back to defaults', () => {
 
 describe('AppDatabase settings integration', () => {
 	test('format settings stored and retrieved via AppDatabase', () => {
+		const { createBunSqlite } = require('../src/backend-shared/storage/bun-sqlite') as typeof import('@dotaz/backend-shared/storage/bun-sqlite')
 		const { AppDatabase } = require('../src/backend-shared/storage/app-db') as typeof import('@dotaz/backend-shared/storage/app-db')
-		const db = AppDatabase.create(':memory:')
+		const db = AppDatabase.create(createBunSqlite(':memory:'))
 
 		try {
 			const profile: FormatProfile = {

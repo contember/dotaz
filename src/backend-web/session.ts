@@ -10,6 +10,7 @@ import type { ImportStreamParams } from '@dotaz/backend-shared/services/import-s
 import { QueryExecutor } from '@dotaz/backend-shared/services/query-executor'
 import type { SessionManager } from '@dotaz/backend-shared/services/session-manager'
 import { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
+import { createBunSqlite } from '@dotaz/backend-shared/storage/bun-sqlite'
 
 export const SESSION_TTL_MS = 5 * 60 * 1000 // 5 minutes
 export const TOKEN_EXPIRY_MS = 5 * 60 * 1000 // 5 minutes
@@ -41,7 +42,7 @@ export function createSession(
 	encryptionKey: string,
 ): Session {
 	const id = crypto.randomUUID()
-	const appDb = AppDatabase.create(':memory:')
+	const appDb = AppDatabase.create(createBunSqlite(':memory:'))
 	const connectionManager = new ConnectionManager(appDb)
 	const queryExecutor = new QueryExecutor(connectionManager, undefined, appDb)
 	const encryption = new EncryptionService(encryptionKey)

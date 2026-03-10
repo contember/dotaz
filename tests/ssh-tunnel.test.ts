@@ -1,9 +1,10 @@
 import { ConnectionManager } from '@dotaz/backend-shared/services/connection-manager'
 import { isEncryptedPassword } from '@dotaz/backend-shared/services/encryption'
-import { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
+import type { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
 import type { PostgresConnectionConfig, SshTunnelConfig } from '@dotaz/shared/types/connection'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { hkdfSync } from 'node:crypto'
+import { createTestAppDb } from './helpers'
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -61,12 +62,11 @@ describe('SSH Tunnel — Persistence', () => {
 	let appDb: AppDatabase
 
 	beforeEach(() => {
-		AppDatabase.resetInstance()
-		appDb = AppDatabase.getInstance(':memory:')
+		appDb = createTestAppDb()
 	})
 
 	afterEach(() => {
-		AppDatabase.resetInstance()
+		appDb.close()
 	})
 
 	test('SSH tunnel config is persisted and loaded correctly', () => {
@@ -143,13 +143,12 @@ describe('SSH Tunnel — Encryption', () => {
 	let appDb: AppDatabase
 
 	beforeEach(() => {
-		AppDatabase.resetInstance()
-		appDb = AppDatabase.getInstance(':memory:')
+		appDb = createTestAppDb()
 		appDb.setLocalKey(deriveTestKey())
 	})
 
 	afterEach(() => {
-		AppDatabase.resetInstance()
+		appDb.close()
 	})
 
 	test('SSH password is encrypted in storage', () => {
@@ -205,8 +204,7 @@ describe('SSH Tunnel — Encryption', () => {
 
 	test('migratePasswords encrypts SSH tunnel secrets for existing connections', () => {
 		// Create connection before setting key (unencrypted)
-		AppDatabase.resetInstance()
-		const dbNoKey = AppDatabase.getInstance(':memory:')
+		const dbNoKey = createTestAppDb()
 		const conn = dbNoKey.createConnection({
 			name: 'PG with SSH',
 			config: pgConfigWithSsh,
@@ -237,14 +235,13 @@ describe('SSH Tunnel — ConnectionManager', () => {
 	let manager: ConnectionManager
 
 	beforeEach(() => {
-		AppDatabase.resetInstance()
-		appDb = AppDatabase.getInstance(':memory:')
+		appDb = createTestAppDb()
 		manager = new ConnectionManager(appDb)
 	})
 
 	afterEach(async () => {
 		await manager.disconnectAll()
-		AppDatabase.resetInstance()
+		appDb.close()
 	})
 
 	test('createConnection persists SSH tunnel config', () => {

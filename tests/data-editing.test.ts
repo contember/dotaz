@@ -9,11 +9,11 @@ import {
 	generateInsert,
 	generateUpdate,
 } from '@dotaz/backend-shared/services/query-executor'
-import { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
 import type { SqliteConnectionConfig } from '@dotaz/shared/types/connection'
 import { isSqlDefault, SQL_DEFAULT } from '@dotaz/shared/types/database'
 import type { DataChange, DeleteChange, InsertChange, UpdateChange } from '@dotaz/shared/types/rpc'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { createTestAppDb } from './helpers'
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -23,8 +23,7 @@ const sqliteConfig: SqliteConnectionConfig = {
 }
 
 function setup() {
-	AppDatabase.resetInstance()
-	const appDb = AppDatabase.getInstance(':memory:')
+	const appDb = createTestAppDb()
 	const cm = new ConnectionManager(appDb)
 	const { handlers } = createHandlers(cm, undefined, appDb)
 	return { appDb, cm, handlers }
@@ -51,7 +50,6 @@ describe('SQL Generation', () => {
 
 	afterEach(async () => {
 		await cm.disconnectAll()
-		AppDatabase.resetInstance()
 	})
 
 	describe('generateInsert', () => {

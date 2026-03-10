@@ -1,7 +1,8 @@
 import { createHandlers } from '@dotaz/backend-shared/rpc/rpc-handlers'
 import { ConnectionManager } from '@dotaz/backend-shared/services/connection-manager'
 import { createLocalKey } from '@dotaz/backend-shared/services/encryption'
-import { AppDatabase, setDefaultDbPath } from '@dotaz/backend-shared/storage/app-db'
+import { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
+import { createBunSqlite } from '@dotaz/backend-shared/storage/bun-sqlite'
 import type { DotazRPC } from '@dotaz/backend-types'
 import { BrowserView, BrowserWindow, Updater, Utils } from 'electrobun/bun'
 import { existsSync, mkdirSync } from 'node:fs'
@@ -27,17 +28,12 @@ async function getMainViewUrl(): Promise<string> {
 	return 'views://mainview/index.html'
 }
 
-// Configure default DB path before initializing
-setDefaultDbPath(() => {
-	const dir = Utils.paths.userData
-	if (!existsSync(dir)) {
-		mkdirSync(dir, { recursive: true })
-	}
-	return join(dir, 'dotaz.db')
-})
-
 // Initialize backend services
-const appDb = AppDatabase.getInstance()
+const dir = Utils.paths.userData
+if (!existsSync(dir)) {
+	mkdirSync(dir, { recursive: true })
+}
+const appDb = AppDatabase.create(createBunSqlite(join(dir, 'dotaz.db')))
 const localKey = createLocalKey()
 if (localKey) {
 	appDb.setLocalKey(localKey)

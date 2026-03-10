@@ -1,8 +1,8 @@
 import { ConnectionManager } from '@dotaz/backend-shared/services/connection-manager'
 import { TransactionManager } from '@dotaz/backend-shared/services/transaction-manager'
-import { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
 import type { SqliteConnectionConfig } from '@dotaz/shared/types/connection'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { createTestAppDb } from './helpers'
 
 const sqliteConfig: SqliteConnectionConfig = {
 	type: 'sqlite',
@@ -15,8 +15,7 @@ describe('TransactionManager', () => {
 	let connectionId: string
 
 	beforeEach(async () => {
-		AppDatabase.resetInstance()
-		const appDb = AppDatabase.getInstance(':memory:')
+		const appDb = createTestAppDb()
 		cm = new ConnectionManager(appDb)
 		txManager = new TransactionManager(cm)
 
@@ -27,7 +26,6 @@ describe('TransactionManager', () => {
 
 	afterEach(async () => {
 		await cm.disconnectAll()
-		AppDatabase.resetInstance()
 	})
 
 	test('isActive returns false when no transaction', () => {

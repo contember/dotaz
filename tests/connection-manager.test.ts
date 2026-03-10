@@ -1,9 +1,9 @@
 import { ConnectionManager } from '@dotaz/backend-shared/services/connection-manager'
 import type { StatusChangeEvent } from '@dotaz/backend-shared/services/connection-manager'
-import { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
 import type { ConnectionConfig, PostgresConnectionConfig, SqliteConnectionConfig } from '@dotaz/shared/types/connection'
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
-import { tmpSqlitePath } from './helpers'
+import { createTestAppDb, tmpSqlitePath } from './helpers'
+import type { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -22,8 +22,7 @@ const pgConfig: PostgresConnectionConfig = {
 }
 
 function createManager(): { appDb: AppDatabase; manager: ConnectionManager } {
-	AppDatabase.resetInstance()
-	const appDb = AppDatabase.getInstance(':memory:')
+	const appDb = createTestAppDb()
 	const manager = new ConnectionManager(appDb)
 	return { appDb, manager }
 }
@@ -56,7 +55,7 @@ describe('ConnectionManager', () => {
 
 	afterEach(async () => {
 		await manager.disconnectAll()
-		AppDatabase.resetInstance()
+		appDb.close()
 	})
 
 	// ── CRUD delegation ─────────────────────────────────────

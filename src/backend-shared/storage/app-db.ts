@@ -2,9 +2,9 @@ import type { ConnectionConfig, ConnectionInfo } from '@dotaz/shared/types/conne
 import { isServerConfig } from '@dotaz/shared/types/connection'
 import type { QueryHistoryEntry, QueryHistoryStatus } from '@dotaz/shared/types/query'
 import type { HistoryListParams, QueryBookmark, SavedView, SavedViewConfig } from '@dotaz/shared/types/rpc'
-import Database from 'bun:sqlite'
 import { decryptLocalPassword, encryptLocalPassword, isEncryptedPassword } from '../services/encryption'
 import { runMigrations } from './migrations'
+import type { SqliteCompat } from './sqlite-compat'
 
 /** Default settings values — returned when a key has not been explicitly set. */
 export const DEFAULT_SETTINGS: Record<string, string> = {
@@ -21,38 +21,22 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
 	maxSessionsPerConnection: '5',
 }
 
-let instance: AppDatabase | null = null
-
 export class AppDatabase {
-	readonly db: Database
+	readonly db: SqliteCompat
 	private localKey: Uint8Array | null = null
 
-	private constructor(dbPath: string) {
-		this.db = new Database(dbPath, { create: true })
-		this.db.run('PRAGMA journal_mode = WAL')
-		this.db.run('PRAGMA foreign_keys = ON')
+	private constructor(db: SqliteCompat) {
+		this.db = db
+		this.db.exec('PRAGMA journal_mode = WAL')
+		this.db.exec('PRAGMA foreign_keys = ON')
 		runMigrations(this.db)
 	}
 
 	/**
-	 * Get or create the singleton AppDatabase instance.
-	 * When called without arguments, uses Utils.paths.userData/dotaz.db.
-	 * Pass a custom path for testing.
+	 * Create a new AppDatabase instance backed by the given SqliteCompat database.
 	 */
-	static getInstance(dbPath?: string): AppDatabase {
-		if (!instance) {
-			const path = dbPath ?? getDefaultDbPath()
-			instance = new AppDatabase(path)
-		}
-		return instance
-	}
-
-	/**
-	 * Create a standalone AppDatabase instance (not the singleton).
-	 * Used for per-session isolation in the web server.
-	 */
-	static create(dbPath: string): AppDatabase {
-		return new AppDatabase(dbPath)
+	static create(db: SqliteCompat): AppDatabase {
+		return new AppDatabase(db)
 	}
 
 	/**
@@ -69,16 +53,6 @@ export class AppDatabase {
 	transaction<T>(fn: () => T): T {
 		const wrapped = this.db.transaction(fn)
 		return wrapped()
-	}
-
-	/**
-	 * Reset the singleton (for testing only).
-	 */
-	static resetInstance(): void {
-		if (instance) {
-			instance.db.close()
-			instance = null
-		}
 	}
 
 	/**
@@ -185,7 +159,7 @@ export class AppDatabase {
 	}
 
 	getConnectionById(id: string): ConnectionInfo | null {
-		const row = this.db.prepare('SELECT * FROM connections WHERE id = ?').get(id) as ConnectionRow | null
+		const row = this.db.prepare('SELECT * FROM connections WHERE id = ?').get(id) as ConnectionRow | undefined
 		return row ? this.toConnectionInfo(row) : null
 	}
 
@@ -272,7 +246,7 @@ export class AppDatabase {
 	// ── Settings ─────────────────────────────────────────────
 
 	getSetting(key: string): string | null {
-		const row = this.db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | null
+		const row = this.db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined
 		return row?.value ?? null
 	}
 
@@ -346,7 +320,7 @@ export class AppDatabase {
 	}
 
 	getSavedViewById(id: string): SavedView | null {
-		const row = this.db.prepare('SELECT * FROM saved_views WHERE id = ?').get(id) as SavedViewRow | null
+		const row = this.db.prepare('SELECT * FROM saved_views WHERE id = ?').get(id) as SavedViewRow | undefined
 		return row ? rowToSavedView(row) : null
 	}
 
@@ -471,7 +445,7 @@ export class AppDatabase {
 	}
 
 	getBookmarkById(id: string): QueryBookmark | null {
-		const row = this.db.prepare('SELECT * FROM query_bookmarks WHERE id = ?').get(id) as BookmarkRow | null
+		const row = this.db.prepare('SELECT * FROM query_bookmarks WHERE id = ?').get(id) as BookmarkRow | undefined
 		return row ? rowToBookmark(row) : null
 	}
 
@@ -484,7 +458,7 @@ export class AppDatabase {
 	}
 
 	loadWorkspace(): string | null {
-		const row = this.db.prepare("SELECT data FROM workspace WHERE id = 'default'").get() as { data: string } | null
+		const row = this.db.prepare("SELECT data FROM workspace WHERE id = 'default'").get() as { data: string } | undefined
 		return row?.data ?? null
 	}
 }
@@ -585,20 +559,4 @@ function rowToHistoryEntry(row: HistoryRow): QueryHistoryEntry {
 		errorMessage: row.error_message ?? undefined,
 		executedAt: row.executed_at,
 	}
-}
-
-// ── Default DB path ──────────────────────────────────────────
-
-let defaultDbPathFn: (() => string) | undefined
-
-/** Register a factory for the default DB path (call once from the app entry point). */
-export function setDefaultDbPath(fn: () => string) {
-	defaultDbPathFn = fn
-}
-
-function getDefaultDbPath(): string {
-	if (!defaultDbPathFn) {
-		throw new Error('Default DB path not configured. Call setDefaultDbPath() first.')
-	}
-	return defaultDbPathFn()
 }

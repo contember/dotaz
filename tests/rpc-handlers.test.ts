@@ -1,8 +1,9 @@
 import { createHandlers } from '@dotaz/backend-shared/rpc/rpc-handlers'
 import { ConnectionManager } from '@dotaz/backend-shared/services/connection-manager'
-import { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
+import type { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
 import type { SqliteConnectionConfig } from '@dotaz/shared/types/connection'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { createTestAppDb } from './helpers'
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -12,8 +13,7 @@ const sqliteConfig: SqliteConnectionConfig = {
 }
 
 function setup() {
-	AppDatabase.resetInstance()
-	const appDb = AppDatabase.getInstance(':memory:')
+	const appDb = createTestAppDb()
 	const cm = new ConnectionManager(appDb)
 	const { handlers } = createHandlers(cm, undefined, appDb)
 	return { appDb, cm, handlers }
@@ -31,7 +31,6 @@ describe('RPC Handlers', () => {
 
 	afterEach(async () => {
 		await cm.disconnectAll()
-		AppDatabase.resetInstance()
 	})
 
 	// ── connections.* ────────────────────────────────────
@@ -465,10 +464,7 @@ describe('RPC Handlers', () => {
 		let appDb: AppDatabase
 
 		beforeEach(async () => {
-			;({ cm, handlers } = setup())
-			appDb = AppDatabase.getInstance(':memory:')
-			// Re-create handlers with appDb
-			handlers = createHandlers(cm, undefined, appDb).handlers
+			;({ cm, handlers, appDb } = setup())
 			const conn = handlers['connections.create']({
 				name: 'SQLite History Test',
 				config: sqliteConfig,

@@ -47,6 +47,7 @@
 		"codemirror": "^6.0.1",
 		"electrobun": "1.14.4",
 		"lucide-solid": "^0.575.0",
+		"mysql2": "^3.19.1",
 		"simple-icons": "^16.10.0"
 	},
 	"devDependencies": {

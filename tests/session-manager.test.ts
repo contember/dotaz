@@ -1,8 +1,9 @@
 import { ConnectionManager } from '@dotaz/backend-shared/services/connection-manager'
 import { SessionManager } from '@dotaz/backend-shared/services/session-manager'
-import { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
+import type { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
 import type { SqliteConnectionConfig } from '@dotaz/shared/types/connection'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { createTestAppDb } from './helpers'
 
 const sqliteConfig: SqliteConnectionConfig = {
 	type: 'sqlite',
@@ -16,8 +17,7 @@ describe('SessionManager', () => {
 	let connectionId: string
 
 	beforeEach(async () => {
-		AppDatabase.resetInstance()
-		appDb = AppDatabase.getInstance(':memory:')
+		appDb = createTestAppDb()
 		cm = new ConnectionManager(appDb)
 		sm = new SessionManager(cm, appDb)
 
@@ -28,7 +28,7 @@ describe('SessionManager', () => {
 
 	afterEach(async () => {
 		await cm.disconnectAll()
-		AppDatabase.resetInstance()
+		appDb.close()
 	})
 
 	// ── Create / Destroy lifecycle ───────────────────────────

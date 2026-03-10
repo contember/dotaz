@@ -1,9 +1,9 @@
-import type { Database } from 'bun:sqlite'
+import type { SqliteCompat } from './sqlite-compat'
 
 export interface Migration {
 	version: number
 	description: string
-	up: (db: Database) => void
+	up: (db: SqliteCompat) => void
 }
 
 const migrations: Migration[] = [
@@ -11,7 +11,7 @@ const migrations: Migration[] = [
 		version: 1,
 		description: 'Create connections, query_history, saved_views, settings tables',
 		up: (db) => {
-			db.run(`
+			db.exec(`
 				CREATE TABLE connections (
 					id TEXT PRIMARY KEY,
 					name TEXT NOT NULL,
@@ -22,7 +22,7 @@ const migrations: Migration[] = [
 				)
 			`)
 
-			db.run(`
+			db.exec(`
 				CREATE TABLE query_history (
 					id INTEGER PRIMARY KEY AUTOINCREMENT,
 					connection_id TEXT NOT NULL,
@@ -36,7 +36,7 @@ const migrations: Migration[] = [
 				)
 			`)
 
-			db.run(`
+			db.exec(`
 				CREATE TABLE saved_views (
 					id TEXT PRIMARY KEY,
 					connection_id TEXT NOT NULL,
@@ -50,7 +50,7 @@ const migrations: Migration[] = [
 				)
 			`)
 
-			db.run(`
+			db.exec(`
 				CREATE TABLE settings (
 					key TEXT PRIMARY KEY,
 					value TEXT NOT NULL
@@ -77,14 +77,14 @@ const migrations: Migration[] = [
 		version: 3,
 		description: 'Add read_only column to connections table',
 		up: (db) => {
-			db.run('ALTER TABLE connections ADD COLUMN read_only INTEGER NOT NULL DEFAULT 0')
+			db.exec('ALTER TABLE connections ADD COLUMN read_only INTEGER NOT NULL DEFAULT 0')
 		},
 	},
 	{
 		version: 4,
 		description: 'Create query_bookmarks table',
 		up: (db) => {
-			db.run(`
+			db.exec(`
 				CREATE TABLE query_bookmarks (
 					id TEXT PRIMARY KEY,
 					connection_id TEXT NOT NULL,
@@ -102,14 +102,14 @@ const migrations: Migration[] = [
 		version: 5,
 		description: 'Add color column to connections table',
 		up: (db) => {
-			db.run('ALTER TABLE connections ADD COLUMN color TEXT DEFAULT NULL')
+			db.exec('ALTER TABLE connections ADD COLUMN color TEXT DEFAULT NULL')
 		},
 	},
 	{
 		version: 6,
 		description: 'Create workspace table for session persistence',
 		up: (db) => {
-			db.run(`
+			db.exec(`
 				CREATE TABLE workspace (
 					id TEXT PRIMARY KEY DEFAULT 'default',
 					data TEXT NOT NULL,
@@ -122,15 +122,15 @@ const migrations: Migration[] = [
 		version: 7,
 		description: 'Add database column to query_history and query_bookmarks',
 		up: (db) => {
-			db.run('ALTER TABLE query_history ADD COLUMN database TEXT DEFAULT NULL')
-			db.run('ALTER TABLE query_bookmarks ADD COLUMN database TEXT DEFAULT NULL')
+			db.exec('ALTER TABLE query_history ADD COLUMN database TEXT DEFAULT NULL')
+			db.exec('ALTER TABLE query_bookmarks ADD COLUMN database TEXT DEFAULT NULL')
 		},
 	},
 	{
 		version: 8,
 		description: 'Add group_name column to connections table',
 		up: (db) => {
-			db.run('ALTER TABLE connections ADD COLUMN group_name TEXT DEFAULT NULL')
+			db.exec('ALTER TABLE connections ADD COLUMN group_name TEXT DEFAULT NULL')
 		},
 	},
 ]
@@ -138,8 +138,8 @@ const migrations: Migration[] = [
 /**
  * Ensure the schema_version table exists.
  */
-function ensureSchemaVersionTable(db: Database): void {
-	db.run(`
+function ensureSchemaVersionTable(db: SqliteCompat): void {
+	db.exec(`
 		CREATE TABLE IF NOT EXISTS schema_version (
 			version INTEGER PRIMARY KEY,
 			applied_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -150,8 +150,8 @@ function ensureSchemaVersionTable(db: Database): void {
 /**
  * Get the current schema version from the database.
  */
-function getCurrentVersion(db: Database): number {
-	const row = db.prepare('SELECT MAX(version) as version FROM schema_version').get() as { version: number | null } | null
+function getCurrentVersion(db: SqliteCompat): number {
+	const row = db.prepare('SELECT MAX(version) as version FROM schema_version').get() as { version: number | null } | undefined
 	return row?.version ?? 0
 }
 
@@ -159,20 +159,20 @@ function getCurrentVersion(db: Database): number {
  * Run all pending migrations on the database.
  * Returns the number of migrations applied.
  */
-export function runMigrations(db: Database): number {
+export function runMigrations(db: SqliteCompat): number {
 	ensureSchemaVersionTable(db)
 
 	const currentVersion = getCurrentVersion(db)
 	const pending = migrations.filter((m) => m.version > currentVersion)
 
 	for (const migration of pending) {
-		db.run('BEGIN')
+		db.exec('BEGIN')
 		try {
 			migration.up(db)
-			db.run('INSERT INTO schema_version (version) VALUES (?)', [migration.version])
-			db.run('COMMIT')
+			db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(migration.version)
+			db.exec('COMMIT')
 		} catch (err) {
-			db.run('ROLLBACK')
+			db.exec('ROLLBACK')
 			throw err
 		}
 	}
@@ -183,7 +183,7 @@ export function runMigrations(db: Database): number {
 /**
  * Get the current schema version (exposed for testing).
  */
-export function getSchemaVersion(db: Database): number {
+export function getSchemaVersion(db: SqliteCompat): number {
 	ensureSchemaVersionTable(db)
 	return getCurrentVersion(db)
 }
