@@ -5,6 +5,10 @@
 	overflow: hidden;
 }
 
+[data-platform="mac"] .app-shell {
+	background: var(--surface);
+}
+
 .app-shell__body {
 	flex: 1;
 	display: flex;

@@ -56,9 +56,9 @@
 	--spacing-xl: 24px;
 
 	/* ── Border radius ──────────────────────────────────── */
-	--radius-sm: 3px;
-	--radius-md: 6px;
-	--radius-lg: 6px;
+	--radius-sm: 4px;
+	--radius-md: 8px;
+	--radius-lg: 10px;
 
 	/* ── Layout ─────────────────────────────────────────── */
 	--sidebar-width: 250px;
@@ -505,4 +505,26 @@ textarea:focus {
 		height: 100%;
 		box-shadow: 4px 0 16px rgba(0, 0, 0, 0.5);
 	}
+}
+
+/* ── macOS refinements ─────────────────────────────────────
+   Subtle adjustments for a native macOS feel: softer edges,
+   slightly differentiated sidebar surface, refined shadows.
+   ─────────────────────────────────────────────────────────── */
+
+[data-platform="mac"] {
+	--surface-sidebar: #1e2025;
+	--edge: rgba(255, 255, 255, 0.06);
+	--edge-strong: rgba(255, 255, 255, 0.10);
+	--shadow-overlay: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.06);
+	--shadow-popup: 0 8px 24px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.06);
+	--shadow-float: 0 4px 12px rgba(0, 0, 0, 0.35);
+	--radius-lg: 12px;
+}
+
+[data-platform="mac"][data-theme="light"] {
+	--surface-sidebar: #ebebeb;
+	--shadow-overlay: 0 12px 40px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.06);
+	--shadow-popup: 0 8px 24px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.06);
+	--shadow-float: 0 4px 12px rgba(0, 0, 0, 0.08);
 }

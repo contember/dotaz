@@ -1,6 +1,5 @@
 .settings-dialog {
-	min-width: 600px;
-	max-width: 700px;
+	width: 640px;
 }
 
 .settings-dialog .dialog__body {
@@ -9,7 +8,7 @@
 
 .settings-layout {
 	display: flex;
-	min-height: 400px;
+	height: 400px;
 }
 
 .settings-nav {

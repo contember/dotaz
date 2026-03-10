@@ -5,10 +5,16 @@
 	z-index: 2000;
 	background: var(--surface-overlay);
 	border: 1px solid var(--edge-strong);
-	border-radius: 6px;
+	border-radius: var(--radius-lg);
 	box-shadow: var(--shadow-popup);
 	min-width: 200px;
 	padding: var(--spacing-xs) 0;
+}
+
+[data-platform="mac"] .context-menu {
+	background: var(--surface-overlay);
+	border: 1px solid var(--edge-strong);
+	box-shadow: var(--shadow-popup);
 }
 
 .context-menu__icon {

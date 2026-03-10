@@ -23,6 +23,12 @@
 	animation: dialog-scale-in 0.2s ease-out;
 }
 
+[data-platform="mac"] .dialog {
+	background: var(--surface-overlay);
+	border: 1px solid var(--edge-strong);
+	box-shadow: var(--shadow-overlay);
+}
+
 .dialog__header {
 	display: flex;
 	align-items: center;

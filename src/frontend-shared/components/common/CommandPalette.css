@@ -12,13 +12,19 @@
 .command-palette {
 	background: var(--surface-overlay);
 	border: 1px solid var(--edge-strong);
-	border-radius: 6px;
+	border-radius: var(--radius-lg);
 	box-shadow: var(--shadow-overlay);
 	width: 480px;
 	max-height: 400px;
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
+}
+
+[data-platform="mac"] .command-palette {
+	background: var(--surface-overlay);
+	border: 1px solid var(--edge-strong);
+	box-shadow: var(--shadow-overlay);
 }
 
 .command-palette__input-wrap {

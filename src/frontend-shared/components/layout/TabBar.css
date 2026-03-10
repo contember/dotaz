@@ -5,6 +5,11 @@
 	overflow: hidden;
 }
 
+[data-platform="mac"] .tab-bar {
+	background: var(--surface-sidebar, var(--surface-raised));
+	border-bottom: 1px solid var(--edge);
+}
+
 .tab-bar__tabs {
 	display: flex;
 	overflow-x: auto;

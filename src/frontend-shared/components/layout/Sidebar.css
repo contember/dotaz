@@ -8,6 +8,11 @@
 	transition: width var(--transition-slow);
 }
 
+[data-platform="mac"] .sidebar {
+	background: var(--surface-sidebar, var(--surface));
+	border-right: 1px solid var(--edge);
+}
+
 .sidebar--collapsed {
 	border-right: none;
 }
@@ -118,6 +123,12 @@
 	cursor: pointer;
 	border-radius: var(--radius-sm);
 	z-index: 10;
+}
+
+[data-platform="mac"] .sidebar-expand-btn {
+	background: var(--surface-raised);
+	border: 1px solid var(--edge);
+	box-shadow: var(--shadow-float);
 }
 
 .sidebar-expand-btn:hover {
