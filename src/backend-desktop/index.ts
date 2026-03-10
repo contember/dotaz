@@ -81,9 +81,11 @@ const rpc = BrowserView.defineRPC<DotazRPC>({
 
 const url = await getMainViewUrl()
 
+const isMac = process.platform === 'darwin'
 const mainWindow = new BrowserWindow({
 	title: 'Dotaz',
-	titleBarStyle: 'hidden',
+	titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
+	transparent: false,
 	url,
 	rpc,
 	frame: {

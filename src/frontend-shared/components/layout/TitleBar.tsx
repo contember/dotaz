@@ -10,12 +10,9 @@ const isMac = navigator.platform.startsWith('Mac')
 export default function TitleBar() {
 	return (
 		<div class={`titlebar electrobun-webkit-app-region-drag ${isMac ? 'titlebar--mac' : ''}`}>
+			{/* On macOS, native traffic lights are rendered by the OS via hiddenInset titlebar */}
 			<Show when={isMac}>
-				<div class="titlebar__traffic-lights electrobun-webkit-app-region-no-drag">
-					<button class="titlebar__dot titlebar__dot--close" onClick={closeWindow} title="Close" />
-					<button class="titlebar__dot titlebar__dot--minimize" onClick={minimizeWindow} title="Minimize" />
-					<button class="titlebar__dot titlebar__dot--maximize" onClick={maximizeWindow} title="Maximize" />
-				</div>
+				<div class="titlebar__traffic-spacer" />
 			</Show>
 			<div class="titlebar__title">Dotaz</div>
 			<Show when={!isMac}>
