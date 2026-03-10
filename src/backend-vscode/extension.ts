@@ -1,4 +1,5 @@
 import type { ConnectionConfig } from '@dotaz/shared/types/connection'
+import { CONNECTION_TYPE_META, getDefaultDatabase } from '@dotaz/shared/types/connection'
 import type { DatabaseDriver } from '@dotaz/backend-shared/db/driver'
 import { LoggingDriver } from '@dotaz/backend-shared/db/logging-driver'
 import { ConnectionManager } from '@dotaz/backend-shared/services/connection-manager'
@@ -7,27 +8,23 @@ import { SessionManager } from '@dotaz/backend-shared/services/session-manager'
 import { createLocalKey } from '@dotaz/backend-shared/services/encryption'
 import { createHandlers } from '@dotaz/backend-shared/rpc/handlers'
 import { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
-import type { SqliteCompat, SqliteStatement } from '@dotaz/backend-shared/storage/sqlite-compat'
-import Database from 'better-sqlite3'
+import { createSqlJsSqlite } from './sqljs-sqlite'
 import { NodeMysqlDriver } from './node-mysql-driver'
 import { NodePostgresDriver } from './node-postgres-driver'
 import { NodeSqliteDriver } from './node-sqlite-driver'
 import { createSshTunnel } from './node-ssh-tunnel'
 import { VscodeBackendAdapter } from './vscode-backend-adapter'
-import { RpcServer } from './rpc-server'
+import { ConnectionTreeProvider } from './views/connection-tree-provider'
+import { SchemaCache } from './state/schema-cache'
+import { StatusBar } from './status/status-bar'
+import { WebviewRpcManager } from './webviews/webview-rpc-manager'
+import { registerConnectionCommands } from './commands/connection-commands'
+import { registerQueryCommands } from './commands/query-commands'
+import { registerTransactionCommands } from './commands/transaction-commands'
+import { registerNavigationCommands } from './commands/navigation-commands'
 import * as vscode from 'vscode'
 import * as path from 'node:path'
 import * as fs from 'node:fs'
-
-function createNodeSqlite(dbPath: string): SqliteCompat {
-	const db = new Database(dbPath)
-	return {
-		exec: (sql: string) => { db.exec(sql) },
-		prepare: (sql: string) => db.prepare(sql) as unknown as SqliteStatement,
-		transaction: <T>(fn: () => T) => db.transaction(fn) as unknown as () => T,
-		close: () => db.close(),
-	}
-}
 
 let appDb: AppDatabase | null = null
 let connectionManager: ConnectionManager | null = null
@@ -53,13 +50,14 @@ function createNodeDriver(config: ConnectionConfig): DatabaseDriver {
 	return driver
 }
 
-export function activate(context: vscode.ExtensionContext): void {
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
 	// Ensure global storage directory exists
 	const storagePath = context.globalStorageUri.fsPath
 	fs.mkdirSync(storagePath, { recursive: true })
 
 	const dbPath = path.join(storagePath, 'dotaz.db')
-	appDb = AppDatabase.create(createNodeSqlite(dbPath))
+	const sqlite = await createSqlJsSqlite(dbPath)
+	appDb = AppDatabase.create(sqlite)
 
 	// Set up local encryption key for password storage
 	const localKey = createLocalKey()
@@ -71,33 +69,118 @@ export function activate(context: vscode.ExtensionContext): void {
 	const queryExecutor = new QueryExecutor(connectionManager, undefined, appDb)
 	const sessionManager = new SessionManager(connectionManager, appDb)
 
-	// Forward connection status changes as messages
-	let rpcServer: RpcServer | null = null
+	// ── Schema cache ────────────────────────────────────────
+	const schemaCache = new SchemaCache(connectionManager)
 
-	const emitMessage = (channel: string, payload: unknown) => {
-		rpcServer?.emitMessage(channel, payload)
-	}
-
-	connectionManager.onStatusChanged((event) => {
-		emitMessage('connection.status', event)
-	})
-
+	// ── WebviewRpcManager ───────────────────────────────────
 	const adapter = new VscodeBackendAdapter(
 		connectionManager,
 		queryExecutor,
 		appDb,
 		{
-			emitMessage,
+			emitMessage: (channel, payload) => rpcManager.broadcast(channel, payload),
 			sessionManager,
 			vscodeWindow: vscode.window,
 		},
 	)
-	const handlers = createHandlers(adapter)
+	const handlers: Record<string, (params: any) => any> = { ...createHandlers(adapter) }
 
+	// Wrap connection create/update handlers to refresh tree after save
+	const origCreate = handlers['connections.create']
+	handlers['connections.create'] = async (params: any) => {
+		const result = await origCreate(params)
+		treeProvider.refresh()
+		vscode.window.showInformationMessage(`Connection "${params.name}" created.`)
+		return result
+	}
+
+	const origUpdate = handlers['connections.update']
+	handlers['connections.update'] = async (params: any) => {
+		const result = await origUpdate(params)
+		treeProvider.refresh()
+		return result
+	}
+
+	// VS Code-specific handler: webview requests to open a new panel
+	handlers['vscode.openPanel'] = (params: {
+		type: string
+		title: string
+		connectionId?: string
+		schema?: string
+		table?: string
+		database?: string
+		viewId?: string
+	}) => {
+		createWebviewPanel(context, rpcManager, params.type, params.title, {
+			connectionId: params.connectionId,
+			schema: params.schema,
+			table: params.table,
+			database: params.database,
+			savedViewId: params.viewId,
+		})
+	}
+
+	const rpcManager = new WebviewRpcManager(handlers)
+
+	// ── TreeView ────────────────────────────────────────────
+	const treeProvider = new ConnectionTreeProvider(connectionManager, appDb, schemaCache)
+	const treeView = vscode.window.createTreeView('dotaz.connections', {
+		treeDataProvider: treeProvider,
+		showCollapseAll: true,
+	})
+	context.subscriptions.push(treeView)
+
+	// ── Status Bar ──────────────────────────────────────────
+	const statusBar = new StatusBar(connectionManager)
+	context.subscriptions.push(statusBar)
+
+	// ── Connection status listener ──────────────────────────
+	connectionManager.onStatusChanged((event) => {
+		// Update TreeView
+		treeProvider.refresh()
+
+		// Update StatusBar
+		statusBar.onStatusChanged(event)
+
+		// Broadcast to webviews
+		rpcManager.broadcast('connection.status', event)
+
+		// Load schema on connect (including all active databases for multi-db)
+		if (event.state === 'connected') {
+			const conn = connectionManager.listConnections().find((c) => c.id === event.connectionId)
+			const activeDbs = conn && 'activeDatabases' in conn.config ? conn.config.activeDatabases : undefined
+			const defaultDb = conn && CONNECTION_TYPE_META[conn.config.type].supportsMultiDatabase ? getDefaultDatabase(conn.config) : undefined
+			schemaCache.loadAll(event.connectionId, activeDbs, defaultDb).then(() => {
+				treeProvider.refresh()
+			}).catch(() => {})
+		}
+
+		// Clear schema cache on disconnect
+		if (event.state === 'disconnected') {
+			schemaCache.invalidate(event.connectionId)
+		}
+	})
+
+	// ── Register Commands ───────────────────────────────────
+	registerConnectionCommands(context, connectionManager, appDb, schemaCache, treeProvider, statusBar)
+	registerQueryCommands(context, connectionManager, queryExecutor, statusBar)
+	registerTransactionCommands(context, connectionManager, statusBar)
+	registerNavigationCommands(
+		context,
+		connectionManager,
+		appDb,
+		schemaCache,
+		treeProvider,
+		rpcManager,
+		(type, title, panelContext) => {
+			createWebviewPanel(context, rpcManager, type, title, panelContext)
+		},
+	)
+
+	// ── Legacy "dotaz.open" command (full-app webview) ───────
 	context.subscriptions.push(
 		vscode.commands.registerCommand('dotaz.open', () => {
-			const panel = createPanel(context)
-			rpcServer = new RpcServer(panel, handlers)
+			createWebviewPanel(context, rpcManager, 'full-app', 'Dotaz', {})
 		}),
 	)
 }
@@ -113,21 +196,29 @@ export async function deactivate(): Promise<void> {
 	}
 }
 
-function createPanel(context: vscode.ExtensionContext): vscode.WebviewPanel {
+// ── Webview Panel Factory ──────────────────────────────────
+
+function createWebviewPanel(
+	context: vscode.ExtensionContext,
+	rpcManager: WebviewRpcManager,
+	type: string,
+	title: string,
+	panelContext: Record<string, unknown>,
+): vscode.WebviewPanel {
 	const panel = vscode.window.createWebviewPanel(
-		'dotaz',
-		'Dotaz',
+		`dotaz.${type}`,
+		title,
 		vscode.ViewColumn.One,
 		{
 			enableScripts: true,
 			retainContextWhenHidden: true,
 			localResourceRoots: [
-				vscode.Uri.joinPath(context.extensionUri, 'dist-vscode', 'webview'),
+				vscode.Uri.joinPath(context.extensionUri, 'webview'),
 			],
 		},
 	)
 
-	const webviewDir = vscode.Uri.joinPath(context.extensionUri, 'dist-vscode', 'webview')
+	const webviewDir = vscode.Uri.joinPath(context.extensionUri, 'webview')
 
 	// Read the built index.html and rewrite asset paths for the webview
 	const indexPath = vscode.Uri.joinPath(webviewDir, 'index.html')
@@ -144,14 +235,14 @@ function createPanel(context: vscode.ExtensionContext): vscode.WebviewPanel {
 	// Rewrite asset paths to use webview URIs
 	const baseUri = panel.webview.asWebviewUri(webviewDir)
 	html = html
-		.replace(/(href|src)="(?!https?:\/\/)/g, `$1="${baseUri}/`)
+		.replace(/(href|src)="\.?\/?/g, `$1="${baseUri}/`)
 		.replace(/<meta\s+http-equiv="Content-Security-Policy"[^>]*>/i, '')
 
 	// Inject CSP meta tag
 	const csp = [
 		`default-src 'none'`,
 		`style-src ${panel.webview.cspSource} 'unsafe-inline'`,
-		`script-src 'nonce-${nonce}'`,
+		`script-src 'nonce-${nonce}' ${panel.webview.cspSource}`,
 		`font-src ${panel.webview.cspSource}`,
 		`img-src ${panel.webview.cspSource} data:`,
 		`connect-src ${panel.webview.cspSource}`,
@@ -165,7 +256,15 @@ function createPanel(context: vscode.ExtensionContext): vscode.WebviewPanel {
 	// Add nonce to script tags
 	html = html.replace(/<script\b/g, `<script nonce="${nonce}"`)
 
+	// Inject panel context as initial data (include panel type for routing)
+	const contextScript = `<script nonce="${nonce}">window.__DOTAZ_CONTEXT__ = ${JSON.stringify({ ...panelContext, type })};</script>`
+	html = html.replace('</head>', `${contextScript}\n</head>`)
+
 	panel.webview.html = html
+
+	// Register with RPC manager
+	const panelId = crypto.randomUUID()
+	context.subscriptions.push(rpcManager.register(panelId, panel))
 
 	return panel
 }

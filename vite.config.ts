@@ -21,6 +21,7 @@ export default defineConfig(({ mode }) => {
 	return {
 		plugins: [solid()],
 		root,
+		base: isVscode ? './' : '/',
 		build: {
 			outDir: resolve(__dirname, isVscode ? 'dist-vscode/webview' : 'dist'),
 			emptyOutDir: true,

@@ -2,6 +2,7 @@ node_modules
 dist/
 dist-server/
 dist-electron/
+dist-vscode/
 build/
 artifacts/
 .claude/

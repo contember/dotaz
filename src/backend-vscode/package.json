@@ -1,9 +1,305 @@
 {
-	"name": "@dotaz/backend-vscode",
+	"name": "dotaz-vscode",
+	"displayName": "Dotaz",
+	"publisher": "dotaz",
+	"description": "Database client for PostgreSQL, SQLite, and MySQL",
 	"private": true,
 	"version": "0.0.0",
+	"engines": {
+		"vscode": "^1.82.0"
+	},
+	"main": "./extension.js",
+	"activationEvents": [],
 	"dependencies": {
 		"@dotaz/backend-shared": "workspace:*",
 		"@dotaz/shared": "workspace:*"
+	},
+	"contributes": {
+		"viewsContainers": {
+			"activitybar": [
+				{
+					"id": "dotaz",
+					"title": "Dotaz",
+					"icon": "$(database)"
+				}
+			]
+		},
+		"views": {
+			"dotaz": [
+				{
+					"id": "dotaz.connections",
+					"name": "Connections",
+					"type": "tree"
+				}
+			]
+		},
+		"commands": [
+			{
+				"command": "dotaz.addConnection",
+				"title": "Add Connection",
+				"category": "Dotaz",
+				"icon": "$(add)"
+			},
+			{
+				"command": "dotaz.connect",
+				"title": "Connect",
+				"category": "Dotaz"
+			},
+			{
+				"command": "dotaz.disconnect",
+				"title": "Disconnect",
+				"category": "Dotaz"
+			},
+			{
+				"command": "dotaz.deleteConnection",
+				"title": "Delete Connection",
+				"category": "Dotaz"
+			},
+			{
+				"command": "dotaz.editConnection",
+				"title": "Edit Connection",
+				"category": "Dotaz"
+			},
+			{
+				"command": "dotaz.toggleReadOnly",
+				"title": "Toggle Read-Only",
+				"category": "Dotaz"
+			},
+			{
+				"command": "dotaz.refreshConnections",
+				"title": "Refresh Connections",
+				"category": "Dotaz",
+				"icon": "$(refresh)"
+			},
+			{
+				"command": "dotaz.switchConnection",
+				"title": "Switch Connection",
+				"category": "Dotaz"
+			},
+			{
+				"command": "dotaz.newSqlConsole",
+				"title": "New SQL Console",
+				"category": "Dotaz",
+				"icon": "$(new-file)"
+			},
+			{
+				"command": "dotaz.openTable",
+				"title": "Open Table",
+				"category": "Dotaz"
+			},
+			{
+				"command": "dotaz.openSavedView",
+				"title": "Open Saved View",
+				"category": "Dotaz"
+			},
+			{
+				"command": "dotaz.viewSchema",
+				"title": "View Schema",
+				"category": "Dotaz"
+			},
+			{
+				"command": "dotaz.erDiagram",
+				"title": "ER Diagram",
+				"category": "Dotaz"
+			},
+			{
+				"command": "dotaz.exportTable",
+				"title": "Export Table",
+				"category": "Dotaz"
+			},
+			{
+				"command": "dotaz.importTable",
+				"title": "Import into Table",
+				"category": "Dotaz"
+			},
+			{
+				"command": "dotaz.runQuery",
+				"title": "Run Query",
+				"category": "Dotaz",
+				"icon": "$(play)"
+			},
+			{
+				"command": "dotaz.cancelQuery",
+				"title": "Cancel Query",
+				"category": "Dotaz",
+				"icon": "$(debug-stop)"
+			},
+			{
+				"command": "dotaz.explainQuery",
+				"title": "Explain Query",
+				"category": "Dotaz"
+			},
+			{
+				"command": "dotaz.formatSql",
+				"title": "Format SQL",
+				"category": "Dotaz"
+			},
+			{
+				"command": "dotaz.searchDatabase",
+				"title": "Search Database",
+				"category": "Dotaz"
+			},
+			{
+				"command": "dotaz.moveToGroup",
+				"title": "Move to Group...",
+				"category": "Dotaz"
+			},
+			{
+				"command": "dotaz.beginTransaction",
+				"title": "Begin Transaction",
+				"category": "Dotaz"
+			},
+			{
+				"command": "dotaz.commitTransaction",
+				"title": "Commit Transaction",
+				"category": "Dotaz"
+			},
+			{
+				"command": "dotaz.rollbackTransaction",
+				"title": "Rollback Transaction",
+				"category": "Dotaz"
+			},
+			{
+				"command": "dotaz.transactionMenu",
+				"title": "Transaction Actions",
+				"category": "Dotaz"
+			},
+			{
+				"command": "dotaz.renameGroup",
+				"title": "Rename Group",
+				"category": "Dotaz"
+			},
+			{
+				"command": "dotaz.ungroupAll",
+				"title": "Ungroup All",
+				"category": "Dotaz"
+			},
+			{
+				"command": "dotaz.open",
+				"title": "Open Dotaz (Full App)",
+				"category": "Dotaz"
+			}
+		],
+		"menus": {
+			"view/title": [
+				{
+					"command": "dotaz.addConnection",
+					"when": "view == dotaz.connections",
+					"group": "navigation"
+				},
+				{
+					"command": "dotaz.refreshConnections",
+					"when": "view == dotaz.connections",
+					"group": "navigation"
+				}
+			],
+			"view/item/context": [
+				{
+					"command": "dotaz.connect",
+					"when": "view == dotaz.connections && viewItem == connection.disconnected",
+					"group": "1_connection@1"
+				},
+				{
+					"command": "dotaz.disconnect",
+					"when": "view == dotaz.connections && viewItem == connection.connected",
+					"group": "1_connection@1"
+				},
+				{
+					"command": "dotaz.newSqlConsole",
+					"when": "view == dotaz.connections && viewItem =~ /connection\\.connected|database/",
+					"group": "2_actions@1"
+				},
+				{
+					"command": "dotaz.erDiagram",
+					"when": "view == dotaz.connections && viewItem =~ /connection\\.connected|database|schema/",
+					"group": "2_actions@2"
+				},
+				{
+					"command": "dotaz.openTable",
+					"when": "view == dotaz.connections && viewItem =~ /^(table|dbview)$/",
+					"group": "1_open@1"
+				},
+				{
+					"command": "dotaz.viewSchema",
+					"when": "view == dotaz.connections && viewItem =~ /^(table|dbview)$/",
+					"group": "1_open@2"
+				},
+				{
+					"command": "dotaz.exportTable",
+					"when": "view == dotaz.connections && viewItem == table",
+					"group": "3_data@1"
+				},
+				{
+					"command": "dotaz.importTable",
+					"when": "view == dotaz.connections && viewItem == table",
+					"group": "3_data@2"
+				},
+				{
+					"command": "dotaz.searchDatabase",
+					"when": "view == dotaz.connections && viewItem == connection.connected",
+					"group": "2_actions@3"
+				},
+				{
+					"command": "dotaz.toggleReadOnly",
+					"when": "view == dotaz.connections && viewItem =~ /^connection\\./",
+					"group": "4_settings@1"
+				},
+				{
+					"command": "dotaz.moveToGroup",
+					"when": "view == dotaz.connections && viewItem =~ /^connection\\./",
+					"group": "4_settings@2"
+				},
+				{
+					"command": "dotaz.editConnection",
+					"when": "view == dotaz.connections && viewItem =~ /^connection\\./",
+					"group": "5_manage@1"
+				},
+				{
+					"command": "dotaz.deleteConnection",
+					"when": "view == dotaz.connections && viewItem =~ /^connection\\./",
+					"group": "5_manage@2"
+				},
+				{
+					"command": "dotaz.renameGroup",
+					"when": "view == dotaz.connections && viewItem == group",
+					"group": "1_group@1"
+				},
+				{
+					"command": "dotaz.ungroupAll",
+					"when": "view == dotaz.connections && viewItem == group",
+					"group": "1_group@2"
+				},
+				{
+					"command": "dotaz.openSavedView",
+					"when": "view == dotaz.connections && viewItem == savedView",
+					"group": "1_open@1"
+				}
+			]
+		},
+		"keybindings": [
+			{
+				"command": "dotaz.runQuery",
+				"key": "ctrl+enter",
+				"mac": "cmd+enter",
+				"when": "editorLangId == sql"
+			},
+			{
+				"command": "dotaz.runQuery",
+				"key": "f5",
+				"when": "editorLangId == sql"
+			},
+			{
+				"command": "dotaz.explainQuery",
+				"key": "ctrl+shift+e",
+				"mac": "cmd+shift+e",
+				"when": "editorLangId == sql"
+			},
+			{
+				"command": "dotaz.formatSql",
+				"key": "ctrl+shift+f",
+				"mac": "cmd+shift+f",
+				"when": "editorLangId == sql"
+			}
+		]
 	}
 }

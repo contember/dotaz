@@ -31,6 +31,13 @@ const [state, setState] = createStore<TabState>({
  */
 let beforeCloseHook: ((tab: TabInfo) => boolean) | null = null
 
+/**
+ * Optional interceptor for openTab. When set and returns true,
+ * the tab open is handled externally (e.g., VS Code opens a new WebviewPanel)
+ * and no local tab is created.
+ */
+let openTabInterceptor: ((config: OpenTabConfig) => boolean) | null = null
+
 /** Callbacks invoked after a tab is closed, for state cleanup. */
 const afterCloseCallbacks: ((tabId: string) => void)[] = []
 
@@ -58,7 +65,15 @@ function onTabClosed(callback: (tabId: string) => void) {
 	afterCloseCallbacks.push(callback)
 }
 
+function setOpenTabInterceptor(fn: ((config: OpenTabConfig) => boolean) | null) {
+	openTabInterceptor = fn
+}
+
 function openTab(config: OpenTabConfig): string {
+	if (openTabInterceptor?.(config)) {
+		return '' // handled externally (e.g., VS Code WebviewPanel)
+	}
+
 	const id = crypto.randomUUID()
 	const tab: TabInfo = {
 		id,
@@ -332,6 +347,7 @@ export const tabsStore = {
 	clearTabView,
 	setViewModified,
 	setBeforeCloseHook,
+	setOpenTabInterceptor,
 	onTabClosed,
 	onBeforeTabChange,
 	duplicateTab,

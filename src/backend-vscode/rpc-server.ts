@@ -27,6 +27,13 @@ export class RpcServer {
 	}
 
 	private async handleRequest(msg: { id: number; method: string; params: any }): Promise<void> {
+		// Panel-level command: close this panel
+		if (msg.method === 'vscode.closePanel') {
+			this.panel.webview.postMessage({ type: 'response', id: msg.id, success: true, payload: null })
+			this.panel.dispose()
+			return
+		}
+
 		const handler = this.handlers[msg.method]
 		if (!handler) {
 			this.panel.webview.postMessage({

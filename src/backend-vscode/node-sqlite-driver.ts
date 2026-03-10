@@ -11,7 +11,8 @@ import type {
 } from '@dotaz/shared/types/database'
 import { DatabaseError } from '@dotaz/shared/types/errors'
 import type { QueryResult, QueryResultColumn } from '@dotaz/shared/types/query'
-import Database from 'better-sqlite3'
+import initSqlJs, { type Database as SqlJsDatabase } from 'sql.js'
+import { readFileSync, writeFileSync } from 'node:fs'
 import type { DatabaseDriver } from '@dotaz/backend-shared/db/driver'
 import { mapSqliteError } from '@dotaz/backend-shared/db/error-mapping'
 
@@ -64,8 +65,27 @@ function mapSqliteDataType(type: string): DatabaseDataType {
 	return DatabaseDataType.Unknown
 }
 
+/** Execute a sql.js statement and return rows as objects. */
+function queryAll(db: SqlJsDatabase, sql: string, params?: unknown[]): Record<string, unknown>[] {
+	const stmt = db.prepare(sql)
+	if (params?.length) stmt.bind(params as any)
+	const rows: Record<string, unknown>[] = []
+	while (stmt.step()) {
+		rows.push(stmt.getAsObject() as Record<string, unknown>)
+	}
+	stmt.free()
+	return rows
+}
+
+/** Detect if a SQL statement is a read (SELECT/PRAGMA/EXPLAIN) vs write. */
+function isReadStatement(sql: string): boolean {
+	const trimmed = sql.trimStart().toUpperCase()
+	return trimmed.startsWith('SELECT') || trimmed.startsWith('PRAGMA') || trimmed.startsWith('EXPLAIN') || trimmed.startsWith('WITH')
+}
+
 export class NodeSqliteDriver implements DatabaseDriver {
-	private db: Database.Database | null = null
+	private db: SqlJsDatabase | null = null
+	private dbPath: string | null = null
 	private connected = false
 	private txActive = false
 	private sessionIds = new Set<string>()
@@ -75,9 +95,17 @@ export class NodeSqliteDriver implements DatabaseDriver {
 			throw new Error('NodeSqliteDriver requires a sqlite connection config')
 		}
 		try {
-			this.db = new Database(config.path)
-			this.db.exec('PRAGMA journal_mode = WAL')
-			this.db.exec('PRAGMA foreign_keys = ON')
+			const SQL = await initSqlJs()
+			try {
+				const buf = readFileSync(config.path)
+				this.db = new SQL.Database(buf)
+			} catch {
+				// File doesn't exist yet — create empty database
+				this.db = new SQL.Database()
+			}
+			this.dbPath = config.path
+			this.db.run('PRAGMA journal_mode = WAL')
+			this.db.run('PRAGMA foreign_keys = ON')
 		} catch (err) {
 			this.db = null
 			throw err instanceof DatabaseError ? err : mapSqliteError(err)
@@ -87,8 +115,10 @@ export class NodeSqliteDriver implements DatabaseDriver {
 
 	async disconnect(): Promise<void> {
 		if (this.db) {
+			this.persist()
 			this.db.close()
 			this.db = null
+			this.dbPath = null
 			this.connected = false
 			this.txActive = false
 			this.sessionIds.clear()
@@ -115,22 +145,23 @@ export class NodeSqliteDriver implements DatabaseDriver {
 		this.ensureConnected()
 		const start = performance.now()
 		try {
-			const stmt = this.db!.prepare(sql)
-			if (stmt.reader) {
-				const rows = stmt.all(...(params ?? [])) as Record<string, unknown>[]
+			if (isReadStatement(sql)) {
+				const rows = queryAll(this.db!, sql, params)
 				const durationMs = Math.round(performance.now() - start)
 				const columns: QueryResultColumn[] = rows.length > 0
 					? Object.keys(rows[0]).map((name) => ({ name, dataType: DatabaseDataType.Unknown }))
 					: []
 				return { columns, rows, rowCount: rows.length, durationMs }
 			} else {
-				const info = stmt.run(...(params ?? []))
+				this.db!.run(sql, params as any)
+				const changes = this.db!.getRowsModified()
 				const durationMs = Math.round(performance.now() - start)
+				if (!this.txActive) this.persist()
 				return {
 					columns: [],
 					rows: [],
 					rowCount: 0,
-					affectedRows: info.changes,
+					affectedRows: changes,
 					durationMs,
 				}
 			}
@@ -190,9 +221,10 @@ export class NodeSqliteDriver implements DatabaseDriver {
 
 	private getTables(schema: string): TableInfo[] {
 		this.ensureConnected()
-		const rows = this.db!.prepare(
+		const rows = queryAll(
+			this.db!,
 			"SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY name",
-		).all() as SqliteMasterRow[]
+		) as unknown as SqliteMasterRow[]
 		return rows.map((row) => ({
 			schema,
 			name: row.name,
@@ -202,9 +234,10 @@ export class NodeSqliteDriver implements DatabaseDriver {
 
 	private getColumns(_schema: string, table: string): ColumnInfo[] {
 		this.ensureConnected()
-		const rows = this.db!.prepare(
+		const rows = queryAll(
+			this.db!,
 			`PRAGMA table_info(${this.quoteIdentifier(table)})`,
-		).all() as SqlitePragmaTableInfoRow[]
+		) as unknown as SqlitePragmaTableInfoRow[]
 
 		const pkCount = rows.filter((r) => r.pk > 0).length
 
@@ -222,15 +255,17 @@ export class NodeSqliteDriver implements DatabaseDriver {
 
 	private getIndexes(_schema: string, table: string): IndexInfo[] {
 		this.ensureConnected()
-		const indexList = this.db!.prepare(
+		const indexList = queryAll(
+			this.db!,
 			`PRAGMA index_list(${this.quoteIdentifier(table)})`,
-		).all() as SqlitePragmaIndexListRow[]
+		) as unknown as SqlitePragmaIndexListRow[]
 
 		const indexes: IndexInfo[] = []
 		for (const idx of indexList) {
-			const indexInfo = this.db!.prepare(
+			const indexInfo = queryAll(
+				this.db!,
 				`PRAGMA index_info(${this.quoteIdentifier(idx.name)})`,
-			).all() as SqlitePragmaIndexInfoRow[]
+			) as unknown as SqlitePragmaIndexInfoRow[]
 			indexes.push({
 				name: idx.name,
 				columns: indexInfo.map((col) => col.name),
@@ -243,9 +278,10 @@ export class NodeSqliteDriver implements DatabaseDriver {
 
 	private getForeignKeys(_schema: string, table: string): ForeignKeyInfo[] {
 		this.ensureConnected()
-		const rows = this.db!.prepare(
+		const rows = queryAll(
+			this.db!,
 			`PRAGMA foreign_key_list(${this.quoteIdentifier(table)})`,
-		).all() as SqlitePragmaForeignKeyRow[]
+		) as unknown as SqlitePragmaForeignKeyRow[]
 
 		const fkMap = new Map<number, ForeignKeyInfo>()
 		for (const row of rows) {
@@ -282,8 +318,7 @@ export class NodeSqliteDriver implements DatabaseDriver {
 				throw new DOMException('Aborted', 'AbortError')
 			}
 			const pagedSql = `${sql} LIMIT ? OFFSET ?`
-			const stmt = this.db!.prepare(pagedSql)
-			const rows = stmt.all(...(params ?? []), batchSize, offset) as Record<string, unknown>[]
+			const rows = queryAll(this.db!, pagedSql, [...(params ?? []), batchSize, offset])
 			if (rows.length === 0) break
 			yield rows
 			if (rows.length < batchSize) break
@@ -317,19 +352,20 @@ export class NodeSqliteDriver implements DatabaseDriver {
 
 	async beginTransaction(_sessionId?: string): Promise<void> {
 		this.ensureConnected()
-		this.db!.exec('BEGIN')
+		this.db!.run('BEGIN')
 		this.txActive = true
 	}
 
 	async commit(_sessionId?: string): Promise<void> {
 		this.ensureConnected()
-		this.db!.exec('COMMIT')
+		this.db!.run('COMMIT')
 		this.txActive = false
+		this.persist()
 	}
 
 	async rollback(_sessionId?: string): Promise<void> {
 		this.ensureConnected()
-		this.db!.exec('ROLLBACK')
+		this.db!.run('ROLLBACK')
 		this.txActive = false
 	}
 
@@ -356,6 +392,13 @@ export class NodeSqliteDriver implements DatabaseDriver {
 
 	placeholder(index: number): string {
 		return `$${index}`
+	}
+
+	private persist(): void {
+		if (this.db && this.dbPath) {
+			const data = this.db.export()
+			writeFileSync(this.dbPath, data)
+		}
 	}
 
 	private ensureConnected(): void {
