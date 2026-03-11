@@ -40,6 +40,7 @@ export function registerAppShortcuts(): void {
 	keyboardManager.register('Ctrl+G', 'ai-generate-sql', 'sql-console')
 
 	// Data grid context
+	keyboardManager.register('Ctrl+Enter', 'add-new-row', 'data-grid')
 	keyboardManager.register('F5', 'refresh-data', 'data-grid')
 	keyboardManager.register('F2', 'inline-edit', 'data-grid')
 	keyboardManager.register('Delete', 'delete-rows', 'data-grid')

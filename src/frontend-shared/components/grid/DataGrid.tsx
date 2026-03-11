@@ -448,6 +448,18 @@ export default function DataGrid(props: DataGridProps) {
 		onCleanup(() => window.removeEventListener('dotaz:save-view', onSaveView))
 	})
 
+	// Listen for add-new-row events dispatched by the command registry
+	onMount(() => {
+		const onAddNewRow = (e: Event) => {
+			const detail = (e as CustomEvent).detail
+			if (detail?.tabId === props.tabId) {
+				cellEdit.handleAddNewRow()
+			}
+		}
+		window.addEventListener('dotaz:add-new-row', onAddNewRow)
+		onCleanup(() => window.removeEventListener('dotaz:add-new-row', onAddNewRow))
+	})
+
 	return (
 		<div
 			ref={gridRef}
@@ -468,6 +480,7 @@ export default function DataGrid(props: DataGridProps) {
 				onSaveViewOpen={(forceNew) => modals.openSaveView(forceNew)}
 				onExportOpen={() => modals.openExport()}
 				onImportOpen={() => modals.openImport()}
+				onAddNewRow={() => cellEdit.handleAddNewRow()}
 				rowColoringOpen={rowColoringOpen()}
 				onToggleRowColoring={() => setRowColoringOpen(!rowColoringOpen())}
 				sidePanelToggle={

@@ -1,3 +1,4 @@
+import { connectionsStore } from '../../stores/connections'
 import { gridStore } from '../../stores/grid'
 import { tabsStore } from '../../stores/tabs'
 import type { AppCommandActions } from '../app-commands'
@@ -122,6 +123,21 @@ export function registerGridCommands(actions: AppCommandActions): void {
 			if (tab?.type === 'data-grid') {
 				gridStore.redo(tab.id)
 			}
+		},
+	})
+
+	commandRegistry.register({
+		id: 'add-new-row',
+		label: 'Add New Row',
+		shortcut: 'Ctrl+Enter',
+		category: 'Grid',
+		handler: () => {
+			const tab = tabsStore.activeTab
+			if (tab?.type !== 'data-grid') return
+			if (connectionsStore.isReadOnly(tab.connectionId)) return
+			window.dispatchEvent(
+				new CustomEvent('dotaz:add-new-row', { detail: { tabId: tab.id } }),
+			)
 		},
 	})
 

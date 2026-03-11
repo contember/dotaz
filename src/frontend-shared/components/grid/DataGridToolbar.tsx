@@ -2,6 +2,7 @@ import type { ColumnFilter } from '@dotaz/shared/types/grid'
 import type { SavedViewConfig } from '@dotaz/shared/types/rpc'
 import ArrowLeftRight from 'lucide-solid/icons/arrow-left-right'
 import EllipsisVertical from 'lucide-solid/icons/ellipsis-vertical'
+import Plus from 'lucide-solid/icons/plus'
 import RotateCcw from 'lucide-solid/icons/rotate-ccw'
 import Save from 'lucide-solid/icons/save'
 import { createSignal, type JSX, onCleanup, Show } from 'solid-js'
@@ -28,6 +29,7 @@ export interface DataGridToolbarProps {
 	onSaveViewOpen: (forceNew: boolean) => void
 	onExportOpen: () => void
 	onImportOpen: () => void
+	onAddNewRow: () => void
 	sidePanelToggle: JSX.Element
 	rowColoringOpen: boolean
 	onToggleRowColoring: () => void
@@ -220,6 +222,15 @@ export default function DataGridToolbar(props: DataGridToolbarProps) {
 									title={`${tabState().autoJoins.length} active join(s) — click to remove all`}
 								>
 									<Icon name="link" size={12} /> {tabState().autoJoins.length} Join{tabState().autoJoins.length > 1 ? 's' : ''}
+								</button>
+							</Show>
+							<Show when={!props.isReadOnly()}>
+								<button
+									class="data-grid__toolbar-btn"
+									onClick={props.onAddNewRow}
+									title="Add new row (Ctrl+Enter)"
+								>
+									<Plus size={12} /> Add Row
 								</button>
 							</Show>
 							<button

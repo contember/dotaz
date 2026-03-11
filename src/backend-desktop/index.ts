@@ -120,6 +120,8 @@ if (isMac) {
 				{ role: 'copy', accelerator: 'Cmd+C' },
 				{ role: 'paste', accelerator: 'Cmd+V' },
 				{ role: 'selectAll', accelerator: 'Cmd+A' },
+				{ type: 'divider' },
+				{ label: 'Add New Row', action: 'add-new-row' },
 			],
 		},
 		{

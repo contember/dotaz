@@ -49,6 +49,10 @@ export function registerQueryCommands(actions: AppCommandActions): void {
 			const tab = tabsStore.activeTab
 			if (tab?.type === 'sql-console') {
 				editorStore.executeQuery(tab.id)
+			} else if (tab?.type === 'data-grid') {
+				// On desktop, the native menu accelerator Cmd+Enter fires run-query
+				// regardless of context. Delegate to add-new-row when in data grid.
+				commandRegistry.execute('add-new-row')
 			}
 		},
 	})
