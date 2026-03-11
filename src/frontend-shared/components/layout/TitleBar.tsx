@@ -6,8 +6,13 @@ import { closeWindow, maximizeWindow, minimizeWindow } from '../../lib/rpc'
 import './TitleBar.css'
 
 const isMac = navigator.platform.startsWith('Mac')
+const isLinux = navigator.platform.startsWith('Linux')
 
 export default function TitleBar() {
+	// On Linux, we use native window decorations (titleBarStyle: 'default'),
+	// so the custom titlebar is not needed.
+	if (isLinux) return null
+
 	return (
 		<div class={`titlebar electrobun-webkit-app-region-drag ${isMac ? 'titlebar--mac' : ''}`}>
 			{/* On macOS, native traffic lights are rendered by the OS via hiddenInset titlebar */}

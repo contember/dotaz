@@ -82,6 +82,7 @@ const rpc = BrowserView.defineRPC<DotazRPC>({
 const url = await getMainViewUrl()
 
 const isMac = process.platform === 'darwin'
+const isLinux = process.platform === 'linux'
 
 // Set up native application menu (macOS only).
 // The Edit menu with roles is required for clipboard shortcuts (Cmd+C/V/X/A)
@@ -180,17 +181,20 @@ if (isMac) {
 
 const mainWindow = new BrowserWindow({
 	title: 'Dotaz',
-	titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
+	titleBarStyle: isMac ? 'hiddenInset' : isLinux ? 'default' : 'hidden',
 	transparent: false,
 	url,
 	rpc,
 	frame: {
 		width: 1280,
 		height: 800,
-		x: 200,
-		y: 200,
+		x: 0,
+		y: 0,
 	},
 })
+
+// Maximize on startup so the window appears on the primary monitor at full size
+mainWindow.maximize()
 
 // Wire up BE→FE message emitter after window creation
 emitToFrontend = (channel: string, payload: unknown) => {
