@@ -93,6 +93,7 @@ export interface ConnectionInfo {
 	readOnly?: boolean
 	color?: string
 	groupName?: string
+	serverManaged?: boolean
 	createdAt: string
 	updatedAt: string
 }

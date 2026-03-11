@@ -92,55 +92,60 @@ export function connectionMenuItems(conn: ConnectionInfo, callbacks: TreeMenuCal
 			label: conn.readOnly ? 'Disable Read-Only' : 'Enable Read-Only',
 			action: () => connectionsStore.setReadOnly(conn.id, !conn.readOnly),
 		},
-		'separator',
-		{
-			label: 'Move to Group...',
-			action: () => {
-				const existingGroups = Array.from(
-					new Set(
-						connectionsStore.connections
-							.map((c) => c.groupName)
-							.filter((g): g is string => !!g && g !== conn.groupName),
-					),
-				).sort()
-
-				const options = existingGroups.length > 0
-					? `Existing groups: ${existingGroups.join(', ')}\n\nEnter group name (or leave empty to remove from group):`
-					: 'Enter group name:'
-
-				const name = window.prompt(options, conn.groupName ?? '')
-				if (name !== null) {
-					connectionsStore.setConnectionGroup(conn.id, name.trim() || null)
-				}
-			},
-		},
-		'separator',
-		{
-			label: 'Edit',
-			action: () => callbacks.onEditConnection(conn),
-		},
-		{
-			label: 'Duplicate',
-			action: () => {
-				connectionsStore.createConnection(
-					`${conn.name} (copy)`,
-					conn.config,
-				)
-			},
-		},
-		'separator',
-		{
-			label: 'Delete',
-			action: () => {
-				const confirmed = window.confirm(
-					`Delete connection "${conn.name}"? This cannot be undone.`,
-				)
-				if (confirmed) {
-					connectionsStore.deleteConnection(conn.id)
-				}
-			},
-		},
 	)
+
+	if (!conn.serverManaged) {
+		items.push(
+			'separator',
+			{
+				label: 'Move to Group...',
+				action: () => {
+					const existingGroups = Array.from(
+						new Set(
+							connectionsStore.connections
+								.map((c) => c.groupName)
+								.filter((g): g is string => !!g && g !== conn.groupName),
+						),
+					).sort()
+
+					const options = existingGroups.length > 0
+						? `Existing groups: ${existingGroups.join(', ')}\n\nEnter group name (or leave empty to remove from group):`
+						: 'Enter group name:'
+
+					const name = window.prompt(options, conn.groupName ?? '')
+					if (name !== null) {
+						connectionsStore.setConnectionGroup(conn.id, name.trim() || null)
+					}
+				},
+			},
+			'separator',
+			{
+				label: 'Edit',
+				action: () => callbacks.onEditConnection(conn),
+			},
+			{
+				label: 'Duplicate',
+				action: () => {
+					connectionsStore.createConnection(
+						`${conn.name} (copy)`,
+						conn.config,
+					)
+				},
+			},
+			'separator',
+			{
+				label: 'Delete',
+				action: () => {
+					const confirmed = window.confirm(
+						`Delete connection "${conn.name}"? This cannot be undone.`,
+					)
+					if (confirmed) {
+						connectionsStore.deleteConnection(conn.id)
+					}
+				},
+			},
+		)
+	}
 
 	return items
 }

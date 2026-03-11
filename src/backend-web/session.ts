@@ -10,6 +10,7 @@ import type { ImportStreamParams } from '@dotaz/backend-shared/services/import-s
 import { QueryExecutor } from '@dotaz/backend-shared/services/query-executor'
 import type { SessionManager } from '@dotaz/backend-shared/services/session-manager'
 import { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
+import { ENV_CONNECTION_ID, parseEnvConnection } from './env-connection'
 
 export const SESSION_TTL_MS = 5 * 60 * 1000 // 5 minutes
 export const TOKEN_EXPIRY_MS = 5 * 60 * 1000 // 5 minutes
@@ -23,6 +24,7 @@ export interface Session {
 	queryExecutor: QueryExecutor
 	handlers: ReturnType<typeof createSharedHandlers>
 	sessionManager: SessionManager
+	serverManagedIds: Set<string>
 	unsubscribe: () => void
 	ws: { send(data: string): void } | null
 	activeStreams: number
@@ -30,6 +32,7 @@ export interface Session {
 	ttlTimer: ReturnType<typeof setTimeout> | null
 }
 
+const envConnection = parseEnvConnection()
 const sessions = new Map<string, Session>()
 
 export function getSessions(): Map<string, Session> {
@@ -56,6 +59,26 @@ export function createSession(
 		encryption,
 		emitMessage,
 	})
+
+	const serverManagedIds = new Set<string>()
+
+	// Auto-create env connection if DATABASE_URL is set
+	if (envConnection) {
+		appDb.createConnectionWithId(ENV_CONNECTION_ID, {
+			name: envConnection.name,
+			config: envConnection.config,
+		})
+		serverManagedIds.add(ENV_CONNECTION_ID)
+
+		// Wrap connections.list to add serverManaged flag
+		const originalList = handlers['connections.list']
+		;(handlers as Record<string, unknown>)['connections.list'] = () => {
+			const list = originalList()
+			return list.map(conn =>
+				serverManagedIds.has(conn.id) ? { ...conn, serverManaged: true } : conn,
+			)
+		}
+	}
 
 	const unsubscribe = connectionManager.onStatusChanged((event) => {
 		if (session.ws) {
@@ -92,6 +115,7 @@ export function createSession(
 		queryExecutor,
 		handlers,
 		sessionManager,
+		serverManagedIds,
 		unsubscribe,
 		ws,
 		activeStreams: 0,
@@ -99,6 +123,14 @@ export function createSession(
 		ttlTimer: null,
 	}
 	sessions.set(id, session)
+
+	// Fire-and-forget auto-connect for env connection
+	if (envConnection) {
+		connectionManager.connect(ENV_CONNECTION_ID).catch((err) => {
+			console.warn('DATABASE_URL auto-connect failed:', err?.message ?? err)
+		})
+	}
+
 	return session
 }
 

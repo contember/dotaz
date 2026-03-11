@@ -135,6 +135,21 @@ async function deactivateDatabase(connectionId: string, database: string) {
 
 async function loadConnections() {
 	const list = await storage.listConnections()
+
+	// In web mode, discover server-managed connections (e.g. from DATABASE_URL)
+	if (storage.passConfigOnConnect) {
+		try {
+			const backendConns = await rpc.connections.list()
+			for (const sc of backendConns) {
+				if (sc.serverManaged && !list.find(c => c.id === sc.id)) {
+					list.push(sc)
+				}
+			}
+		} catch {
+			// Backend may not be ready yet, ignore
+		}
+	}
+
 	setState('connections', list)
 	// Load schema trees for connections the backend reports as already connected
 	// (e.g. after a frontend-only reload while the backend stayed alive)
@@ -253,11 +268,24 @@ async function initializeDemo(): Promise<ConnectionInfo> {
 }
 
 async function connectTo(id: string, password?: string) {
+	const conn = state.connections.find((c) => c.id === id)
+
+	// Server-managed connections: backend already has the config
+	if (conn?.serverManaged) {
+		updateConnectionState(id, 'connecting')
+		try {
+			await rpc.connections.connect({ connectionId: id })
+		} catch (err) {
+			const message = friendlyErrorMessage(err)
+			updateConnectionState(id, 'error', message)
+		}
+		return
+	}
+
 	// If adapter needs config on connect and password not remembered, prompt for it
 	if (storage.passConfigOnConnect && !password) {
 		const remember = await storage.getRememberPassword(id)
 		if (!remember) {
-			const conn = state.connections.find((c) => c.id === id)
 			const connName = conn?.name ?? 'Connection'
 			const prompted = await promptForPassword(id, connName)
 			if (!prompted) return // User cancelled
@@ -269,7 +297,6 @@ async function connectTo(id: string, password?: string) {
 	try {
 		if (storage.passConfigOnConnect) {
 			const encryptedConfig = await storage.getEncryptedConfig(id)
-			const conn = state.connections.find((c) => c.id === id)
 			await rpc.connections.connect({ connectionId: id, password, encryptedConfig, name: conn?.name })
 		} else {
 			await rpc.connections.connect({ connectionId: id, password })
