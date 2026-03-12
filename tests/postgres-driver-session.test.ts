@@ -263,6 +263,38 @@ describe('backward compatibility', () => {
 	})
 })
 
+describe('commit/rollback failure releases DEFAULT_SESSION', () => {
+	test('failed commit releases connection and cleans up session', async () => {
+		// Create a table with a deferred unique constraint — violation is only
+		// detected at COMMIT time, which makes the COMMIT itself throw.
+		await driver.execute(`
+			CREATE TABLE IF NOT EXISTS _test_deferred (
+				id SERIAL PRIMARY KEY,
+				val TEXT NOT NULL UNIQUE DEFERRABLE INITIALLY DEFERRED
+			)
+		`)
+		try {
+			await driver.beginTransaction()
+			await driver.execute(`INSERT INTO _test_deferred (val) VALUES ('dup')`)
+			await driver.execute(`INSERT INTO _test_deferred (val) VALUES ('dup')`)
+
+			// COMMIT must fail (deferred unique constraint violation)
+			await expect(driver.commit()).rejects.toThrow()
+
+			// Session state must be cleaned up despite the error
+			expect(driver.inTransaction()).toBe(false)
+
+			// Driver must still be usable — if the connection leaked,
+			// beginTransaction() would reuse the broken session or the pool
+			// would be exhausted.
+			await driver.beginTransaction()
+			await driver.rollback()
+		} finally {
+			await driver.execute('DROP TABLE IF EXISTS _test_deferred')
+		}
+	})
+})
+
 describe('disconnect releases all sessions', () => {
 	test('disconnect cleans up sessions', async () => {
 		const d2 = new PostgresDriver()

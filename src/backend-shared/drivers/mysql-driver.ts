@@ -523,12 +523,17 @@ export class MysqlDriver implements DatabaseDriver {
 		const id = sessionId ?? DEFAULT_SESSION
 		const session = this.sessions.get(id)
 		if (!session) throw new Error('No active transaction')
-		await session.conn.unsafe('COMMIT')
-		session.txActive = false
-		// If __default__ session, release it after commit
-		if (id === DEFAULT_SESSION) {
-			session.conn.release()
-			this.sessions.delete(DEFAULT_SESSION)
+		try {
+			await session.conn.unsafe('COMMIT')
+		} catch (err) {
+			try { await session.conn.unsafe('ROLLBACK') } catch {}
+			throw err
+		} finally {
+			session.txActive = false
+			if (id === DEFAULT_SESSION) {
+				session.conn.release()
+				this.sessions.delete(DEFAULT_SESSION)
+			}
 		}
 	}
 
@@ -537,12 +542,14 @@ export class MysqlDriver implements DatabaseDriver {
 		const id = sessionId ?? DEFAULT_SESSION
 		const session = this.sessions.get(id)
 		if (!session) throw new Error('No active transaction')
-		await session.conn.unsafe('ROLLBACK')
-		session.txActive = false
-		// If __default__ session, release it after rollback
-		if (id === DEFAULT_SESSION) {
-			session.conn.release()
-			this.sessions.delete(DEFAULT_SESSION)
+		try {
+			await session.conn.unsafe('ROLLBACK')
+		} finally {
+			session.txActive = false
+			if (id === DEFAULT_SESSION) {
+				session.conn.release()
+				this.sessions.delete(DEFAULT_SESSION)
+			}
 		}
 	}
 
