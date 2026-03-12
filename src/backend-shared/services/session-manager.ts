@@ -24,10 +24,12 @@ export class SessionManager {
 	// Track when we first observed a session with an active transaction
 	private txFirstSeen = new Map<string, number>()
 	private idleCheckTimer: ReturnType<typeof setInterval> | null = null
+	private onTransactionRollback?: (connectionId: string, database?: string) => void
 
-	constructor(cm: ConnectionManager, appDb: AppDatabase) {
+	constructor(cm: ConnectionManager, appDb: AppDatabase, onTransactionRollback?: (connectionId: string, database?: string) => void) {
 		this.cm = cm
 		this.appDb = appDb
+		this.onTransactionRollback = onTransactionRollback
 		this.startIdleTransactionCheck()
 	}
 
@@ -215,6 +217,7 @@ export class SessionManager {
 							try {
 								const driver = this.cm.getDriver(info.connectionId, info.database)
 								await driver.rollback(sessionId)
+								this.onTransactionRollback?.(info.connectionId, info.database)
 							} catch { /* best effort */ }
 							this.txFirstSeen.delete(sessionId)
 						}
@@ -247,6 +250,7 @@ export class SessionManager {
 						try {
 							const driver = this.cm.getDriver(conn.id)
 							await driver.rollback()
+							this.onTransactionRollback?.(conn.id)
 						} catch { /* best effort */ }
 						this.txFirstSeen.delete(key)
 					}

@@ -27,7 +27,9 @@ export function createHandlers(
 ) {
 	const db = requireAppDb(appDb)
 	const queryExecutor = qe ?? new QueryExecutor(cm, undefined, db)
-	const sessionManager = new SessionManager(cm, db)
+	const sessionManager = new SessionManager(cm, db, (connectionId, database) => {
+		queryExecutor.sessionLog.resetPendingCount(connectionId, database)
+	})
 	const adapter = new BackendAdapter(cm, queryExecutor, db, {
 		encryption: opts?.encryption,
 		Utils,
