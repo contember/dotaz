@@ -741,7 +741,7 @@ export class PostgresDriver implements DatabaseDriver {
 					if (rows.length < batchSize) break
 				}
 			} finally {
-				await conn.unsafe(`CLOSE ${cursorId}`)
+				try { await conn.unsafe(`CLOSE ${cursorId}`) } catch { /* cursor cleaned up on ROLLBACK/disconnect */ }
 			}
 			await conn.unsafe('COMMIT')
 		} catch (err) {
@@ -755,7 +755,6 @@ export class PostgresDriver implements DatabaseDriver {
 				session.iterating = false
 			}
 			if (ownConn) {
-				try { await (conn as ReservedSQL).unsafe('ROLLBACK') } catch { /* already committed or rolled back */ }
 				try { await (conn as ReservedSQL).unsafe('DISCARD ALL') } catch { /* best effort */ }
 				;(conn as ReservedSQL).release()
 			}

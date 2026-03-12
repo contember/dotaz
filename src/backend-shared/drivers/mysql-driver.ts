@@ -511,7 +511,6 @@ export class MysqlDriver implements DatabaseDriver {
 				session.iterating = false
 			}
 			if (ownConn) {
-				try { await (conn as ReservedSQL).unsafe('ROLLBACK') } catch { /* already committed or rolled back */ }
 				try { await (conn as ReservedSQL).unsafe('UNLOCK TABLES') } catch { /* best effort */ }
 				;(conn as ReservedSQL).release()
 			}
