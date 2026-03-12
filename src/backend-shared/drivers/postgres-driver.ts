@@ -223,7 +223,7 @@ export class PostgresDriver implements DatabaseDriver {
 		try {
 			await session.conn.unsafe('DISCARD ALL')
 		} catch { /* best effort — connection may be broken */ }
-		session.conn.release()
+		try { session.conn.release() } catch { /* broken connection */ }
 		this.sessions.delete(sessionId)
 	}
 
