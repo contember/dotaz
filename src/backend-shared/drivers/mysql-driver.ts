@@ -566,14 +566,18 @@ export class MysqlDriver implements DatabaseDriver {
 		if (session.iterating) throw new Error('Cannot commit during active iteration')
 		try {
 			await session.conn.unsafe('COMMIT')
+			session.txActive = false
 		} catch (err) {
 			if (isConnectionLevelError(err)) {
+				session.txActive = false
 				throw new DatabaseError('COMMIT_UNCERTAIN', 'Connection lost during COMMIT — the transaction may have been committed. Verify your data before retrying.', { cause: err })
 			}
-			try { await session.conn.unsafe('ROLLBACK') } catch {}
+			try {
+				await session.conn.unsafe('ROLLBACK')
+				session.txActive = false
+			} catch { /* ROLLBACK failed — leave txActive true so session is known-dirty */ }
 			throw err
 		} finally {
-			session.txActive = false
 			if (id === DEFAULT_SESSION) {
 				try { await this.resetConnection(session.conn) } catch { /* connection may be broken */ }
 				try { session.conn.release() } catch { /* connection may be broken */ }
@@ -590,8 +594,13 @@ export class MysqlDriver implements DatabaseDriver {
 		if (session.iterating) throw new Error('Cannot rollback during active iteration')
 		try {
 			await session.conn.unsafe('ROLLBACK')
-		} finally {
 			session.txActive = false
+		} catch (err) {
+			if (isConnectionLevelError(err)) {
+				session.txActive = false
+			}
+			throw err
+		} finally {
 			if (id === DEFAULT_SESSION) {
 				try { await this.resetConnection(session.conn) } catch { /* connection may be broken */ }
 				try { session.conn.release() } catch { /* connection may be broken */ }
