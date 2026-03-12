@@ -194,32 +194,44 @@ export class BackendAdapter implements RpcAdapter {
 		sessionId?: string,
 	): Promise<QueryResult[]> {
 		const driver = this.cm.getDriver(connectionId, database)
-		const inExistingTx = driver.inTransaction(sessionId)
-		if (!inExistingTx) {
-			await driver.beginTransaction(sessionId)
+
+		// Reserve ephemeral session for isolation when no sessionId provided,
+		// avoiding races on the shared __default__ singleton.
+		let ephemeralSessionId: string | undefined
+		if (!sessionId) {
+			ephemeralSessionId = `__ephemeral_${crypto.randomUUID()}`
+			await driver.reserveSession(ephemeralSessionId)
 		}
+		const effectiveSessionId = sessionId ?? ephemeralSessionId!
+
+		const inExistingTx = driver.inTransaction(effectiveSessionId)
 		try {
+			if (!inExistingTx) {
+				await driver.beginTransaction(effectiveSessionId)
+			}
 			const results: QueryResult[] = []
 			for (const stmt of statements) {
 				const start = performance.now()
-				const result = sessionId !== undefined
-					? await driver.execute(stmt.sql, stmt.params, sessionId)
-					: await driver.execute(stmt.sql, stmt.params)
+				const result = await driver.execute(stmt.sql, stmt.params, effectiveSessionId)
 				results.push({ ...result, durationMs: Math.round(performance.now() - start) })
 			}
 			if (!inExistingTx) {
-				await driver.commit(sessionId)
+				await driver.commit(effectiveSessionId)
 			}
 			return results
 		} catch (err) {
 			if (!inExistingTx) {
 				try {
-					await driver.rollback(sessionId)
+					await driver.rollback(effectiveSessionId)
 				} catch (rbErr) {
 					console.debug('Rollback after error failed:', rbErr instanceof Error ? rbErr.message : rbErr)
 				}
 			}
 			throw err
+		} finally {
+			if (ephemeralSessionId) {
+				try { await driver.releaseSession(ephemeralSessionId) } catch { /* best effort */ }
+			}
 		}
 	}
 
