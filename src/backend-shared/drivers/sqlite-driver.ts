@@ -300,18 +300,28 @@ export class SqliteDriver implements DatabaseDriver {
 		_sessionId?: string,
 	): AsyncGenerator<Record<string, unknown>[]> {
 		this.ensureConnected()
-		let offset = 0
-		while (true) {
-			if (signal?.aborted) {
-				throw new DOMException('Aborted', 'AbortError')
+		if (this.txActive) throw new Error('Cannot iterate with an active transaction')
+		await this.db!.unsafe('BEGIN')
+		try {
+			let offset = 0
+			while (true) {
+				if (signal?.aborted) {
+					throw new DOMException('Aborted', 'AbortError')
+				}
+				const pagedSql = `${sql} LIMIT ? OFFSET ?`
+				const result = await this.db!.unsafe(pagedSql, [...(params ?? []), batchSize, offset])
+				const rows = [...result] as Record<string, unknown>[]
+				if (rows.length === 0) break
+				yield rows
+				if (rows.length < batchSize) break
+				offset += batchSize
 			}
-			const pagedSql = `${sql} LIMIT ? OFFSET ?`
-			const result = await this.db!.unsafe(pagedSql, [...(params ?? []), batchSize, offset])
-			const rows = [...result] as Record<string, unknown>[]
-			if (rows.length === 0) break
-			yield rows
-			if (rows.length < batchSize) break
-			offset += batchSize
+			await this.db!.unsafe('COMMIT')
+		} catch (err) {
+			try { await this.db!.unsafe('ROLLBACK') } catch { /* ignore */ }
+			throw err
+		} finally {
+			try { await this.db!.unsafe('ROLLBACK') } catch { /* already committed or rolled back */ }
 		}
 	}
 

@@ -459,19 +459,33 @@ export class MysqlDriver implements DatabaseDriver {
 	): AsyncGenerator<Record<string, unknown>[]> {
 		this.ensureConnected()
 		const session = this.resolveSession(sessionId)
-		const conn = session ? session.conn : this.db!
-		let offset = 0
-		while (true) {
-			if (signal?.aborted) {
-				throw new DOMException('Aborted', 'AbortError')
+		if (session?.txActive) throw new Error('Cannot iterate on a session with an active transaction')
+		const conn = session ? session.conn : await this.db!.reserve()
+		const ownConn = !session
+		try {
+			await conn.unsafe('START TRANSACTION WITH CONSISTENT SNAPSHOT')
+			let offset = 0
+			while (true) {
+				if (signal?.aborted) {
+					throw new DOMException('Aborted', 'AbortError')
+				}
+				const pagedSql = `${sql} LIMIT ? OFFSET ?`
+				const result = await conn.unsafe(pagedSql, [...(params ?? []), batchSize, offset])
+				const rows = [...result] as Record<string, unknown>[]
+				if (rows.length === 0) break
+				yield rows
+				if (rows.length < batchSize) break
+				offset += batchSize
 			}
-			const pagedSql = `${sql} LIMIT ? OFFSET ?`
-			const result = await conn.unsafe(pagedSql, [...(params ?? []), batchSize, offset])
-			const rows = [...result] as Record<string, unknown>[]
-			if (rows.length === 0) break
-			yield rows
-			if (rows.length < batchSize) break
-			offset += batchSize
+			await conn.unsafe('COMMIT')
+		} catch (err) {
+			try { await conn.unsafe('ROLLBACK') } catch { /* ignore */ }
+			throw err
+		} finally {
+			if (ownConn) {
+				try { await (conn as ReservedSQL).unsafe('ROLLBACK') } catch { /* already committed or rolled back */ }
+				;(conn as ReservedSQL).release()
+			}
 		}
 	}
 
