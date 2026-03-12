@@ -108,6 +108,9 @@ export class LoggingDriver implements DatabaseDriver {
 	inTransaction(sessionId?: string): boolean {
 		return this.inner.inTransaction(sessionId)
 	}
+	isIterating(sessionId?: string): boolean {
+		return this.inner.isIterating(sessionId)
+	}
 	getDriverType(): 'postgresql' | 'sqlite' | 'mysql' {
 		return (this.inner as any).getDriverType()
 	}

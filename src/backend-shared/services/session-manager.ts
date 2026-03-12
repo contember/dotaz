@@ -221,13 +221,18 @@ export class SessionManager {
 			for (const [, connSessions] of this.sessions) {
 				for (const [sessionId, info] of connSessions) {
 					let inTx = false
+					let iterating = false
 					try {
 						const driver = this.cm.getDriver(info.connectionId, info.database)
 						inTx = driver.inTransaction(sessionId)
+						iterating = driver.isIterating(sessionId)
 					} catch {
 						this.txFirstSeen.delete(sessionId)
 						continue
 					}
+
+					// Skip sessions that are actively iterating — rollback would fail
+					if (iterating) continue
 
 					if (inTx) {
 						if (!this.txFirstSeen.has(sessionId)) {
@@ -256,13 +261,18 @@ export class SessionManager {
 				if (conn.state !== 'connected') continue
 				const key = `${DEFAULT_TX_KEY}:${conn.id}`
 				let inTx = false
+				let iterating = false
 				try {
 					const driver = this.cm.getDriver(conn.id)
 					inTx = driver.inTransaction()
+					iterating = driver.isIterating()
 				} catch {
 					this.txFirstSeen.delete(key)
 					continue
 				}
+
+				// Skip if actively iterating — rollback would fail
+				if (iterating) continue
 
 				if (inTx) {
 					if (!this.txFirstSeen.has(key)) {

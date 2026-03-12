@@ -638,6 +638,12 @@ export class MysqlDriver implements DatabaseDriver {
 		return session?.txActive ?? false
 	}
 
+	isIterating(sessionId?: string): boolean {
+		const id = sessionId ?? DEFAULT_SESSION
+		const session = this.sessions.get(id)
+		return session?.iterating ?? false
+	}
+
 	getDriverType(): 'mysql' {
 		return 'mysql'
 	}
