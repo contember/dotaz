@@ -463,6 +463,9 @@ export class SqliteDriver implements DatabaseDriver {
 
 	private ensureSessionCanExecute(sessionId?: string): void {
 		if (!this.txActive) return
+		if (this.iterating) {
+			throw new Error('Cannot execute: iteration is in progress on the shared connection')
+		}
 		// Sessionless TX: block all session-scoped callers
 		if (this.txOwnerSession === null) {
 			if (sessionId !== undefined) {
