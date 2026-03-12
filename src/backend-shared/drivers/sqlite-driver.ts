@@ -78,6 +78,7 @@ export class SqliteDriver implements DatabaseDriver {
 	private txActive = false
 	private txOwnerSession: string | null = null
 	private sessionIds = new Set<string>()
+	private iterating = false
 	/** Separate read-only connection used by iterate() so it doesn't block the main connection. */
 	private iterateDb: SQL | null = null
 
@@ -334,6 +335,7 @@ export class SqliteDriver implements DatabaseDriver {
 			if (this.txActive) throw new Error('Cannot iterate with an active transaction')
 			this.txActive = true
 			this.txOwnerSession = sessionId ?? null
+			this.iterating = true
 		}
 		await readConn.unsafe('BEGIN')
 		try {
@@ -357,6 +359,7 @@ export class SqliteDriver implements DatabaseDriver {
 		} finally {
 			try { await readConn.unsafe('ROLLBACK') } catch { /* ignore */ }
 			if (useMainConn) {
+				this.iterating = false
 				this.txActive = false
 				this.txOwnerSession = null
 			}
@@ -412,6 +415,7 @@ export class SqliteDriver implements DatabaseDriver {
 	async commit(sessionId?: string): Promise<void> {
 		this.ensureConnected()
 		this.ensureSessionOwnsTx(sessionId)
+		if (this.iterating) throw new Error('Cannot commit during active iteration')
 		await this.db!.unsafe('COMMIT')
 		this.txActive = false
 		this.txOwnerSession = null
@@ -420,6 +424,7 @@ export class SqliteDriver implements DatabaseDriver {
 	async rollback(sessionId?: string): Promise<void> {
 		this.ensureConnected()
 		this.ensureSessionOwnsTx(sessionId)
+		if (this.iterating) throw new Error('Cannot rollback during active iteration')
 		try {
 			await this.db!.unsafe('ROLLBACK')
 		} finally {
