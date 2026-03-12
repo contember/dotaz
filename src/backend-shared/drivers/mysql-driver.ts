@@ -165,11 +165,7 @@ export class MysqlDriver implements DatabaseDriver {
 					await session.conn.unsafe('ROLLBACK')
 				} catch { /* ignore */ }
 			}
-			try {
-				await session.conn.unsafe('RESET CONNECTION')
-			} catch {
-				try { await session.conn.unsafe('UNLOCK TABLES') } catch { /* best effort */ }
-			}
+			await this.resetConnection(session.conn)
 			session.conn.release()
 		}
 		this.sessions.clear()
@@ -204,12 +200,7 @@ export class MysqlDriver implements DatabaseDriver {
 				await session.conn.unsafe('ROLLBACK')
 			} catch { /* ignore */ }
 		}
-		try {
-			await session.conn.unsafe('RESET CONNECTION')
-		} catch {
-			// Fallback for older MySQL versions without RESET CONNECTION
-			try { await session.conn.unsafe('UNLOCK TABLES') } catch { /* best effort */ }
-		}
+		await this.resetConnection(session.conn)
 		session.conn.release()
 		this.sessions.delete(sessionId)
 	}
@@ -511,7 +502,7 @@ export class MysqlDriver implements DatabaseDriver {
 				session.iterating = false
 			}
 			if (ownConn) {
-				try { await (conn as ReservedSQL).unsafe('UNLOCK TABLES') } catch { /* best effort */ }
+				await this.resetConnection(conn as ReservedSQL)
 				;(conn as ReservedSQL).release()
 			}
 		}
@@ -628,6 +619,19 @@ export class MysqlDriver implements DatabaseDriver {
 
 	placeholder(_index: number): string {
 		return '?'
+	}
+
+	/** Reset all session state on a connection before returning it to the pool. */
+	private async resetConnection(conn: ReservedSQL): Promise<void> {
+		try {
+			await conn.unsafe('RESET CONNECTION')
+		} catch {
+			// Fallback for older MySQL versions without RESET CONNECTION
+			const fallbacks = ['UNLOCK TABLES', 'ROLLBACK']
+			for (const sql of fallbacks) {
+				try { await conn.unsafe(sql) } catch { /* best effort */ }
+			}
+		}
 	}
 
 	private ensureConnected(): void {
