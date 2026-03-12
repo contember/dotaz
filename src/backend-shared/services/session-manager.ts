@@ -6,6 +6,7 @@ import type { ConnectionManager } from './connection-manager'
 export type { SessionInfo }
 
 const IDLE_CHECK_INTERVAL_MS = 30_000
+const DEFAULT_TX_KEY = '__default_tx__'
 
 /**
  * Manages the lifecycle of pinned sessions — reserved database connections
@@ -221,6 +222,37 @@ export class SessionManager {
 				} else {
 					this.txFirstSeen.delete(sessionId)
 				}
+			}
+		}
+
+		// Also check default (sessionless) transactions on each connected driver
+		for (const conn of this.cm.listConnections()) {
+			if (conn.state !== 'connected') continue
+			const key = `${DEFAULT_TX_KEY}:${conn.id}`
+			let inTx = false
+			try {
+				const driver = this.cm.getDriver(conn.id)
+				inTx = driver.inTransaction()
+			} catch {
+				this.txFirstSeen.delete(key)
+				continue
+			}
+
+			if (inTx) {
+				if (!this.txFirstSeen.has(key)) {
+					this.txFirstSeen.set(key, now)
+				} else {
+					const elapsed = now - this.txFirstSeen.get(key)!
+					if (elapsed >= timeoutMs) {
+						try {
+							const driver = this.cm.getDriver(conn.id)
+							await driver.rollback()
+						} catch { /* best effort */ }
+						this.txFirstSeen.delete(key)
+					}
+				}
+			} else {
+				this.txFirstSeen.delete(key)
 			}
 		}
 	}
