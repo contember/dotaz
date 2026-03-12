@@ -136,6 +136,8 @@ export class MysqlDriver implements DatabaseDriver {
 	private connected = false
 	private sessions = new Map<string, SessionState>()
 	private poolActiveQueries = new Map<symbol, ReturnType<SQL['unsafe']>>()
+	/** Server's global default isolation level, queried on connect. */
+	private defaultIsolationLevel = 'REPEATABLE READ'
 
 	async connect(config: ConnectionConfig): Promise<void> {
 		if (config.type !== 'mysql') {
@@ -147,9 +149,14 @@ export class MysqlDriver implements DatabaseDriver {
 			encodeURIComponent(config.database)
 		}`
 		this.db = new SQL({ url })
-		// Verify the connection works
+		// Verify the connection works and cache the server's default isolation level
 		try {
 			await this.db`SELECT 1`
+			const isoResult = await this.db.unsafe('SELECT @@GLOBAL.transaction_isolation AS level')
+			const level = [...isoResult][0]?.level as string | undefined
+			if (level) {
+				this.defaultIsolationLevel = level.replace(/-/g, ' ')
+			}
 		} catch (err) {
 			this.db = null
 			throw err instanceof DatabaseError ? err : mapMysqlError(err)
@@ -647,7 +654,7 @@ export class MysqlDriver implements DatabaseDriver {
 			const fallbacks = [
 				'ROLLBACK',
 				'UNLOCK TABLES',
-				'SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ',
+				`SET SESSION TRANSACTION ISOLATION LEVEL ${this.defaultIsolationLevel}`,
 				'SET NAMES utf8mb4',
 			]
 			for (const sql of fallbacks) {
