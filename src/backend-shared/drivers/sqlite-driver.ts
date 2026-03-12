@@ -461,7 +461,9 @@ export class SqliteDriver implements DatabaseDriver {
 	}
 
 	private ensureSessionOwnsTx(sessionId?: string): void {
-		if (!this.txActive) return
+		if (!this.txActive) {
+			throw new Error('No active transaction')
+		}
 		const callerOwns = sessionId === undefined
 			? this.txOwnerSession === null
 			: this.txOwnerSession === sessionId
