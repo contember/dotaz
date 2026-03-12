@@ -290,33 +290,47 @@ export class QueryExecutor {
 			}
 
 			// PostgreSQL / MySQL — use JSON format
-			const prefix = analyze
-				? 'EXPLAIN (ANALYZE, FORMAT JSON)'
-				: 'EXPLAIN (FORMAT JSON)'
+			const isMysql = driverType === 'mysql'
+			const prefix = isMysql
+				? (analyze ? 'EXPLAIN ANALYZE' : 'EXPLAIN FORMAT=JSON')
+				: (analyze ? 'EXPLAIN (ANALYZE, FORMAT JSON)' : 'EXPLAIN (FORMAT JSON)')
 			const result = effectiveSessionId !== undefined
 				? await driver.execute(`${prefix} ${sql}`, undefined, effectiveSessionId)
 				: await driver.execute(`${prefix} ${sql}`)
 			const durationMs = Math.round(performance.now() - start)
 
-			// PG returns a single row with a column named "QUERY PLAN"
+			// PG returns a single row with a column named "QUERY PLAN";
+			// MySQL EXPLAIN FORMAT=JSON returns "EXPLAIN" column;
+			// MySQL EXPLAIN ANALYZE returns a text plan (no JSON).
+			let plan: unknown
+			let nodes: ExplainNode[]
+			let rawText: string
+
+			if (isMysql && analyze) {
+				// MySQL EXPLAIN ANALYZE returns text rows, not JSON
+				rawText = result.rows.map((r) => Object.values(r)[0]).join('\n')
+				nodes = [{ operation: rawText, children: [] }]
+				return { nodes, rawText, durationMs }
+			}
+
 			const jsonStr = result.rows[0]?.['QUERY PLAN']
 				?? result.rows[0]?.EXPLAIN
 				?? JSON.stringify(result.rows)
-			const plan = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr
+			plan = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr
 			const planArray = Array.isArray(plan) ? plan : [plan]
-			const nodes = planArray.map((p: Record<string, unknown>) => parsePostgresNode(p.Plan as Record<string, unknown> ?? p))
+			nodes = planArray.map((p: Record<string, unknown>) => parsePostgresNode(p.Plan as Record<string, unknown> ?? p))
 
 			// Build raw text — re-run only for non-ANALYZE (no side effects).
 			// For ANALYZE, format the JSON result as text to avoid executing the query twice
 			// (EXPLAIN ANALYZE on DML would double the side effects).
-			let rawText: string
 			if (analyze) {
 				rawText = JSON.stringify(plan, null, 2)
 			} else {
 				try {
+					const textPrefix = isMysql ? 'EXPLAIN' : 'EXPLAIN'
 					const textResult = effectiveSessionId !== undefined
-						? await driver.execute(`EXPLAIN ${sql}`, undefined, effectiveSessionId)
-						: await driver.execute(`EXPLAIN ${sql}`)
+						? await driver.execute(`${textPrefix} ${sql}`, undefined, effectiveSessionId)
+						: await driver.execute(`${textPrefix} ${sql}`)
 					rawText = textResult.rows
 						.map((r) => Object.values(r)[0])
 						.join('\n')
