@@ -170,6 +170,10 @@ export class BackendAdapter implements RpcAdapter {
 	}
 
 	async deactivateDatabase(connectionId: string, database: string): Promise<void> {
+		if (this.sessionManager) {
+			await this.sessionManager.destroySessionsForDatabase(connectionId, database)
+			this.emitMessage?.('session.changed', { connectionId, sessions: this.sessionManager.listSessions(connectionId) })
+		}
 		await this.cm.deactivateDatabase(connectionId, database)
 	}
 

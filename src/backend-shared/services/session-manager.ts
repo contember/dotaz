@@ -95,6 +95,25 @@ export class SessionManager {
 		}
 	}
 
+	async destroySessionsForDatabase(connectionId: string, database: string): Promise<void> {
+		const connSessions = this.sessions.get(connectionId)
+		if (!connSessions) return
+		for (const [sessionId, info] of connSessions) {
+			if (info.database === database) {
+				try {
+					const driver = this.cm.getDriver(info.connectionId, info.database)
+					try { await driver.cancel(sessionId) } catch { /* best effort */ }
+					await driver.releaseSession(sessionId)
+				} catch { /* driver may already be disconnected */ }
+				this.txFirstSeen.delete(sessionId)
+				connSessions.delete(sessionId)
+			}
+		}
+		if (connSessions.size === 0) {
+			this.sessions.delete(connectionId)
+		}
+	}
+
 	listSessions(connectionId: string): SessionInfo[] {
 		const connSessions = this.sessions.get(connectionId)
 		if (!connSessions) return []
