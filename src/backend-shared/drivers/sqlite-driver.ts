@@ -73,10 +73,13 @@ function mapSqliteDataType(type: string): DatabaseDataType {
 
 export class SqliteDriver implements DatabaseDriver {
 	private db: SQL | null = null
+	private dbPath: string | null = null
 	private connected = false
 	private txActive = false
 	private txOwnerSession: string | null = null
 	private sessionIds = new Set<string>()
+	/** Separate read-only connection used by iterate() so it doesn't block the main connection. */
+	private iterateDb: SQL | null = null
 
 	async connect(config: ConnectionConfig): Promise<void> {
 		if (config.type !== 'sqlite') {
@@ -84,19 +87,26 @@ export class SqliteDriver implements DatabaseDriver {
 		}
 		try {
 			this.db = new SQL(`sqlite:${config.path}`)
+			this.dbPath = config.path
 			await this.db.unsafe('PRAGMA journal_mode = WAL')
 			await this.db.unsafe('PRAGMA foreign_keys = ON')
 		} catch (err) {
 			this.db = null
+			this.dbPath = null
 			throw err instanceof DatabaseError ? err : mapSqliteError(err)
 		}
 		this.connected = true
 	}
 
 	async disconnect(): Promise<void> {
+		if (this.iterateDb) {
+			try { await this.iterateDb.close() } catch { /* best effort */ }
+			this.iterateDb = null
+		}
 		if (this.db) {
 			await this.db.close()
 			this.db = null
+			this.dbPath = null
 			this.connected = false
 			this.txActive = false
 			this.txOwnerSession = null
@@ -312,14 +322,13 @@ export class SqliteDriver implements DatabaseDriver {
 		params?: unknown[],
 		batchSize = 1000,
 		signal?: AbortSignal,
-		sessionId?: string,
+		_sessionId?: string,
 	): AsyncGenerator<Record<string, unknown>[]> {
 		this.ensureConnected()
-		this.ensureSessionCanExecute(sessionId)
-		if (this.txActive) throw new Error('Cannot iterate with an active transaction')
-		this.txActive = true
-		this.txOwnerSession = sessionId ?? null
-		await this.db!.unsafe('BEGIN')
+		// Use a separate read-only connection so iteration doesn't block
+		// the main connection (WAL mode allows concurrent readers).
+		const readConn = this.getIterateDb()
+		await readConn.unsafe('BEGIN')
 		try {
 			let offset = 0
 			while (true) {
@@ -327,23 +336,28 @@ export class SqliteDriver implements DatabaseDriver {
 					throw new DOMException('Aborted', 'AbortError')
 				}
 				const pagedSql = `${sql} LIMIT ? OFFSET ?`
-				const result = await this.db!.unsafe(pagedSql, [...(params ?? []), batchSize, offset])
+				const result = await readConn.unsafe(pagedSql, [...(params ?? []), batchSize, offset])
 				const rows = [...result] as Record<string, unknown>[]
 				if (rows.length === 0) break
 				yield rows
 				if (rows.length < batchSize) break
 				offset += batchSize
 			}
-			await this.db!.unsafe('COMMIT')
+			await readConn.unsafe('COMMIT')
 		} catch (err) {
 			try {
-				await this.db!.unsafe('ROLLBACK')
+				await readConn.unsafe('ROLLBACK')
 			} catch { /* ignore */ }
 			throw err
-		} finally {
-			this.txActive = false
-			this.txOwnerSession = null
 		}
+	}
+
+	/** Lazily open a separate read-only connection for iterate(). */
+	private getIterateDb(): SQL {
+		if (!this.iterateDb) {
+			this.iterateDb = new SQL(`sqlite:${this.dbPath}`)
+		}
+		return this.iterateDb
 	}
 
 	async importBatch(
