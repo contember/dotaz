@@ -440,6 +440,10 @@ export class SqliteDriver implements DatabaseDriver {
 		return this.txActive && this.txOwnerSession === null
 	}
 
+	isIterating(_sessionId?: string): boolean {
+		return this.iterating
+	}
+
 	getDriverType(): 'sqlite' {
 		return 'sqlite'
 	}
