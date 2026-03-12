@@ -691,6 +691,7 @@ export class PostgresDriver implements DatabaseDriver {
 
 		const conn = session ? session.conn : await this.db!.reserve()
 		const ownConn = !session // we own the connection if not using a session
+		if (session) session.txActive = true
 		try {
 			await conn.unsafe('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
 			await conn.unsafe(
@@ -720,6 +721,7 @@ export class PostgresDriver implements DatabaseDriver {
 			} catch { /* ignore rollback errors */ }
 			throw err
 		} finally {
+			if (session) session.txActive = false
 			if (ownConn) {
 				try { await (conn as ReservedSQL).unsafe('ROLLBACK') } catch { /* already committed or rolled back */ }
 				;(conn as ReservedSQL).release()

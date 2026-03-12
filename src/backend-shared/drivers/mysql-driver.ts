@@ -462,6 +462,7 @@ export class MysqlDriver implements DatabaseDriver {
 		if (session?.txActive) throw new Error('Cannot iterate on a session with an active transaction')
 		const conn = session ? session.conn : await this.db!.reserve()
 		const ownConn = !session
+		if (session) session.txActive = true
 		try {
 			await conn.unsafe('START TRANSACTION WITH CONSISTENT SNAPSHOT')
 			let offset = 0
@@ -482,6 +483,7 @@ export class MysqlDriver implements DatabaseDriver {
 			try { await conn.unsafe('ROLLBACK') } catch { /* ignore */ }
 			throw err
 		} finally {
+			if (session) session.txActive = false
 			if (ownConn) {
 				try { await (conn as ReservedSQL).unsafe('ROLLBACK') } catch { /* already committed or rolled back */ }
 				;(conn as ReservedSQL).release()

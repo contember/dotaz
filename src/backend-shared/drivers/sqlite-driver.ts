@@ -310,6 +310,8 @@ export class SqliteDriver implements DatabaseDriver {
 		this.ensureConnected()
 		this.ensureSessionCanExecute(sessionId)
 		if (this.txActive) throw new Error('Cannot iterate with an active transaction')
+		this.txActive = true
+		this.txOwnerSession = sessionId ?? null
 		await this.db!.unsafe('BEGIN')
 		try {
 			let offset = 0
@@ -330,6 +332,8 @@ export class SqliteDriver implements DatabaseDriver {
 			try { await this.db!.unsafe('ROLLBACK') } catch { /* ignore */ }
 			throw err
 		} finally {
+			this.txActive = false
+			this.txOwnerSession = null
 			try { await this.db!.unsafe('ROLLBACK') } catch { /* already committed or rolled back */ }
 		}
 	}
