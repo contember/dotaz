@@ -153,9 +153,6 @@ export class SessionManager {
 				const sessionId = crypto.randomUUID()
 				await driver.reserveSession(sessionId)
 
-				const counter = (this.labelCounters.get(connectionId) ?? 0) + 1
-				this.labelCounters.set(connectionId, counter)
-
 				const info: SessionInfo = {
 					sessionId,
 					connectionId,
@@ -174,6 +171,17 @@ export class SessionManager {
 				// Session restoration is best-effort — skip on failure
 			}
 		}
+
+		// Update label counter to max restored label number to avoid duplicates
+		let maxLabel = this.labelCounters.get(connectionId) ?? 0
+		for (const info of restored) {
+			const match = info.label.match(/^Session (\d+)$/)
+			if (match) {
+				maxLabel = Math.max(maxLabel, Number(match[1]))
+			}
+		}
+		this.labelCounters.set(connectionId, maxLabel)
+
 		return restored
 	}
 
