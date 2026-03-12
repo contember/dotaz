@@ -273,12 +273,12 @@ export class MysqlDriver implements DatabaseDriver {
 		const session = this.resolveSession(sessionId)
 		const conn = session ? session.conn : this.db!
 
-		const schemas = await this.getSchemas()
+		const schemas = await this.getSchemas(conn)
 		const schemaNames = schemas.map((s) => s.name)
 
 		const tables: SchemaData['tables'] = {}
 		for (const schema of schemas) {
-			tables[schema.name] = await this.getTables(schema.name)
+			tables[schema.name] = await this.getTables(conn, schema.name)
 		}
 
 		const [allColumns, allIndexes, allForeignKeys, allReferencingForeignKeys] = await Promise.all([
@@ -437,16 +437,14 @@ export class MysqlDriver implements DatabaseDriver {
 		return { schemas, tables, columns, indexes, foreignKeys, referencingForeignKeys }
 	}
 
-	private async getSchemas(): Promise<SchemaInfo[]> {
+	private async getSchemas(conn: SQL | ReservedSQL): Promise<SchemaInfo[]> {
 		this.ensureConnected()
-		const conn = this.db!
 		const rows = await conn.unsafe('SELECT DATABASE() AS name')
 		return [...rows] as SchemaInfo[]
 	}
 
-	private async getTables(schema: string): Promise<TableInfo[]> {
+	private async getTables(conn: SQL | ReservedSQL, schema: string): Promise<TableInfo[]> {
 		this.ensureConnected()
-		const conn = this.db!
 		const rows = await conn.unsafe(
 			`SELECT table_name AS name, table_type
 			FROM information_schema.tables
