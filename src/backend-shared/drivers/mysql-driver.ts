@@ -72,6 +72,12 @@ interface SessionState {
 /** Internal session ID used for backward-compatible beginTransaction() without sessionId */
 const DEFAULT_SESSION = '__default__'
 
+/** Detect connection-level errors (TCP drop, reset, etc.) as opposed to protocol errors. */
+function isConnectionLevelError(err: unknown): boolean {
+	const message = err instanceof Error ? err.message : String(err)
+	return /ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|connection (terminated|ended|closed|lost|reset)|socket.*(closed|hang up|end)|write after end|broken pipe|network/i.test(message)
+}
+
 /** Map MySQL information_schema data_type to DatabaseDataType. */
 function mapMysqlDataType(dataType: string): DatabaseDataType {
 	switch (dataType.toLowerCase()) {
@@ -563,6 +569,9 @@ export class MysqlDriver implements DatabaseDriver {
 		try {
 			await session.conn.unsafe('COMMIT')
 		} catch (err) {
+			if (isConnectionLevelError(err)) {
+				throw new DatabaseError('COMMIT_UNCERTAIN', 'Connection lost during COMMIT — the transaction may have been committed. Verify your data before retrying.', { cause: err })
+			}
 			try { await session.conn.unsafe('ROLLBACK') } catch {}
 			throw err
 		} finally {
