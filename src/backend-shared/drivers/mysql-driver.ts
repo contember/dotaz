@@ -187,8 +187,12 @@ export class MysqlDriver implements DatabaseDriver {
 					await session.conn.unsafe('ROLLBACK')
 				} catch { /* ignore */ }
 			}
-			try { await this.resetConnection(session.conn) } catch { /* connection may be broken */ }
-			session.conn.release()
+			try {
+				await this.resetConnection(session.conn)
+				try { session.conn.release() } catch { /* broken connection */ }
+			} catch {
+				try { session.conn.close({ timeout: 0 }) } catch { /* already dead */ }
+			}
 		}
 		this.sessions.clear()
 
@@ -218,10 +222,12 @@ export class MysqlDriver implements DatabaseDriver {
 		}
 		// Always attempt ROLLBACK — covers raw BEGIN via execute() where txActive may be false
 		try { await session.conn.unsafe('ROLLBACK') } catch { /* ignore — no tx is fine */ }
-		let cleaned = false
-		try { await this.resetConnection(session.conn); cleaned = true } catch { /* connection may be dirty */ }
-		if (cleaned) {
+		try {
+			await this.resetConnection(session.conn)
 			try { session.conn.release() } catch { /* broken connection */ }
+		} catch {
+			// Cleanup failed — close instead of releasing to avoid poisoning the pool
+			try { session.conn.close({ timeout: 0 }) } catch { /* already dead */ }
 		}
 		this.sessions.delete(sessionId)
 	}
@@ -531,8 +537,12 @@ export class MysqlDriver implements DatabaseDriver {
 				session.iterating = false
 			}
 			if (ownConn) {
-				await this.resetConnection(conn as ReservedSQL)
-				;(conn as ReservedSQL).release()
+				try {
+					await this.resetConnection(conn as ReservedSQL)
+					try { (conn as ReservedSQL).release() } catch { /* broken connection */ }
+				} catch {
+					try { (conn as ReservedSQL).close({ timeout: 0 }) } catch { /* already dead */ }
+				}
 			}
 		}
 	}
@@ -610,10 +620,11 @@ export class MysqlDriver implements DatabaseDriver {
 			throw err
 		} finally {
 			if (id === DEFAULT_SESSION) {
-				let cleaned = false
-				try { await this.resetConnection(session.conn); cleaned = true } catch { /* connection may be dirty */ }
-				if (cleaned) {
-					try { session.conn.release() } catch { /* connection may be broken */ }
+				try {
+					await this.resetConnection(session.conn)
+					try { session.conn.release() } catch { /* broken connection */ }
+				} catch {
+					try { session.conn.close({ timeout: 0 }) } catch { /* already dead */ }
 				}
 				this.sessions.delete(DEFAULT_SESSION)
 			}
@@ -636,10 +647,11 @@ export class MysqlDriver implements DatabaseDriver {
 			throw err
 		} finally {
 			if (id === DEFAULT_SESSION) {
-				let cleaned = false
-				try { await this.resetConnection(session.conn); cleaned = true } catch { /* connection may be dirty */ }
-				if (cleaned) {
-					try { session.conn.release() } catch { /* connection may be broken */ }
+				try {
+					await this.resetConnection(session.conn)
+					try { session.conn.release() } catch { /* broken connection */ }
+				} catch {
+					try { session.conn.close({ timeout: 0 }) } catch { /* already dead */ }
 				}
 				this.sessions.delete(DEFAULT_SESSION)
 			}

@@ -196,8 +196,10 @@ export class PostgresDriver implements DatabaseDriver {
 			}
 			try {
 				await session.conn.unsafe('DISCARD ALL')
-			} catch { /* best effort */ }
-			session.conn.release()
+				try { session.conn.release() } catch { /* broken connection */ }
+			} catch {
+				try { session.conn.close({ timeout: 0 }) } catch { /* already dead */ }
+			}
 		}
 		this.sessions.clear()
 
@@ -229,13 +231,12 @@ export class PostgresDriver implements DatabaseDriver {
 		}
 		// Always attempt ROLLBACK — covers raw BEGIN via execute() where txActive may be false
 		try { await session.conn.unsafe('ROLLBACK') } catch { /* ignore — no tx is fine */ }
-		let cleaned = false
 		try {
 			await session.conn.unsafe('DISCARD ALL')
-			cleaned = true
-		} catch { /* connection may be dirty */ }
-		if (cleaned) {
 			try { session.conn.release() } catch { /* broken connection */ }
+		} catch {
+			// Cleanup failed — close instead of releasing to avoid poisoning the pool
+			try { session.conn.close({ timeout: 0 }) } catch { /* already dead */ }
 		}
 		this.sessions.delete(sessionId)
 	}
@@ -687,10 +688,11 @@ export class PostgresDriver implements DatabaseDriver {
 			throw err
 		} finally {
 			if (id === DEFAULT_SESSION) {
-				let cleaned = false
-				try { await session.conn.unsafe('DISCARD ALL'); cleaned = true } catch { /* connection may be dirty */ }
-				if (cleaned) {
-					try { session.conn.release() } catch { /* connection may be broken */ }
+				try {
+					await session.conn.unsafe('DISCARD ALL')
+					try { session.conn.release() } catch { /* broken connection */ }
+				} catch {
+					try { session.conn.close({ timeout: 0 }) } catch { /* already dead */ }
 				}
 				this.sessions.delete(DEFAULT_SESSION)
 			}
@@ -714,10 +716,11 @@ export class PostgresDriver implements DatabaseDriver {
 			throw err
 		} finally {
 			if (id === DEFAULT_SESSION) {
-				let cleaned = false
-				try { await session.conn.unsafe('DISCARD ALL'); cleaned = true } catch { /* connection may be dirty */ }
-				if (cleaned) {
-					try { session.conn.release() } catch { /* connection may be broken */ }
+				try {
+					await session.conn.unsafe('DISCARD ALL')
+					try { session.conn.release() } catch { /* broken connection */ }
+				} catch {
+					try { session.conn.close({ timeout: 0 }) } catch { /* already dead */ }
 				}
 				this.sessions.delete(DEFAULT_SESSION)
 			}
@@ -812,8 +815,12 @@ export class PostgresDriver implements DatabaseDriver {
 			}
 			if (ownConn) {
 				try { await (conn as ReservedSQL).unsafe('ROLLBACK') } catch { /* ignore if no tx */ }
-				try { await (conn as ReservedSQL).unsafe('DISCARD ALL') } catch { /* best effort */ }
-				;(conn as ReservedSQL).release()
+				try {
+					await (conn as ReservedSQL).unsafe('DISCARD ALL')
+					try { (conn as ReservedSQL).release() } catch { /* broken connection */ }
+				} catch {
+					try { (conn as ReservedSQL).close({ timeout: 0 }) } catch { /* already dead */ }
+				}
 			} else if (session) {
 				try { await conn.unsafe('ROLLBACK') } catch { /* ignore if no tx */ }
 			}
