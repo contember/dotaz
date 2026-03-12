@@ -334,7 +334,6 @@ export class SqliteDriver implements DatabaseDriver {
 		} finally {
 			this.txActive = false
 			this.txOwnerSession = null
-			try { await this.db!.unsafe('ROLLBACK') } catch { /* already committed or rolled back */ }
 		}
 	}
 
