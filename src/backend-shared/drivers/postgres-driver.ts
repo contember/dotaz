@@ -90,6 +90,18 @@ interface SessionState {
 /** Internal session ID used for backward-compatible beginTransaction() without sessionId */
 const DEFAULT_SESSION = '__default__'
 
+/** Detect raw transaction-control statements and sync txActive flag. */
+function syncTxActive(session: SessionState, sql: string): void {
+	const upper = sql.trim().toUpperCase()
+	if (/^(BEGIN|START\s+TRANSACTION)\b/.test(upper)) {
+		session.txActive = true
+	} else if (/^(COMMIT|END)\b/.test(upper)) {
+		session.txActive = false
+	} else if (/^ROLLBACK\b/.test(upper) && !/^ROLLBACK\s+TO\b/.test(upper)) {
+		session.txActive = false
+	}
+}
+
 /** Detect connection-level errors (TCP drop, reset, etc.) as opposed to PostgreSQL protocol errors. */
 function isConnectionLevelError(err: unknown): boolean {
 	const message = err instanceof Error ? err.message : String(err)
@@ -215,11 +227,8 @@ export class PostgresDriver implements DatabaseDriver {
 		if (!session) {
 			throw new Error(`Session "${sessionId}" not found`)
 		}
-		if (session.txActive) {
-			try {
-				await session.conn.unsafe('ROLLBACK')
-			} catch { /* ignore */ }
-		}
+		// Always attempt ROLLBACK — covers raw BEGIN via execute() where txActive may be false
+		try { await session.conn.unsafe('ROLLBACK') } catch { /* ignore — no tx is fine */ }
 		let cleaned = false
 		try {
 			await session.conn.unsafe('DISCARD ALL')
@@ -253,6 +262,11 @@ export class PostgresDriver implements DatabaseDriver {
 			const result = await query
 			const durationMs = Math.round(performance.now() - start)
 			const rows = [...result] as Record<string, unknown>[]
+
+			// Sync txActive for raw transaction-control statements
+			if (session) {
+				syncTxActive(session, sql)
+			}
 
 			const columns: QueryResultColumn[] = rows.length > 0
 				? Object.keys(rows[0]).map((name) => ({
