@@ -166,8 +166,10 @@ export class MysqlDriver implements DatabaseDriver {
 				} catch { /* ignore */ }
 			}
 			try {
-				await session.conn.unsafe('UNLOCK TABLES')
-			} catch { /* best effort */ }
+				await session.conn.unsafe('RESET CONNECTION')
+			} catch {
+				try { await session.conn.unsafe('UNLOCK TABLES') } catch { /* best effort */ }
+			}
 			session.conn.release()
 		}
 		this.sessions.clear()
@@ -203,8 +205,11 @@ export class MysqlDriver implements DatabaseDriver {
 			} catch { /* ignore */ }
 		}
 		try {
-			await session.conn.unsafe('UNLOCK TABLES')
-		} catch { /* best effort — connection may be broken */ }
+			await session.conn.unsafe('RESET CONNECTION')
+		} catch {
+			// Fallback for older MySQL versions without RESET CONNECTION
+			try { await session.conn.unsafe('UNLOCK TABLES') } catch { /* best effort */ }
+		}
 		session.conn.release()
 		this.sessions.delete(sessionId)
 	}
