@@ -474,7 +474,7 @@ export class ConnectionManager {
 		this.cancelAutoReconnect(connectionId)
 		const rs: ReconnectState = { attempt: 0, timer: null, cancelled: false, hadTransaction }
 		this.reconnectStates.set(connectionId, rs)
-		this.scheduleReconnectAttempt(connectionId, rs)
+		void this.scheduleReconnectAttempt(connectionId, rs)
 	}
 
 	private cancelAutoReconnect(connectionId: string): void {
@@ -565,7 +565,7 @@ export class ConnectionManager {
 		} catch {
 			if (rs.cancelled) return
 			await this.closeTunnel(connectionId)
-			this.scheduleReconnectAttempt(connectionId, rs)
+			void this.scheduleReconnectAttempt(connectionId, rs)
 		}
 	}
 
