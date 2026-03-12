@@ -223,6 +223,7 @@ export class BackendAdapter implements RpcAdapter {
 					result.affectedRows ?? result.rowCount,
 					result.error,
 					database,
+					sessionId,
 				)
 			}
 			if (!inExistingTx) {
@@ -265,17 +266,17 @@ export class BackendAdapter implements RpcAdapter {
 
 	async beginTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void> {
 		await this.txManager.begin(connectionId, database, sessionId)
-		this.queryExecutor.sessionLog.resetPendingCount(connectionId, database)
+		this.queryExecutor.sessionLog.resetPendingCount(connectionId, database, sessionId)
 	}
 
 	async commitTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void> {
 		await this.txManager.commit(connectionId, database, sessionId)
-		this.queryExecutor.sessionLog.resetPendingCount(connectionId, database)
+		this.queryExecutor.sessionLog.resetPendingCount(connectionId, database, sessionId)
 	}
 
 	async rollbackTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void> {
 		await this.txManager.rollback(connectionId, database, sessionId)
-		this.queryExecutor.sessionLog.resetPendingCount(connectionId, database)
+		this.queryExecutor.sessionLog.resetPendingCount(connectionId, database, sessionId)
 	}
 
 	// ── Transaction Log ──────────────────────────────────
@@ -293,7 +294,7 @@ export class BackendAdapter implements RpcAdapter {
 
 		const inTransaction = this.txManager.isActive(params.connectionId, params.database, params.sessionId)
 		const pendingStatementCount = inTransaction
-			? this.queryExecutor.sessionLog.getPendingCount(params.connectionId, params.database)
+			? this.queryExecutor.sessionLog.getPendingCount(params.connectionId, params.database, params.sessionId)
 			: 0
 
 		return { entries, pendingStatementCount, inTransaction }

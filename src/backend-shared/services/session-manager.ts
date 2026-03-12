@@ -25,9 +25,9 @@ export class SessionManager {
 	private txFirstSeen = new Map<string, number>()
 	private idleCheckTimer: ReturnType<typeof setInterval> | null = null
 	private idleCheckRunning = false
-	private onTransactionRollback?: (connectionId: string, database?: string) => void
+	private onTransactionRollback?: (connectionId: string, database?: string, sessionId?: string) => void
 
-	constructor(cm: ConnectionManager, appDb: AppDatabase, onTransactionRollback?: (connectionId: string, database?: string) => void) {
+	constructor(cm: ConnectionManager, appDb: AppDatabase, onTransactionRollback?: (connectionId: string, database?: string, sessionId?: string) => void) {
 		this.cm = cm
 		this.appDb = appDb
 		this.onTransactionRollback = onTransactionRollback
@@ -251,7 +251,7 @@ export class SessionManager {
 									await driver.rollback(sessionId)
 								} catch { /* best effort */ }
 								try {
-									this.onTransactionRollback?.(info.connectionId, info.database)
+									this.onTransactionRollback?.(info.connectionId, info.database, sessionId)
 								} catch { /* best effort */ }
 								this.txFirstSeen.delete(sessionId)
 							}
