@@ -461,6 +461,11 @@ export class MysqlDriver implements DatabaseDriver {
 		}))
 	}
 
+	async ping(): Promise<void> {
+		this.ensureConnected()
+		await this.db!.unsafe('SELECT 1')
+	}
+
 	async *iterate(
 		sql: string,
 		params?: unknown[],

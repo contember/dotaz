@@ -606,6 +606,13 @@ export class PostgresDriver implements DatabaseDriver {
 		}))
 	}
 
+	// --- Health check ---
+
+	async ping(): Promise<void> {
+		this.ensureConnected()
+		await this.db!.unsafe('SELECT 1')
+	}
+
 	// --- Transactions ---
 
 	async beginTransaction(sessionId?: string): Promise<void> {

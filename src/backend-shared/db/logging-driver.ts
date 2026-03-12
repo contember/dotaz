@@ -90,6 +90,9 @@ export class LoggingDriver implements DatabaseDriver {
 	cancel(sessionId?: string): Promise<void> {
 		return this.inner.cancel(sessionId)
 	}
+	ping(): Promise<void> {
+		return this.inner.ping()
+	}
 	loadSchema(sessionId?: string): Promise<SchemaData> {
 		return this.inner.loadSchema(sessionId)
 	}

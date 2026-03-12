@@ -440,10 +440,11 @@ export class ConnectionManager {
 		const driverMap = this.drivers.get(connectionId)
 		if (!driverMap) return
 
-		// Health-check all active database drivers (not just the default)
+		// Health-check all active database drivers via pool (bypasses sessions
+		// to avoid false failures from aborted DEFAULT_SESSION transactions)
 		for (const driver of driverMap.values()) {
 			try {
-				await driver.execute('SELECT 1')
+				await driver.ping()
 			} catch {
 				// Check if any driver had an active transaction before disconnecting
 				let hadTransaction = false

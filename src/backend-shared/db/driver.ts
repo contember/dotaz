@@ -38,6 +38,9 @@ export interface DatabaseDriver extends SqlDialect {
 	// Schema introspection
 	loadSchema(sessionId?: string): Promise<SchemaData>
 
+	// Health check — always uses the pool, never routed through sessions
+	ping(): Promise<void>
+
 	// Transactions
 	beginTransaction(sessionId?: string): Promise<void>
 	commit(sessionId?: string): Promise<void>
