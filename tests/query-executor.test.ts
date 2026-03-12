@@ -793,6 +793,42 @@ describe('QueryExecutor', () => {
 		expect(results[0].error).toContain('timed out')
 	})
 
+	test('timeout calls driver.cancel() to stop server-side query', async () => {
+		const driver = makeMockDriver({
+			execute: mock(async () => {
+				await new Promise((r) => setTimeout(r, 200))
+				return makeSuccessResult()
+			}),
+			cancel: mock(async () => {}),
+		})
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm, 50)
+
+		const results = await executor.executeQuery('conn-1', 'SELECT pg_sleep(300)')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toContain('timed out')
+		expect(driver.cancel).toHaveBeenCalledTimes(1)
+	})
+
+	test('timeout calls driver.cancel() with sessionId when using a session', async () => {
+		const driver = makeMockDriver({
+			execute: mock(async () => {
+				await new Promise((r) => setTimeout(r, 200))
+				return makeSuccessResult()
+			}),
+			cancel: mock(async () => {}),
+		})
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm, 50)
+
+		const results = await executor.executeQuery('conn-1', 'SELECT pg_sleep(300)', undefined, undefined, undefined, undefined, 'my-session')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toContain('timed out')
+		expect(driver.cancel).toHaveBeenCalledWith('my-session')
+	})
+
 	test('cancelQuery cancels a running query', async () => {
 		let resolveExecute: () => void
 		const executePromise = new Promise<void>((r) => {

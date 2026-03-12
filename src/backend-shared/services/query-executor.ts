@@ -345,14 +345,14 @@ export class QueryExecutor {
 		sessionId?: string,
 	): Promise<QueryResult> {
 		const start = performance.now()
-		const { promise: timeoutPromise, cancel: cancelTimeout } = this.createTimeout(timeoutMs)
+		const timeout = this.createTimeout(timeoutMs)
 
 		try {
 			const result = await Promise.race([
 				sessionId !== undefined
 					? driver.execute(sql, params, sessionId)
 					: driver.execute(sql, params),
-				timeoutPromise,
+				timeout.promise,
 			])
 
 			if (entry.cancelled) {
@@ -365,6 +365,17 @@ export class QueryExecutor {
 			}
 		} catch (err) {
 			const durationMs = Math.round(performance.now() - start)
+
+			// If timeout fired, cancel the still-running server-side query
+			if (timeout.fired) {
+				try {
+					if (sessionId !== undefined) {
+						await driver.cancel(sessionId)
+					} else {
+						await driver.cancel()
+					}
+				} catch { /* best effort */ }
+			}
 
 			if (entry.cancelled) {
 				return makeCancelledResult(durationMs)
@@ -383,16 +394,20 @@ export class QueryExecutor {
 				errorPosition,
 			}
 		} finally {
-			cancelTimeout()
+			timeout.cancel()
 		}
 	}
 
-	private createTimeout(ms: number): { promise: Promise<never>; cancel: () => void } {
+	private createTimeout(ms: number): { promise: Promise<never>; cancel: () => void; fired: boolean } {
 		let timer: ReturnType<typeof setTimeout>
+		let fired = false
 		const promise = new Promise<never>((_, reject) => {
-			timer = setTimeout(() => reject(new Error(`Query timed out after ${ms}ms`)), ms)
+			timer = setTimeout(() => {
+				fired = true
+				reject(new Error(`Query timed out after ${ms}ms`))
+			}, ms)
 		})
-		return { promise, cancel: () => clearTimeout(timer!) }
+		return { promise, cancel: () => clearTimeout(timer!), get fired() { return fired } }
 	}
 
 	private logHistory(connectionId: string, sql: string, results: QueryResult[], database?: string): void {
