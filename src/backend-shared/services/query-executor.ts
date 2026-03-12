@@ -36,6 +36,11 @@ export class SessionLog {
 		return database ? `${connectionId}:${database}` : connectionId
 	}
 
+	private pendingKey(connectionId: string, database?: string, sessionId?: string): string {
+		const base = this.key(connectionId, database)
+		return sessionId ? `${base}:${sessionId}` : base
+	}
+
 	add(
 		connectionId: string,
 		sql: string,
@@ -44,6 +49,7 @@ export class SessionLog {
 		rowCount: number,
 		errorMessage?: string,
 		database?: string,
+		sessionId?: string,
 	): void {
 		const k = this.key(connectionId, database)
 		if (!this.logs.has(k)) {
@@ -59,20 +65,21 @@ export class SessionLog {
 			executedAt: new Date().toISOString(),
 		})
 		// Increment pending count (statements within an active transaction)
-		this.pendingCounts.set(k, (this.pendingCounts.get(k) ?? 0) + 1)
+		const pk = this.pendingKey(connectionId, database, sessionId)
+		this.pendingCounts.set(pk, (this.pendingCounts.get(pk) ?? 0) + 1)
 	}
 
 	getEntries(connectionId: string, database?: string): TransactionLogEntry[] {
 		return this.logs.get(this.key(connectionId, database)) ?? []
 	}
 
-	getPendingCount(connectionId: string, database?: string): number {
-		return this.pendingCounts.get(this.key(connectionId, database)) ?? 0
+	getPendingCount(connectionId: string, database?: string, sessionId?: string): number {
+		return this.pendingCounts.get(this.pendingKey(connectionId, database, sessionId)) ?? 0
 	}
 
 	/** Reset pending count (called on COMMIT/ROLLBACK). */
-	resetPendingCount(connectionId: string, database?: string): void {
-		this.pendingCounts.set(this.key(connectionId, database), 0)
+	resetPendingCount(connectionId: string, database?: string, sessionId?: string): void {
+		this.pendingCounts.set(this.pendingKey(connectionId, database, sessionId), 0)
 	}
 
 	clear(connectionId: string, database?: string): void {
@@ -193,7 +200,7 @@ export class QueryExecutor {
 					await driver.releaseSession(ephemeralSessionId)
 				} catch { /* best effort */ }
 			}
-			this.logHistory(connectionId, sql, results, database)
+			this.logHistory(connectionId, sql, results, database, sessionId)
 		}
 
 		return results
@@ -448,7 +455,7 @@ export class QueryExecutor {
 		}
 	}
 
-	private logHistory(connectionId: string, sql: string, results: QueryResult[], database?: string): void {
+	private logHistory(connectionId: string, sql: string, results: QueryResult[], database?: string, sessionId?: string): void {
 		const hasError = results.some((r) => r.error)
 		const totalDuration = results.reduce((sum, r) => sum + (r.durationMs ?? 0), 0)
 		const totalRows = results.reduce((sum, r) => sum + (r.affectedRows ?? r.rowCount), 0)
@@ -463,6 +470,7 @@ export class QueryExecutor {
 			totalRows,
 			errorMessage,
 			database,
+			sessionId,
 		)
 
 		if (!this.appDb) return
