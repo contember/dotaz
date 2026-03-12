@@ -150,10 +150,14 @@ export class SessionManager {
 
 		const restored: SessionInfo[] = []
 		for (const spec of specs) {
+			let reserved = false
+			let sessionId: string | undefined
+			let driver: ReturnType<typeof this.cm.getDriver> | undefined
 			try {
-				const driver = this.cm.getDriver(connectionId, spec.database)
-				const sessionId = crypto.randomUUID()
+				driver = this.cm.getDriver(connectionId, spec.database)
+				sessionId = crypto.randomUUID()
 				await driver.reserveSession(sessionId)
+				reserved = true
 
 				const info: SessionInfo = {
 					sessionId,
@@ -171,6 +175,9 @@ export class SessionManager {
 				restored.push(info)
 			} catch {
 				// Session restoration is best-effort — skip on failure
+				if (reserved && driver && sessionId) {
+					try { await driver.releaseSession(sessionId) } catch {}
+				}
 			}
 		}
 
