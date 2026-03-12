@@ -87,6 +87,7 @@ export class SessionLog {
 interface RunningQuery {
 	queryId: string
 	connectionId: string
+	database?: string
 	cancelled: boolean
 	sessionId?: string
 }
@@ -136,7 +137,7 @@ export class QueryExecutor {
 		const effectiveSessionId = sessionId ?? ephemeralSessionId
 
 		const id = queryId ?? crypto.randomUUID()
-		const entry: RunningQuery = { queryId: id, connectionId, cancelled: false, sessionId: effectiveSessionId }
+		const entry: RunningQuery = { queryId: id, connectionId, database, cancelled: false, sessionId: effectiveSessionId }
 		this.runningQueries.set(id, entry)
 
 		const timeout = timeoutMs ?? this.defaultTimeoutMs
@@ -206,7 +207,7 @@ export class QueryExecutor {
 		entry.cancelled = true
 
 		try {
-			const driver = this.connectionManager.getDriver(entry.connectionId)
+			const driver = this.connectionManager.getDriver(entry.connectionId, entry.database)
 			if (entry.sessionId !== undefined) {
 				await driver.cancel(entry.sessionId)
 			} else {
