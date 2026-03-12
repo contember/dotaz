@@ -320,12 +320,21 @@ export class SqliteDriver implements DatabaseDriver {
 		params?: unknown[],
 		batchSize = 1000,
 		signal?: AbortSignal,
-		_sessionId?: string,
+		sessionId?: string,
 	): AsyncGenerator<Record<string, unknown>[]> {
 		this.ensureConnected()
-		// Use a separate read-only connection so iteration doesn't block
-		// the main connection (WAL mode allows concurrent readers).
-		const readConn = this.getIterateDb()
+		// For file-based databases, use a separate read-only connection so
+		// iteration doesn't block the main connection (WAL mode allows
+		// concurrent readers). In-memory databases can't share across
+		// connections, so they must fall back to the main connection.
+		const useMainConn = this.dbPath === ':memory:'
+		const readConn = useMainConn ? this.db! : this.getIterateDb()
+		if (useMainConn) {
+			this.ensureSessionCanExecute(sessionId)
+			if (this.txActive) throw new Error('Cannot iterate with an active transaction')
+			this.txActive = true
+			this.txOwnerSession = sessionId ?? null
+		}
 		await readConn.unsafe('BEGIN')
 		try {
 			let offset = 0
@@ -345,6 +354,11 @@ export class SqliteDriver implements DatabaseDriver {
 		} catch (err) {
 			try { await readConn.unsafe('ROLLBACK') } catch { /* ignore */ }
 			throw err
+		} finally {
+			if (useMainConn) {
+				this.txActive = false
+				this.txOwnerSession = null
+			}
 		}
 	}
 
