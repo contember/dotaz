@@ -5,6 +5,8 @@ import type { ConnectionManager } from './connection-manager'
 
 export type { SessionInfo }
 
+const IDLE_CHECK_INTERVAL_MS = 30_000
+
 /**
  * Manages the lifecycle of pinned sessions — reserved database connections
  * that persist across multiple query executions.
@@ -18,10 +20,18 @@ export class SessionManager {
 	private labelCounters = new Map<string, number>()
 	// Saved session metadata for restoration after reconnect
 	private pendingRestore = new Map<string, Array<{ database?: string; label: string }>>()
+	// Track when we first observed a session with an active transaction
+	private txFirstSeen = new Map<string, number>()
+	private idleCheckTimer: ReturnType<typeof setInterval> | null = null
 
 	constructor(cm: ConnectionManager, appDb: AppDatabase) {
 		this.cm = cm
 		this.appDb = appDb
+		this.startIdleTransactionCheck()
+	}
+
+	dispose(): void {
+		this.stopIdleTransactionCheck()
 	}
 
 	async createSession(connectionId: string, database?: string): Promise<SessionInfo> {
@@ -69,6 +79,8 @@ export class SessionManager {
 		const driver = this.cm.getDriver(info.connectionId, info.database)
 		await driver.releaseSession(sessionId)
 
+		this.txFirstSeen.delete(sessionId)
+
 		const connSessions = this.sessions.get(info.connectionId)
 		if (connSessions) {
 			connSessions.delete(sessionId)
@@ -112,11 +124,16 @@ export class SessionManager {
 
 	handleConnectionLost(connectionId: string): void {
 		const connSessions = this.sessions.get(connectionId)
-		if (connSessions && connSessions.size > 0) {
-			this.pendingRestore.set(
-				connectionId,
-				Array.from(connSessions.values()).map((s) => ({ database: s.database, label: s.label })),
-			)
+		if (connSessions) {
+			for (const sessionId of connSessions.keys()) {
+				this.txFirstSeen.delete(sessionId)
+			}
+			if (connSessions.size > 0) {
+				this.pendingRestore.set(
+					connectionId,
+					Array.from(connSessions.values()).map((s) => ({ database: s.database, label: s.label })),
+				)
+			}
 		}
 		this.sessions.delete(connectionId)
 	}
@@ -155,6 +172,57 @@ export class SessionManager {
 			}
 		}
 		return restored
+	}
+
+	private startIdleTransactionCheck(): void {
+		this.idleCheckTimer = setInterval(() => {
+			this.checkIdleTransactions()
+		}, IDLE_CHECK_INTERVAL_MS)
+	}
+
+	private stopIdleTransactionCheck(): void {
+		if (this.idleCheckTimer) {
+			clearInterval(this.idleCheckTimer)
+			this.idleCheckTimer = null
+		}
+	}
+
+	private async checkIdleTransactions(): Promise<void> {
+		const timeoutMs = this.appDb.getNumberSetting('idleTransactionTimeoutMs')
+			?? Number(DEFAULT_SETTINGS.idleTransactionTimeoutMs)
+		if (!timeoutMs || timeoutMs <= 0) return
+
+		const now = Date.now()
+
+		for (const [, connSessions] of this.sessions) {
+			for (const [sessionId, info] of connSessions) {
+				let inTx = false
+				try {
+					const driver = this.cm.getDriver(info.connectionId, info.database)
+					inTx = driver.inTransaction(sessionId)
+				} catch {
+					this.txFirstSeen.delete(sessionId)
+					continue
+				}
+
+				if (inTx) {
+					if (!this.txFirstSeen.has(sessionId)) {
+						this.txFirstSeen.set(sessionId, now)
+					} else {
+						const elapsed = now - this.txFirstSeen.get(sessionId)!
+						if (elapsed >= timeoutMs) {
+							try {
+								const driver = this.cm.getDriver(info.connectionId, info.database)
+								await driver.rollback(sessionId)
+							} catch { /* best effort */ }
+							this.txFirstSeen.delete(sessionId)
+						}
+					}
+				} else {
+					this.txFirstSeen.delete(sessionId)
+				}
+			}
+		}
 	}
 
 	private findSession(sessionId: string): SessionInfo | undefined {

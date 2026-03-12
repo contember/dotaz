@@ -27,6 +27,7 @@ describe('SessionManager', () => {
 	})
 
 	afterEach(async () => {
+		sm.dispose()
 		await cm.disconnectAll()
 		AppDatabase.resetInstance()
 	})
@@ -217,5 +218,104 @@ describe('SessionManager', () => {
 
 		expect(first.length).toBe(1)
 		expect(second).toEqual([])
+	})
+
+	// ── Idle transaction timeout ────────────────────────────
+
+	test('auto-rollbacks idle transactions after timeout', async () => {
+		appDb.setSetting('idleTransactionTimeoutMs', '1')
+
+		const session = await sm.createSession(connectionId)
+		const driver = cm.getDriver(connectionId)
+		await driver.beginTransaction(session.sessionId)
+		expect(driver.inTransaction(session.sessionId)).toBe(true)
+
+		// First check: records the transaction as first-seen
+		await (sm as any).checkIdleTransactions()
+		expect(driver.inTransaction(session.sessionId)).toBe(true)
+
+		// Wait for timeout to elapse
+		await new Promise(r => setTimeout(r, 5))
+
+		// Second check: timeout exceeded, should auto-rollback
+		await (sm as any).checkIdleTransactions()
+		expect(driver.inTransaction(session.sessionId)).toBe(false)
+	})
+
+	test('does not rollback transactions within timeout', async () => {
+		appDb.setSetting('idleTransactionTimeoutMs', '60000')
+
+		const session = await sm.createSession(connectionId)
+		const driver = cm.getDriver(connectionId)
+		await driver.beginTransaction(session.sessionId)
+
+		// First check: records first-seen
+		await (sm as any).checkIdleTransactions()
+		// Second check: should still be within timeout
+		await (sm as any).checkIdleTransactions()
+
+		expect(driver.inTransaction(session.sessionId)).toBe(true)
+		await driver.rollback(session.sessionId)
+	})
+
+	test('clears idle tracking when transaction ends normally', async () => {
+		appDb.setSetting('idleTransactionTimeoutMs', '1')
+
+		const session = await sm.createSession(connectionId)
+		const driver = cm.getDriver(connectionId)
+		await driver.beginTransaction(session.sessionId)
+
+		// First check: records first-seen
+		await (sm as any).checkIdleTransactions()
+
+		// Commit normally
+		await driver.commit(session.sessionId)
+
+		// Check clears tracking since no longer in tx
+		await (sm as any).checkIdleTransactions()
+		expect((sm as any).txFirstSeen.has(session.sessionId)).toBe(false)
+	})
+
+	test('idle tracking cleaned up on destroySession', async () => {
+		appDb.setSetting('idleTransactionTimeoutMs', '60000')
+
+		const session = await sm.createSession(connectionId)
+		const driver = cm.getDriver(connectionId)
+		await driver.beginTransaction(session.sessionId)
+
+		await (sm as any).checkIdleTransactions()
+		expect((sm as any).txFirstSeen.has(session.sessionId)).toBe(true)
+
+		await sm.destroySession(session.sessionId)
+		expect((sm as any).txFirstSeen.has(session.sessionId)).toBe(false)
+	})
+
+	test('idle tracking cleaned up on handleConnectionLost', async () => {
+		appDb.setSetting('idleTransactionTimeoutMs', '60000')
+
+		const session = await sm.createSession(connectionId)
+		const driver = cm.getDriver(connectionId)
+		await driver.beginTransaction(session.sessionId)
+
+		await (sm as any).checkIdleTransactions()
+		expect((sm as any).txFirstSeen.has(session.sessionId)).toBe(true)
+
+		sm.handleConnectionLost(connectionId)
+		expect((sm as any).txFirstSeen.has(session.sessionId)).toBe(false)
+	})
+
+	test('idle check is disabled when timeout is 0', async () => {
+		appDb.setSetting('idleTransactionTimeoutMs', '0')
+
+		const session = await sm.createSession(connectionId)
+		const driver = cm.getDriver(connectionId)
+		await driver.beginTransaction(session.sessionId)
+
+		await (sm as any).checkIdleTransactions()
+		await (sm as any).checkIdleTransactions()
+
+		// Transaction should still be active — timeout disabled
+		expect(driver.inTransaction(session.sessionId)).toBe(true)
+		await driver.rollback(session.sessionId)
 	})
 })
