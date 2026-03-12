@@ -172,6 +172,8 @@ export class PostgresDriver implements DatabaseDriver {
 	}
 
 	async disconnect(): Promise<void> {
+		this.connected = false
+
 		// Release all sessions
 		for (const [, session] of this.sessions) {
 			if (session.txActive) {
@@ -189,7 +191,6 @@ export class PostgresDriver implements DatabaseDriver {
 		if (this.db) {
 			await this.db.close()
 			this.db = null
-			this.connected = false
 		}
 	}
 

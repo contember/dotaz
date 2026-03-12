@@ -99,6 +99,7 @@ export class SqliteDriver implements DatabaseDriver {
 	}
 
 	async disconnect(): Promise<void> {
+		this.connected = false
 		if (this.iterateDb) {
 			try { await this.iterateDb.close() } catch { /* best effort */ }
 			this.iterateDb = null
@@ -107,7 +108,6 @@ export class SqliteDriver implements DatabaseDriver {
 			await this.db.close()
 			this.db = null
 			this.dbPath = null
-			this.connected = false
 			this.txActive = false
 			this.txOwnerSession = null
 			this.sessionIds.clear()

@@ -158,6 +158,8 @@ export class MysqlDriver implements DatabaseDriver {
 	}
 
 	async disconnect(): Promise<void> {
+		this.connected = false
+
 		// Release all sessions
 		for (const [, session] of this.sessions) {
 			if (session.txActive) {
@@ -165,7 +167,7 @@ export class MysqlDriver implements DatabaseDriver {
 					await session.conn.unsafe('ROLLBACK')
 				} catch { /* ignore */ }
 			}
-			await this.resetConnection(session.conn)
+			try { await this.resetConnection(session.conn) } catch { /* connection may be broken */ }
 			session.conn.release()
 		}
 		this.sessions.clear()
@@ -173,7 +175,6 @@ export class MysqlDriver implements DatabaseDriver {
 		if (this.db) {
 			await this.db.close()
 			this.db = null
-			this.connected = false
 		}
 	}
 
