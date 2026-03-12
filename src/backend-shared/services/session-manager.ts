@@ -226,6 +226,8 @@ export class SessionManager {
 							try {
 								const driver = this.cm.getDriver(info.connectionId, info.database)
 								await driver.rollback(sessionId)
+							} catch { /* best effort */ }
+							try {
 								this.onTransactionRollback?.(info.connectionId, info.database)
 							} catch { /* best effort */ }
 							this.txFirstSeen.delete(sessionId)
@@ -259,6 +261,8 @@ export class SessionManager {
 						try {
 							const driver = this.cm.getDriver(conn.id)
 							await driver.rollback()
+						} catch { /* best effort */ }
+						try {
 							this.onTransactionRollback?.(conn.id)
 						} catch { /* best effort */ }
 						this.txFirstSeen.delete(key)
