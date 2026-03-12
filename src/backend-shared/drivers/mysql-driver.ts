@@ -208,7 +208,7 @@ export class MysqlDriver implements DatabaseDriver {
 				await session.conn.unsafe('ROLLBACK')
 			} catch { /* ignore */ }
 		}
-		await this.resetConnection(session.conn)
+		try { await this.resetConnection(session.conn) } catch { /* connection may be broken */ }
 		session.conn.release()
 		this.sessions.delete(sessionId)
 	}
