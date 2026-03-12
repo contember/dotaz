@@ -138,6 +138,7 @@ export class SessionManager {
 				)
 			}
 		}
+		this.txFirstSeen.delete(`${DEFAULT_TX_KEY}:${connectionId}`)
 		this.sessions.delete(connectionId)
 	}
 
