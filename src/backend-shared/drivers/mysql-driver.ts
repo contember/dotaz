@@ -662,6 +662,8 @@ export class MysqlDriver implements DatabaseDriver {
 				'UNLOCK TABLES',
 				`SET SESSION TRANSACTION ISOLATION LEVEL ${this.defaultIsolationLevel}`,
 				'SET NAMES utf8mb4',
+				'SET SESSION sql_mode = DEFAULT',
+				'SET autocommit = 1',
 			]
 			for (const sql of fallbacks) {
 				try { await conn.unsafe(sql) } catch { /* best effort */ }
