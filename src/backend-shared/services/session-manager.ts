@@ -80,6 +80,7 @@ export class SessionManager {
 		}
 
 		const driver = this.cm.getDriver(info.connectionId, info.database)
+		try { await driver.cancel(sessionId) } catch { /* best effort */ }
 		await driver.releaseSession(sessionId)
 
 		this.txFirstSeen.delete(sessionId)
