@@ -447,9 +447,13 @@ export class SqliteDriver implements DatabaseDriver {
 	}
 
 	private ensureSessionOwnsTx(sessionId?: string): void {
-		if (this.txActive && sessionId !== undefined && this.txOwnerSession !== null && sessionId !== this.txOwnerSession) {
+		if (!this.txActive) return
+		const callerOwns = sessionId === undefined
+			? this.txOwnerSession === null
+			: this.txOwnerSession === sessionId
+		if (!callerOwns) {
 			throw new Error(
-				`Cannot modify transaction owned by session "${this.txOwnerSession}" from session "${sessionId}"`,
+				`Cannot modify transaction owned by ${this.txOwnerSession === null ? 'sessionless caller' : `session "${this.txOwnerSession}"`}`,
 			)
 		}
 	}
