@@ -230,6 +230,7 @@ export class BackendAdapter implements RpcAdapter {
 			throw err
 		} finally {
 			if (ephemeralSessionId) {
+				try { await driver.cancel(ephemeralSessionId) } catch { /* best effort */ }
 				try { await driver.releaseSession(ephemeralSessionId) } catch { /* best effort */ }
 			}
 		}
