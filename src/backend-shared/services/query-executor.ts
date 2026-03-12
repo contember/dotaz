@@ -357,7 +357,8 @@ export class QueryExecutor {
 				} catch { /* best effort */ }
 			}
 			if (ephemeralSessionId) {
-				await driver.releaseSession(ephemeralSessionId)
+				try { await driver.cancel(ephemeralSessionId) } catch { /* best effort */ }
+				try { await driver.releaseSession(ephemeralSessionId) } catch { /* best effort */ }
 			}
 		}
 	}
