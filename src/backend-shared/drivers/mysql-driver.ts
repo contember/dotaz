@@ -533,6 +533,9 @@ export class MysqlDriver implements DatabaseDriver {
 			session.txActive = true
 		} else {
 			// Backward compat: reserve into __default__ session
+			if (this.sessions.has(DEFAULT_SESSION)) {
+				throw new Error('A default transaction is already active. Commit or rollback before starting a new one.')
+			}
 			const conn = await this.db!.reserve()
 			try {
 				await conn.unsafe('START TRANSACTION')
