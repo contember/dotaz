@@ -536,6 +536,21 @@ describe('SqliteDriver session isolation', () => {
 		await driver.releaseSession('session-a')
 	})
 
+	test('session queries are blocked during a sessionless transaction', async () => {
+		await driver.reserveSession('session-a')
+
+		// Start sessionless transaction (no sessionId)
+		await driver.beginTransaction()
+
+		// Session-scoped query should be blocked
+		await expect(driver.execute('SELECT 1', [], 'session-a')).rejects.toThrow(
+			/sessionless transaction is active/,
+		)
+
+		await driver.rollback()
+		await driver.releaseSession('session-a')
+	})
+
 	test('after transaction ends, other sessions can execute', async () => {
 		await driver.reserveSession('session-a')
 		await driver.reserveSession('session-b')

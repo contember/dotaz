@@ -423,13 +423,18 @@ export class SqliteDriver implements DatabaseDriver {
 	}
 
 	private ensureSessionCanExecute(sessionId?: string): void {
-		if (!this.txActive || this.txOwnerSession === null) return
-		if (sessionId === undefined) {
-			throw new Error(
-				`Cannot execute: session "${this.txOwnerSession}" has an active transaction. SQLite uses a single connection shared by all sessions.`,
-			)
+		if (!this.txActive) return
+		// Sessionless TX: block all session-scoped callers
+		if (this.txOwnerSession === null) {
+			if (sessionId !== undefined) {
+				throw new Error(
+					'Cannot execute: a sessionless transaction is active. SQLite uses a single connection shared by all sessions.',
+				)
+			}
+			return
 		}
-		if (sessionId !== this.txOwnerSession) {
+		// Session-owned TX: block other sessions and sessionless callers
+		if (sessionId === undefined || sessionId !== this.txOwnerSession) {
 			throw new Error(
 				`Cannot execute: session "${this.txOwnerSession}" has an active transaction. SQLite uses a single connection shared by all sessions.`,
 			)
