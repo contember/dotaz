@@ -148,7 +148,7 @@ export class QueryExecutor {
 			if (searchPath && effectiveSessionId !== undefined) {
 				const spResult = await driver.execute('SHOW search_path', undefined, effectiveSessionId)
 				savedSearchPath = spResult.rows[0]?.['search_path'] as string | undefined
-				const quotedSearchPath = searchPath.split(',').map(s => driver.quoteIdentifier(s.trim())).join(', ')
+				const quotedSearchPath = quoteSearchPath(searchPath, driver)
 				await driver.execute(`SET search_path TO ${quotedSearchPath}`, undefined, effectiveSessionId)
 			}
 
@@ -174,10 +174,11 @@ export class QueryExecutor {
 				}
 			}
 		} finally {
-			// Restore original search_path
+			// Restore original search_path (re-quote to avoid interpolating raw SHOW output)
 			if (savedSearchPath !== undefined && effectiveSessionId !== undefined) {
 				try {
-					await driver.execute(`SET search_path TO ${savedSearchPath}`, undefined, effectiveSessionId)
+					const quotedRestore = quoteSearchPath(savedSearchPath, driver)
+					await driver.execute(`SET search_path TO ${quotedRestore}`, undefined, effectiveSessionId)
 				} catch { /* best effort */ }
 			}
 			this.runningQueries.delete(id)
@@ -276,7 +277,7 @@ export class QueryExecutor {
 			if (searchPath && effectiveSessionId !== undefined) {
 				const spResult = await driver.execute('SHOW search_path', undefined, effectiveSessionId)
 				savedSearchPath = spResult.rows[0]?.['search_path'] as string | undefined
-				const quotedSearchPath = searchPath.split(',').map(s => driver.quoteIdentifier(s.trim())).join(', ')
+				const quotedSearchPath = quoteSearchPath(searchPath, driver)
 				await driver.execute(`SET search_path TO ${quotedSearchPath}`, undefined, effectiveSessionId)
 			}
 			if (driverType === 'sqlite') {
@@ -353,7 +354,8 @@ export class QueryExecutor {
 		} finally {
 			if (savedSearchPath !== undefined && effectiveSessionId !== undefined) {
 				try {
-					await driver.execute(`SET search_path TO ${savedSearchPath}`, undefined, effectiveSessionId)
+					const quotedRestore = quoteSearchPath(savedSearchPath, driver)
+					await driver.execute(`SET search_path TO ${quotedRestore}`, undefined, effectiveSessionId)
 				} catch { /* best effort */ }
 			}
 			if (ephemeralSessionId) {
@@ -485,6 +487,24 @@ function makeCancelledResult(durationMs = 0): QueryResult {
 		durationMs: Math.round(durationMs),
 		error: 'Query was cancelled',
 	}
+}
+
+// ── search_path helpers ─────────────────────────────────────
+
+/**
+ * Quote each schema name in a comma-separated search_path string.
+ * Handles SHOW search_path output (e.g. `"$user", public`) by stripping
+ * existing double-quotes before re-quoting with the driver's quoteIdentifier.
+ */
+function quoteSearchPath(raw: string, driver: DatabaseDriver): string {
+	return raw.split(',').map((s) => {
+		let name = s.trim()
+		// Strip existing double-quotes (SHOW output may include them)
+		if (name.startsWith('"') && name.endsWith('"')) {
+			name = name.slice(1, -1).replace(/""/g, '"')
+		}
+		return driver.quoteIdentifier(name)
+	}).join(', ')
 }
 
 // ── EXPLAIN parsers ──────────────────────────────────────────
