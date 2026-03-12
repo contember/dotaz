@@ -140,7 +140,13 @@ export class SessionManager {
 				)
 			}
 		}
-		this.txFirstSeen.delete(`${DEFAULT_TX_KEY}:${connectionId}`)
+		// Clean up all default tx keys for this connection (any database)
+		const prefix = `${DEFAULT_TX_KEY}:${connectionId}:`
+		for (const key of this.txFirstSeen.keys()) {
+			if (key.startsWith(prefix)) {
+				this.txFirstSeen.delete(key)
+			}
+		}
 		this.sessions.delete(connectionId)
 	}
 
@@ -257,41 +263,45 @@ export class SessionManager {
 			}
 
 			// Also check default (sessionless) transactions on each connected driver
+			// Iterate all active databases to catch non-default database transactions
 			for (const conn of this.cm.listConnections()) {
 				if (conn.state !== 'connected') continue
-				const key = `${DEFAULT_TX_KEY}:${conn.id}`
-				let inTx = false
-				let iterating = false
-				try {
-					const driver = this.cm.getDriver(conn.id)
-					inTx = driver.inTransaction()
-					iterating = driver.isIterating()
-				} catch {
-					this.txFirstSeen.delete(key)
-					continue
-				}
-
-				// Skip if actively iterating — rollback would fail
-				if (iterating) continue
-
-				if (inTx) {
-					if (!this.txFirstSeen.has(key)) {
-						this.txFirstSeen.set(key, now)
-					} else {
-						const elapsed = now - this.txFirstSeen.get(key)!
-						if (elapsed >= timeoutMs) {
-							try {
-								const driver = this.cm.getDriver(conn.id)
-								await driver.rollback()
-							} catch { /* best effort */ }
-							try {
-								this.onTransactionRollback?.(conn.id)
-							} catch { /* best effort */ }
-							this.txFirstSeen.delete(key)
-						}
+				const databases = this.cm.getActiveDatabases(conn.id)
+				for (const database of databases) {
+					const key = `${DEFAULT_TX_KEY}:${conn.id}:${database}`
+					let inTx = false
+					let iterating = false
+					try {
+						const driver = this.cm.getDriver(conn.id, database)
+						inTx = driver.inTransaction()
+						iterating = driver.isIterating()
+					} catch {
+						this.txFirstSeen.delete(key)
+						continue
 					}
-				} else {
-					this.txFirstSeen.delete(key)
+
+					// Skip if actively iterating — rollback would fail
+					if (iterating) continue
+
+					if (inTx) {
+						if (!this.txFirstSeen.has(key)) {
+							this.txFirstSeen.set(key, now)
+						} else {
+							const elapsed = now - this.txFirstSeen.get(key)!
+							if (elapsed >= timeoutMs) {
+								try {
+									const driver = this.cm.getDriver(conn.id, database)
+									await driver.rollback()
+								} catch { /* best effort */ }
+								try {
+									this.onTransactionRollback?.(conn.id, database)
+								} catch { /* best effort */ }
+								this.txFirstSeen.delete(key)
+							}
+						}
+					} else {
+						this.txFirstSeen.delete(key)
+					}
 				}
 			}
 		} finally {

@@ -669,6 +669,12 @@ export class ConnectionManager {
 		}
 	}
 
+	getActiveDatabases(connectionId: string): string[] {
+		const driverMap = this.drivers.get(connectionId)
+		if (!driverMap) return []
+		return [...driverMap.keys()]
+	}
+
 	private getActiveDatabaseCount(): number {
 		let count = 0
 		for (const driverMap of this.drivers.values()) {
