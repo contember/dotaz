@@ -148,6 +148,7 @@ export class PostgresDriver implements DatabaseDriver {
 	private db: SQL | null = null
 	private connected = false
 	private sessions = new Map<string, SessionState>()
+	private defaultSessionPending = false
 	private poolActiveQueries = new Map<symbol, ReturnType<SQL['unsafe']>>()
 
 	async connect(config: ConnectionConfig): Promise<void> {
@@ -625,17 +626,22 @@ export class PostgresDriver implements DatabaseDriver {
 			session.txActive = true
 		} else {
 			// Backward compat: reserve into __default__ session
-			if (this.sessions.has(DEFAULT_SESSION)) {
+			if (this.sessions.has(DEFAULT_SESSION) || this.defaultSessionPending) {
 				throw new Error('A default transaction is already active. Commit or rollback before starting a new one.')
 			}
-			const conn = await this.db!.reserve()
+			this.defaultSessionPending = true
 			try {
-				await conn.unsafe('BEGIN')
-			} catch (err) {
-				conn.release()
-				throw err
+				const conn = await this.db!.reserve()
+				try {
+					await conn.unsafe('BEGIN')
+				} catch (err) {
+					conn.release()
+					throw err
+				}
+				this.sessions.set(DEFAULT_SESSION, { conn, txActive: true, iterating: false, activeQueries: new Set() })
+			} finally {
+				this.defaultSessionPending = false
 			}
-			this.sessions.set(DEFAULT_SESSION, { conn, txActive: true, iterating: false, activeQueries: new Set() })
 		}
 	}
 
