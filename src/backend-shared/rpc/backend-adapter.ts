@@ -255,6 +255,7 @@ export class BackendAdapter implements RpcAdapter {
 
 	async beginTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void> {
 		await this.txManager.begin(connectionId, database, sessionId)
+		this.queryExecutor.sessionLog.resetPendingCount(connectionId, database)
 	}
 
 	async commitTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void> {
