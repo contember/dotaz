@@ -231,6 +231,8 @@ connectionManager.onStatusChanged((event) => {
 					sessions: restored,
 				})
 			}
+		}).catch((err) => {
+			console.warn('Session restoration failed:', err instanceof Error ? err.message : err)
 		})
 	}
 })
