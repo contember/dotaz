@@ -328,7 +328,7 @@ export class QueryExecutor {
 				rawText = JSON.stringify(plan, null, 2)
 			} else {
 				try {
-					const textPrefix = isMysql ? 'EXPLAIN' : 'EXPLAIN'
+					const textPrefix = 'EXPLAIN'
 					const textResult = effectiveSessionId !== undefined
 						? await driver.execute(`${textPrefix} ${sql}`, undefined, effectiveSessionId)
 						: await driver.execute(`${textPrefix} ${sql}`)
