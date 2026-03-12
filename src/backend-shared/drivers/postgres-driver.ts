@@ -791,9 +791,14 @@ export class PostgresDriver implements DatabaseDriver {
 			}
 			if (ownConn) {
 				try {
+					await (conn as ReservedSQL).unsafe('ROLLBACK')
+				} catch { /* ignore if no tx */ }
+				try {
 					await (conn as ReservedSQL).unsafe('DISCARD ALL')
 				} catch { /* best effort */ }
 				;(conn as ReservedSQL).release()
+			} else if (session) {
+				try { await conn.unsafe('ROLLBACK') } catch { /* ignore if no tx */ }
 			}
 		}
 	}
