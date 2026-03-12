@@ -158,6 +158,9 @@ export class MysqlDriver implements DatabaseDriver {
 					await session.conn.unsafe('ROLLBACK')
 				} catch { /* ignore */ }
 			}
+			try {
+				await session.conn.unsafe('UNLOCK TABLES')
+			} catch { /* best effort */ }
 			session.conn.release()
 		}
 		this.sessions.clear()
@@ -192,6 +195,9 @@ export class MysqlDriver implements DatabaseDriver {
 				await session.conn.unsafe('ROLLBACK')
 			} catch { /* ignore */ }
 		}
+		try {
+			await session.conn.unsafe('UNLOCK TABLES')
+		} catch { /* best effort — connection may be broken */ }
 		session.conn.release()
 		this.sessions.delete(sessionId)
 	}
@@ -488,6 +494,7 @@ export class MysqlDriver implements DatabaseDriver {
 			if (session) session.txActive = false
 			if (ownConn) {
 				try { await (conn as ReservedSQL).unsafe('ROLLBACK') } catch { /* already committed or rolled back */ }
+				try { await (conn as ReservedSQL).unsafe('UNLOCK TABLES') } catch { /* best effort */ }
 				;(conn as ReservedSQL).release()
 			}
 		}
