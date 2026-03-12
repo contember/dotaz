@@ -24,6 +24,7 @@ export class SessionManager {
 	// Track when we first observed a session with an active transaction
 	private txFirstSeen = new Map<string, number>()
 	private idleCheckTimer: ReturnType<typeof setInterval> | null = null
+	private idleCheckRunning = false
 	private onTransactionRollback?: (connectionId: string, database?: string) => void
 
 	constructor(cm: ConnectionManager, appDb: AppDatabase, onTransactionRollback?: (connectionId: string, database?: string) => void) {
@@ -208,77 +209,83 @@ export class SessionManager {
 	}
 
 	private async checkIdleTransactions(): Promise<void> {
-		const timeoutMs = this.appDb.getNumberSetting('idleTransactionTimeoutMs')
-			?? Number(DEFAULT_SETTINGS.idleTransactionTimeoutMs)
-		if (!timeoutMs || timeoutMs <= 0) return
+		if (this.idleCheckRunning) return
+		this.idleCheckRunning = true
+		try {
+			const timeoutMs = this.appDb.getNumberSetting('idleTransactionTimeoutMs')
+				?? Number(DEFAULT_SETTINGS.idleTransactionTimeoutMs)
+			if (!timeoutMs || timeoutMs <= 0) return
 
-		const now = Date.now()
+			const now = Date.now()
 
-		for (const [, connSessions] of this.sessions) {
-			for (const [sessionId, info] of connSessions) {
+			for (const [, connSessions] of this.sessions) {
+				for (const [sessionId, info] of connSessions) {
+					let inTx = false
+					try {
+						const driver = this.cm.getDriver(info.connectionId, info.database)
+						inTx = driver.inTransaction(sessionId)
+					} catch {
+						this.txFirstSeen.delete(sessionId)
+						continue
+					}
+
+					if (inTx) {
+						if (!this.txFirstSeen.has(sessionId)) {
+							this.txFirstSeen.set(sessionId, now)
+						} else {
+							const elapsed = now - this.txFirstSeen.get(sessionId)!
+							if (elapsed >= timeoutMs) {
+								try {
+									const driver = this.cm.getDriver(info.connectionId, info.database)
+									await driver.rollback(sessionId)
+								} catch { /* best effort */ }
+								try {
+									this.onTransactionRollback?.(info.connectionId, info.database)
+								} catch { /* best effort */ }
+								this.txFirstSeen.delete(sessionId)
+							}
+						}
+					} else {
+						this.txFirstSeen.delete(sessionId)
+					}
+				}
+			}
+
+			// Also check default (sessionless) transactions on each connected driver
+			for (const conn of this.cm.listConnections()) {
+				if (conn.state !== 'connected') continue
+				const key = `${DEFAULT_TX_KEY}:${conn.id}`
 				let inTx = false
 				try {
-					const driver = this.cm.getDriver(info.connectionId, info.database)
-					inTx = driver.inTransaction(sessionId)
+					const driver = this.cm.getDriver(conn.id)
+					inTx = driver.inTransaction()
 				} catch {
-					this.txFirstSeen.delete(sessionId)
+					this.txFirstSeen.delete(key)
 					continue
 				}
 
 				if (inTx) {
-					if (!this.txFirstSeen.has(sessionId)) {
-						this.txFirstSeen.set(sessionId, now)
+					if (!this.txFirstSeen.has(key)) {
+						this.txFirstSeen.set(key, now)
 					} else {
-						const elapsed = now - this.txFirstSeen.get(sessionId)!
+						const elapsed = now - this.txFirstSeen.get(key)!
 						if (elapsed >= timeoutMs) {
 							try {
-								const driver = this.cm.getDriver(info.connectionId, info.database)
-								await driver.rollback(sessionId)
+								const driver = this.cm.getDriver(conn.id)
+								await driver.rollback()
 							} catch { /* best effort */ }
 							try {
-								this.onTransactionRollback?.(info.connectionId, info.database)
+								this.onTransactionRollback?.(conn.id)
 							} catch { /* best effort */ }
-							this.txFirstSeen.delete(sessionId)
+							this.txFirstSeen.delete(key)
 						}
 					}
 				} else {
-					this.txFirstSeen.delete(sessionId)
+					this.txFirstSeen.delete(key)
 				}
 			}
-		}
-
-		// Also check default (sessionless) transactions on each connected driver
-		for (const conn of this.cm.listConnections()) {
-			if (conn.state !== 'connected') continue
-			const key = `${DEFAULT_TX_KEY}:${conn.id}`
-			let inTx = false
-			try {
-				const driver = this.cm.getDriver(conn.id)
-				inTx = driver.inTransaction()
-			} catch {
-				this.txFirstSeen.delete(key)
-				continue
-			}
-
-			if (inTx) {
-				if (!this.txFirstSeen.has(key)) {
-					this.txFirstSeen.set(key, now)
-				} else {
-					const elapsed = now - this.txFirstSeen.get(key)!
-					if (elapsed >= timeoutMs) {
-						try {
-							const driver = this.cm.getDriver(conn.id)
-							await driver.rollback()
-						} catch { /* best effort */ }
-						try {
-							this.onTransactionRollback?.(conn.id)
-						} catch { /* best effort */ }
-						this.txFirstSeen.delete(key)
-					}
-				}
-			} else {
-				this.txFirstSeen.delete(key)
-			}
+		} finally {
+			this.idleCheckRunning = false
 		}
 	}
 
