@@ -107,7 +107,49 @@ describe('isConnectionLevelError', () => {
 	})
 
 	test('handles non-Error values', () => {
-		expect(isConnectionLevelError('ECONNRESET')).toBe(true)
+		expect(isConnectionLevelError('connection terminated')).toBe(true)
 		expect(isConnectionLevelError('some other error')).toBe(false)
+	})
+
+	test('detects errors via .code property (ECONNRESET)', () => {
+		const err = new Error('some message')
+		;(err as any).code = 'ECONNRESET'
+		expect(isConnectionLevelError(err)).toBe(true)
+	})
+
+	test('detects errors via .code property (ECONNREFUSED)', () => {
+		const err = new Error('some message')
+		;(err as any).code = 'ECONNREFUSED'
+		expect(isConnectionLevelError(err)).toBe(true)
+	})
+
+	test('detects errors via .code property (EPIPE)', () => {
+		const err = new Error('some message')
+		;(err as any).code = 'EPIPE'
+		expect(isConnectionLevelError(err)).toBe(true)
+	})
+
+	test('detects errors via .code property (ETIMEDOUT)', () => {
+		const err = new Error('some message')
+		;(err as any).code = 'ETIMEDOUT'
+		expect(isConnectionLevelError(err)).toBe(true)
+	})
+
+	test('detects errors via .code property (ENOTCONN)', () => {
+		const err = new Error('some message')
+		;(err as any).code = 'ENOTCONN'
+		expect(isConnectionLevelError(err)).toBe(true)
+	})
+
+	test('does not match non-connection error codes', () => {
+		const err = new Error('some message')
+		;(err as any).code = 'ENOENT'
+		expect(isConnectionLevelError(err)).toBe(false)
+	})
+
+	test('.code takes precedence over message content', () => {
+		const err = new Error('unrelated message')
+		;(err as any).code = 'ECONNRESET'
+		expect(isConnectionLevelError(err)).toBe(true)
 	})
 })

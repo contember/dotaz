@@ -24,6 +24,11 @@ export function syncTxActive(session: TxTrackable, sql: string): void {
 
 /** Detect connection-level errors (TCP drop, reset, etc.) as opposed to protocol errors. */
 export function isConnectionLevelError(err: unknown): boolean {
+	const code = (err as any)?.code
+	if (typeof code === 'string' && /^(ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|ENOTCONN)$/.test(code)) {
+		return true
+	}
+	// fallback for errors without .code (Bun-specific, string messages, etc.)
 	const message = err instanceof Error ? err.message : String(err)
 	return /ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|connection (terminated|ended|closed|lost|reset)|socket.*(closed|hang up|end)|write after end|broken pipe|network/i.test(message)
 }
