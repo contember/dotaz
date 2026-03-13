@@ -58,6 +58,7 @@ export interface TabEditorState {
 	queryId: string | null
 	txMode: TxMode
 	inTransaction: boolean
+	txAborted: boolean
 	/** Range of the last executed statement (for visual flash feedback) */
 	executedRange: { from: number; to: number } | null
 	/** Error position in the editor (character offset, 0-based) for highlighting */
@@ -106,6 +107,7 @@ function createDefaultEditorState(connectionId: string, database?: string): TabE
 		queryId: null,
 		txMode: 'auto-commit',
 		inTransaction: false,
+		txAborted: false,
 		executedRange: null,
 		errorOffset: null,
 		explainResult: null,
@@ -329,12 +331,19 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit =
 		const duration = Math.round(performance.now() - startTime)
 		const errorMessage = friendlyErrorMessage(err)
 
+		// Detect aborted transaction state (PostgreSQL 25P02)
+		const errorCode = (err as any)?.code as string | undefined
+		const txAborted = errorCode === 'TRANSACTION_ABORTED'
+			|| (tab.inTransaction && errorCode !== undefined && errorCode !== 'UNKNOWN'
+				&& connectionsStore.getConnectionType(tab.connectionId) === 'postgresql')
+
 		setState('tabs', tabId, {
 			error: errorMessage,
 			duration,
 			isRunning: false,
 			queryId: null,
 			errorOffset: null,
+			...(txAborted ? { txAborted: true } : {}),
 		})
 
 		recordHistory(tab.connectionId, tab.database, sql, [{
@@ -450,7 +459,7 @@ async function beginTransaction(tabId: string) {
 	const sessionId = sessionStore.getSessionForTab(tabId)
 	try {
 		await rpc.tx.begin({ connectionId: tab.connectionId, database: tab.database, sessionId })
-		setState('tabs', tabId, 'inTransaction', true)
+		setState('tabs', tabId, { inTransaction: true, txAborted: false })
 	} catch (err) {
 		setState('tabs', tabId, 'error', friendlyErrorMessage(err))
 	}
@@ -463,7 +472,7 @@ async function commitTransaction(tabId: string) {
 	const sessionId = sessionStore.getSessionForTab(tabId)
 	try {
 		await rpc.tx.commit({ connectionId: tab.connectionId, database: tab.database, sessionId })
-		setState('tabs', tabId, 'inTransaction', false)
+		setState('tabs', tabId, { inTransaction: false, txAborted: false })
 		// Auto-unpin after commit if configured
 		sessionStore.checkAutoUnpin(tabId, 'COMMIT').catch(() => {})
 	} catch (err) {
@@ -478,7 +487,7 @@ async function rollbackTransaction(tabId: string) {
 	const sessionId = sessionStore.getSessionForTab(tabId)
 	try {
 		await rpc.tx.rollback({ connectionId: tab.connectionId, database: tab.database, sessionId })
-		setState('tabs', tabId, 'inTransaction', false)
+		setState('tabs', tabId, { inTransaction: false, txAborted: false })
 		// Auto-unpin after rollback if configured
 		sessionStore.checkAutoUnpin(tabId, 'ROLLBACK').catch(() => {})
 	} catch (err) {
@@ -585,7 +594,7 @@ function removeTab(tabId: string) {
 function resetTransactionStateForConnection(connectionId: string) {
 	for (const [tabId, tab] of Object.entries(state.tabs)) {
 		if (tab.connectionId === connectionId && tab.inTransaction) {
-			setState('tabs', tabId, 'inTransaction', false)
+			setState('tabs', tabId, { inTransaction: false, txAborted: false })
 		}
 	}
 }

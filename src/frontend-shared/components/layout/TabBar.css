@@ -164,6 +164,11 @@
 	color: var(--ink-inverse);
 }
 
+.tab-bar__tab-badge--tx-aborted {
+	background: var(--error);
+	color: var(--ink-inverse);
+}
+
 .tab-bar__tab-badge--ro {
 	background: var(--ink-muted);
 	color: var(--ink-inverse);

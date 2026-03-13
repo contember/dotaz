@@ -5,7 +5,8 @@ import { AuthenticationError, ConnectionError, ConstraintError, DatabaseError, Q
 /** Map a PostgreSQL error to a domain error. PostgreSQL errors carry a `code` property (SQLSTATE). */
 export function mapPostgresError(err: unknown): DatabaseError {
 	const message = err instanceof Error ? err.message : String(err)
-	const pgCode = (err as any)?.code as string | undefined
+	// Bun SQL stores SQLSTATE in errno, postgres.js uses code
+	const pgCode = ((err as any)?.errno ?? (err as any)?.code) as string | undefined
 
 	// Connection errors
 	if (/ECONNREFUSED|connection refused/i.test(message)) {

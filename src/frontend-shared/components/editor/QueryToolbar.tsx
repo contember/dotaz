@@ -33,6 +33,7 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 	const duration = () => tab()?.duration ?? 0
 	const txMode = () => tab()?.txMode ?? 'auto-commit'
 	const inTransaction = () => tab()?.inTransaction ?? false
+	const txAborted = () => tab()?.txAborted ?? false
 	const isPinned = () => sessionStore.isTabPinned(props.tabId)
 	const sessionLabel = () => sessionStore.getSessionLabelForTab(props.tabId)
 	const isPostgres = () => connectionsStore.getConnectionType(props.connectionId) === 'postgresql'
@@ -257,11 +258,17 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 						</button>
 					}
 				>
-					<div class="query-toolbar__tx-indicator">TXN</div>
+					<div
+						class={txAborted() ? 'query-toolbar__tx-indicator query-toolbar__tx-indicator--aborted' : 'query-toolbar__tx-indicator'}
+						title={txAborted() ? 'Transaction is aborted — rollback required' : 'Transaction active'}
+					>
+						{txAborted() ? 'TXN ABORTED' : 'TXN'}
+					</div>
 					<button
 						class="query-toolbar__btn"
 						onClick={handleCommit}
-						title="Commit Transaction"
+						disabled={txAborted()}
+						title={txAborted() ? 'Cannot commit an aborted transaction' : 'Commit Transaction'}
 					>
 						<Check size={12} /> Commit
 					</button>

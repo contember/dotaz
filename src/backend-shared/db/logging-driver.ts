@@ -108,6 +108,9 @@ export class LoggingDriver implements DatabaseDriver {
 	inTransaction(sessionId?: string): boolean {
 		return this.inner.inTransaction(sessionId)
 	}
+	isTxAborted(sessionId?: string): boolean {
+		return this.inner.isTxAborted(sessionId)
+	}
 	isIterating(sessionId?: string): boolean {
 		return this.inner.isIterating(sessionId)
 	}

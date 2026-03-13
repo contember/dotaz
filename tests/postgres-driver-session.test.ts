@@ -320,6 +320,101 @@ describe('commit/rollback failure releases session', () => {
 	})
 })
 
+describe('txAborted tracking (TXSYNC-3)', () => {
+	test('isTxAborted returns false initially', async () => {
+		await driver.reserveSession('abort-1')
+		expect(driver.isTxAborted('abort-1')).toBe(false)
+		await driver.releaseSession('abort-1')
+	})
+
+	test('isTxAborted returns true after error in transaction', async () => {
+		await driver.reserveSession('abort-2')
+		await driver.beginTransaction('abort-2')
+		expect(driver.isTxAborted('abort-2')).toBe(false)
+
+		// Cause an error inside the transaction
+		try {
+			await driver.execute('SELECT * FROM nonexistent_table_xyz', [], 'abort-2')
+		} catch { /* expected */ }
+
+		expect(driver.isTxAborted('abort-2')).toBe(true)
+		expect(driver.inTransaction('abort-2')).toBe(true)
+
+		await driver.rollback('abort-2')
+		expect(driver.isTxAborted('abort-2')).toBe(false)
+		expect(driver.inTransaction('abort-2')).toBe(false)
+		await driver.releaseSession('abort-2')
+	})
+
+	test('isTxAborted clears on beginTransaction', async () => {
+		await driver.reserveSession('abort-3')
+		await driver.beginTransaction('abort-3')
+
+		try {
+			await driver.execute('INVALID SQL SYNTAX', [], 'abort-3')
+		} catch { /* expected */ }
+		expect(driver.isTxAborted('abort-3')).toBe(true)
+
+		// Rollback first, then begin new transaction
+		await driver.rollback('abort-3')
+		await driver.beginTransaction('abort-3')
+		expect(driver.isTxAborted('abort-3')).toBe(false)
+		expect(driver.inTransaction('abort-3')).toBe(true)
+
+		await driver.rollback('abort-3')
+		await driver.releaseSession('abort-3')
+	})
+
+	test('isTxAborted clears on raw ROLLBACK via execute', async () => {
+		await driver.reserveSession('abort-4')
+		await driver.execute('BEGIN', [], 'abort-4')
+		expect(driver.inTransaction('abort-4')).toBe(true)
+
+		try {
+			await driver.execute('SELECT * FROM nonexistent_table_xyz', [], 'abort-4')
+		} catch { /* expected */ }
+		expect(driver.isTxAborted('abort-4')).toBe(true)
+
+		// Raw ROLLBACK clears both txActive and txAborted
+		await driver.execute('ROLLBACK', [], 'abort-4')
+		expect(driver.isTxAborted('abort-4')).toBe(false)
+		expect(driver.inTransaction('abort-4')).toBe(false)
+		await driver.releaseSession('abort-4')
+	})
+
+	test('subsequent query after error returns TRANSACTION_ABORTED', async () => {
+		await driver.reserveSession('abort-5')
+		await driver.beginTransaction('abort-5')
+
+		try {
+			await driver.execute('SELECT * FROM nonexistent_table_xyz', [], 'abort-5')
+		} catch { /* expected */ }
+
+		// Next query should fail with TRANSACTION_ABORTED (25P02)
+		try {
+			await driver.execute('SELECT 1', [], 'abort-5')
+			throw new Error('Should have thrown')
+		} catch (err: any) {
+			expect(err.code).toBe('TRANSACTION_ABORTED')
+		}
+
+		await driver.rollback('abort-5')
+		await driver.releaseSession('abort-5')
+	})
+
+	test('error outside transaction does not set txAborted', async () => {
+		await driver.reserveSession('abort-6')
+		expect(driver.inTransaction('abort-6')).toBe(false)
+
+		try {
+			await driver.execute('INVALID SQL', [], 'abort-6')
+		} catch { /* expected */ }
+
+		expect(driver.isTxAborted('abort-6')).toBe(false)
+		await driver.releaseSession('abort-6')
+	})
+})
+
 describe('disconnect releases all sessions', () => {
 	test('disconnect cleans up sessions', async () => {
 		const d2 = new PostgresDriver()

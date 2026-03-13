@@ -453,6 +453,10 @@ export class SqliteDriver implements DatabaseDriver {
 		return this.txActive && this.txOwnerSession === null
 	}
 
+	isTxAborted(_sessionId?: string): boolean {
+		return false
+	}
+
 	isIterating(_sessionId?: string): boolean {
 		return this.iterating
 	}

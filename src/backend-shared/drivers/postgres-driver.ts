@@ -83,6 +83,7 @@ interface PgMatviewColumnRow {
 interface SessionState {
 	conn: ReservedSQL
 	txActive: boolean
+	txAborted: boolean
 	iterating: boolean
 	activeQueries: Set<ReturnType<SQL['unsafe']>>
 }
@@ -95,10 +96,13 @@ function syncTxActive(session: SessionState, sql: string): void {
 	const upper = sql.trim().toUpperCase()
 	if (/^(BEGIN|START\s+TRANSACTION)\b/.test(upper)) {
 		session.txActive = true
+		session.txAborted = false
 	} else if (/^(COMMIT|END)\b/.test(upper)) {
 		session.txActive = false
+		session.txAborted = false
 	} else if (/^ROLLBACK\b/.test(upper) && !/^ROLLBACK\s+TO\b/.test(upper)) {
 		session.txActive = false
+		session.txAborted = false
 	}
 }
 
@@ -221,7 +225,7 @@ export class PostgresDriver implements DatabaseDriver {
 			throw new Error(`Session "${sessionId}" already exists`)
 		}
 		const conn = await this.db!.reserve()
-		this.sessions.set(sessionId, { conn, txActive: false, iterating: false, activeQueries: new Set() })
+		this.sessions.set(sessionId, { conn, txActive: false, txAborted: false, iterating: false, activeQueries: new Set() })
 	}
 
 	async releaseSession(sessionId: string): Promise<void> {
@@ -284,6 +288,10 @@ export class PostgresDriver implements DatabaseDriver {
 				durationMs,
 			}
 		} catch (err) {
+			// Any error inside an active transaction puts PostgreSQL into aborted state (25P02)
+			if (session?.txActive && !isConnectionLevelError(err)) {
+				session.txAborted = true
+			}
 			throw err instanceof DatabaseError ? err : mapPostgresError(err)
 		} finally {
 			if (session) {
@@ -649,6 +657,7 @@ export class PostgresDriver implements DatabaseDriver {
 			if (!session) throw new Error(`Session "${sessionId}" not found`)
 			await session.conn.unsafe('BEGIN')
 			session.txActive = true
+			session.txAborted = false
 		} else {
 			// Backward compat: reserve into __default__ session
 			if (this.sessions.has(DEFAULT_SESSION) || this.defaultSessionPending) {
@@ -663,7 +672,7 @@ export class PostgresDriver implements DatabaseDriver {
 					conn.release()
 					throw err
 				}
-				this.sessions.set(DEFAULT_SESSION, { conn, txActive: true, iterating: false, activeQueries: new Set() })
+				this.sessions.set(DEFAULT_SESSION, { conn, txActive: true, txAborted: false, iterating: false, activeQueries: new Set() })
 			} finally {
 				this.defaultSessionPending = false
 			}
@@ -679,17 +688,20 @@ export class PostgresDriver implements DatabaseDriver {
 		try {
 			await session.conn.unsafe('COMMIT')
 			session.txActive = false
+			session.txAborted = false
 		} catch (err) {
 			// If the error is connection-level, the COMMIT may have succeeded server-side
 			// before the TCP connection dropped. Raise a distinct error so the UI can warn
 			// the user to verify data state before retrying.
 			if (isConnectionLevelError(err)) {
 				session.txActive = false
+				session.txAborted = false
 				throw new DatabaseError('COMMIT_UNCERTAIN', 'Connection lost during COMMIT — the transaction may have been committed. Verify your data before retrying.', { cause: err })
 			}
 			try {
 				await session.conn.unsafe('ROLLBACK')
 				session.txActive = false
+				session.txAborted = false
 			} catch { /* ROLLBACK failed — leave txActive true so session is known-dirty */ }
 			throw err
 		} finally {
@@ -714,9 +726,11 @@ export class PostgresDriver implements DatabaseDriver {
 		try {
 			await session.conn.unsafe('ROLLBACK')
 			session.txActive = false
+			session.txAborted = false
 		} catch (err) {
 			if (isConnectionLevelError(err)) {
 				session.txActive = false
+				session.txAborted = false
 			}
 			// Non-connection error: leave txActive true so session is known-dirty
 			throw err
@@ -737,6 +751,12 @@ export class PostgresDriver implements DatabaseDriver {
 		const id = sessionId ?? DEFAULT_SESSION
 		const session = this.sessions.get(id)
 		return session?.txActive ?? false
+	}
+
+	isTxAborted(sessionId?: string): boolean {
+		const id = sessionId ?? DEFAULT_SESSION
+		const session = this.sessions.get(id)
+		return session?.txAborted ?? false
 	}
 
 	isIterating(sessionId?: string): boolean {

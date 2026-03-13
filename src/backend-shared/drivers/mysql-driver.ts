@@ -670,6 +670,10 @@ export class MysqlDriver implements DatabaseDriver {
 		return session?.txActive ?? false
 	}
 
+	isTxAborted(_sessionId?: string): boolean {
+		return false
+	}
+
 	isIterating(sessionId?: string): boolean {
 		const id = sessionId ?? DEFAULT_SESSION
 		const session = this.sessions.get(id)

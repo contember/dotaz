@@ -63,6 +63,7 @@ export class SessionManager {
 			database,
 			label: `Session ${counter}`,
 			inTransaction: false,
+			txAborted: false,
 			createdAt: Date.now(),
 		}
 
@@ -120,10 +121,11 @@ export class SessionManager {
 
 		const result: SessionInfo[] = []
 		for (const info of connSessions.values()) {
-			// Refresh inTransaction state from driver
+			// Refresh inTransaction and txAborted state from driver
 			try {
 				const driver = this.cm.getDriver(info.connectionId, info.database)
 				info.inTransaction = driver.inTransaction(info.sessionId)
+				info.txAborted = driver.isTxAborted(info.sessionId)
 			} catch {
 				// Driver may be disconnected — keep last known state
 			}
@@ -136,10 +138,11 @@ export class SessionManager {
 		const info = this.findSession(sessionId)
 		if (!info) return undefined
 
-		// Refresh inTransaction state from driver
+		// Refresh inTransaction and txAborted state from driver
 		try {
 			const driver = this.cm.getDriver(info.connectionId, info.database)
 			info.inTransaction = driver.inTransaction(info.sessionId)
+			info.txAborted = driver.isTxAborted(info.sessionId)
 		} catch {
 			// Driver may be disconnected — keep last known state
 		}
@@ -210,6 +213,7 @@ export class SessionManager {
 					database: spec.database,
 					label: spec.label,
 					inTransaction: false,
+					txAborted: false,
 					createdAt: Date.now(),
 				}
 

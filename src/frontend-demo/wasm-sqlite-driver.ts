@@ -341,6 +341,10 @@ export class WasmSqliteDriver implements DatabaseDriver {
 		return this.txActive
 	}
 
+	isTxAborted(_sessionId?: string): boolean {
+		return false
+	}
+
 	isIterating(_sessionId?: string): boolean {
 		return false
 	}

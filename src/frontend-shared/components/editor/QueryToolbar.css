@@ -131,6 +131,13 @@
 	font-weight: 600;
 }
 
+/* Transaction indicator — aborted state */
+.query-toolbar__tx-indicator--aborted {
+	background: rgba(239, 68, 68, 0.15);
+	border-color: var(--error);
+	color: var(--error);
+}
+
 /* Schema (search_path) select */
 .query-toolbar__schema-select {
 	height: 24px;

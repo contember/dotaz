@@ -46,5 +46,6 @@ export interface DatabaseDriver extends SqlDialect {
 	commit(sessionId?: string): Promise<void>
 	rollback(sessionId?: string): Promise<void>
 	inTransaction(sessionId?: string): boolean
+	isTxAborted(sessionId?: string): boolean
 	isIterating(sessionId?: string): boolean
 }
