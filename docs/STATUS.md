@@ -17,7 +17,7 @@ Stav implementace issues z `docs/issues/`. Řazeno podle priority (riziko × eff
 | HC-3 | medium | Vyčerpání poolu blokuje health check | done | 467e2b6 |
 | CANCEL-1 | medium | Pool cancel zruší všechny queries, ne jen jednu | done | 19cae3d |
 | MYSQL-1 | medium | MySQL reset fallback tiše spolkne chyby | done | 536e9d4, 1b00461, e6ab952 |
-| BATCH-1 | medium | COMMIT_UNCERTAIN v executeStatements (UI problém) | pending | |
+| BATCH-1 | medium | COMMIT_UNCERTAIN v executeStatements (UI problém) | done | 1ada3d1 |
 | TXSYNC-3 | medium | PostgreSQL 25P02 aborted tx není trackován | pending | |
 | DEFSESS-2 | low | disconnect() podmíněný ROLLBACK | pending | |
 | TXSYNC-2 | low | syncTxActive edge cases (PL/pgSQL, komentáře) | pending | |
