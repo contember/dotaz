@@ -67,6 +67,14 @@ export class SessionLog {
 		// Increment pending count (statements within an active transaction)
 		const pk = this.pendingKey(connectionId, database, sessionId)
 		this.pendingCounts.set(pk, (this.pendingCounts.get(pk) ?? 0) + 1)
+
+		// Reset pending count on raw transaction-control statements
+		const upper = sql.trim().toUpperCase()
+		if (/^(COMMIT|END|ROLLBACK)\b/.test(upper) && !/^ROLLBACK\s+TO\b/.test(upper)) {
+			this.resetPendingCount(connectionId, database, sessionId)
+		} else if (/^(BEGIN|START\s+TRANSACTION)\b/.test(upper)) {
+			this.resetPendingCount(connectionId, database, sessionId)
+		}
 	}
 
 	getEntries(connectionId: string, database?: string): TransactionLogEntry[] {
