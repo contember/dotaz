@@ -228,7 +228,7 @@ export class BackendAdapter implements RpcAdapter {
 						result.affectedRows ?? result.rowCount,
 						result.error,
 						database,
-						sessionId,
+						effectiveSessionId,
 					)
 				} catch (err) {
 					const durationMs = Math.round(performance.now() - start)
@@ -240,7 +240,7 @@ export class BackendAdapter implements RpcAdapter {
 						0,
 						err instanceof Error ? err.message : String(err),
 						database,
-						sessionId,
+						effectiveSessionId,
 					)
 					throw err
 				}
