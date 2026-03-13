@@ -19,6 +19,7 @@ import type {
 } from '@dotaz/shared/types/rpc'
 import { settingsToAiConfig } from '@dotaz/shared/types/settings'
 import type { DatabaseDriver } from '../db/driver'
+import { withEphemeralSession } from '../db/ephemeral-session'
 import { buildSchemaContext, generateSql } from '../services/ai-sql'
 import type { ConnectionManager } from '../services/connection-manager'
 import type { EncryptionService } from '../services/encryption'
@@ -199,71 +200,64 @@ export class BackendAdapter implements RpcAdapter {
 	): Promise<QueryResult[]> {
 		const driver = this.cm.getDriver(connectionId, database)
 
-		// Reserve ephemeral session for isolation when no sessionId provided,
-		// avoiding races on the shared __default__ singleton.
-		let ephemeralSessionId: string | undefined
-		if (!sessionId) {
-			ephemeralSessionId = `__ephemeral_${crypto.randomUUID()}`
-			await driver.reserveSession(ephemeralSessionId)
+		const runInSession = async (effectiveSessionId: string) => {
+			const inExistingTx = driver.inTransaction(effectiveSessionId)
+			try {
+				if (!inExistingTx) {
+					await driver.beginTransaction(effectiveSessionId)
+				}
+				const results: QueryResult[] = []
+				for (const stmt of statements) {
+					const start = performance.now()
+					try {
+						const result = await driver.execute(stmt.sql, stmt.params, effectiveSessionId)
+						const durationMs = Math.round(performance.now() - start)
+						results.push({ ...result, durationMs })
+						this.queryExecutor.sessionLog.add(
+							connectionId,
+							stmt.sql,
+							result.error ? 'error' : 'success',
+							durationMs,
+							result.affectedRows ?? result.rowCount,
+							result.error,
+							database,
+							effectiveSessionId,
+						)
+					} catch (err) {
+						const durationMs = Math.round(performance.now() - start)
+						this.queryExecutor.sessionLog.add(
+							connectionId,
+							stmt.sql,
+							'error',
+							durationMs,
+							0,
+							err instanceof Error ? err.message : String(err),
+							database,
+							effectiveSessionId,
+						)
+						throw err
+					}
+				}
+				if (!inExistingTx) {
+					await driver.commit(effectiveSessionId)
+				}
+				return results
+			} catch (err) {
+				if (!inExistingTx) {
+					try {
+						await driver.rollback(effectiveSessionId)
+					} catch (rbErr) {
+						console.debug('Rollback after error failed:', rbErr instanceof Error ? rbErr.message : rbErr)
+					}
+				}
+				throw err
+			}
 		}
-		const effectiveSessionId = sessionId ?? ephemeralSessionId!
 
-		const inExistingTx = driver.inTransaction(effectiveSessionId)
-		try {
-			if (!inExistingTx) {
-				await driver.beginTransaction(effectiveSessionId)
-			}
-			const results: QueryResult[] = []
-			for (const stmt of statements) {
-				const start = performance.now()
-				try {
-					const result = await driver.execute(stmt.sql, stmt.params, effectiveSessionId)
-					const durationMs = Math.round(performance.now() - start)
-					results.push({ ...result, durationMs })
-					this.queryExecutor.sessionLog.add(
-						connectionId,
-						stmt.sql,
-						result.error ? 'error' : 'success',
-						durationMs,
-						result.affectedRows ?? result.rowCount,
-						result.error,
-						database,
-						effectiveSessionId,
-					)
-				} catch (err) {
-					const durationMs = Math.round(performance.now() - start)
-					this.queryExecutor.sessionLog.add(
-						connectionId,
-						stmt.sql,
-						'error',
-						durationMs,
-						0,
-						err instanceof Error ? err.message : String(err),
-						database,
-						effectiveSessionId,
-					)
-					throw err
-				}
-			}
-			if (!inExistingTx) {
-				await driver.commit(effectiveSessionId)
-			}
-			return results
-		} catch (err) {
-			if (!inExistingTx) {
-				try {
-					await driver.rollback(effectiveSessionId)
-				} catch (rbErr) {
-					console.debug('Rollback after error failed:', rbErr instanceof Error ? rbErr.message : rbErr)
-				}
-			}
-			throw err
-		} finally {
-			if (ephemeralSessionId) {
-				try { await driver.cancel(ephemeralSessionId) } catch { /* best effort */ }
-				try { await driver.releaseSession(ephemeralSessionId) } catch { /* best effort */ }
-			}
+		if (sessionId) {
+			return runInSession(sessionId)
 		}
+		return withEphemeralSession(driver, runInSession)
 	}
 
 	async cancelQuery(queryId: string): Promise<void> {
