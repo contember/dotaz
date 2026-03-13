@@ -1,3 +1,4 @@
+import { stripLiteralsAndComments } from '@dotaz/shared/sql'
 import type { ConnectionConfig } from '@dotaz/shared/types/connection'
 import { DatabaseDataType } from '@dotaz/shared/types/database'
 import type { SchemaData, SchemaInfo, TableInfo } from '@dotaz/shared/types/database'
@@ -93,7 +94,7 @@ const DEFAULT_SESSION = '__default__'
 
 /** Detect raw transaction-control statements and sync txActive flag. */
 function syncTxActive(session: SessionState, sql: string): void {
-	const upper = sql.trim().toUpperCase()
+	const upper = stripLiteralsAndComments(sql).trim().toUpperCase()
 	if (/^(BEGIN|START\s+TRANSACTION)\b/.test(upper)) {
 		session.txActive = true
 		session.txAborted = false

@@ -151,7 +151,7 @@ export function offsetToLineColumn(sql: string, offset: number): { line: number;
  * and comments (line and block) from SQL, replacing them with spaces.
  * Used for safe keyword detection without matching inside literals.
  */
-function stripLiteralsAndComments(sql: string): string {
+export function stripLiteralsAndComments(sql: string): string {
 	let result = ''
 	let i = 0
 
