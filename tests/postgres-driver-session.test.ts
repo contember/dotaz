@@ -213,36 +213,14 @@ describe('backward compatibility', () => {
 		await driver.beginTransaction()
 		expect(driver.inTransaction()).toBe(true)
 
-		await driver.execute(
-			'INSERT INTO test_schema.users (name, email, age) VALUES ($1, $2, $3)',
-			['Compat', 'compat@example.com', 70],
-		)
-
 		await driver.rollback()
 		expect(driver.inTransaction()).toBe(false)
-
-		// Data should be rolled back
-		const result = await driver.execute(
-			'SELECT * FROM test_schema.users WHERE email = $1',
-			['compat@example.com'],
-		)
-		expect(result.rows.length).toBe(0)
 	})
 
 	test('commit without sessionId releases default session', async () => {
 		await driver.beginTransaction()
-		await driver.execute(
-			'INSERT INTO test_schema.users (name, email, age) VALUES ($1, $2, $3)',
-			['CommitTest', 'commitcompat@example.com', 80],
-		)
 		await driver.commit()
 		expect(driver.inTransaction()).toBe(false)
-
-		// Clean up
-		await driver.execute(
-			'DELETE FROM test_schema.users WHERE email = $1',
-			['commitcompat@example.com'],
-		)
 	})
 
 	test('loadSchema without sessionId works', async () => {
@@ -263,7 +241,51 @@ describe('backward compatibility', () => {
 	})
 })
 
-describe('commit/rollback failure releases DEFAULT_SESSION', () => {
+describe('DEFSESS-1: sessionless operations must not use default session', () => {
+	test('execute without sessionId uses pool even when default session exists', async () => {
+		// Start a default transaction (creates __default__ session)
+		await driver.beginTransaction()
+		try {
+			// Insert inside default transaction via explicit session
+			// (we can't use execute without sessionId for this anymore)
+			expect(driver.inTransaction()).toBe(true)
+
+			// Execute without sessionId should go to the pool, not the default session
+			// Insert via pool (auto-commit)
+			await driver.execute(
+				'INSERT INTO test_schema.users (name, email, age) VALUES ($1, $2, $3)',
+				['PoolUser', 'pooluser-defsess1@example.com', 33],
+			)
+
+			// The insert should be visible from pool (was auto-committed)
+			const poolResult = await driver.execute(
+				'SELECT * FROM test_schema.users WHERE email = $1',
+				['pooluser-defsess1@example.com'],
+			)
+			expect(poolResult.rows.length).toBe(1)
+		} finally {
+			await driver.rollback()
+			// Clean up the pool-inserted row
+			await driver.execute(
+				'DELETE FROM test_schema.users WHERE email = $1',
+				['pooluser-defsess1@example.com'],
+			)
+		}
+	})
+
+	test('loadSchema without sessionId uses pool even when default session exists', async () => {
+		await driver.beginTransaction()
+		try {
+			// loadSchema without sessionId should use pool, not hijack default session
+			const schema = await driver.loadSchema()
+			expect(schema.schemas.length).toBeGreaterThan(0)
+		} finally {
+			await driver.rollback()
+		}
+	})
+})
+
+describe('commit/rollback failure releases session', () => {
 	test('failed commit releases connection and cleans up session', async () => {
 		// Create a table with a deferred unique constraint — violation is only
 		// detected at COMMIT time, which makes the COMMIT itself throw.
@@ -274,21 +296,24 @@ describe('commit/rollback failure releases DEFAULT_SESSION', () => {
 			)
 		`)
 		try {
-			await driver.beginTransaction()
-			await driver.execute(`INSERT INTO _test_deferred (val) VALUES ('dup')`)
-			await driver.execute(`INSERT INTO _test_deferred (val) VALUES ('dup')`)
+			await driver.reserveSession('deferred-s')
+			try {
+				await driver.beginTransaction('deferred-s')
+				await driver.execute(`INSERT INTO _test_deferred (val) VALUES ('dup')`, [], 'deferred-s')
+				await driver.execute(`INSERT INTO _test_deferred (val) VALUES ('dup')`, [], 'deferred-s')
 
-			// COMMIT must fail (deferred unique constraint violation)
-			await expect(driver.commit()).rejects.toThrow()
+				// COMMIT must fail (deferred unique constraint violation)
+				await expect(driver.commit('deferred-s')).rejects.toThrow()
 
-			// Session state must be cleaned up despite the error
-			expect(driver.inTransaction()).toBe(false)
+				// Session state must be cleaned up despite the error
+				expect(driver.inTransaction('deferred-s')).toBe(false)
+			} finally {
+				await driver.releaseSession('deferred-s')
+			}
 
-			// Driver must still be usable — if the connection leaked,
-			// beginTransaction() would reuse the broken session or the pool
-			// would be exhausted.
-			await driver.beginTransaction()
-			await driver.rollback()
+			// Driver must still be usable
+			const result = await driver.execute('SELECT 1 as n')
+			expect(result.rows.length).toBe(1)
 		} finally {
 			await driver.execute('DROP TABLE IF EXISTS _test_deferred')
 		}

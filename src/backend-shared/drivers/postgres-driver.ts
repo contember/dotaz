@@ -880,8 +880,7 @@ export class PostgresDriver implements DatabaseDriver {
 
 	private resolveSession(sessionId?: string): SessionState | undefined {
 		if (!sessionId) {
-			// Check for __default__ session (backward compat for tx without sessionId)
-			return this.sessions.get(DEFAULT_SESSION)
+			return undefined
 		}
 		const session = this.sessions.get(sessionId)
 		if (!session) throw new Error(`Session "${sessionId}" not found`)
