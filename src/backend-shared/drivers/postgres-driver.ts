@@ -817,6 +817,7 @@ export class PostgresDriver implements DatabaseDriver {
 			session.txActive = true
 			session.iterating = true
 		}
+		let rolledBack = false
 		try {
 			await conn.unsafe('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
 			await conn.unsafe(
@@ -843,6 +844,7 @@ export class PostgresDriver implements DatabaseDriver {
 			}
 			await conn.unsafe('COMMIT')
 		} catch (err) {
+			rolledBack = true
 			try {
 				await conn.unsafe('ROLLBACK')
 			} catch { /* ignore rollback errors */ }
@@ -853,9 +855,11 @@ export class PostgresDriver implements DatabaseDriver {
 				session.iterating = false
 			}
 			if (ownConn) {
-				try {
-					await (conn as ReservedSQL).unsafe('ROLLBACK')
-				} catch { /* ignore if no tx */ }
+				if (!rolledBack) {
+					try {
+						await (conn as ReservedSQL).unsafe('ROLLBACK')
+					} catch { /* ignore if no tx */ }
+				}
 				try {
 					await (conn as ReservedSQL).unsafe('DISCARD ALL')
 					try {
@@ -866,7 +870,7 @@ export class PostgresDriver implements DatabaseDriver {
 						;(conn as ReservedSQL).close({ timeout: 0 })
 					} catch { /* already dead */ }
 				}
-			} else if (session) {
+			} else if (session && !rolledBack) {
 				try { await conn.unsafe('ROLLBACK') } catch { /* ignore if no tx */ }
 			}
 		}
