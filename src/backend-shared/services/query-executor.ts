@@ -3,6 +3,7 @@ import { DatabaseError } from '@dotaz/shared/types/errors'
 import type { ExplainNode, ExplainResult, QueryResult } from '@dotaz/shared/types/query'
 import type { TransactionLogEntry, TransactionLogStatus } from '@dotaz/shared/types/rpc'
 import type { DatabaseDriver } from '../db/driver'
+import { withEphemeralSession } from '../db/ephemeral-session'
 import type { AppDatabase } from '../storage/app-db'
 import type { ConnectionManager } from './connection-manager'
 
@@ -159,72 +160,66 @@ export class QueryExecutor {
 			}
 		}
 
+		const runWithSession = async (effectiveSessionId: string | undefined) => {
+			const id = queryId ?? crypto.randomUUID()
+			const entry: RunningQuery = { queryId: id, connectionId, database, cancelled: false, sessionId: effectiveSessionId }
+			this.runningQueries.set(id, entry)
+
+			const timeout = timeoutMs ?? this.defaultTimeoutMs
+			const results: QueryResult[] = []
+
+			let savedSearchPath: string | undefined
+			try {
+				// Set search_path if requested (save original for restore)
+				if (searchPath && effectiveSessionId !== undefined) {
+					const spResult = await driver.execute('SHOW search_path', undefined, effectiveSessionId)
+					savedSearchPath = spResult.rows[0]?.['search_path'] as string | undefined
+					const quotedSearchPath = quoteSearchPath(searchPath, driver)
+					await driver.execute(`SET search_path TO ${quotedSearchPath}`, undefined, effectiveSessionId)
+				}
+
+				for (const stmt of statements) {
+					if (entry.cancelled) {
+						results.push(makeCancelledResult())
+						break
+					}
+
+					const result = await this.executeSingle(
+						driver,
+						stmt,
+						// Only pass params for the first (or only) statement
+						statements.length === 1 ? params : undefined,
+						timeout,
+						entry,
+						effectiveSessionId,
+					)
+					results.push(result)
+
+					if (result.error) {
+						break
+					}
+				}
+			} finally {
+				// Restore original search_path (re-quote to avoid interpolating raw SHOW output)
+				if (savedSearchPath !== undefined && effectiveSessionId !== undefined) {
+					try {
+						const quotedRestore = quoteSearchPath(savedSearchPath, driver)
+						await driver.execute(`SET search_path TO ${quotedRestore}`, undefined, effectiveSessionId)
+					} catch { /* best effort */ }
+				}
+				this.runningQueries.delete(id)
+				this.logHistory(connectionId, sql, results, database, sessionId)
+			}
+
+			return results
+		}
+
 		// Auto-reserve an ephemeral session for multi-statement batches
 		// or when search_path needs to be set/restored on the same connection.
-		let ephemeralSessionId: string | undefined
 		if (!sessionId && (statements.length > 1 || searchPath)) {
-			ephemeralSessionId = `__ephemeral_${crypto.randomUUID()}`
-			await driver.reserveSession(ephemeralSessionId)
+			return withEphemeralSession(driver, runWithSession)
 		}
-		const effectiveSessionId = sessionId ?? ephemeralSessionId
-
-		const id = queryId ?? crypto.randomUUID()
-		const entry: RunningQuery = { queryId: id, connectionId, database, cancelled: false, sessionId: effectiveSessionId }
-		this.runningQueries.set(id, entry)
-
-		const timeout = timeoutMs ?? this.defaultTimeoutMs
-		const results: QueryResult[] = []
-
-		let savedSearchPath: string | undefined
-		try {
-			// Set search_path if requested (save original for restore)
-			if (searchPath && effectiveSessionId !== undefined) {
-				const spResult = await driver.execute('SHOW search_path', undefined, effectiveSessionId)
-				savedSearchPath = spResult.rows[0]?.['search_path'] as string | undefined
-				const quotedSearchPath = quoteSearchPath(searchPath, driver)
-				await driver.execute(`SET search_path TO ${quotedSearchPath}`, undefined, effectiveSessionId)
-			}
-
-			for (const stmt of statements) {
-				if (entry.cancelled) {
-					results.push(makeCancelledResult())
-					break
-				}
-
-				const result = await this.executeSingle(
-					driver,
-					stmt,
-					// Only pass params for the first (or only) statement
-					statements.length === 1 ? params : undefined,
-					timeout,
-					entry,
-					effectiveSessionId,
-				)
-				results.push(result)
-
-				if (result.error) {
-					break
-				}
-			}
-		} finally {
-			// Restore original search_path (re-quote to avoid interpolating raw SHOW output)
-			if (savedSearchPath !== undefined && effectiveSessionId !== undefined) {
-				try {
-					const quotedRestore = quoteSearchPath(savedSearchPath, driver)
-					await driver.execute(`SET search_path TO ${quotedRestore}`, undefined, effectiveSessionId)
-				} catch { /* best effort */ }
-			}
-			this.runningQueries.delete(id)
-			if (ephemeralSessionId) {
-				// Cancel any still-running query before releasing to avoid
-				// ROLLBACK/DISCARD ALL blocking behind a timed-out query
-				try { await driver.cancel(ephemeralSessionId) } catch { /* best effort */ }
-				try { await driver.releaseSession(ephemeralSessionId) } catch { /* best effort */ }
-			}
-			this.logHistory(connectionId, sql, results, database, sessionId)
-		}
-
-		return results
+		return runWithSession(sessionId)
 	}
 
 	/**
@@ -294,106 +289,103 @@ export class QueryExecutor {
 		const driverType = driver.getDriverType()
 		const start = performance.now()
 
-		// Reserve ephemeral session for search_path wrapping
-		let ephemeralSessionId: string | undefined
-		if (!sessionId && searchPath) {
-			ephemeralSessionId = `__ephemeral_${crypto.randomUUID()}`
-			await driver.reserveSession(ephemeralSessionId)
-		}
-		const effectiveSessionId = sessionId ?? ephemeralSessionId
-		let savedSearchPath: string | undefined
+		const runWithSession = async (effectiveSessionId: string | undefined): Promise<ExplainResult> => {
+			let savedSearchPath: string | undefined
 
-		try {
-			// Set search_path if requested
-			if (searchPath && effectiveSessionId !== undefined) {
-				const spResult = await driver.execute('SHOW search_path', undefined, effectiveSessionId)
-				savedSearchPath = spResult.rows[0]?.['search_path'] as string | undefined
-				const quotedSearchPath = quoteSearchPath(searchPath, driver)
-				await driver.execute(`SET search_path TO ${quotedSearchPath}`, undefined, effectiveSessionId)
-			}
-			if (driverType === 'sqlite') {
-				const result = effectiveSessionId !== undefined
-					? await driver.execute(`EXPLAIN QUERY PLAN ${sql}`, undefined, effectiveSessionId)
-					: await driver.execute(`EXPLAIN QUERY PLAN ${sql}`)
-				const durationMs = Math.round(performance.now() - start)
-				const nodes = parseSqliteExplain(result.rows)
-				const rawText = result.rows
-					.map((r) => `${r.id}|${r.parent}|${r.notused ?? 0}|${r.detail}`)
-					.join('\n')
-				return { nodes, rawText, durationMs }
-			}
-
-			// PostgreSQL / MySQL — use JSON format
-			const isMysql = driverType === 'mysql'
-			const prefix = isMysql
-				? (analyze ? 'EXPLAIN ANALYZE' : 'EXPLAIN FORMAT=JSON')
-				: (analyze ? 'EXPLAIN (ANALYZE, FORMAT JSON)' : 'EXPLAIN (FORMAT JSON)')
-			const result = effectiveSessionId !== undefined
-				? await driver.execute(`${prefix} ${sql}`, undefined, effectiveSessionId)
-				: await driver.execute(`${prefix} ${sql}`)
-			const durationMs = Math.round(performance.now() - start)
-
-			// PG returns a single row with a column named "QUERY PLAN";
-			// MySQL EXPLAIN FORMAT=JSON returns "EXPLAIN" column;
-			// MySQL EXPLAIN ANALYZE returns a text plan (no JSON).
-			let plan: unknown
-			let nodes: ExplainNode[]
-			let rawText: string
-
-			if (isMysql && analyze) {
-				// MySQL EXPLAIN ANALYZE returns text rows, not JSON
-				rawText = result.rows.map((r) => Object.values(r)[0]).join('\n')
-				nodes = [{ operation: rawText, children: [] }]
-				return { nodes, rawText, durationMs }
-			}
-
-			const jsonStr = result.rows[0]?.['QUERY PLAN']
-				?? result.rows[0]?.EXPLAIN
-				?? JSON.stringify(result.rows)
-			plan = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr
-			const planArray = Array.isArray(plan) ? plan : [plan]
-			nodes = planArray.map((p: Record<string, unknown>) => parsePostgresNode(p.Plan as Record<string, unknown> ?? p))
-
-			// Build raw text — re-run only for non-ANALYZE (no side effects).
-			// For ANALYZE, format the JSON result as text to avoid executing the query twice
-			// (EXPLAIN ANALYZE on DML would double the side effects).
-			if (analyze) {
-				rawText = JSON.stringify(plan, null, 2)
-			} else {
-				try {
-					const textPrefix = 'EXPLAIN'
-					const textResult = effectiveSessionId !== undefined
-						? await driver.execute(`${textPrefix} ${sql}`, undefined, effectiveSessionId)
-						: await driver.execute(`${textPrefix} ${sql}`)
-					rawText = textResult.rows
-						.map((r) => Object.values(r)[0])
+			try {
+				// Set search_path if requested
+				if (searchPath && effectiveSessionId !== undefined) {
+					const spResult = await driver.execute('SHOW search_path', undefined, effectiveSessionId)
+					savedSearchPath = spResult.rows[0]?.['search_path'] as string | undefined
+					const quotedSearchPath = quoteSearchPath(searchPath, driver)
+					await driver.execute(`SET search_path TO ${quotedSearchPath}`, undefined, effectiveSessionId)
+				}
+				if (driverType === 'sqlite') {
+					const result = effectiveSessionId !== undefined
+						? await driver.execute(`EXPLAIN QUERY PLAN ${sql}`, undefined, effectiveSessionId)
+						: await driver.execute(`EXPLAIN QUERY PLAN ${sql}`)
+					const durationMs = Math.round(performance.now() - start)
+					const nodes = parseSqliteExplain(result.rows)
+					const rawText = result.rows
+						.map((r) => `${r.id}|${r.parent}|${r.notused ?? 0}|${r.detail}`)
 						.join('\n')
-				} catch {
+					return { nodes, rawText, durationMs }
+				}
+
+				// PostgreSQL / MySQL — use JSON format
+				const isMysql = driverType === 'mysql'
+				const prefix = isMysql
+					? (analyze ? 'EXPLAIN ANALYZE' : 'EXPLAIN FORMAT=JSON')
+					: (analyze ? 'EXPLAIN (ANALYZE, FORMAT JSON)' : 'EXPLAIN (FORMAT JSON)')
+				const result = effectiveSessionId !== undefined
+					? await driver.execute(`${prefix} ${sql}`, undefined, effectiveSessionId)
+					: await driver.execute(`${prefix} ${sql}`)
+				const durationMs = Math.round(performance.now() - start)
+
+				// PG returns a single row with a column named "QUERY PLAN";
+				// MySQL EXPLAIN FORMAT=JSON returns "EXPLAIN" column;
+				// MySQL EXPLAIN ANALYZE returns a text plan (no JSON).
+				let plan: unknown
+				let nodes: ExplainNode[]
+				let rawText: string
+
+				if (isMysql && analyze) {
+					// MySQL EXPLAIN ANALYZE returns text rows, not JSON
+					rawText = result.rows.map((r) => Object.values(r)[0]).join('\n')
+					nodes = [{ operation: rawText, children: [] }]
+					return { nodes, rawText, durationMs }
+				}
+
+				const jsonStr = result.rows[0]?.['QUERY PLAN']
+					?? result.rows[0]?.EXPLAIN
+					?? JSON.stringify(result.rows)
+				plan = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr
+				const planArray = Array.isArray(plan) ? plan : [plan]
+				nodes = planArray.map((p: Record<string, unknown>) => parsePostgresNode(p.Plan as Record<string, unknown> ?? p))
+
+				// Build raw text — re-run only for non-ANALYZE (no side effects).
+				// For ANALYZE, format the JSON result as text to avoid executing the query twice
+				// (EXPLAIN ANALYZE on DML would double the side effects).
+				if (analyze) {
 					rawText = JSON.stringify(plan, null, 2)
+				} else {
+					try {
+						const textPrefix = 'EXPLAIN'
+						const textResult = effectiveSessionId !== undefined
+							? await driver.execute(`${textPrefix} ${sql}`, undefined, effectiveSessionId)
+							: await driver.execute(`${textPrefix} ${sql}`)
+						rawText = textResult.rows
+							.map((r) => Object.values(r)[0])
+							.join('\n')
+					} catch {
+						rawText = JSON.stringify(plan, null, 2)
+					}
+				}
+
+				return { nodes, rawText, durationMs }
+			} catch (err) {
+				const durationMs = Math.round(performance.now() - start)
+				return {
+					nodes: [],
+					rawText: '',
+					durationMs,
+					error: err instanceof Error ? err.message : String(err),
+				}
+			} finally {
+				if (savedSearchPath !== undefined && effectiveSessionId !== undefined) {
+					try {
+						const quotedRestore = quoteSearchPath(savedSearchPath, driver)
+						await driver.execute(`SET search_path TO ${quotedRestore}`, undefined, effectiveSessionId)
+					} catch { /* best effort */ }
 				}
 			}
-
-			return { nodes, rawText, durationMs }
-		} catch (err) {
-			const durationMs = Math.round(performance.now() - start)
-			return {
-				nodes: [],
-				rawText: '',
-				durationMs,
-				error: err instanceof Error ? err.message : String(err),
-			}
-		} finally {
-			if (savedSearchPath !== undefined && effectiveSessionId !== undefined) {
-				try {
-					const quotedRestore = quoteSearchPath(savedSearchPath, driver)
-					await driver.execute(`SET search_path TO ${quotedRestore}`, undefined, effectiveSessionId)
-				} catch { /* best effort */ }
-			}
-			if (ephemeralSessionId) {
-				try { await driver.cancel(ephemeralSessionId) } catch { /* best effort */ }
-				try { await driver.releaseSession(ephemeralSessionId) } catch { /* best effort */ }
-			}
 		}
+
+		// Reserve ephemeral session for search_path wrapping
+		if (!sessionId && searchPath) {
+			return withEphemeralSession(driver, runWithSession)
+		}
+		return runWithSession(sessionId)
 	}
 
 	private async executeSingle(
