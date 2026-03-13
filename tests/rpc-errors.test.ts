@@ -68,4 +68,20 @@ describe('friendlyErrorMessage', () => {
 		const msg = friendlyErrorMessage(new Error(''))
 		expect(msg).toBe('An unexpected error occurred')
 	})
+
+	test('COMMIT_UNCERTAIN RpcError returns friendly commit-uncertain message', () => {
+		const cause = Object.assign(new Error('Connection lost during COMMIT'), { code: 'COMMIT_UNCERTAIN' })
+		const err = new RpcError('query.execute', cause)
+		const msg = friendlyErrorMessage(err)
+		expect(msg).toContain('Commit status unknown')
+		expect(msg).toContain('verify before retrying')
+	})
+
+	test('STATEMENT_UNCERTAIN RpcError returns friendly statement-uncertain message', () => {
+		const cause = Object.assign(new Error('Timeout during statement execution'), { code: 'STATEMENT_UNCERTAIN' })
+		const err = new RpcError('query.execute', cause)
+		const msg = friendlyErrorMessage(err)
+		expect(msg).toContain('Statement may have completed')
+		expect(msg).toContain('Verify your data')
+	})
 })
