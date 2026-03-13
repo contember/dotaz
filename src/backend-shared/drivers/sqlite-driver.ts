@@ -174,7 +174,7 @@ export class SqliteDriver implements DatabaseDriver {
 		}
 	}
 
-	async cancel(_sessionId?: string): Promise<void> {
+	async cancel(_sessionId?: string, _poolQueryKey?: symbol): Promise<void> {
 		// SQLite operations are synchronous under the hood;
 		// cancellation is not supported.
 	}

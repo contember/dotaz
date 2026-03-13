@@ -641,10 +641,10 @@ describe('QueryExecutor', () => {
 
 		await executor.executeQuery('conn-1', 'SELECT * FROM users WHERE id = $1', [42])
 
-		expect(driver.execute).toHaveBeenCalledWith(
-			'SELECT * FROM users WHERE id = $1',
-			[42],
-		)
+		const calls = (driver.execute as ReturnType<typeof mock>).mock.calls
+		expect(calls).toHaveLength(1)
+		expect(calls[0][0]).toBe('SELECT * FROM users WHERE id = $1')
+		expect(calls[0][1]).toEqual([42])
 	})
 
 	test('multi-statement execution returns multiple results', async () => {
@@ -809,6 +809,42 @@ describe('QueryExecutor', () => {
 		expect(results).toHaveLength(1)
 		expect(results[0].error).toContain('timed out')
 		expect(driver.cancel).toHaveBeenCalledTimes(1)
+	})
+
+	test('pool query passes poolQueryKey to driver.execute for targeted cancellation', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		await executor.executeQuery('conn-1', 'SELECT 1')
+
+		const executeCalls = (driver.execute as ReturnType<typeof mock>).mock.calls
+		expect(executeCalls).toHaveLength(1)
+		// Pool queries should pass (sql, params, undefined sessionId, symbol poolQueryKey)
+		expect(executeCalls[0][2]).toBeUndefined() // no sessionId
+		expect(typeof executeCalls[0][3]).toBe('symbol') // poolQueryKey
+	})
+
+	test('timeout calls driver.cancel() with poolQueryKey to cancel only the specific query', async () => {
+		const driver = makeMockDriver({
+			execute: mock(async () => {
+				await new Promise((r) => setTimeout(r, 200))
+				return makeSuccessResult()
+			}),
+			cancel: mock(async () => {}),
+		})
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm, 50)
+
+		const results = await executor.executeQuery('conn-1', 'SELECT pg_sleep(300)')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toContain('timed out')
+		// cancel should be called with (undefined, symbol) — targeting only this query
+		const cancelCalls = (driver.cancel as ReturnType<typeof mock>).mock.calls
+		expect(cancelCalls).toHaveLength(1)
+		expect(cancelCalls[0][0]).toBeUndefined()
+		expect(typeof cancelCalls[0][1]).toBe('symbol')
 	})
 
 	test('timeout calls driver.cancel() with sessionId when using a session', async () => {
@@ -1222,10 +1258,11 @@ describe('QueryExecutor session affinity', () => {
 
 		await resultPromise
 
-		// cancel was called without sessionId
+		// cancel was called without sessionId but with poolQueryKey
 		const cancelCalls = (driver.cancel as ReturnType<typeof mock>).mock.calls
 		expect(cancelCalls).toHaveLength(1)
-		expect(cancelCalls[0]).toHaveLength(0)
+		expect(cancelCalls[0][0]).toBeUndefined()
+		expect(typeof cancelCalls[0][1]).toBe('symbol')
 	})
 })
 
