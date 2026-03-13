@@ -1,5 +1,5 @@
 import { ConnectionManager } from '@dotaz/backend-shared/services/connection-manager'
-import type { StatusChangeEvent } from '@dotaz/backend-shared/services/connection-manager'
+import type { SessionDeadEvent, StatusChangeEvent } from '@dotaz/backend-shared/services/connection-manager'
 import { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
 import type { PostgresConnectionConfig, SqliteConnectionConfig } from '@dotaz/shared/types/connection'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
@@ -608,6 +608,87 @@ describe('ConnectionManager', () => {
 
 			// No connect, so no driver — should not throw
 			await (manager as any).performHealthCheck(conn.id)
+		})
+	})
+
+	// ── onSessionDead ──────────────────────────────────────
+
+	describe('onSessionDead', () => {
+		test('emits sessionDead when health check detects dead session', async () => {
+			const conn = manager.createConnection({
+				name: 'SQLite',
+				config: sqliteConfig,
+			})
+			await manager.connect(conn.id)
+
+			const driver = manager.getDriver(conn.id)
+			const sessionId = 'test-session'
+			await driver.reserveSession(sessionId)
+
+			// Close the session's connection to simulate it dying
+			// We need to make execute fail for that specific session
+			const origExecute = driver.execute.bind(driver)
+			driver.execute = async (sql: string, params?: unknown[], sid?: string) => {
+				if (sid === sessionId && sql === 'SELECT 1') {
+					throw new Error('connection dead')
+				}
+				return origExecute(sql, params, sid)
+			}
+
+			const events: SessionDeadEvent[] = []
+			manager.onSessionDead((e) => { events.push(e) })
+
+			await (manager as any).performHealthCheck(conn.id)
+
+			expect(events).toHaveLength(1)
+			expect(events[0].connectionId).toBe(conn.id)
+			expect(events[0].sessionId).toBe(sessionId)
+		})
+
+		test('does not emit sessionDead for healthy sessions', async () => {
+			const conn = manager.createConnection({
+				name: 'SQLite',
+				config: sqliteConfig,
+			})
+			await manager.connect(conn.id)
+
+			const driver = manager.getDriver(conn.id)
+			await driver.reserveSession('healthy-session')
+
+			const events: SessionDeadEvent[] = []
+			manager.onSessionDead((e) => { events.push(e) })
+
+			await (manager as any).performHealthCheck(conn.id)
+
+			expect(events).toHaveLength(0)
+		})
+
+		test('unsubscribe stops receiving sessionDead events', async () => {
+			const conn = manager.createConnection({
+				name: 'SQLite',
+				config: sqliteConfig,
+			})
+			await manager.connect(conn.id)
+
+			const events: SessionDeadEvent[] = []
+			const unsub = manager.onSessionDead((e) => { events.push(e) })
+			unsub()
+
+			const driver = manager.getDriver(conn.id)
+			const sessionId = 'test-session'
+			await driver.reserveSession(sessionId)
+
+			const origExecute = driver.execute.bind(driver)
+			driver.execute = async (sql: string, params?: unknown[], sid?: string) => {
+				if (sid === sessionId && sql === 'SELECT 1') {
+					throw new Error('connection dead')
+				}
+				return origExecute(sql, params, sid)
+			}
+
+			await (manager as any).performHealthCheck(conn.id)
+
+			expect(events).toHaveLength(0)
 		})
 	})
 
