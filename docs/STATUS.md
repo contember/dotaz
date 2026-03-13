@@ -33,5 +33,5 @@ Stav implementace issues z `docs/issues/`. Řazeno podle priority (riziko × eff
 | DUP-1 | Extrakce ephemeral session helperu | done | b9fb6fe |
 | DUP-2 | Deduplikace logiky napříč drivery | done | db2291c |
 | ERR-1 | Robustnější isConnectionLevelError | done | 31d6a27 |
-| ERR-2 | isRetriable() utility | pending | |
+| ERR-2 | isRetriable() utility | done | 8f386af |
 | RELEASE-1 | Idempotentní releaseSession | pending | |
