@@ -30,7 +30,7 @@ Stav implementace issues z `docs/issues/`. Řazeno podle priority (riziko × eff
 | DEFSESS-3 | Eliminace DEFAULT_SESSION | blocked | Architektonické rozhodnutí: dva přístupy (auto-create ephemeral vs throw error) bez jasné volby |
 | SESS-2 | Sjednocení duálního session trackingu | blocked | Architektonické rozhodnutí: vyžaduje event emitter na driver interface |
 | TXCONF-1 | txActiveConfidence — rozlišení jistého/odvozeného stavu | blocked | Architektonické/UX rozhodnutí: otevřené otázky o hodnotě vs. komplexitě |
-| DUP-1 | Extrakce ephemeral session helperu | done | |
+| DUP-1 | Extrakce ephemeral session helperu | done | b9fb6fe |
 | DUP-2 | Deduplikace logiky napříč drivery | pending | |
 | ERR-1 | Robustnější isConnectionLevelError | pending | |
 | ERR-2 | isRetriable() utility | pending | |
