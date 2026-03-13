@@ -105,6 +105,7 @@ interface RunningQuery {
 	database?: string
 	cancelled: boolean
 	sessionId?: string
+	poolQueryKey?: symbol
 }
 
 export class QueryExecutor {
@@ -246,7 +247,7 @@ export class QueryExecutor {
 			if (entry.sessionId !== undefined) {
 				await driver.cancel(entry.sessionId)
 			} else {
-				await driver.cancel()
+				await driver.cancel(undefined, entry.poolQueryKey)
 			}
 		} catch (err) {
 			console.debug('Cancel query failed (driver may have completed):', err instanceof Error ? err.message : err)
@@ -409,12 +410,14 @@ export class QueryExecutor {
 	): Promise<QueryResult> {
 		const start = performance.now()
 		const timeout = this.createTimeout(timeoutMs)
+		const poolQueryKey = sessionId === undefined ? Symbol() : undefined
+		entry.poolQueryKey = poolQueryKey
 
 		try {
 			const result = await Promise.race([
 				sessionId !== undefined
 					? driver.execute(sql, params, sessionId)
-					: driver.execute(sql, params),
+					: driver.execute(sql, params, undefined, poolQueryKey),
 				timeout.promise,
 			])
 
@@ -435,7 +438,7 @@ export class QueryExecutor {
 					if (sessionId !== undefined) {
 						await driver.cancel(sessionId)
 					} else {
-						await driver.cancel()
+						await driver.cancel(undefined, poolQueryKey)
 					}
 				} catch { /* best effort */ }
 			}

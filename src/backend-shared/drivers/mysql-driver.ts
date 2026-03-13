@@ -237,17 +237,17 @@ export class MysqlDriver implements DatabaseDriver {
 		return [...this.sessions.keys()].filter((id) => id !== DEFAULT_SESSION)
 	}
 
-	async execute(sql: string, params?: unknown[], sessionId?: string): Promise<QueryResult> {
+	async execute(sql: string, params?: unknown[], sessionId?: string, poolQueryKey?: symbol): Promise<QueryResult> {
 		this.ensureConnected()
 		const session = this.resolveSession(sessionId)
 		const conn = session ? session.conn : this.db!
 		const start = performance.now()
 		const query = conn.unsafe(sql, params ?? [])
-		const queryKey = session ? undefined : Symbol()
+		const effectiveQueryKey = session ? undefined : (poolQueryKey ?? Symbol())
 		if (session) {
 			session.activeQueries.add(query)
 		} else {
-			this.poolActiveQueries.set(queryKey!, query)
+			this.poolActiveQueries.set(effectiveQueryKey!, query)
 		}
 		try {
 			const result = await query
@@ -279,12 +279,12 @@ export class MysqlDriver implements DatabaseDriver {
 			if (session) {
 				session.activeQueries.delete(query)
 			} else {
-				this.poolActiveQueries.delete(queryKey!)
+				this.poolActiveQueries.delete(effectiveQueryKey!)
 			}
 		}
 	}
 
-	async cancel(sessionId?: string): Promise<void> {
+	async cancel(sessionId?: string, poolQueryKey?: symbol): Promise<void> {
 		if (sessionId) {
 			const session = this.sessions.get(sessionId)
 			if (session) {
@@ -292,6 +292,12 @@ export class MysqlDriver implements DatabaseDriver {
 					query.cancel()
 				}
 				session.activeQueries.clear()
+			}
+		} else if (poolQueryKey) {
+			const query = this.poolActiveQueries.get(poolQueryKey)
+			if (query) {
+				query.cancel()
+				this.poolActiveQueries.delete(poolQueryKey)
 			}
 		} else {
 			for (const query of this.poolActiveQueries.values()) {

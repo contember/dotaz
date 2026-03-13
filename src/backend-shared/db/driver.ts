@@ -15,8 +15,8 @@ export interface DatabaseDriver extends SqlDialect {
 	getSessionIds(): string[]
 
 	// Query execution
-	execute(sql: string, params?: unknown[], sessionId?: string): Promise<QueryResult>
-	cancel(sessionId?: string): Promise<void>
+	execute(sql: string, params?: unknown[], sessionId?: string, poolQueryKey?: symbol): Promise<QueryResult>
+	cancel(sessionId?: string, poolQueryKey?: symbol): Promise<void>
 
 	// Streaming iteration — yields batches of rows from a query
 	iterate(
