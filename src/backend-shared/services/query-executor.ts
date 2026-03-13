@@ -439,6 +439,16 @@ export class QueryExecutor {
 						error: 'Connection lost or timed out during COMMIT — the transaction may have been committed. Verify your data before retrying.',
 					}
 				}
+				if (/^(INSERT|UPDATE|DELETE|MERGE)\b/.test(upper)) {
+					return {
+						columns: [],
+						rows: [],
+						rowCount: 0,
+						durationMs,
+						errorCode: 'STATEMENT_UNCERTAIN',
+						error: 'Statement timed out but may have been executed by the server. Verify your data before retrying.',
+					}
+				}
 			}
 
 			const errorPosition = parseErrorPosition(err, sql)

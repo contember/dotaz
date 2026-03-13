@@ -829,6 +829,60 @@ describe('QueryExecutor', () => {
 		expect(driver.cancel).toHaveBeenCalledWith('my-session')
 	})
 
+	test('timed-out DML returns STATEMENT_UNCERTAIN', async () => {
+		const driver = makeMockDriver({
+			execute: mock(async () => {
+				await new Promise((r) => setTimeout(r, 200))
+				return makeSuccessResult()
+			}),
+			cancel: mock(async () => {}),
+		})
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm, 50)
+
+		for (const sql of ['UPDATE users SET name = $1', 'INSERT INTO t VALUES (1)', 'DELETE FROM t WHERE id = 1', 'MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN DELETE']) {
+			const results = await executor.executeQuery('conn-1', sql)
+			expect(results).toHaveLength(1)
+			expect(results[0].errorCode).toBe('STATEMENT_UNCERTAIN')
+			expect(results[0].error).toContain('may have been executed')
+		}
+	})
+
+	test('timed-out SELECT does not return STATEMENT_UNCERTAIN', async () => {
+		const driver = makeMockDriver({
+			execute: mock(async () => {
+				await new Promise((r) => setTimeout(r, 200))
+				return makeSuccessResult()
+			}),
+			cancel: mock(async () => {}),
+		})
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm, 50)
+
+		const results = await executor.executeQuery('conn-1', 'SELECT * FROM users')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].errorCode).toBeUndefined()
+		expect(results[0].error).toContain('timed out')
+	})
+
+	test('timed-out COMMIT still returns COMMIT_UNCERTAIN, not STATEMENT_UNCERTAIN', async () => {
+		const driver = makeMockDriver({
+			execute: mock(async () => {
+				await new Promise((r) => setTimeout(r, 200))
+				return makeSuccessResult()
+			}),
+			cancel: mock(async () => {}),
+		})
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm, 50)
+
+		const results = await executor.executeQuery('conn-1', 'COMMIT')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].errorCode).toBe('COMMIT_UNCERTAIN')
+	})
+
 	test('cancelQuery cancels a running query', async () => {
 		let resolveExecute: () => void
 		const executePromise = new Promise<void>((r) => {
