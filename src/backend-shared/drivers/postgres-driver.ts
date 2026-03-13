@@ -193,11 +193,8 @@ export class PostgresDriver implements DatabaseDriver {
 
 		// Release all sessions
 		for (const [, session] of this.sessions) {
-			if (session.txActive) {
-				try {
-					await session.conn.unsafe('ROLLBACK')
-				} catch { /* ignore */ }
-			}
+			// Always attempt ROLLBACK — covers raw BEGIN via execute() where txActive may be false
+			try { await session.conn.unsafe('ROLLBACK') } catch { /* ignore — no tx is fine */ }
 			try {
 				await session.conn.unsafe('DISCARD ALL')
 				try { session.conn.release() } catch { /* broken connection */ }
