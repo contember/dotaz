@@ -205,9 +205,7 @@ export class PostgresDriver implements DatabaseDriver {
 
 	async releaseSession(sessionId: string): Promise<void> {
 		const session = this.sessions.get(sessionId)
-		if (!session) {
-			throw new Error(`Session "${sessionId}" not found`)
-		}
+		if (!session) return // idempotent — already released or never existed
 		await safeReleaseConnection(session.conn, pgResetConnection, { rollback: true })
 		this.sessions.delete(sessionId)
 	}

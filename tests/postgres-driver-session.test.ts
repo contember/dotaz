@@ -50,10 +50,16 @@ describe('session management', () => {
 		}
 	})
 
-	test('releaseSession throws for unknown session ID', async () => {
-		await expect(driver.releaseSession('unknown')).rejects.toThrow(
-			'Session "unknown" not found',
-		)
+	test('releaseSession is idempotent for unknown session ID', async () => {
+		// Should not throw — idempotent release
+		await driver.releaseSession('unknown')
+	})
+
+	test('releaseSession is idempotent on double release', async () => {
+		await driver.reserveSession('double-s')
+		await driver.releaseSession('double-s')
+		// Second release should be a no-op, not throw
+		await driver.releaseSession('double-s')
 	})
 
 	test('getSessionIds excludes __default__ session', async () => {
