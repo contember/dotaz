@@ -669,6 +669,8 @@ export class MysqlDriver implements DatabaseDriver {
 				'SET NAMES utf8mb4',
 				'SET SESSION sql_mode = DEFAULT',
 				'SET autocommit = 1',
+				'SET FOREIGN_KEY_CHECKS = 1',
+				'SET UNIQUE_CHECKS = 1',
 			]
 			for (const sql of fallbacks) {
 				try {

@@ -88,13 +88,20 @@ export class SessionLog {
 
 	/** Reset pending count (called on COMMIT/ROLLBACK). */
 	resetPendingCount(connectionId: string, database?: string, sessionId?: string): void {
-		this.pendingCounts.set(this.pendingKey(connectionId, database, sessionId), 0)
+		this.pendingCounts.delete(this.pendingKey(connectionId, database, sessionId))
 	}
 
 	clear(connectionId: string, database?: string): void {
 		const k = this.key(connectionId, database)
 		this.logs.delete(k)
 		this.pendingCounts.delete(k)
+		// Also clean up session-scoped pending counts (e.g. ephemeral sessions)
+		const prefix = `${k}:`
+		for (const key of this.pendingCounts.keys()) {
+			if (key.startsWith(prefix)) {
+				this.pendingCounts.delete(key)
+			}
+		}
 	}
 }
 
