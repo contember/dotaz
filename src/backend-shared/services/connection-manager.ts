@@ -471,6 +471,15 @@ export class ConnectionManager {
 				this.startAutoReconnect(connectionId, hadTransaction)
 				return
 			}
+
+			// Proactively detect dead session-reserved connections
+			for (const sid of driver.getSessionIds()) {
+				try {
+					await driver.execute('SELECT 1', undefined, sid)
+				} catch {
+					try { await driver.releaseSession(sid) } catch { /* already dead */ }
+				}
+			}
 		}
 	}
 
