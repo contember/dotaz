@@ -32,6 +32,6 @@ Stav implementace issues z `docs/issues/`. Řazeno podle priority (riziko × eff
 | TXCONF-1 | txActiveConfidence — rozlišení jistého/odvozeného stavu | blocked | Architektonické/UX rozhodnutí: otevřené otázky o hodnotě vs. komplexitě |
 | DUP-1 | Extrakce ephemeral session helperu | done | b9fb6fe |
 | DUP-2 | Deduplikace logiky napříč drivery | done | db2291c |
-| ERR-1 | Robustnější isConnectionLevelError | pending | |
+| ERR-1 | Robustnější isConnectionLevelError | done | 31d6a27 |
 | ERR-2 | isRetriable() utility | pending | |
 | RELEASE-1 | Idempotentní releaseSession | pending | |
