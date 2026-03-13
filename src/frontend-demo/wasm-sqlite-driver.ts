@@ -112,6 +112,11 @@ export class WasmSqliteDriver implements DatabaseDriver {
 		// WASM SQLite operations are synchronous; cancellation not supported
 	}
 
+	async ping(): Promise<void> {
+		this.ensureConnected()
+		this.db.exec('SELECT 1')
+	}
+
 	async loadSchema(_sessionId?: string): Promise<SchemaData> {
 		this.ensureConnected()
 
@@ -334,6 +339,14 @@ export class WasmSqliteDriver implements DatabaseDriver {
 
 	inTransaction(_sessionId?: string): boolean {
 		return this.txActive
+	}
+
+	isTxAborted(_sessionId?: string): boolean {
+		return false
+	}
+
+	isIterating(_sessionId?: string): boolean {
+		return false
 	}
 
 	getDriverType(): 'postgresql' | 'sqlite' {

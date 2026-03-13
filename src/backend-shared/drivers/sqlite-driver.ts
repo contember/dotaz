@@ -73,9 +73,14 @@ function mapSqliteDataType(type: string): DatabaseDataType {
 
 export class SqliteDriver implements DatabaseDriver {
 	private db: SQL | null = null
+	private dbPath: string | null = null
 	private connected = false
 	private txActive = false
+	private txOwnerSession: string | null = null
 	private sessionIds = new Set<string>()
+	private iterating = false
+	/** Separate read-only connection used by iterate() so it doesn't block the main connection. */
+	private iterateDb: SQL | null = null
 
 	async connect(config: ConnectionConfig): Promise<void> {
 		if (config.type !== 'sqlite') {
@@ -83,21 +88,29 @@ export class SqliteDriver implements DatabaseDriver {
 		}
 		try {
 			this.db = new SQL(`sqlite:${config.path}`)
+			this.dbPath = config.path
 			await this.db.unsafe('PRAGMA journal_mode = WAL')
 			await this.db.unsafe('PRAGMA foreign_keys = ON')
 		} catch (err) {
 			this.db = null
+			this.dbPath = null
 			throw err instanceof DatabaseError ? err : mapSqliteError(err)
 		}
 		this.connected = true
 	}
 
 	async disconnect(): Promise<void> {
+		this.connected = false
+		if (this.iterateDb) {
+			try { await this.iterateDb.close() } catch { /* best effort */ }
+			this.iterateDb = null
+		}
 		if (this.db) {
 			await this.db.close()
 			this.db = null
-			this.connected = false
+			this.dbPath = null
 			this.txActive = false
+			this.txOwnerSession = null
 			this.sessionIds.clear()
 		}
 	}
@@ -111,6 +124,11 @@ export class SqliteDriver implements DatabaseDriver {
 	}
 
 	async releaseSession(sessionId: string): Promise<void> {
+		if (this.txActive && this.txOwnerSession === sessionId) {
+			try { await this.db!.unsafe('ROLLBACK') } catch { /* ignore */ }
+			this.txActive = false
+			this.txOwnerSession = null
+		}
 		this.sessionIds.delete(sessionId)
 	}
 
@@ -118,13 +136,27 @@ export class SqliteDriver implements DatabaseDriver {
 		return [...this.sessionIds]
 	}
 
-	async execute(sql: string, params?: unknown[], _sessionId?: string): Promise<QueryResult> {
+	async execute(sql: string, params?: unknown[], sessionId?: string): Promise<QueryResult> {
 		this.ensureConnected()
+		this.ensureSessionCanExecute(sessionId)
 		const start = performance.now()
 		try {
 			const result = await this.db!.unsafe(sql, params ?? [])
 			const durationMs = Math.round(performance.now() - start)
 			const rows = [...result] as Record<string, unknown>[]
+
+			// Sync txActive for raw transaction-control statements
+			const upper = sql.trim().toUpperCase()
+			if (/^(BEGIN|START\s+TRANSACTION)\b/.test(upper)) {
+				this.txActive = true
+				this.txOwnerSession = sessionId ?? null
+			} else if (/^(COMMIT|END)\b/.test(upper)) {
+				this.txActive = false
+				this.txOwnerSession = null
+			} else if (/^ROLLBACK\b/.test(upper) && !/^ROLLBACK\s+TO\b/.test(upper)) {
+				this.txActive = false
+				this.txOwnerSession = null
+			}
 
 			const columns: QueryResultColumn[] = rows.length > 0
 				? Object.keys(rows[0]).map((name) => ({ name, dataType: DatabaseDataType.Unknown }))
@@ -142,7 +174,7 @@ export class SqliteDriver implements DatabaseDriver {
 		}
 	}
 
-	async cancel(_sessionId?: string): Promise<void> {
+	async cancel(_sessionId?: string, _poolQueryKey?: symbol): Promise<void> {
 		// SQLite operations are synchronous under the hood;
 		// cancellation is not supported.
 	}
@@ -292,34 +324,74 @@ export class SqliteDriver implements DatabaseDriver {
 		return Array.from(fkMap.values())
 	}
 
+	async ping(): Promise<void> {
+		this.ensureConnected()
+		await this.db!.unsafe('SELECT 1')
+	}
+
 	async *iterate(
 		sql: string,
 		params?: unknown[],
 		batchSize = 1000,
 		signal?: AbortSignal,
-		_sessionId?: string,
+		sessionId?: string,
 	): AsyncGenerator<Record<string, unknown>[]> {
 		this.ensureConnected()
-		let offset = 0
-		while (true) {
-			if (signal?.aborted) {
-				throw new DOMException('Aborted', 'AbortError')
-			}
-			const pagedSql = `${sql} LIMIT ? OFFSET ?`
-			const result = await this.db!.unsafe(pagedSql, [...(params ?? []), batchSize, offset])
-			const rows = [...result] as Record<string, unknown>[]
-			if (rows.length === 0) break
-			yield rows
-			if (rows.length < batchSize) break
-			offset += batchSize
+		// For file-based databases, use a separate read-only connection so
+		// iteration doesn't block the main connection (WAL mode allows
+		// concurrent readers). In-memory databases can't share across
+		// connections, so they must fall back to the main connection.
+		const useMainConn = this.dbPath === ':memory:'
+		const readConn = useMainConn ? this.db! : this.getIterateDb()
+		if (useMainConn) {
+			this.ensureSessionCanExecute(sessionId)
+			if (this.txActive) throw new Error('Cannot iterate with an active transaction')
+			this.txActive = true
+			this.txOwnerSession = sessionId ?? null
+			this.iterating = true
 		}
+		await readConn.unsafe('BEGIN')
+		try {
+			let offset = 0
+			while (true) {
+				if (signal?.aborted) {
+					throw new DOMException('Aborted', 'AbortError')
+				}
+				const pagedSql = `${sql} LIMIT ? OFFSET ?`
+				const result = await readConn.unsafe(pagedSql, [...(params ?? []), batchSize, offset])
+				const rows = [...result] as Record<string, unknown>[]
+				if (rows.length === 0) break
+				yield rows
+				if (rows.length < batchSize) break
+				offset += batchSize
+			}
+			await readConn.unsafe('COMMIT')
+		} catch (err) {
+			try { await readConn.unsafe('ROLLBACK') } catch { /* ignore */ }
+			throw err
+		} finally {
+			try { await readConn.unsafe('ROLLBACK') } catch { /* ignore */ }
+			if (useMainConn) {
+				this.iterating = false
+				this.txActive = false
+				this.txOwnerSession = null
+			}
+		}
+	}
+
+	/** Lazily open a separate read-only connection for iterate(). */
+	private getIterateDb(): SQL {
+		if (!this.iterateDb) {
+			this.iterateDb = new SQL(`sqlite:${this.dbPath}`)
+		}
+		return this.iterateDb
 	}
 
 	async importBatch(
 		qualifiedTable: string,
 		columns: string[],
 		rows: Record<string, unknown>[],
-		_sessionId?: string,
+		sessionId?: string,
 	): Promise<number> {
 		this.ensureConnected()
 		if (rows.length === 0) return 0
@@ -335,30 +407,58 @@ export class SqliteDriver implements DatabaseDriver {
 			valueTuples.push(`(${placeholders.join(', ')})`)
 		}
 		const sql = `INSERT INTO ${qualifiedTable} (${quotedCols}) VALUES ${valueTuples.join(', ')}`
-		const result = await this.execute(sql, allParams)
+		const result = await this.execute(sql, allParams, sessionId)
 		return result.affectedRows ?? rows.length
 	}
 
-	async beginTransaction(_sessionId?: string): Promise<void> {
+	async beginTransaction(sessionId?: string): Promise<void> {
 		this.ensureConnected()
+		if (this.txActive) {
+			throw new Error(
+				sessionId && this.txOwnerSession !== sessionId
+					? `Another session ("${this.txOwnerSession}") already has an active transaction`
+					: 'A transaction is already active',
+			)
+		}
 		await this.db!.unsafe('BEGIN')
 		this.txActive = true
+		this.txOwnerSession = sessionId ?? null
 	}
 
-	async commit(_sessionId?: string): Promise<void> {
+	async commit(sessionId?: string): Promise<void> {
 		this.ensureConnected()
+		this.ensureSessionOwnsTx(sessionId)
+		if (this.iterating) throw new Error('Cannot commit during active iteration')
 		await this.db!.unsafe('COMMIT')
 		this.txActive = false
+		this.txOwnerSession = null
 	}
 
-	async rollback(_sessionId?: string): Promise<void> {
+	async rollback(sessionId?: string): Promise<void> {
 		this.ensureConnected()
-		await this.db!.unsafe('ROLLBACK')
-		this.txActive = false
+		this.ensureSessionOwnsTx(sessionId)
+		if (this.iterating) throw new Error('Cannot rollback during active iteration')
+		try {
+			await this.db!.unsafe('ROLLBACK')
+		} finally {
+			this.txActive = false
+			this.txOwnerSession = null
+		}
 	}
 
-	inTransaction(_sessionId?: string): boolean {
-		return this.txActive
+	inTransaction(sessionId?: string): boolean {
+		if (sessionId !== undefined) {
+			return this.txActive && this.txOwnerSession === sessionId
+		}
+		return this.txActive && this.txOwnerSession === null
+	}
+
+	isTxAborted(_sessionId?: string): boolean {
+		return false
+	}
+
+	isIterating(_sessionId?: string): boolean {
+		return this.iterating
 	}
 
 	getDriverType(): 'sqlite' {
@@ -380,6 +480,42 @@ export class SqliteDriver implements DatabaseDriver {
 
 	placeholder(index: number): string {
 		return `$${index}`
+	}
+
+	private ensureSessionCanExecute(sessionId?: string): void {
+		if (!this.txActive) return
+		if (this.iterating) {
+			throw new Error('Cannot execute: iteration is in progress on the shared connection')
+		}
+		// Sessionless TX: block all session-scoped callers
+		if (this.txOwnerSession === null) {
+			if (sessionId !== undefined) {
+				throw new Error(
+					'Cannot execute: a sessionless transaction is active. SQLite uses a single connection shared by all sessions.',
+				)
+			}
+			return
+		}
+		// Session-owned TX: block other sessions and sessionless callers
+		if (sessionId === undefined || sessionId !== this.txOwnerSession) {
+			throw new Error(
+				`Cannot execute: session "${this.txOwnerSession}" has an active transaction. SQLite uses a single connection shared by all sessions.`,
+			)
+		}
+	}
+
+	private ensureSessionOwnsTx(sessionId?: string): void {
+		if (!this.txActive) {
+			throw new Error('No active transaction')
+		}
+		const callerOwns = sessionId === undefined
+			? this.txOwnerSession === null
+			: this.txOwnerSession === sessionId
+		if (!callerOwns) {
+			throw new Error(
+				`Cannot modify transaction owned by ${this.txOwnerSession === null ? 'sessionless caller' : `session "${this.txOwnerSession}"`}`,
+			)
+		}
 	}
 
 	private ensureConnected(): void {

@@ -426,3 +426,155 @@ describe('SqliteDriver isolation', () => {
 		await driver2.disconnect()
 	})
 })
+
+describe('SqliteDriver session isolation', () => {
+	test('session B cannot execute while session A has a transaction', async () => {
+		await driver.reserveSession('session-a')
+		await driver.reserveSession('session-b')
+
+		await driver.beginTransaction('session-a')
+
+		await expect(
+			driver.execute('SELECT 1', [], 'session-b'),
+		).rejects.toThrow('session "session-a" has an active transaction')
+
+		await driver.rollback('session-a')
+		await driver.releaseSession('session-a')
+		await driver.releaseSession('session-b')
+	})
+
+	test('session A can still execute within its own transaction', async () => {
+		await driver.reserveSession('session-a')
+
+		await driver.beginTransaction('session-a')
+		const result = await driver.execute(
+			'SELECT count(*) as cnt FROM users', [], 'session-a',
+		)
+		expect(result.rows[0].cnt).toBe(3)
+
+		await driver.rollback('session-a')
+		await driver.releaseSession('session-a')
+	})
+
+	test('session B cannot begin a transaction while session A has one', async () => {
+		await driver.reserveSession('session-a')
+		await driver.reserveSession('session-b')
+
+		await driver.beginTransaction('session-a')
+
+		await expect(
+			driver.beginTransaction('session-b'),
+		).rejects.toThrow('Another session ("session-a") already has an active transaction')
+
+		await driver.rollback('session-a')
+		await driver.releaseSession('session-a')
+		await driver.releaseSession('session-b')
+	})
+
+	test('session B cannot commit or rollback session A transaction', async () => {
+		await driver.reserveSession('session-a')
+		await driver.reserveSession('session-b')
+
+		await driver.beginTransaction('session-a')
+
+		await expect(
+			driver.commit('session-b'),
+		).rejects.toThrow('Cannot modify transaction owned by session "session-a"')
+
+		await expect(
+			driver.rollback('session-b'),
+		).rejects.toThrow('Cannot modify transaction owned by session "session-a"')
+
+		await driver.rollback('session-a')
+		await driver.releaseSession('session-a')
+		await driver.releaseSession('session-b')
+	})
+
+	test('releasing a session with active transaction rolls it back', async () => {
+		await driver.reserveSession('session-a')
+
+		await driver.beginTransaction('session-a')
+		await driver.execute(
+			"INSERT INTO users (name, email, age) VALUES ('TxGhost', 'ghost@example.com', 99)",
+			[], 'session-a',
+		)
+		await driver.releaseSession('session-a')
+
+		expect(driver.inTransaction()).toBe(false)
+		const result = await driver.execute(
+			"SELECT * FROM users WHERE email = 'ghost@example.com'",
+		)
+		expect(result.rowCount).toBe(0)
+	})
+
+	test('inTransaction with sessionId only returns true for tx owner', async () => {
+		await driver.reserveSession('session-a')
+		await driver.reserveSession('session-b')
+
+		await driver.beginTransaction('session-a')
+
+		expect(driver.inTransaction('session-a')).toBe(true)
+		expect(driver.inTransaction('session-b')).toBe(false)
+		// no sessionId + session-owned tx → false (pool caller shouldn't see session's tx)
+		expect(driver.inTransaction()).toBe(false)
+
+		await driver.rollback('session-a')
+		await driver.releaseSession('session-a')
+		await driver.releaseSession('session-b')
+	})
+
+	test('queries without sessionId are blocked during a session transaction', async () => {
+		await driver.reserveSession('session-a')
+		await driver.beginTransaction('session-a')
+
+		// No sessionId → blocked to prevent silent execution inside session's tx
+		await expect(driver.execute('SELECT count(*) as cnt FROM users')).rejects.toThrow(
+			/has an active transaction/,
+		)
+
+		await driver.rollback('session-a')
+		await driver.releaseSession('session-a')
+	})
+
+	test('session queries are blocked during a sessionless transaction', async () => {
+		await driver.reserveSession('session-a')
+
+		// Start sessionless transaction (no sessionId)
+		await driver.beginTransaction()
+
+		// Session-scoped query should be blocked
+		await expect(driver.execute('SELECT 1', [], 'session-a')).rejects.toThrow(
+			/sessionless transaction is active/,
+		)
+
+		await driver.rollback()
+		await driver.releaseSession('session-a')
+	})
+
+	test('after transaction ends, other sessions can execute', async () => {
+		await driver.reserveSession('session-a')
+		await driver.reserveSession('session-b')
+
+		await driver.beginTransaction('session-a')
+		await driver.commit('session-a')
+
+		// session-b should now be able to execute
+		const result = await driver.execute(
+			'SELECT count(*) as cnt FROM users', [], 'session-b',
+		)
+		expect(result.rows[0].cnt).toBe(3)
+
+		await driver.releaseSession('session-a')
+		await driver.releaseSession('session-b')
+	})
+
+	test('releaseSession is idempotent for unknown session ID', async () => {
+		await driver.releaseSession('nonexistent')
+	})
+
+	test('releaseSession is idempotent on double release', async () => {
+		await driver.reserveSession('double-s')
+		await driver.releaseSession('double-s')
+		await driver.releaseSession('double-s')
+	})
+})

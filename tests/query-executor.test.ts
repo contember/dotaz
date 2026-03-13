@@ -641,10 +641,10 @@ describe('QueryExecutor', () => {
 
 		await executor.executeQuery('conn-1', 'SELECT * FROM users WHERE id = $1', [42])
 
-		expect(driver.execute).toHaveBeenCalledWith(
-			'SELECT * FROM users WHERE id = $1',
-			[42],
-		)
+		const calls = (driver.execute as ReturnType<typeof mock>).mock.calls
+		expect(calls).toHaveLength(1)
+		expect(calls[0][0]).toBe('SELECT * FROM users WHERE id = $1')
+		expect(calls[0][1]).toEqual([42])
 	})
 
 	test('multi-statement execution returns multiple results', async () => {
@@ -791,6 +791,132 @@ describe('QueryExecutor', () => {
 
 		expect(results).toHaveLength(1)
 		expect(results[0].error).toContain('timed out')
+	})
+
+	test('timeout calls driver.cancel() to stop server-side query', async () => {
+		const driver = makeMockDriver({
+			execute: mock(async () => {
+				await new Promise((r) => setTimeout(r, 200))
+				return makeSuccessResult()
+			}),
+			cancel: mock(async () => {}),
+		})
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm, 50)
+
+		const results = await executor.executeQuery('conn-1', 'SELECT pg_sleep(300)')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toContain('timed out')
+		expect(driver.cancel).toHaveBeenCalledTimes(1)
+	})
+
+	test('pool query passes poolQueryKey to driver.execute for targeted cancellation', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		await executor.executeQuery('conn-1', 'SELECT 1')
+
+		const executeCalls = (driver.execute as ReturnType<typeof mock>).mock.calls
+		expect(executeCalls).toHaveLength(1)
+		// Pool queries should pass (sql, params, undefined sessionId, symbol poolQueryKey)
+		expect(executeCalls[0][2]).toBeUndefined() // no sessionId
+		expect(typeof executeCalls[0][3]).toBe('symbol') // poolQueryKey
+	})
+
+	test('timeout calls driver.cancel() with poolQueryKey to cancel only the specific query', async () => {
+		const driver = makeMockDriver({
+			execute: mock(async () => {
+				await new Promise((r) => setTimeout(r, 200))
+				return makeSuccessResult()
+			}),
+			cancel: mock(async () => {}),
+		})
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm, 50)
+
+		const results = await executor.executeQuery('conn-1', 'SELECT pg_sleep(300)')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toContain('timed out')
+		// cancel should be called with (undefined, symbol) — targeting only this query
+		const cancelCalls = (driver.cancel as ReturnType<typeof mock>).mock.calls
+		expect(cancelCalls).toHaveLength(1)
+		expect(cancelCalls[0][0]).toBeUndefined()
+		expect(typeof cancelCalls[0][1]).toBe('symbol')
+	})
+
+	test('timeout calls driver.cancel() with sessionId when using a session', async () => {
+		const driver = makeMockDriver({
+			execute: mock(async () => {
+				await new Promise((r) => setTimeout(r, 200))
+				return makeSuccessResult()
+			}),
+			cancel: mock(async () => {}),
+		})
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm, 50)
+
+		const results = await executor.executeQuery('conn-1', 'SELECT pg_sleep(300)', undefined, undefined, undefined, undefined, 'my-session')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toContain('timed out')
+		expect(driver.cancel).toHaveBeenCalledWith('my-session')
+	})
+
+	test('timed-out DML returns STATEMENT_UNCERTAIN', async () => {
+		const driver = makeMockDriver({
+			execute: mock(async () => {
+				await new Promise((r) => setTimeout(r, 200))
+				return makeSuccessResult()
+			}),
+			cancel: mock(async () => {}),
+		})
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm, 50)
+
+		for (const sql of ['UPDATE users SET name = $1', 'INSERT INTO t VALUES (1)', 'DELETE FROM t WHERE id = 1', 'MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN DELETE']) {
+			const results = await executor.executeQuery('conn-1', sql)
+			expect(results).toHaveLength(1)
+			expect(results[0].errorCode).toBe('STATEMENT_UNCERTAIN')
+			expect(results[0].error).toContain('may have been executed')
+		}
+	})
+
+	test('timed-out SELECT does not return STATEMENT_UNCERTAIN', async () => {
+		const driver = makeMockDriver({
+			execute: mock(async () => {
+				await new Promise((r) => setTimeout(r, 200))
+				return makeSuccessResult()
+			}),
+			cancel: mock(async () => {}),
+		})
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm, 50)
+
+		const results = await executor.executeQuery('conn-1', 'SELECT * FROM users')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].errorCode).toBeUndefined()
+		expect(results[0].error).toContain('timed out')
+	})
+
+	test('timed-out COMMIT still returns COMMIT_UNCERTAIN, not STATEMENT_UNCERTAIN', async () => {
+		const driver = makeMockDriver({
+			execute: mock(async () => {
+				await new Promise((r) => setTimeout(r, 200))
+				return makeSuccessResult()
+			}),
+			cancel: mock(async () => {}),
+		})
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm, 50)
+
+		const results = await executor.executeQuery('conn-1', 'COMMIT', undefined, undefined, undefined, undefined, 'my-session')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].errorCode).toBe('COMMIT_UNCERTAIN')
 	})
 
 	test('cancelQuery cancels a running query', async () => {
@@ -1132,10 +1258,119 @@ describe('QueryExecutor session affinity', () => {
 
 		await resultPromise
 
-		// cancel was called without sessionId
+		// cancel was called without sessionId but with poolQueryKey
 		const cancelCalls = (driver.cancel as ReturnType<typeof mock>).mock.calls
 		expect(cancelCalls).toHaveLength(1)
-		expect(cancelCalls[0]).toHaveLength(0)
+		expect(cancelCalls[0][0]).toBeUndefined()
+		expect(typeof cancelCalls[0][1]).toBe('symbol')
+	})
+})
+
+// ── QueryExecutor — pool transaction-control rejection ───
+
+describe('QueryExecutor pool transaction-control rejection', () => {
+	test('rejects BEGIN without sessionId', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		const results = await executor.executeQuery('conn-1', 'BEGIN')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toContain('require a session')
+		expect(driver.execute).not.toHaveBeenCalled()
+	})
+
+	test('rejects COMMIT without sessionId', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		const results = await executor.executeQuery('conn-1', 'COMMIT')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toContain('require a session')
+		expect(driver.execute).not.toHaveBeenCalled()
+	})
+
+	test('rejects ROLLBACK without sessionId', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		const results = await executor.executeQuery('conn-1', 'ROLLBACK')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toContain('require a session')
+		expect(driver.execute).not.toHaveBeenCalled()
+	})
+
+	test('rejects END without sessionId', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		const results = await executor.executeQuery('conn-1', 'END')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toContain('require a session')
+	})
+
+	test('rejects START TRANSACTION without sessionId', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		const results = await executor.executeQuery('conn-1', 'START TRANSACTION')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toContain('require a session')
+	})
+
+	test('allows BEGIN with sessionId', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		const results = await executor.executeQuery('conn-1', 'BEGIN', undefined, undefined, undefined, undefined, 'my-session')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toBeUndefined()
+		expect(driver.execute).toHaveBeenCalled()
+	})
+
+	test('allows ROLLBACK TO without sessionId (savepoint, not tx control)', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		const results = await executor.executeQuery('conn-1', 'ROLLBACK TO my_savepoint')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toBeUndefined()
+		expect(driver.execute).toHaveBeenCalled()
+	})
+
+	test('case-insensitive rejection', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		const results = await executor.executeQuery('conn-1', '  begin  ')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toContain('require a session')
+	})
+
+	test('allows regular statements without sessionId', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		const results = await executor.executeQuery('conn-1', 'SELECT 1')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toBeUndefined()
 	})
 })
 

@@ -131,6 +131,7 @@ export class DemoAdapter implements RpcAdapter {
 			connectionId,
 			label: 'Session 1',
 			inTransaction: false,
+			txAborted: false,
 			createdAt: Date.now(),
 		}
 	}

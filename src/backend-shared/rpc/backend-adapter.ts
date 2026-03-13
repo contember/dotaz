@@ -19,6 +19,7 @@ import type {
 } from '@dotaz/shared/types/rpc'
 import { settingsToAiConfig } from '@dotaz/shared/types/settings'
 import type { DatabaseDriver } from '../db/driver'
+import { withEphemeralSession } from '../db/ephemeral-session'
 import { buildSchemaContext, generateSql } from '../services/ai-sql'
 import type { ConnectionManager } from '../services/connection-manager'
 import type { EncryptionService } from '../services/encryption'
@@ -170,6 +171,10 @@ export class BackendAdapter implements RpcAdapter {
 	}
 
 	async deactivateDatabase(connectionId: string, database: string): Promise<void> {
+		if (this.sessionManager) {
+			await this.sessionManager.destroySessionsForDatabase(connectionId, database)
+			this.emitMessage?.('session.changed', { connectionId, sessions: this.sessionManager.listSessions(connectionId) })
+		}
 		await this.cm.deactivateDatabase(connectionId, database)
 	}
 
@@ -194,33 +199,65 @@ export class BackendAdapter implements RpcAdapter {
 		sessionId?: string,
 	): Promise<QueryResult[]> {
 		const driver = this.cm.getDriver(connectionId, database)
-		const inExistingTx = driver.inTransaction(sessionId)
-		if (!inExistingTx) {
-			await driver.beginTransaction(sessionId)
-		}
-		try {
-			const results: QueryResult[] = []
-			for (const stmt of statements) {
-				const start = performance.now()
-				const result = sessionId !== undefined
-					? await driver.execute(stmt.sql, stmt.params, sessionId)
-					: await driver.execute(stmt.sql, stmt.params)
-				results.push({ ...result, durationMs: Math.round(performance.now() - start) })
-			}
-			if (!inExistingTx) {
-				await driver.commit(sessionId)
-			}
-			return results
-		} catch (err) {
-			if (!inExistingTx) {
-				try {
-					await driver.rollback(sessionId)
-				} catch (rbErr) {
-					console.debug('Rollback after error failed:', rbErr instanceof Error ? rbErr.message : rbErr)
+
+		const runInSession = async (effectiveSessionId: string) => {
+			const inExistingTx = driver.inTransaction(effectiveSessionId)
+			try {
+				if (!inExistingTx) {
+					await driver.beginTransaction(effectiveSessionId)
 				}
+				const results: QueryResult[] = []
+				for (const stmt of statements) {
+					const start = performance.now()
+					try {
+						const result = await driver.execute(stmt.sql, stmt.params, effectiveSessionId)
+						const durationMs = Math.round(performance.now() - start)
+						results.push({ ...result, durationMs })
+						this.queryExecutor.sessionLog.add(
+							connectionId,
+							stmt.sql,
+							result.error ? 'error' : 'success',
+							durationMs,
+							result.affectedRows ?? result.rowCount,
+							result.error,
+							database,
+							effectiveSessionId,
+						)
+					} catch (err) {
+						const durationMs = Math.round(performance.now() - start)
+						this.queryExecutor.sessionLog.add(
+							connectionId,
+							stmt.sql,
+							'error',
+							durationMs,
+							0,
+							err instanceof Error ? err.message : String(err),
+							database,
+							effectiveSessionId,
+						)
+						throw err
+					}
+				}
+				if (!inExistingTx) {
+					await driver.commit(effectiveSessionId)
+				}
+				return results
+			} catch (err) {
+				if (!inExistingTx) {
+					try {
+						await driver.rollback(effectiveSessionId)
+					} catch (rbErr) {
+						console.debug('Rollback after error failed:', rbErr instanceof Error ? rbErr.message : rbErr)
+					}
+				}
+				throw err
 			}
-			throw err
 		}
+
+		if (sessionId) {
+			return runInSession(sessionId)
+		}
+		return withEphemeralSession(driver, runInSession)
 	}
 
 	async cancelQuery(queryId: string): Promise<void> {
@@ -242,16 +279,17 @@ export class BackendAdapter implements RpcAdapter {
 
 	async beginTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void> {
 		await this.txManager.begin(connectionId, database, sessionId)
+		this.queryExecutor.sessionLog.resetPendingCount(connectionId, database, sessionId)
 	}
 
 	async commitTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void> {
 		await this.txManager.commit(connectionId, database, sessionId)
-		this.queryExecutor.sessionLog.resetPendingCount(connectionId, database)
+		this.queryExecutor.sessionLog.resetPendingCount(connectionId, database, sessionId)
 	}
 
 	async rollbackTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void> {
 		await this.txManager.rollback(connectionId, database, sessionId)
-		this.queryExecutor.sessionLog.resetPendingCount(connectionId, database)
+		this.queryExecutor.sessionLog.resetPendingCount(connectionId, database, sessionId)
 	}
 
 	// ── Transaction Log ──────────────────────────────────
@@ -269,7 +307,7 @@ export class BackendAdapter implements RpcAdapter {
 
 		const inTransaction = this.txManager.isActive(params.connectionId, params.database, params.sessionId)
 		const pendingStatementCount = inTransaction
-			? this.queryExecutor.sessionLog.getPendingCount(params.connectionId, params.database)
+			? this.queryExecutor.sessionLog.getPendingCount(params.connectionId, params.database, params.sessionId)
 			: 0
 
 		return { entries, pendingStatementCount, inTransaction }
@@ -456,7 +494,7 @@ export class BackendAdapter implements RpcAdapter {
 
 	private resolveImportStream(filePath?: string, fileContent?: string): ReadableStream<Uint8Array> {
 		if (filePath) {
-			return Bun.file(filePath).stream()
+			return Bun.file(filePath).stream() as unknown as ReadableStream<Uint8Array>
 		}
 		if (fileContent !== undefined) {
 			return new ReadableStream<Uint8Array>({
@@ -473,7 +511,7 @@ export class BackendAdapter implements RpcAdapter {
 		if (filePath) {
 			// Read first 64KB from file for preview
 			const file = Bun.file(filePath)
-			const fullStream = file.stream()
+			const fullStream = file.stream() as unknown as ReadableStream<Uint8Array>
 			const reader = fullStream.getReader()
 			const PREVIEW_BYTES = 64 * 1024
 			let bytesRead = 0

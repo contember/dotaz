@@ -27,6 +27,7 @@ describe('SessionManager', () => {
 	})
 
 	afterEach(async () => {
+		sm.dispose()
 		await cm.disconnectAll()
 		AppDatabase.resetInstance()
 	})
@@ -173,5 +174,194 @@ describe('SessionManager', () => {
 
 		expect(sm.listSessions(connectionId)).toEqual([])
 		expect(sm.listSessions(conn2.id).length).toBe(1)
+	})
+
+	// ── handleConnectionRestored ─────────────────────────────
+
+	test('handleConnectionRestored recreates sessions after disconnect', async () => {
+		const s1 = await sm.createSession(connectionId)
+		const s2 = await sm.createSession(connectionId)
+
+		sm.handleConnectionLost(connectionId)
+		expect(sm.listSessions(connectionId)).toEqual([])
+
+		const restored = await sm.handleConnectionRestored(connectionId)
+		expect(restored.length).toBe(2)
+		expect(restored[0].label).toBe(s1.label)
+		expect(restored[1].label).toBe(s2.label)
+		expect(restored[0].connectionId).toBe(connectionId)
+		expect(restored[0].inTransaction).toBe(false)
+	})
+
+	test('handleConnectionRestored reserves sessions on driver', async () => {
+		await sm.createSession(connectionId)
+
+		sm.handleConnectionLost(connectionId)
+		const restored = await sm.handleConnectionRestored(connectionId)
+
+		const driver = cm.getDriver(connectionId)
+		expect(driver.getSessionIds()).toContain(restored[0].sessionId)
+	})
+
+	test('handleConnectionRestored returns empty if no prior sessions', async () => {
+		sm.handleConnectionLost(connectionId)
+		const restored = await sm.handleConnectionRestored(connectionId)
+		expect(restored).toEqual([])
+	})
+
+	test('handleConnectionRestored is idempotent', async () => {
+		await sm.createSession(connectionId)
+
+		sm.handleConnectionLost(connectionId)
+		const first = await sm.handleConnectionRestored(connectionId)
+		const second = await sm.handleConnectionRestored(connectionId)
+
+		expect(first.length).toBe(1)
+		expect(second).toEqual([])
+	})
+
+	// ── Idle transaction timeout ────────────────────────────
+
+	test('auto-rollbacks idle transactions after timeout', async () => {
+		appDb.setSetting('idleTransactionTimeoutMs', '1')
+
+		const session = await sm.createSession(connectionId)
+		const driver = cm.getDriver(connectionId)
+		await driver.beginTransaction(session.sessionId)
+		expect(driver.inTransaction(session.sessionId)).toBe(true)
+
+		// First check: records the transaction as first-seen
+		await (sm as any).checkIdleTransactions()
+		expect(driver.inTransaction(session.sessionId)).toBe(true)
+
+		// Wait for timeout to elapse
+		await new Promise(r => setTimeout(r, 5))
+
+		// Second check: timeout exceeded, should auto-rollback
+		await (sm as any).checkIdleTransactions()
+		expect(driver.inTransaction(session.sessionId)).toBe(false)
+	})
+
+	test('does not rollback transactions within timeout', async () => {
+		appDb.setSetting('idleTransactionTimeoutMs', '60000')
+
+		const session = await sm.createSession(connectionId)
+		const driver = cm.getDriver(connectionId)
+		await driver.beginTransaction(session.sessionId)
+
+		// First check: records first-seen
+		await (sm as any).checkIdleTransactions()
+		// Second check: should still be within timeout
+		await (sm as any).checkIdleTransactions()
+
+		expect(driver.inTransaction(session.sessionId)).toBe(true)
+		await driver.rollback(session.sessionId)
+	})
+
+	test('clears idle tracking when transaction ends normally', async () => {
+		appDb.setSetting('idleTransactionTimeoutMs', '1')
+
+		const session = await sm.createSession(connectionId)
+		const driver = cm.getDriver(connectionId)
+		await driver.beginTransaction(session.sessionId)
+
+		// First check: records first-seen
+		await (sm as any).checkIdleTransactions()
+
+		// Commit normally
+		await driver.commit(session.sessionId)
+
+		// Check clears tracking since no longer in tx
+		await (sm as any).checkIdleTransactions()
+		expect((sm as any).txFirstSeen.has(session.sessionId)).toBe(false)
+	})
+
+	test('idle tracking cleaned up on destroySession', async () => {
+		appDb.setSetting('idleTransactionTimeoutMs', '60000')
+
+		const session = await sm.createSession(connectionId)
+		const driver = cm.getDriver(connectionId)
+		await driver.beginTransaction(session.sessionId)
+
+		await (sm as any).checkIdleTransactions()
+		expect((sm as any).txFirstSeen.has(session.sessionId)).toBe(true)
+
+		await sm.destroySession(session.sessionId)
+		expect((sm as any).txFirstSeen.has(session.sessionId)).toBe(false)
+	})
+
+	test('idle tracking cleaned up on handleConnectionLost', async () => {
+		appDb.setSetting('idleTransactionTimeoutMs', '60000')
+
+		const session = await sm.createSession(connectionId)
+		const driver = cm.getDriver(connectionId)
+		await driver.beginTransaction(session.sessionId)
+
+		await (sm as any).checkIdleTransactions()
+		expect((sm as any).txFirstSeen.has(session.sessionId)).toBe(true)
+
+		sm.handleConnectionLost(connectionId)
+		expect((sm as any).txFirstSeen.has(session.sessionId)).toBe(false)
+	})
+
+	// ── handleSessionDead ──────────────────────────────────
+
+	test('handleSessionDead removes session from tracking', async () => {
+		const session = await sm.createSession(connectionId)
+		expect(sm.getSession(session.sessionId)).toBeDefined()
+
+		sm.handleSessionDead(session.sessionId)
+		expect(sm.getSession(session.sessionId)).toBeUndefined()
+	})
+
+	test('handleSessionDead cleans up txFirstSeen', async () => {
+		const session = await sm.createSession(connectionId)
+		const driver = cm.getDriver(connectionId)
+		await driver.beginTransaction(session.sessionId)
+
+		await (sm as any).checkIdleTransactions()
+		expect((sm as any).txFirstSeen.has(session.sessionId)).toBe(true)
+
+		sm.handleSessionDead(session.sessionId)
+		expect((sm as any).txFirstSeen.has(session.sessionId)).toBe(false)
+	})
+
+	test('handleSessionDead does not throw for unknown session', () => {
+		expect(() => sm.handleSessionDead('nonexistent')).not.toThrow()
+	})
+
+	test('handleSessionDead does not affect other sessions', async () => {
+		const s1 = await sm.createSession(connectionId)
+		const s2 = await sm.createSession(connectionId)
+
+		sm.handleSessionDead(s1.sessionId)
+		expect(sm.getSession(s1.sessionId)).toBeUndefined()
+		expect(sm.getSession(s2.sessionId)).toBeDefined()
+	})
+
+	test('listSessions excludes dead sessions', async () => {
+		await sm.createSession(connectionId)
+		const s2 = await sm.createSession(connectionId)
+
+		sm.handleSessionDead(s2.sessionId)
+		const sessions = sm.listSessions(connectionId)
+		expect(sessions.length).toBe(1)
+	})
+
+	// ── Idle transaction timeout ────────────────────────────
+
+	test('idle check is disabled when timeout is 0', async () => {
+		appDb.setSetting('idleTransactionTimeoutMs', '0')
+
+		const session = await sm.createSession(connectionId)
+		const driver = cm.getDriver(connectionId)
+		await driver.beginTransaction(session.sessionId)
+
+		await (sm as any).checkIdleTransactions()
+		await (sm as any).checkIdleTransactions()
+
+		// Transaction should still be active — timeout disabled
+		expect(driver.inTransaction(session.sessionId)).toBe(true)
+		await driver.rollback(session.sessionId)
 	})
 })

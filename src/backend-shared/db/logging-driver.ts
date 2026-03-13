@@ -90,6 +90,9 @@ export class LoggingDriver implements DatabaseDriver {
 	cancel(sessionId?: string): Promise<void> {
 		return this.inner.cancel(sessionId)
 	}
+	ping(): Promise<void> {
+		return this.inner.ping()
+	}
 	loadSchema(sessionId?: string): Promise<SchemaData> {
 		return this.inner.loadSchema(sessionId)
 	}
@@ -104,6 +107,12 @@ export class LoggingDriver implements DatabaseDriver {
 	}
 	inTransaction(sessionId?: string): boolean {
 		return this.inner.inTransaction(sessionId)
+	}
+	isTxAborted(sessionId?: string): boolean {
+		return this.inner.isTxAborted(sessionId)
+	}
+	isIterating(sessionId?: string): boolean {
+		return this.inner.isIterating(sessionId)
 	}
 	getDriverType(): 'postgresql' | 'sqlite' | 'mysql' {
 		return (this.inner as any).getDriverType()

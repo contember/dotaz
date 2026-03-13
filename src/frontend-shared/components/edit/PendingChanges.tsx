@@ -8,6 +8,7 @@ import Plus from 'lucide-solid/icons/plus'
 import RotateCcw from 'lucide-solid/icons/rotate-ccw'
 import X from 'lucide-solid/icons/x'
 import { createSignal, For, type JSX, Show } from 'solid-js'
+import { friendlyErrorMessage } from '../../lib/rpc-errors'
 import { gridStore } from '../../stores/grid'
 import Dialog from '../common/Dialog'
 import './PendingChanges.css'
@@ -162,7 +163,7 @@ export default function PendingChanges(props: PendingChangesProps) {
 			props.onApplied()
 			props.onClose()
 		} catch (err) {
-			setError(err instanceof Error ? err.message : String(err))
+			setError(friendlyErrorMessage(err))
 		} finally {
 			setApplying(false)
 		}

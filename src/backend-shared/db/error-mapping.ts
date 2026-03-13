@@ -5,7 +5,8 @@ import { AuthenticationError, ConnectionError, ConstraintError, DatabaseError, Q
 /** Map a PostgreSQL error to a domain error. PostgreSQL errors carry a `code` property (SQLSTATE). */
 export function mapPostgresError(err: unknown): DatabaseError {
 	const message = err instanceof Error ? err.message : String(err)
-	const pgCode = (err as any)?.code as string | undefined
+	// Bun SQL stores SQLSTATE in errno, postgres.js uses code
+	const pgCode = ((err as any)?.errno ?? (err as any)?.code) as string | undefined
 
 	// Connection errors
 	if (/ECONNREFUSED|connection refused/i.test(message)) {
@@ -66,6 +67,19 @@ export function mapPostgresError(err: unknown): DatabaseError {
 	// Permission denied (PG SQLSTATE 42501)
 	if (pgCode === '42501' || /permission denied/i.test(message)) {
 		return new DatabaseError('PERMISSION_DENIED', message, { cause: err })
+	}
+
+	// Serialization failure (PG SQLSTATE 40001) and deadlock (40P01)
+	if (pgCode === '40001') {
+		return new QueryError('SERIALIZATION_FAILURE', message, { cause: err })
+	}
+	if (pgCode === '40P01') {
+		return new QueryError('DEADLOCK_DETECTED', message, { cause: err })
+	}
+
+	// Aborted transaction state (PG SQLSTATE 25P02) — user must ROLLBACK
+	if (pgCode === '25P02') {
+		return new QueryError('TRANSACTION_ABORTED', message, { cause: err })
 	}
 
 	// Generic query class errors (PG SQLSTATE 42xxx = syntax/access, 22xxx = data exception)
@@ -165,6 +179,14 @@ export function mapMysqlError(err: unknown): DatabaseError {
 	}
 	if (errno === 1048 || /cannot be null/i.test(message)) {
 		return new ConstraintError('CONSTRAINT_NOT_NULL', message, { cause: err })
+	}
+
+	// Deadlock / lock timeout
+	if (errno === 1213 || /deadlock found/i.test(message)) {
+		return new QueryError('DEADLOCK_DETECTED', message, { cause: err })
+	}
+	if (errno === 1205 || /lock wait timeout exceeded/i.test(message)) {
+		return new QueryError('SERIALIZATION_FAILURE', message, { cause: err })
 	}
 
 	// Query errors

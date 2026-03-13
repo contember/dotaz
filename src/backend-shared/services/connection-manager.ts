@@ -19,11 +19,19 @@ export interface StatusChangeEvent {
 	transactionLost?: boolean
 }
 
-export type StatusChangeListener = (event: StatusChangeEvent) => void
+export type StatusChangeListener = (event: StatusChangeEvent) => void | Promise<void>
+
+export interface SessionDeadEvent {
+	connectionId: string
+	sessionId: string
+}
+
+export type SessionDeadListener = (event: SessionDeadEvent) => void | Promise<void>
 
 // ── Health check / reconnect defaults ────────────────────────
 const DEFAULTS = {
 	healthCheckIntervalMs: 30_000,
+	healthCheckTimeoutMs: 10_000,
 	reconnectBaseDelayMs: 1_000,
 	reconnectMaxDelayMs: 30_000,
 	reconnectMaxAttempts: 5,
@@ -32,6 +40,7 @@ const DEFAULTS = {
 
 export interface ConnectionManagerOptions {
 	healthCheckIntervalMs?: number
+	healthCheckTimeoutMs?: number
 	reconnectBaseDelayMs?: number
 	reconnectMaxDelayMs?: number
 	reconnectMaxAttempts?: number
@@ -55,6 +64,7 @@ export class ConnectionManager {
 		{ state: ConnectionState; error?: string }
 	>()
 	private listeners: StatusChangeListener[] = []
+	private sessionDeadListeners: SessionDeadListener[] = []
 	private appDb: AppDatabase
 	private opts: Required<ConnectionManagerOptions>
 
@@ -64,6 +74,8 @@ export class ConnectionManager {
 	private healthTimers = new Map<string, ReturnType<typeof setInterval>>()
 	// Active auto-reconnect state keyed by connectionId
 	private reconnectStates = new Map<string, ReconnectState>()
+	// Re-entrancy guard for health checks (per connectionId)
+	private healthCheckRunning = new Set<string>()
 	// Monotonic counter to detect stale connect() calls
 	private connectAttempt = new Map<string, number>()
 
@@ -94,7 +106,7 @@ export class ConnectionManager {
 		// Close any existing tunnel
 		await this.closeTunnel(connectionId)
 
-		this.setConnectionState(connectionId, 'connecting')
+		await this.setConnectionState(connectionId, 'connecting')
 
 		try {
 			let config = configOverride
@@ -132,7 +144,7 @@ export class ConnectionManager {
 				await Promise.allSettled(activations)
 			}
 
-			this.setConnectionState(connectionId, 'connected')
+			await this.setConnectionState(connectionId, 'connected')
 			this.startHealthCheck(connectionId)
 		} catch (err) {
 			// A newer connect() was initiated — don't overwrite its state
@@ -143,7 +155,7 @@ export class ConnectionManager {
 			await this.closeTunnel(connectionId)
 			const message = err instanceof Error ? err.message : 'Unknown connection error'
 			const errorCode = err instanceof DatabaseError ? err.code : undefined
-			this.setConnectionState(connectionId, 'error', message, errorCode)
+			await this.setConnectionState(connectionId, 'error', message, errorCode)
 			throw err
 		}
 	}
@@ -156,7 +168,7 @@ export class ConnectionManager {
 		await this.gracefulDisconnect(connectionId)
 		await this.closeTunnel(connectionId)
 		this.passwords.delete(connectionId)
-		this.setConnectionState(connectionId, 'disconnected')
+		await this.setConnectionState(connectionId, 'disconnected')
 	}
 
 	async reconnect(connectionId: string): Promise<void> {
@@ -400,6 +412,14 @@ export class ConnectionManager {
 		}
 	}
 
+	onSessionDead(listener: SessionDeadListener): () => void {
+		this.sessionDeadListeners.push(listener)
+		return () => {
+			const idx = this.sessionDeadListeners.indexOf(listener)
+			if (idx >= 0) this.sessionDeadListeners.splice(idx, 1)
+		}
+	}
+
 	// ── Cleanup ─────────────────────────────────────────────
 
 	async disconnectAll(): Promise<void> {
@@ -437,31 +457,57 @@ export class ConnectionManager {
 	}
 
 	private async performHealthCheck(connectionId: string): Promise<void> {
-		const driverMap = this.drivers.get(connectionId)
-		if (!driverMap) return
-
-		// Health-check the default driver
-		const defaultDb = this.getDefaultDatabaseName(connectionId)
-		const driver = driverMap.get(defaultDb)
-		if (!driver) return
-
+		if (this.healthCheckRunning.has(connectionId)) return
+		this.healthCheckRunning.add(connectionId)
 		try {
-			await driver.execute('SELECT 1')
-		} catch {
-			// Check if any driver had an active transaction before disconnecting
-			let hadTransaction = false
-			for (const d of driverMap.values()) {
-				if (d.inTransaction()) {
-					hadTransaction = true
-					break
+			const driverMap = this.drivers.get(connectionId)
+			if (!driverMap) return
+
+			// Health-check all active database drivers via pool (bypasses sessions
+			// to avoid false failures from aborted DEFAULT_SESSION transactions)
+			for (const driver of driverMap.values()) {
+				try {
+					await Promise.race([
+						driver.ping(),
+						new Promise<never>((_, reject) =>
+							setTimeout(() => reject(new Error('Health check timed out')), this.opts.healthCheckTimeoutMs)
+						),
+					])
+				} catch {
+					// Check if any driver had an active transaction before disconnecting
+					let hadTransaction = false
+					for (const d of driverMap.values()) {
+						if (d.inTransaction()) { hadTransaction = true; break }
+						for (const sid of d.getSessionIds()) {
+							if (d.inTransaction(sid)) { hadTransaction = true; break }
+						}
+						if (hadTransaction) break
+					}
+
+					// Connection lost — stop health checks and begin auto-reconnect
+					this.stopHealthCheck(connectionId)
+					try {
+						await this.disconnectAllDrivers(connectionId)
+					} catch { /* best effort */ }
+					await this.setConnectionState(connectionId, 'disconnected', 'Connection lost')
+					this.startAutoReconnect(connectionId, hadTransaction)
+					return
+				}
+
+				// Proactively detect dead session-reserved connections
+				for (const sid of driver.getSessionIds()) {
+					try {
+						await driver.execute('SELECT 1', undefined, sid)
+					} catch {
+						try { await driver.releaseSession(sid) } catch { /* already dead */ }
+						for (const l of this.sessionDeadListeners) {
+							try { await l({ connectionId, sessionId: sid }) } catch { /* best effort */ }
+						}
+					}
 				}
 			}
-
-			// Connection lost — stop health checks and begin auto-reconnect
-			this.stopHealthCheck(connectionId)
-			await this.disconnectAllDrivers(connectionId)
-			this.setConnectionState(connectionId, 'disconnected', 'Connection lost')
-			this.startAutoReconnect(connectionId, hadTransaction)
+		} finally {
+			this.healthCheckRunning.delete(connectionId)
 		}
 	}
 
@@ -471,7 +517,7 @@ export class ConnectionManager {
 		this.cancelAutoReconnect(connectionId)
 		const rs: ReconnectState = { attempt: 0, timer: null, cancelled: false, hadTransaction }
 		this.reconnectStates.set(connectionId, rs)
-		this.scheduleReconnectAttempt(connectionId, rs)
+		void this.scheduleReconnectAttempt(connectionId, rs)
 	}
 
 	private cancelAutoReconnect(connectionId: string): void {
@@ -483,11 +529,11 @@ export class ConnectionManager {
 		}
 	}
 
-	private scheduleReconnectAttempt(connectionId: string, rs: ReconnectState): void {
+	private async scheduleReconnectAttempt(connectionId: string, rs: ReconnectState): Promise<void> {
 		if (rs.cancelled) return
 		if (rs.attempt >= this.opts.reconnectMaxAttempts) {
 			this.reconnectStates.delete(connectionId)
-			this.setConnectionState(
+			await this.setConnectionState(
 				connectionId,
 				'error',
 				`Reconnect failed after ${this.opts.reconnectMaxAttempts} attempts`,
@@ -502,7 +548,7 @@ export class ConnectionManager {
 
 		rs.timer = setTimeout(() => {
 			if (rs.cancelled) return
-			this.attemptReconnect(connectionId, rs)
+			this.attemptReconnect(connectionId, rs).catch(() => {})
 		}, delay)
 	}
 
@@ -516,7 +562,7 @@ export class ConnectionManager {
 		}
 
 		rs.attempt++
-		this.setConnectionState(connectionId, 'reconnecting')
+		await this.setConnectionState(connectionId, 'reconnecting')
 
 		try {
 			// Close existing tunnel before reconnecting
@@ -557,12 +603,12 @@ export class ConnectionManager {
 
 			const hadTransaction = rs.hadTransaction
 			this.reconnectStates.delete(connectionId)
-			this.setConnectionState(connectionId, 'connected', undefined, undefined, hadTransaction)
+			await this.setConnectionState(connectionId, 'connected', undefined, undefined, hadTransaction)
 			this.startHealthCheck(connectionId)
 		} catch {
 			if (rs.cancelled) return
 			await this.closeTunnel(connectionId)
-			this.scheduleReconnectAttempt(connectionId, rs)
+			void this.scheduleReconnectAttempt(connectionId, rs)
 		}
 	}
 
@@ -574,6 +620,14 @@ export class ConnectionManager {
 
 		for (const [dbName, driver] of driverMap) {
 			try {
+				// Cancel and rollback all user sessions first
+				for (const sid of driver.getSessionIds()) {
+					try { await driver.cancel(sid) } catch { /* best-effort */ }
+					if (driver.inTransaction(sid)) {
+						try { await driver.rollback(sid) } catch { /* best-effort */ }
+					}
+				}
+				// Then handle default session / pool queries
 				if (driver.inTransaction()) {
 					try {
 						await driver.rollback()
@@ -658,6 +712,12 @@ export class ConnectionManager {
 		}
 	}
 
+	getActiveDatabases(connectionId: string): string[] {
+		const driverMap = this.drivers.get(connectionId)
+		if (!driverMap) return []
+		return [...driverMap.keys()]
+	}
+
 	private getActiveDatabaseCount(): number {
 		let count = 0
 		for (const driverMap of this.drivers.values()) {
@@ -674,17 +734,18 @@ export class ConnectionManager {
 		return getDefaultDatabase(connInfo.config)
 	}
 
-	private setConnectionState(
+	private async setConnectionState(
 		connectionId: string,
 		state: ConnectionState,
 		error?: string,
 		errorCode?: DatabaseErrorCode,
 		transactionLost?: boolean,
-	): void {
+	): Promise<void> {
 		this.states.set(connectionId, { state, error })
-		for (const listener of this.listeners) {
+		const results = this.listeners.map((listener) =>
 			listener({ connectionId, state, error, errorCode, transactionLost: transactionLost || undefined })
-		}
+		)
+		await Promise.allSettled(results)
 	}
 }
 
