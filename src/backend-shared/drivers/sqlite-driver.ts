@@ -145,6 +145,19 @@ export class SqliteDriver implements DatabaseDriver {
 			const durationMs = Math.round(performance.now() - start)
 			const rows = [...result] as Record<string, unknown>[]
 
+			// Sync txActive for raw transaction-control statements
+			const upper = sql.trim().toUpperCase()
+			if (/^(BEGIN|START\s+TRANSACTION)\b/.test(upper)) {
+				this.txActive = true
+				this.txOwnerSession = sessionId ?? null
+			} else if (/^(COMMIT|END)\b/.test(upper)) {
+				this.txActive = false
+				this.txOwnerSession = null
+			} else if (/^ROLLBACK\b/.test(upper) && !/^ROLLBACK\s+TO\b/.test(upper)) {
+				this.txActive = false
+				this.txOwnerSession = null
+			}
+
 			const columns: QueryResultColumn[] = rows.length > 0
 				? Object.keys(rows[0]).map((name) => ({ name, dataType: DatabaseDataType.Unknown }))
 				: []
