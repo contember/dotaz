@@ -416,6 +416,23 @@ export class QueryExecutor {
 				return makeCancelledResult(durationMs)
 			}
 
+			// If a COMMIT/END timed out or hit a connection error, the server may
+			// have committed successfully — surface COMMIT_UNCERTAIN so the user
+			// knows to verify data before retrying.
+			if (timeout.fired) {
+				const upper = sql.trim().toUpperCase()
+				if (/^(COMMIT|END)\b/.test(upper)) {
+					return {
+						columns: [],
+						rows: [],
+						rowCount: 0,
+						durationMs,
+						errorCode: 'COMMIT_UNCERTAIN',
+						error: 'Connection lost or timed out during COMMIT — the transaction may have been committed. Verify your data before retrying.',
+					}
+				}
+			}
+
 			const errorPosition = parseErrorPosition(err, sql)
 			const errorCode = err instanceof DatabaseError ? err.code : undefined
 
