@@ -13,7 +13,7 @@ Stav implementace issues z `docs/issues/`. Řazeno podle priority (riziko × eff
 | DEFSESS-1 | high | DEFAULT_SESSION hijackuje bezesessionové operace | done | 7126de3 |
 | SESS-1 | high | Health check obchází SessionManager při uvolnění | done | 23cd047 |
 | HC-1 | high | Health check ping na busy session connection | done | 93b1a1c |
-| HC-2 | medium | Concurrent health check bez re-entrancy guardu | pending | |
+| HC-2 | medium | Concurrent health check bez re-entrancy guardu | done | 5da3633 |
 | HC-3 | medium | Vyčerpání poolu blokuje health check | pending | |
 | CANCEL-1 | medium | Pool cancel zruší všechny queries, ne jen jednu | pending | |
 | MYSQL-1 | medium | MySQL reset fallback tiše spolkne chyby | done | 536e9d4, 1b00461, e6ab952 |
