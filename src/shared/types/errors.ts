@@ -83,6 +83,19 @@ export function serializeError(err: unknown): SerializedError {
 	return { code: 'UNKNOWN', message }
 }
 
+/** Whether a failed operation with this error code can be retried */
+export function isRetriable(code: DatabaseErrorCode): boolean {
+	switch (code) {
+		case 'SERIALIZATION_FAILURE':
+		case 'DEADLOCK_DETECTED':
+		case 'CONNECTION_TIMEOUT':
+		case 'CONNECTION_LIMIT':
+			return true
+		default:
+			return false
+	}
+}
+
 /** Map a DatabaseErrorCode to a user-friendly message, falling back to the raw message */
 export function friendlyMessageForCode(code: DatabaseErrorCode, rawMessage: string): string {
 	switch (code) {

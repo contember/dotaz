@@ -11,6 +11,7 @@ import {
 	ConstraintError,
 	DatabaseError,
 	friendlyMessageForCode,
+	isRetriable,
 	QueryError,
 	serializeError,
 } from '@dotaz/shared/types/errors'
@@ -350,6 +351,26 @@ describe('friendlyMessageForCode', () => {
 
 	test('returns fallback for empty unknown message', () => {
 		expect(friendlyMessageForCode('UNKNOWN', '')).toBe('An unexpected error occurred')
+	})
+})
+
+// ── isRetriable ─────────────────────────────────────────────
+
+describe('isRetriable', () => {
+	test('returns true for retriable codes', () => {
+		expect(isRetriable('SERIALIZATION_FAILURE')).toBe(true)
+		expect(isRetriable('DEADLOCK_DETECTED')).toBe(true)
+		expect(isRetriable('CONNECTION_TIMEOUT')).toBe(true)
+		expect(isRetriable('CONNECTION_LIMIT')).toBe(true)
+	})
+
+	test('returns false for non-retriable codes', () => {
+		expect(isRetriable('COMMIT_UNCERTAIN')).toBe(false)
+		expect(isRetriable('STATEMENT_UNCERTAIN')).toBe(false)
+		expect(isRetriable('QUERY_SYNTAX')).toBe(false)
+		expect(isRetriable('AUTH_FAILED')).toBe(false)
+		expect(isRetriable('CONSTRAINT_UNIQUE')).toBe(false)
+		expect(isRetriable('UNKNOWN')).toBe(false)
 	})
 })
 
