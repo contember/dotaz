@@ -216,19 +216,34 @@ export class BackendAdapter implements RpcAdapter {
 			const results: QueryResult[] = []
 			for (const stmt of statements) {
 				const start = performance.now()
-				const result = await driver.execute(stmt.sql, stmt.params, effectiveSessionId)
-				const durationMs = Math.round(performance.now() - start)
-				results.push({ ...result, durationMs })
-				this.queryExecutor.sessionLog.add(
-					connectionId,
-					stmt.sql,
-					result.error ? 'error' : 'success',
-					durationMs,
-					result.affectedRows ?? result.rowCount,
-					result.error,
-					database,
-					sessionId,
-				)
+				try {
+					const result = await driver.execute(stmt.sql, stmt.params, effectiveSessionId)
+					const durationMs = Math.round(performance.now() - start)
+					results.push({ ...result, durationMs })
+					this.queryExecutor.sessionLog.add(
+						connectionId,
+						stmt.sql,
+						result.error ? 'error' : 'success',
+						durationMs,
+						result.affectedRows ?? result.rowCount,
+						result.error,
+						database,
+						sessionId,
+					)
+				} catch (err) {
+					const durationMs = Math.round(performance.now() - start)
+					this.queryExecutor.sessionLog.add(
+						connectionId,
+						stmt.sql,
+						'error',
+						durationMs,
+						0,
+						err instanceof Error ? err.message : String(err),
+						database,
+						sessionId,
+					)
+					throw err
+				}
 			}
 			if (!inExistingTx) {
 				await driver.commit(effectiveSessionId)
