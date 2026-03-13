@@ -11,7 +11,7 @@ Stav implementace issues z `docs/issues/`. Řazeno podle priority (riziko × eff
 | TXSYNC-1 | high | Raw COMMIT failure → desync txActive | done | 80be35b, eb48da8, 0cd706e |
 | IDLE-1 | high | Idle rollback na busy connection | done | d50701c, d0c1966, d6ae436 |
 | DEFSESS-1 | high | DEFAULT_SESSION hijackuje bezesessionové operace | done | 7126de3 |
-| SESS-1 | high | Health check obchází SessionManager při uvolnění | pending | |
+| SESS-1 | high | Health check obchází SessionManager při uvolnění | done | 23cd047 |
 | HC-1 | high | Health check ping na busy session connection | done | 93b1a1c |
 | HC-2 | medium | Concurrent health check bez re-entrancy guardu | pending | |
 | HC-3 | medium | Vyčerpání poolu blokuje health check | pending | |
