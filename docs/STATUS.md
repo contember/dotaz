@@ -34,4 +34,4 @@ Stav implementace issues z `docs/issues/`. Řazeno podle priority (riziko × eff
 | DUP-2 | Deduplikace logiky napříč drivery | done | db2291c |
 | ERR-1 | Robustnější isConnectionLevelError | done | 31d6a27 |
 | ERR-2 | isRetriable() utility | done | 8f386af |
-| RELEASE-1 | Idempotentní releaseSession | pending | |
+| RELEASE-1 | Idempotentní releaseSession | done | fbc7b8b |
