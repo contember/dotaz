@@ -1,4 +1,3 @@
-import { stripLiteralsAndComments } from '@dotaz/shared/sql'
 import type { ConnectionConfig } from '@dotaz/shared/types/connection'
 import { DatabaseDataType } from '@dotaz/shared/types/database'
 import type { SchemaData, SchemaInfo, TableInfo } from '@dotaz/shared/types/database'
@@ -9,6 +8,7 @@ import type { ReservedSQL } from 'bun'
 import type { DatabaseDriver } from '../db/driver'
 import { mapMysqlError } from '../db/error-mapping'
 import { getAffectedRowCount } from '../db/result-utils'
+import { isConnectionLevelError, safeReleaseConnection, syncTxActive } from './driver-utils'
 
 /** Row shape from information_schema.columns */
 interface MysqlColumnRow {
@@ -72,24 +72,6 @@ interface SessionState {
 
 /** Internal session ID used for backward-compatible beginTransaction() without sessionId */
 const DEFAULT_SESSION = '__default__'
-
-/** Detect raw transaction-control statements and sync txActive flag. */
-function syncTxActive(session: SessionState, sql: string): void {
-	const upper = stripLiteralsAndComments(sql).trim().toUpperCase()
-	if (/^(BEGIN|START\s+TRANSACTION)\b/.test(upper)) {
-		session.txActive = true
-	} else if (/^(COMMIT|END)\b/.test(upper)) {
-		session.txActive = false
-	} else if (/^ROLLBACK\b/.test(upper) && !/^ROLLBACK\s+TO\b/.test(upper)) {
-		session.txActive = false
-	}
-}
-
-/** Detect connection-level errors (TCP drop, reset, etc.) as opposed to protocol errors. */
-function isConnectionLevelError(err: unknown): boolean {
-	const message = err instanceof Error ? err.message : String(err)
-	return /ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|connection (terminated|ended|closed|lost|reset)|socket.*(closed|hang up|end)|write after end|broken pipe|network/i.test(message)
-}
 
 /** Map MySQL information_schema data_type to DatabaseDataType. */
 function mapMysqlDataType(dataType: string): DatabaseDataType {
@@ -183,17 +165,7 @@ export class MysqlDriver implements DatabaseDriver {
 
 		// Release all sessions
 		for (const [, session] of this.sessions) {
-			if (session.txActive) {
-				try {
-					await session.conn.unsafe('ROLLBACK')
-				} catch { /* ignore */ }
-			}
-			try {
-				await this.resetConnection(session.conn)
-				try { session.conn.release() } catch { /* broken connection */ }
-			} catch {
-				try { session.conn.close({ timeout: 0 }) } catch { /* already dead */ }
-			}
+			await safeReleaseConnection(session.conn, (c) => this.resetConnection(c), { rollback: session.txActive })
 		}
 		this.sessions.clear()
 
@@ -221,15 +193,7 @@ export class MysqlDriver implements DatabaseDriver {
 		if (!session) {
 			throw new Error(`Session "${sessionId}" not found`)
 		}
-		// Always attempt ROLLBACK — covers raw BEGIN via execute() where txActive may be false
-		try { await session.conn.unsafe('ROLLBACK') } catch { /* ignore — no tx is fine */ }
-		try {
-			await this.resetConnection(session.conn)
-			try { session.conn.release() } catch { /* broken connection */ }
-		} catch {
-			// Cleanup failed — close instead of releasing to avoid poisoning the pool
-			try { session.conn.close({ timeout: 0 }) } catch { /* already dead */ }
-		}
+		await safeReleaseConnection(session.conn, (c) => this.resetConnection(c), { rollback: true })
 		this.sessions.delete(sessionId)
 	}
 
@@ -544,12 +508,7 @@ export class MysqlDriver implements DatabaseDriver {
 				session.iterating = false
 			}
 			if (ownConn) {
-				try {
-					await this.resetConnection(conn as ReservedSQL)
-					try { (conn as ReservedSQL).release() } catch { /* broken connection */ }
-				} catch {
-					try { (conn as ReservedSQL).close({ timeout: 0 }) } catch { /* already dead */ }
-				}
+				await safeReleaseConnection(conn as ReservedSQL, (c) => this.resetConnection(c))
 			}
 		}
 	}
@@ -627,12 +586,7 @@ export class MysqlDriver implements DatabaseDriver {
 			throw err
 		} finally {
 			if (id === DEFAULT_SESSION) {
-				try {
-					await this.resetConnection(session.conn)
-					try { session.conn.release() } catch { /* broken connection */ }
-				} catch {
-					try { session.conn.close({ timeout: 0 }) } catch { /* already dead */ }
-				}
+				await safeReleaseConnection(session.conn, (c) => this.resetConnection(c))
 				this.sessions.delete(DEFAULT_SESSION)
 			}
 		}
@@ -654,12 +608,7 @@ export class MysqlDriver implements DatabaseDriver {
 			throw err
 		} finally {
 			if (id === DEFAULT_SESSION) {
-				try {
-					await this.resetConnection(session.conn)
-					try { session.conn.release() } catch { /* broken connection */ }
-				} catch {
-					try { session.conn.close({ timeout: 0 }) } catch { /* already dead */ }
-				}
+				await safeReleaseConnection(session.conn, (c) => this.resetConnection(c))
 				this.sessions.delete(DEFAULT_SESSION)
 			}
 		}

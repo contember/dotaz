@@ -1,4 +1,3 @@
-import { stripLiteralsAndComments } from '@dotaz/shared/sql'
 import type { ConnectionConfig } from '@dotaz/shared/types/connection'
 import { DatabaseDataType } from '@dotaz/shared/types/database'
 import type { SchemaData, SchemaInfo, TableInfo } from '@dotaz/shared/types/database'
@@ -9,6 +8,7 @@ import type { ReservedSQL } from 'bun'
 import type { DatabaseDriver } from '../db/driver'
 import { mapPostgresError } from '../db/error-mapping'
 import { getAffectedRowCount } from '../db/result-utils'
+import { isConnectionLevelError, safeReleaseConnection, syncTxActive } from './driver-utils'
 
 /** Row shape from information_schema.columns joined with PK info */
 interface PgColumnRow {
@@ -92,25 +92,9 @@ interface SessionState {
 /** Internal session ID used for backward-compatible beginTransaction() without sessionId */
 const DEFAULT_SESSION = '__default__'
 
-/** Detect raw transaction-control statements and sync txActive flag. */
-function syncTxActive(session: SessionState, sql: string): void {
-	const upper = stripLiteralsAndComments(sql).trim().toUpperCase()
-	if (/^(BEGIN|START\s+TRANSACTION)\b/.test(upper)) {
-		session.txActive = true
-		session.txAborted = false
-	} else if (/^(COMMIT|END)\b/.test(upper)) {
-		session.txActive = false
-		session.txAborted = false
-	} else if (/^ROLLBACK\b/.test(upper) && !/^ROLLBACK\s+TO\b/.test(upper)) {
-		session.txActive = false
-		session.txAborted = false
-	}
-}
-
-/** Detect connection-level errors (TCP drop, reset, etc.) as opposed to PostgreSQL protocol errors. */
-function isConnectionLevelError(err: unknown): boolean {
-	const message = err instanceof Error ? err.message : String(err)
-	return /ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|connection (terminated|ended|closed|lost|reset)|socket.*(closed|hang up|end)|write after end|broken pipe|network/i.test(message)
+/** Reset function for PostgreSQL: runs DISCARD ALL to clear all session state. */
+async function pgResetConnection(conn: ReservedSQL): Promise<void> {
+	await conn.unsafe('DISCARD ALL')
 }
 
 /** Map PostgreSQL information_schema data_type to DatabaseDataType. */
@@ -194,14 +178,7 @@ export class PostgresDriver implements DatabaseDriver {
 
 		// Release all sessions
 		for (const [, session] of this.sessions) {
-			// Always attempt ROLLBACK — covers raw BEGIN via execute() where txActive may be false
-			try { await session.conn.unsafe('ROLLBACK') } catch { /* ignore — no tx is fine */ }
-			try {
-				await session.conn.unsafe('DISCARD ALL')
-				try { session.conn.release() } catch { /* broken connection */ }
-			} catch {
-				try { session.conn.close({ timeout: 0 }) } catch { /* already dead */ }
-			}
+			await safeReleaseConnection(session.conn, pgResetConnection, { rollback: true })
 		}
 		this.sessions.clear()
 
@@ -231,15 +208,7 @@ export class PostgresDriver implements DatabaseDriver {
 		if (!session) {
 			throw new Error(`Session "${sessionId}" not found`)
 		}
-		// Always attempt ROLLBACK — covers raw BEGIN via execute() where txActive may be false
-		try { await session.conn.unsafe('ROLLBACK') } catch { /* ignore — no tx is fine */ }
-		try {
-			await session.conn.unsafe('DISCARD ALL')
-			try { session.conn.release() } catch { /* broken connection */ }
-		} catch {
-			// Cleanup failed — close instead of releasing to avoid poisoning the pool
-			try { session.conn.close({ timeout: 0 }) } catch { /* already dead */ }
-		}
+		await safeReleaseConnection(session.conn, pgResetConnection, { rollback: true })
 		this.sessions.delete(sessionId)
 	}
 
@@ -704,12 +673,7 @@ export class PostgresDriver implements DatabaseDriver {
 			throw err
 		} finally {
 			if (id === DEFAULT_SESSION) {
-				try {
-					await session.conn.unsafe('DISCARD ALL')
-					try { session.conn.release() } catch { /* broken connection */ }
-				} catch {
-					try { session.conn.close({ timeout: 0 }) } catch { /* already dead */ }
-				}
+				await safeReleaseConnection(session.conn, pgResetConnection)
 				this.sessions.delete(DEFAULT_SESSION)
 			}
 		}
@@ -734,12 +698,7 @@ export class PostgresDriver implements DatabaseDriver {
 			throw err
 		} finally {
 			if (id === DEFAULT_SESSION) {
-				try {
-					await session.conn.unsafe('DISCARD ALL')
-					try { session.conn.release() } catch { /* broken connection */ }
-				} catch {
-					try { session.conn.close({ timeout: 0 }) } catch { /* already dead */ }
-				}
+				await safeReleaseConnection(session.conn, pgResetConnection)
 				this.sessions.delete(DEFAULT_SESSION)
 			}
 		}
@@ -840,15 +799,7 @@ export class PostgresDriver implements DatabaseDriver {
 				session.iterating = false
 			}
 			if (ownConn) {
-				if (!rolledBack) {
-					try { await (conn as ReservedSQL).unsafe('ROLLBACK') } catch { /* ignore if no tx */ }
-				}
-				try {
-					await (conn as ReservedSQL).unsafe('DISCARD ALL')
-					try { (conn as ReservedSQL).release() } catch { /* broken connection */ }
-				} catch {
-					try { (conn as ReservedSQL).close({ timeout: 0 }) } catch { /* already dead */ }
-				}
+				await safeReleaseConnection(conn as ReservedSQL, pgResetConnection, { rollback: !rolledBack })
 			} else if (session && !rolledBack) {
 				try { await conn.unsafe('ROLLBACK') } catch { /* ignore if no tx */ }
 			}
