@@ -600,6 +600,76 @@ describe('ConnectionManager', () => {
 			expect(manager.getConnectionState(conn.id)).toBe('connected')
 		})
 
+		test('concurrent health check invocations are guarded by re-entrancy check', async () => {
+			const conn = manager.createConnection({
+				name: 'SQLite',
+				config: sqliteConfig,
+			})
+			await manager.connect(conn.id)
+
+			// Make ping slow so the first health check is still running when the second starts
+			const driver = manager.getDriver(conn.id)
+			let pingCount = 0
+			const origPing = driver.ping.bind(driver)
+			driver.ping = async () => {
+				pingCount++
+				await Bun.sleep(100)
+				return origPing()
+			}
+
+			// Start two concurrent health checks
+			const p1 = (manager as any).performHealthCheck(conn.id)
+			const p2 = (manager as any).performHealthCheck(conn.id)
+			await Promise.all([p1, p2])
+
+			// Only one should have actually run (ping called once, not twice)
+			expect(pingCount).toBe(1)
+		})
+
+		test('health check guard is released after completion', async () => {
+			const conn = manager.createConnection({
+				name: 'SQLite',
+				config: sqliteConfig,
+			})
+			await manager.connect(conn.id)
+
+			// Run health check twice sequentially — both should execute
+			let pingCount = 0
+			const driver = manager.getDriver(conn.id)
+			const origPing = driver.ping.bind(driver)
+			driver.ping = async () => {
+				pingCount++
+				return origPing()
+			}
+
+			await (manager as any).performHealthCheck(conn.id)
+			await (manager as any).performHealthCheck(conn.id)
+
+			expect(pingCount).toBe(2)
+		})
+
+		test('health check guard is released even on error', async () => {
+			const conn = manager.createConnection({
+				name: 'SQLite',
+				config: sqliteConfig,
+			})
+			await manager.connect(conn.id)
+
+			// Make first health check fail (connection loss)
+			const driver = manager.getDriver(conn.id)
+			await driver.disconnect()
+			await (manager as any).performHealthCheck(conn.id)
+
+			// Guard should be released — reconnect and check again
+			await manager.connect(conn.id)
+			const events: StatusChangeEvent[] = []
+			manager.onStatusChanged((e) => { events.push(e) })
+			await (manager as any).performHealthCheck(conn.id)
+
+			// Should have run successfully (no disconnect event)
+			expect(events).toHaveLength(0)
+		})
+
 		test('health check is a no-op when no driver exists', async () => {
 			const conn = manager.createConnection({
 				name: 'SQLite',
