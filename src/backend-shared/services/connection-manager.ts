@@ -31,6 +31,7 @@ export type SessionDeadListener = (event: SessionDeadEvent) => void | Promise<vo
 // ── Health check / reconnect defaults ────────────────────────
 const DEFAULTS = {
 	healthCheckIntervalMs: 30_000,
+	healthCheckTimeoutMs: 10_000,
 	reconnectBaseDelayMs: 1_000,
 	reconnectMaxDelayMs: 30_000,
 	reconnectMaxAttempts: 5,
@@ -39,6 +40,7 @@ const DEFAULTS = {
 
 export interface ConnectionManagerOptions {
 	healthCheckIntervalMs?: number
+	healthCheckTimeoutMs?: number
 	reconnectBaseDelayMs?: number
 	reconnectMaxDelayMs?: number
 	reconnectMaxAttempts?: number
@@ -465,7 +467,12 @@ export class ConnectionManager {
 			// to avoid false failures from aborted DEFAULT_SESSION transactions)
 			for (const driver of driverMap.values()) {
 				try {
-					await driver.ping()
+					await Promise.race([
+						driver.ping(),
+						new Promise<never>((_, reject) =>
+							setTimeout(() => reject(new Error('Health check timed out')), this.opts.healthCheckTimeoutMs)
+						),
+					])
 				} catch {
 					// Check if any driver had an active transaction before disconnecting
 					let hadTransaction = false

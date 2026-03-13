@@ -760,6 +760,36 @@ describe('ConnectionManager', () => {
 
 			expect(events).toHaveLength(0)
 		})
+
+		test('health check times out when ping blocks (e.g. pool exhaustion)', async () => {
+			// Use a manager with a very short timeout so the test runs fast
+			const timeoutManager = new ConnectionManager(appDb, {
+				healthCheckIntervalMs: 60_000,
+				healthCheckTimeoutMs: 100,
+			})
+
+			const conn = timeoutManager.createConnection({
+				name: 'SQLite',
+				config: sqliteConfig,
+			})
+			await timeoutManager.connect(conn.id)
+
+			const events: StatusChangeEvent[] = []
+			timeoutManager.onStatusChanged((e) => { events.push(e) })
+
+			// Make ping block forever to simulate pool exhaustion
+			const driver = timeoutManager.getDriver(conn.id)
+			driver.ping = () => new Promise(() => {}) // never resolves
+
+			await (timeoutManager as any).performHealthCheck(conn.id)
+
+			// Should treat timeout as connection failure
+			const lastEvent = events[events.length - 1]
+			expect(lastEvent.state).toBe('disconnected')
+			expect(lastEvent.error).toBe('Connection lost')
+
+			await timeoutManager.disconnectAll()
+		})
 	})
 
 	// ── Auto-reconnect ──────────────────────────────────────
