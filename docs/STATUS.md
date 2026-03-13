@@ -21,7 +21,7 @@ Stav implementace issues z `docs/issues/`. Řazeno podle priority (riziko × eff
 | TXSYNC-3 | medium | PostgreSQL 25P02 aborted tx není trackován | done | 99b3445 |
 | DEFSESS-2 | low | disconnect() podmíněný ROLLBACK | done | 884b015 |
 | TXSYNC-2 | low | syncTxActive edge cases (PL/pgSQL, komentáře) | done | a39d996 |
-| MINOR-1 | cosmetic | Double ROLLBACK, špatný sessionId v logu | pending | |
+| MINOR-1 | cosmetic | Double ROLLBACK, špatný sessionId v logu | done | 8f6caa8 |
 
 ## Návrhy na zlepšení
 
