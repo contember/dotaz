@@ -304,6 +304,52 @@ describe('SessionManager', () => {
 		expect((sm as any).txFirstSeen.has(session.sessionId)).toBe(false)
 	})
 
+	// ── handleSessionDead ──────────────────────────────────
+
+	test('handleSessionDead removes session from tracking', async () => {
+		const session = await sm.createSession(connectionId)
+		expect(sm.getSession(session.sessionId)).toBeDefined()
+
+		sm.handleSessionDead(session.sessionId)
+		expect(sm.getSession(session.sessionId)).toBeUndefined()
+	})
+
+	test('handleSessionDead cleans up txFirstSeen', async () => {
+		const session = await sm.createSession(connectionId)
+		const driver = cm.getDriver(connectionId)
+		await driver.beginTransaction(session.sessionId)
+
+		await (sm as any).checkIdleTransactions()
+		expect((sm as any).txFirstSeen.has(session.sessionId)).toBe(true)
+
+		sm.handleSessionDead(session.sessionId)
+		expect((sm as any).txFirstSeen.has(session.sessionId)).toBe(false)
+	})
+
+	test('handleSessionDead does not throw for unknown session', () => {
+		expect(() => sm.handleSessionDead('nonexistent')).not.toThrow()
+	})
+
+	test('handleSessionDead does not affect other sessions', async () => {
+		const s1 = await sm.createSession(connectionId)
+		const s2 = await sm.createSession(connectionId)
+
+		sm.handleSessionDead(s1.sessionId)
+		expect(sm.getSession(s1.sessionId)).toBeUndefined()
+		expect(sm.getSession(s2.sessionId)).toBeDefined()
+	})
+
+	test('listSessions excludes dead sessions', async () => {
+		await sm.createSession(connectionId)
+		const s2 = await sm.createSession(connectionId)
+
+		sm.handleSessionDead(s2.sessionId)
+		const sessions = sm.listSessions(connectionId)
+		expect(sessions.length).toBe(1)
+	})
+
+	// ── Idle transaction timeout ────────────────────────────
+
 	test('idle check is disabled when timeout is 0', async () => {
 		appDb.setSetting('idleTransactionTimeoutMs', '0')
 

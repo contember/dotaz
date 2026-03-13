@@ -21,6 +21,13 @@ export interface StatusChangeEvent {
 
 export type StatusChangeListener = (event: StatusChangeEvent) => void | Promise<void>
 
+export interface SessionDeadEvent {
+	connectionId: string
+	sessionId: string
+}
+
+export type SessionDeadListener = (event: SessionDeadEvent) => void | Promise<void>
+
 // ── Health check / reconnect defaults ────────────────────────
 const DEFAULTS = {
 	healthCheckIntervalMs: 30_000,
@@ -55,6 +62,7 @@ export class ConnectionManager {
 		{ state: ConnectionState; error?: string }
 	>()
 	private listeners: StatusChangeListener[] = []
+	private sessionDeadListeners: SessionDeadListener[] = []
 	private appDb: AppDatabase
 	private opts: Required<ConnectionManagerOptions>
 
@@ -400,6 +408,14 @@ export class ConnectionManager {
 		}
 	}
 
+	onSessionDead(listener: SessionDeadListener): () => void {
+		this.sessionDeadListeners.push(listener)
+		return () => {
+			const idx = this.sessionDeadListeners.indexOf(listener)
+			if (idx >= 0) this.sessionDeadListeners.splice(idx, 1)
+		}
+	}
+
 	// ── Cleanup ─────────────────────────────────────────────
 
 	async disconnectAll(): Promise<void> {
@@ -478,6 +494,9 @@ export class ConnectionManager {
 					await driver.execute('SELECT 1', undefined, sid)
 				} catch {
 					try { await driver.releaseSession(sid) } catch { /* already dead */ }
+					for (const l of this.sessionDeadListeners) {
+						try { await l({ connectionId, sessionId: sid }) } catch { /* best effort */ }
+					}
 				}
 			}
 		}

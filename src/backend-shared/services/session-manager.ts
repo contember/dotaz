@@ -146,6 +146,25 @@ export class SessionManager {
 		return { ...info }
 	}
 
+	/**
+	 * Clean up internal session state when a session's connection was found dead
+	 * by the health check. The driver has already released the session — this only
+	 * removes it from SessionManager's tracking.
+	 */
+	handleSessionDead(sessionId: string): void {
+		const info = this.findSession(sessionId)
+		if (!info) return
+
+		this.txFirstSeen.delete(sessionId)
+		const connSessions = this.sessions.get(info.connectionId)
+		if (connSessions) {
+			connSessions.delete(sessionId)
+			if (connSessions.size === 0) {
+				this.sessions.delete(info.connectionId)
+			}
+		}
+	}
+
 	handleConnectionLost(connectionId: string): void {
 		const connSessions = this.sessions.get(connectionId)
 		if (connSessions) {

@@ -78,6 +78,20 @@ export function createSession(
 		}
 	}
 
+	const unsubSessionDead = connectionManager.onSessionDead((event) => {
+		sessionManager.handleSessionDead(event.sessionId)
+		if (session.ws) {
+			session.ws.send(JSON.stringify({
+				type: 'message',
+				channel: 'session.changed',
+				payload: {
+					connectionId: event.connectionId,
+					sessions: sessionManager.listSessions(event.connectionId),
+				},
+			}))
+		}
+	})
+
 	const unsubscribe = connectionManager.onStatusChanged(async (event) => {
 		if (session.ws) {
 			session.ws.send(JSON.stringify({
@@ -130,7 +144,7 @@ export function createSession(
 		handlers,
 		sessionManager,
 		serverManagedIds,
-		unsubscribe,
+		unsubscribe: () => { unsubSessionDead(); unsubscribe() },
 		ws,
 		activeStreams: 0,
 		disconnectedAt: null,

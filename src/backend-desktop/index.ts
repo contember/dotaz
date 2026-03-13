@@ -204,6 +204,14 @@ emitToFrontend = (channel: string, payload: unknown) => {
 }
 
 // Wire up BE→FE notifications after window creation
+connectionManager.onSessionDead((event) => {
+	sessionManager.handleSessionDead(event.sessionId)
+	emitToFrontend!('session.changed', {
+		connectionId: event.connectionId,
+		sessions: sessionManager.listSessions(event.connectionId),
+	})
+})
+
 connectionManager.onStatusChanged(async (event) => {
 	emitToFrontend!('connections.statusChanged', {
 		connectionId: event.connectionId,
