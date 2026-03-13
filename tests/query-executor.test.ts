@@ -877,7 +877,7 @@ describe('QueryExecutor', () => {
 		const cm = makeMockConnectionManager(driver)
 		const executor = new QueryExecutor(cm, 50)
 
-		const results = await executor.executeQuery('conn-1', 'COMMIT')
+		const results = await executor.executeQuery('conn-1', 'COMMIT', undefined, undefined, undefined, undefined, 'my-session')
 
 		expect(results).toHaveLength(1)
 		expect(results[0].errorCode).toBe('COMMIT_UNCERTAIN')
@@ -1226,6 +1226,114 @@ describe('QueryExecutor session affinity', () => {
 		const cancelCalls = (driver.cancel as ReturnType<typeof mock>).mock.calls
 		expect(cancelCalls).toHaveLength(1)
 		expect(cancelCalls[0]).toHaveLength(0)
+	})
+})
+
+// ── QueryExecutor — pool transaction-control rejection ───
+
+describe('QueryExecutor pool transaction-control rejection', () => {
+	test('rejects BEGIN without sessionId', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		const results = await executor.executeQuery('conn-1', 'BEGIN')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toContain('require a session')
+		expect(driver.execute).not.toHaveBeenCalled()
+	})
+
+	test('rejects COMMIT without sessionId', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		const results = await executor.executeQuery('conn-1', 'COMMIT')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toContain('require a session')
+		expect(driver.execute).not.toHaveBeenCalled()
+	})
+
+	test('rejects ROLLBACK without sessionId', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		const results = await executor.executeQuery('conn-1', 'ROLLBACK')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toContain('require a session')
+		expect(driver.execute).not.toHaveBeenCalled()
+	})
+
+	test('rejects END without sessionId', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		const results = await executor.executeQuery('conn-1', 'END')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toContain('require a session')
+	})
+
+	test('rejects START TRANSACTION without sessionId', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		const results = await executor.executeQuery('conn-1', 'START TRANSACTION')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toContain('require a session')
+	})
+
+	test('allows BEGIN with sessionId', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		const results = await executor.executeQuery('conn-1', 'BEGIN', undefined, undefined, undefined, undefined, 'my-session')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toBeUndefined()
+		expect(driver.execute).toHaveBeenCalled()
+	})
+
+	test('allows ROLLBACK TO without sessionId (savepoint, not tx control)', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		const results = await executor.executeQuery('conn-1', 'ROLLBACK TO my_savepoint')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toBeUndefined()
+		expect(driver.execute).toHaveBeenCalled()
+	})
+
+	test('case-insensitive rejection', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		const results = await executor.executeQuery('conn-1', '  begin  ')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toContain('require a session')
+	})
+
+	test('allows regular statements without sessionId', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		const results = await executor.executeQuery('conn-1', 'SELECT 1')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toBeUndefined()
 	})
 })
 

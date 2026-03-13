@@ -142,6 +142,22 @@ export class QueryExecutor {
 			return []
 		}
 
+		// Reject transaction-control statements without a session — running
+		// BEGIN/COMMIT/ROLLBACK on the pool sends each to a different connection,
+		// giving false transactional semantics and poisoning the pool.
+		if (!sessionId && statements.length === 1) {
+			const upper = statements[0].trim().toUpperCase()
+			if (/^(BEGIN|START\s+TRANSACTION|COMMIT|END|ROLLBACK)\b/.test(upper) && !/^ROLLBACK\s+TO\b/.test(upper)) {
+				return [{
+					columns: [],
+					rows: [],
+					rowCount: 0,
+					durationMs: 0,
+					error: 'Transaction control statements (BEGIN, COMMIT, ROLLBACK) require a session. Open a session tab to use manual transactions.',
+				}]
+			}
+		}
+
 		// Auto-reserve an ephemeral session for multi-statement batches
 		// or when search_path needs to be set/restored on the same connection.
 		let ephemeralSessionId: string | undefined
