@@ -76,6 +76,24 @@ describe('SessionLog', () => {
 		expect(log.getEntries('conn1', 'db2')).toHaveLength(1)
 	})
 
+	test('clear removes session-scoped pending counts', () => {
+		// Simulate ephemeral sessions creating pending counts under the same connection+database
+		const sessionId1 = '__ephemeral_aaa'
+		const sessionId2 = '__ephemeral_bbb'
+
+		log.add('conn1', 'INSERT INTO t VALUES (1)', 'success', 10, 1, undefined, 'db1', sessionId1)
+		log.add('conn1', 'INSERT INTO t VALUES (2)', 'success', 10, 1, undefined, 'db1', sessionId2)
+
+		expect(log.getPendingCount('conn1', 'db1', sessionId1)).toBe(1)
+		expect(log.getPendingCount('conn1', 'db1', sessionId2)).toBe(1)
+
+		log.clear('conn1', 'db1')
+
+		// Session-scoped pending counts should also be cleaned up
+		expect(log.getPendingCount('conn1', 'db1', sessionId1)).toBe(0)
+		expect(log.getPendingCount('conn1', 'db1', sessionId2)).toBe(0)
+	})
+
 	test('entries have unique ids and timestamps', () => {
 		log.add('conn1', 'SELECT 1', 'success', 10, 1)
 		log.add('conn1', 'SELECT 2', 'success', 5, 1)

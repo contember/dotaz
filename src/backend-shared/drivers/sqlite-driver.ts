@@ -351,6 +351,7 @@ export class SqliteDriver implements DatabaseDriver {
 			this.iterating = true
 		}
 		await readConn.unsafe('BEGIN')
+		let committed = false
 		try {
 			let offset = 0
 			while (true) {
@@ -366,11 +367,14 @@ export class SqliteDriver implements DatabaseDriver {
 				offset += batchSize
 			}
 			await readConn.unsafe('COMMIT')
+			committed = true
 		} catch (err) {
 			try { await readConn.unsafe('ROLLBACK') } catch { /* ignore */ }
 			throw err
 		} finally {
-			try { await readConn.unsafe('ROLLBACK') } catch { /* ignore */ }
+			if (!committed) {
+				try { await readConn.unsafe('ROLLBACK') } catch { /* ignore */ }
+			}
 			if (useMainConn) {
 				this.iterating = false
 				this.txActive = false
