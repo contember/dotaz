@@ -448,7 +448,9 @@ describe('SqliteDriver session isolation', () => {
 
 		await driver.beginTransaction('session-a')
 		const result = await driver.execute(
-			'SELECT count(*) as cnt FROM users', [], 'session-a',
+			'SELECT count(*) as cnt FROM users',
+			[],
+			'session-a',
 		)
 		expect(result.rows[0].cnt).toBe(3)
 
@@ -496,7 +498,8 @@ describe('SqliteDriver session isolation', () => {
 		await driver.beginTransaction('session-a')
 		await driver.execute(
 			"INSERT INTO users (name, email, age) VALUES ('TxGhost', 'ghost@example.com', 99)",
-			[], 'session-a',
+			[],
+			'session-a',
 		)
 		await driver.releaseSession('session-a')
 
@@ -560,7 +563,9 @@ describe('SqliteDriver session isolation', () => {
 
 		// session-b should now be able to execute
 		const result = await driver.execute(
-			'SELECT count(*) as cnt FROM users', [], 'session-b',
+			'SELECT count(*) as cnt FROM users',
+			[],
+			'session-b',
 		)
 		expect(result.rows[0].cnt).toBe(3)
 

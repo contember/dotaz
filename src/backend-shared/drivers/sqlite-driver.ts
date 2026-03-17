@@ -114,7 +114,9 @@ export class SqliteDriver implements DatabaseDriver {
 
 	async releaseSession(sessionId: string): Promise<void> {
 		if (this.txActive && this.txOwnerSession === sessionId) {
-			try { await this.db!.unsafe('ROLLBACK') } catch { /* ignore */ }
+			try {
+				await this.db!.unsafe('ROLLBACK')
+			} catch { /* ignore */ }
 			this.txActive = false
 			this.txOwnerSession = null
 		}
@@ -334,7 +336,9 @@ export class SqliteDriver implements DatabaseDriver {
 			}
 			await this.db!.unsafe('COMMIT')
 		} catch (err) {
-			try { await this.db!.unsafe('ROLLBACK') } catch { /* ignore */ }
+			try {
+				await this.db!.unsafe('ROLLBACK')
+			} catch { /* ignore */ }
 			throw err
 		} finally {
 			this.txActive = false

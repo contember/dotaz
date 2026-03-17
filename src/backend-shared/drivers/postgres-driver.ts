@@ -93,7 +93,8 @@ const DEFAULT_SESSION = '__default__'
 /** Detect connection-level errors (TCP drop, reset, etc.) as opposed to PostgreSQL protocol errors. */
 function isConnectionLevelError(err: unknown): boolean {
 	const message = err instanceof Error ? err.message : String(err)
-	return /ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|connection (terminated|ended|closed|lost|reset)|socket.*(closed|hang up|end)|write after end|broken pipe|network/i.test(message)
+	return /ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|connection (terminated|ended|closed|lost|reset)|socket.*(closed|hang up|end)|write after end|broken pipe|network/i
+		.test(message)
 }
 
 /** Map PostgreSQL information_schema data_type to DatabaseDataType. */
@@ -651,15 +652,25 @@ export class PostgresDriver implements DatabaseDriver {
 			// before the TCP connection dropped. Raise a distinct error so the UI can warn
 			// the user to verify data state before retrying.
 			if (isConnectionLevelError(err)) {
-				throw new DatabaseError('COMMIT_UNCERTAIN', 'Connection lost during COMMIT — the transaction may have been committed. Verify your data before retrying.', { cause: err })
+				throw new DatabaseError(
+					'COMMIT_UNCERTAIN',
+					'Connection lost during COMMIT — the transaction may have been committed. Verify your data before retrying.',
+					{ cause: err },
+				)
 			}
-			try { await session.conn.unsafe('ROLLBACK') } catch {}
+			try {
+				await session.conn.unsafe('ROLLBACK')
+			} catch {}
 			throw err
 		} finally {
 			session.txActive = false
 			if (id === DEFAULT_SESSION) {
-				try { await session.conn.unsafe('DISCARD ALL') } catch { /* best effort — connection may be broken */ }
-				try { session.conn.release() } catch { /* connection may be broken */ }
+				try {
+					await session.conn.unsafe('DISCARD ALL')
+				} catch { /* best effort — connection may be broken */ }
+				try {
+					session.conn.release()
+				} catch { /* connection may be broken */ }
 				this.sessions.delete(DEFAULT_SESSION)
 			}
 		}
@@ -676,8 +687,12 @@ export class PostgresDriver implements DatabaseDriver {
 		} finally {
 			session.txActive = false
 			if (id === DEFAULT_SESSION) {
-				try { await session.conn.unsafe('DISCARD ALL') } catch { /* best effort — connection may be broken */ }
-				try { session.conn.release() } catch { /* connection may be broken */ }
+				try {
+					await session.conn.unsafe('DISCARD ALL')
+				} catch { /* best effort — connection may be broken */ }
+				try {
+					session.conn.release()
+				} catch { /* connection may be broken */ }
 				this.sessions.delete(DEFAULT_SESSION)
 			}
 		}
@@ -750,7 +765,9 @@ export class PostgresDriver implements DatabaseDriver {
 					if (rows.length < batchSize) break
 				}
 			} finally {
-				try { await conn.unsafe(`CLOSE ${cursorId}`) } catch { /* cursor cleaned up on ROLLBACK/disconnect */ }
+				try {
+					await conn.unsafe(`CLOSE ${cursorId}`)
+				} catch { /* cursor cleaned up on ROLLBACK/disconnect */ }
 			}
 			await conn.unsafe('COMMIT')
 		} catch (err) {
@@ -764,7 +781,9 @@ export class PostgresDriver implements DatabaseDriver {
 				session.iterating = false
 			}
 			if (ownConn) {
-				try { await (conn as ReservedSQL).unsafe('DISCARD ALL') } catch { /* best effort */ }
+				try {
+					await (conn as ReservedSQL).unsafe('DISCARD ALL')
+				} catch { /* best effort */ }
 				;(conn as ReservedSQL).release()
 			}
 		}

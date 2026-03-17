@@ -75,7 +75,8 @@ const DEFAULT_SESSION = '__default__'
 /** Detect connection-level errors (TCP drop, reset, etc.) as opposed to protocol errors. */
 function isConnectionLevelError(err: unknown): boolean {
 	const message = err instanceof Error ? err.message : String(err)
-	return /ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|connection (terminated|ended|closed|lost|reset)|socket.*(closed|hang up|end)|write after end|broken pipe|network/i.test(message)
+	return /ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|connection (terminated|ended|closed|lost|reset)|socket.*(closed|hang up|end)|write after end|broken pipe|network/i
+		.test(message)
 }
 
 /** Map MySQL information_schema data_type to DatabaseDataType. */
@@ -497,7 +498,9 @@ export class MysqlDriver implements DatabaseDriver {
 			}
 			await conn.unsafe('COMMIT')
 		} catch (err) {
-			try { await conn.unsafe('ROLLBACK') } catch { /* ignore */ }
+			try {
+				await conn.unsafe('ROLLBACK')
+			} catch { /* ignore */ }
 			throw err
 		} finally {
 			if (session) {
@@ -568,15 +571,25 @@ export class MysqlDriver implements DatabaseDriver {
 			await session.conn.unsafe('COMMIT')
 		} catch (err) {
 			if (isConnectionLevelError(err)) {
-				throw new DatabaseError('COMMIT_UNCERTAIN', 'Connection lost during COMMIT — the transaction may have been committed. Verify your data before retrying.', { cause: err })
+				throw new DatabaseError(
+					'COMMIT_UNCERTAIN',
+					'Connection lost during COMMIT — the transaction may have been committed. Verify your data before retrying.',
+					{ cause: err },
+				)
 			}
-			try { await session.conn.unsafe('ROLLBACK') } catch {}
+			try {
+				await session.conn.unsafe('ROLLBACK')
+			} catch {}
 			throw err
 		} finally {
 			session.txActive = false
 			if (id === DEFAULT_SESSION) {
-				try { await this.resetConnection(session.conn) } catch { /* connection may be broken */ }
-				try { session.conn.release() } catch { /* connection may be broken */ }
+				try {
+					await this.resetConnection(session.conn)
+				} catch { /* connection may be broken */ }
+				try {
+					session.conn.release()
+				} catch { /* connection may be broken */ }
 				this.sessions.delete(DEFAULT_SESSION)
 			}
 		}
@@ -593,8 +606,12 @@ export class MysqlDriver implements DatabaseDriver {
 		} finally {
 			session.txActive = false
 			if (id === DEFAULT_SESSION) {
-				try { await this.resetConnection(session.conn) } catch { /* connection may be broken */ }
-				try { session.conn.release() } catch { /* connection may be broken */ }
+				try {
+					await this.resetConnection(session.conn)
+				} catch { /* connection may be broken */ }
+				try {
+					session.conn.release()
+				} catch { /* connection may be broken */ }
 				this.sessions.delete(DEFAULT_SESSION)
 			}
 		}
@@ -641,7 +658,9 @@ export class MysqlDriver implements DatabaseDriver {
 				'SET NAMES utf8mb4',
 			]
 			for (const sql of fallbacks) {
-				try { await conn.unsafe(sql) } catch { /* best effort */ }
+				try {
+					await conn.unsafe(sql)
+				} catch { /* best effort */ }
 			}
 		}
 	}

@@ -365,7 +365,9 @@ describe('ConnectionManager', () => {
 	describe('status events', () => {
 		test('emits connecting and connected on successful connect', async () => {
 			const events: StatusChangeEvent[] = []
-			manager.onStatusChanged((e) => { events.push(e) })
+			manager.onStatusChanged((e) => {
+				events.push(e)
+			})
 
 			const conn = manager.createConnection({
 				name: 'SQLite',
@@ -386,7 +388,9 @@ describe('ConnectionManager', () => {
 
 		test('emits error on failed connect', async () => {
 			const events: StatusChangeEvent[] = []
-			manager.onStatusChanged((e) => { events.push(e) })
+			manager.onStatusChanged((e) => {
+				events.push(e)
+			})
 
 			const conn = manager.createConnection({
 				name: 'Bad',
@@ -416,7 +420,9 @@ describe('ConnectionManager', () => {
 			await manager.connect(conn.id)
 
 			const events: StatusChangeEvent[] = []
-			manager.onStatusChanged((e) => { events.push(e) })
+			manager.onStatusChanged((e) => {
+				events.push(e)
+			})
 			await manager.disconnect(conn.id)
 
 			expect(events).toHaveLength(1)
@@ -428,7 +434,9 @@ describe('ConnectionManager', () => {
 
 		test('unsubscribe stops receiving events', async () => {
 			const events: StatusChangeEvent[] = []
-			const unsub = manager.onStatusChanged((e) => { events.push(e) })
+			const unsub = manager.onStatusChanged((e) => {
+				events.push(e)
+			})
 
 			const conn = manager.createConnection({
 				name: 'SQLite',
@@ -563,7 +571,9 @@ describe('ConnectionManager', () => {
 	describe('health check', () => {
 		test('detects connection loss via health check', async () => {
 			const events: StatusChangeEvent[] = []
-			manager.onStatusChanged((e) => { events.push(e) })
+			manager.onStatusChanged((e) => {
+				events.push(e)
+			})
 
 			const conn = manager.createConnection({
 				name: 'SQLite',
@@ -592,7 +602,9 @@ describe('ConnectionManager', () => {
 			await manager.connect(conn.id)
 
 			const eventsBefore: StatusChangeEvent[] = []
-			manager.onStatusChanged((e) => { eventsBefore.push(e) })
+			manager.onStatusChanged((e) => {
+				eventsBefore.push(e)
+			})
 
 			// Health check on a working connection should emit no events
 			await (manager as any).performHealthCheck(conn.id)
@@ -638,7 +650,9 @@ describe('ConnectionManager', () => {
 			await fastManager.connect(conn.id)
 
 			const events: StatusChangeEvent[] = []
-			fastManager.onStatusChanged((e) => { events.push(e) })
+			fastManager.onStatusChanged((e) => {
+				events.push(e)
+			})
 
 			// Simulate connection loss
 			const driver = fastManager.getDriver(conn.id)
@@ -665,7 +679,9 @@ describe('ConnectionManager', () => {
 			;(fastManager as any).states.set(conn.id, { state: 'connected' })
 
 			const events: StatusChangeEvent[] = []
-			fastManager.onStatusChanged((e) => { events.push(e) }) // Trigger auto-reconnect directly
+			fastManager.onStatusChanged((e) => {
+				events.push(e)
+			}) // Trigger auto-reconnect directly
 			;(fastManager as any).startAutoReconnect(conn.id)
 
 			// Wait for 3 attempts: 50ms + 100ms + 200ms = 350ms + some buffer

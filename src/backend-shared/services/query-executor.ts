@@ -184,7 +184,9 @@ export class QueryExecutor {
 			if (ephemeralSessionId) {
 				// Cancel any still-running query before releasing to avoid
 				// ROLLBACK/DISCARD ALL blocking behind a timed-out query
-				try { await driver.cancel(ephemeralSessionId) } catch { /* best effort */ }
+				try {
+					await driver.cancel(ephemeralSessionId)
+				} catch { /* best effort */ }
 				await driver.releaseSession(ephemeralSessionId)
 			}
 			this.logHistory(connectionId, sql, results, database)
@@ -431,7 +433,13 @@ export class QueryExecutor {
 				reject(new Error(`Query timed out after ${ms}ms`))
 			}, ms)
 		})
-		return { promise, cancel: () => clearTimeout(timer!), get fired() { return fired } }
+		return {
+			promise,
+			cancel: () => clearTimeout(timer!),
+			get fired() {
+				return fired
+			},
+		}
 	}
 
 	private logHistory(connectionId: string, sql: string, results: QueryResult[], database?: string): void {

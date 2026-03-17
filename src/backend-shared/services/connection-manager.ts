@@ -449,9 +449,15 @@ export class ConnectionManager {
 				// Check if any driver had an active transaction before disconnecting
 				let hadTransaction = false
 				for (const d of driverMap.values()) {
-					if (d.inTransaction()) { hadTransaction = true; break }
+					if (d.inTransaction()) {
+						hadTransaction = true
+						break
+					}
 					for (const sid of d.getSessionIds()) {
-						if (d.inTransaction(sid)) { hadTransaction = true; break }
+						if (d.inTransaction(sid)) {
+							hadTransaction = true
+							break
+						}
 					}
 					if (hadTransaction) break
 				}
@@ -579,9 +585,13 @@ export class ConnectionManager {
 			try {
 				// Cancel and rollback all user sessions first
 				for (const sid of driver.getSessionIds()) {
-					try { await driver.cancel(sid) } catch { /* best-effort */ }
+					try {
+						await driver.cancel(sid)
+					} catch { /* best-effort */ }
 					if (driver.inTransaction(sid)) {
-						try { await driver.rollback(sid) } catch { /* best-effort */ }
+						try {
+							await driver.rollback(sid)
+						} catch { /* best-effort */ }
 					}
 				}
 				// Then handle default session / pool queries
@@ -693,9 +703,7 @@ export class ConnectionManager {
 		transactionLost?: boolean,
 	): Promise<void> {
 		this.states.set(connectionId, { state, error })
-		const results = this.listeners.map((listener) =>
-			listener({ connectionId, state, error, errorCode, transactionLost: transactionLost || undefined })
-		)
+		const results = this.listeners.map((listener) => listener({ connectionId, state, error, errorCode, transactionLost: transactionLost || undefined }))
 		await Promise.allSettled(results)
 	}
 }

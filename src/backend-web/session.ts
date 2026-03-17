@@ -74,9 +74,7 @@ export function createSession(
 		const originalList = handlers['connections.list']
 		;(handlers as Record<string, unknown>)['connections.list'] = () => {
 			const list = originalList()
-			return list.map(conn =>
-				serverManagedIds.has(conn.id) ? { ...conn, serverManaged: true } : conn,
-			)
+			return list.map(conn => serverManagedIds.has(conn.id) ? { ...conn, serverManaged: true } : conn)
 		}
 	}
 
