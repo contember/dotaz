@@ -496,7 +496,13 @@ export class QueryExecutor {
 				reject(new Error(`Query timed out after ${ms}ms`))
 			}, ms)
 		})
-		return { promise, cancel: () => clearTimeout(timer!), get fired() { return fired } }
+		return {
+			promise,
+			cancel: () => clearTimeout(timer!),
+			get fired() {
+				return fired
+			},
+		}
 	}
 
 	private logHistory(connectionId: string, sql: string, results: QueryResult[], database?: string, sessionId?: string): void {
