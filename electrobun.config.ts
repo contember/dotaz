@@ -24,6 +24,17 @@ export default {
 			bundleCEF: true,
 			defaultRenderer: 'cef',
 			icon: 'assets/icon.png',
+			chromiumFlags: {
+				'disable-gpu': false,
+				'disable-gpu-compositing': false,
+				'disable-gpu-sandbox': false,
+				'enable-software-rasterizer': false,
+				'force-software-rasterizer': false,
+				'disable-accelerated-2d-canvas': false,
+				'disable-accelerated-video-decode': false,
+				'disable-accelerated-video-encode': false,
+				'disable-gpu-memory-buffer-video-frames': false,
+			},
 		},
 		win: {
 			bundleCEF: false,
