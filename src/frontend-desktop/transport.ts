@@ -14,6 +14,7 @@ type MessageListenerFn = (channel: string, handler: (payload: unknown) => void) 
 
 export function createElectrobunTransport(): RpcTransport {
 	const electroviewRpc = Electroview.defineRPC<DotazRPC>({
+		maxRequestTime: 30000,
 		handlers: {
 			requests: {},
 			messages: {},
