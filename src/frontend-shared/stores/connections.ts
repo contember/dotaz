@@ -59,9 +59,14 @@ function setBeforeDisconnectHook(hook: ((connectionId: string) => boolean) | nul
  * Used to decouple connections store from editor store (avoids circular dependency).
  */
 let onTransactionLost: ((connectionId: string) => void) | null = null
+let onConnectionLost: ((connectionId: string) => void) | null = null
 
 function setOnTransactionLost(callback: ((connectionId: string) => void) | null) {
 	onTransactionLost = callback
+}
+
+function setOnConnectionLost(callback: ((connectionId: string) => void) | null) {
+	onConnectionLost = callback
 }
 
 // ── Password prompt signal ───────────────────────────────
@@ -76,13 +81,7 @@ const [passwordPrompt, setPasswordPrompt] = createSignal<
 // ── Schema loading ───────────────────────────────────────
 
 async function loadSchemaTree(connectionId: string, database?: string) {
-	const timeout = new Promise<never>((_, reject) =>
-		setTimeout(() => reject(new Error('Schema loading timed out after 30s')), 30_000),
-	)
-	const schemaData = await Promise.race([
-		rpc.schema.load({ connectionId, database }),
-		timeout,
-	])
+	const schemaData = await rpc.schema.load({ connectionId, database })
 
 	const dbKey = database ?? getDefaultDatabaseKey(connectionId)
 
@@ -421,6 +420,9 @@ export function initConnectionsListener(): () => void {
 				: event.error
 			uiStore.addToast('error', `${name}: ${friendlyErrorMessage(errObj)}`)
 		}
+		if (event.state === 'disconnected' || event.state === 'error') {
+			onConnectionLost?.(event.connectionId)
+		}
 	})
 }
 
@@ -535,5 +537,6 @@ export const connectionsStore = {
 	deleteConnectionGroup,
 	setBeforeDisconnectHook,
 	setOnTransactionLost,
+	setOnConnectionLost,
 	resolvePasswordPrompt,
 }

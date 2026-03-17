@@ -404,17 +404,18 @@ export class QueryExecutor {
 		sessionId?: string,
 	): Promise<QueryResult> {
 		const start = performance.now()
-		const timeout = this.createTimeout(timeoutMs)
+		const noTimeout = timeoutMs === 0
+		const timeout = noTimeout ? null : this.createTimeout(timeoutMs)
 		const poolQueryKey = sessionId === undefined ? Symbol() : undefined
 		entry.poolQueryKey = poolQueryKey
 
 		try {
-			const result = await Promise.race([
-				sessionId !== undefined
-					? driver.execute(sql, params, sessionId)
-					: driver.execute(sql, params, undefined, poolQueryKey),
-				timeout.promise,
-			])
+			const executePromise = sessionId !== undefined
+				? driver.execute(sql, params, sessionId)
+				: driver.execute(sql, params, undefined, poolQueryKey)
+			const result = timeout
+				? await Promise.race([executePromise, timeout.promise])
+				: await executePromise
 
 			if (entry.cancelled) {
 				return makeCancelledResult(performance.now() - start)
@@ -428,7 +429,7 @@ export class QueryExecutor {
 			const durationMs = Math.round(performance.now() - start)
 
 			// If timeout fired, cancel the still-running server-side query
-			if (timeout.fired) {
+			if (timeout?.fired) {
 				try {
 					if (sessionId !== undefined) {
 						await driver.cancel(sessionId)
@@ -445,7 +446,7 @@ export class QueryExecutor {
 			// If a COMMIT/END timed out or hit a connection error, the server may
 			// have committed successfully — surface COMMIT_UNCERTAIN so the user
 			// knows to verify data before retrying.
-			if (timeout.fired) {
+			if (timeout?.fired) {
 				const upper = sql.trim().toUpperCase()
 				if (/^(COMMIT|END)\b/.test(upper)) {
 					return {
@@ -482,7 +483,7 @@ export class QueryExecutor {
 				errorPosition,
 			}
 		} finally {
-			timeout.cancel()
+			timeout?.cancel()
 		}
 	}
 

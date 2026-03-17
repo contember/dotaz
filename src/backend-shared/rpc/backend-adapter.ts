@@ -260,6 +260,62 @@ export class BackendAdapter implements RpcAdapter {
 		return withEphemeralSession(driver, runInSession)
 	}
 
+	submitQuery(
+		connectionId: string,
+		sql: string,
+		params: unknown[] | undefined,
+		queryId: string,
+		database?: string,
+		sessionId?: string,
+		searchPath?: string,
+	): void {
+		const start = performance.now()
+		this.queryExecutor.executeQuery(connectionId, sql, params, 0, queryId, database, sessionId, searchPath)
+			.then((results) => {
+				this.emitMessage?.('query.completed', {
+					queryId,
+					results,
+					durationMs: Math.round(performance.now() - start),
+				})
+			})
+			.catch((err) => {
+				const errorCode = (err as any)?.code as string | undefined
+				this.emitMessage?.('query.completed', {
+					queryId,
+					error: err instanceof Error ? err.message : String(err),
+					errorCode,
+					durationMs: Math.round(performance.now() - start),
+				})
+			})
+	}
+
+	submitExplain(
+		connectionId: string,
+		sql: string,
+		analyze: boolean,
+		queryId: string,
+		database?: string,
+		sessionId?: string,
+		searchPath?: string,
+	): void {
+		const start = performance.now()
+		this.queryExecutor.explainQuery(connectionId, sql, analyze, database, sessionId, searchPath)
+			.then((explainResult) => {
+				this.emitMessage?.('query.completed', {
+					queryId,
+					explainResult,
+					durationMs: Math.round(performance.now() - start),
+				})
+			})
+			.catch((err) => {
+				this.emitMessage?.('query.completed', {
+					queryId,
+					error: err instanceof Error ? err.message : String(err),
+					durationMs: Math.round(performance.now() - start),
+				})
+			})
+	}
+
 	async cancelQuery(queryId: string): Promise<void> {
 		await this.queryExecutor.cancelQuery(queryId)
 	}

@@ -226,6 +226,44 @@ export class DemoAdapter implements RpcAdapter {
 		}
 	}
 
+	submitQuery(connectionId: string, sql: string, params: unknown[] | undefined, queryId: string): void {
+		const start = performance.now()
+		this.executeQuery(connectionId, sql, params)
+			.then((results) => {
+				this.emitMessage('query.completed', {
+					queryId,
+					results,
+					durationMs: Math.round(performance.now() - start),
+				})
+			})
+			.catch((err) => {
+				this.emitMessage('query.completed', {
+					queryId,
+					error: err instanceof Error ? err.message : String(err),
+					durationMs: Math.round(performance.now() - start),
+				})
+			})
+	}
+
+	submitExplain(connectionId: string, sql: string, analyze: boolean, queryId: string): void {
+		const start = performance.now()
+		this.explainQuery(connectionId, sql, analyze)
+			.then((explainResult) => {
+				this.emitMessage('query.completed', {
+					queryId,
+					explainResult,
+					durationMs: Math.round(performance.now() - start),
+				})
+			})
+			.catch((err) => {
+				this.emitMessage('query.completed', {
+					queryId,
+					error: err instanceof Error ? err.message : String(err),
+					durationMs: Math.round(performance.now() - start),
+				})
+			})
+	}
+
 	async cancelQuery(): Promise<void> {
 		// WASM SQLite operations are synchronous; cancellation is a no-op
 	}

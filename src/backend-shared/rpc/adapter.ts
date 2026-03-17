@@ -70,6 +70,27 @@ export interface RpcAdapter {
 	cancelQuery(queryId: string): Promise<void>
 	explainQuery(connectionId: string, sql: string, analyze: boolean, database?: string, sessionId?: string, searchPath?: string): Promise<ExplainResult>
 
+	/** Fire-and-forget query submission — result delivered via 'query.completed' message. */
+	submitQuery(
+		connectionId: string,
+		sql: string,
+		params: unknown[] | undefined,
+		queryId: string,
+		database?: string,
+		sessionId?: string,
+		searchPath?: string,
+	): void
+	/** Fire-and-forget EXPLAIN submission — result delivered via 'query.completed' message. */
+	submitExplain(
+		connectionId: string,
+		sql: string,
+		analyze: boolean,
+		queryId: string,
+		database?: string,
+		sessionId?: string,
+		searchPath?: string,
+	): void
+
 	// ── Transactions ──────────────────────────────────────
 	beginTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void>
 	commitTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void>
