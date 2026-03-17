@@ -76,7 +76,13 @@ const [passwordPrompt, setPasswordPrompt] = createSignal<
 // ── Schema loading ───────────────────────────────────────
 
 async function loadSchemaTree(connectionId: string, database?: string) {
-	const schemaData = await rpc.schema.load({ connectionId, database })
+	const timeout = new Promise<never>((_, reject) =>
+		setTimeout(() => reject(new Error('Schema loading timed out after 30s')), 30_000),
+	)
+	const schemaData = await Promise.race([
+		rpc.schema.load({ connectionId, database }),
+		timeout,
+	])
 
 	const dbKey = database ?? getDefaultDatabaseKey(connectionId)
 
@@ -96,6 +102,14 @@ async function loadSchemaTree(connectionId: string, database?: string) {
 	})
 }
 
+function setEmptySchemaTree(connectionId: string, database?: string) {
+	const dbKey = database ?? getDefaultDatabaseKey(connectionId)
+	if (!state.schemaTrees[connectionId]) {
+		setState('schemaTrees', connectionId, {})
+	}
+	setState('schemaTrees', connectionId, dbKey, { schemas: [], tables: {} })
+}
+
 function getDefaultDatabaseKey(connectionId: string): string {
 	const conn = state.connections.find((c) => c.id === connectionId)
 	if (!conn) return '__default__'
@@ -113,12 +127,35 @@ async function loadAvailableDatabases(connectionId: string) {
 
 async function activateDatabase(connectionId: string, database: string) {
 	await rpc.databases.activate({ connectionId, database })
+
+	// Update local config so reconnect sees the new database
+	const idx = state.connections.findIndex((c) => c.id === connectionId)
+	if (idx >= 0) {
+		const config = state.connections[idx].config
+		if ('activeDatabases' in config) {
+			const current = config.activeDatabases ?? []
+			if (!current.includes(database)) {
+				setState('connections', idx, 'config', { ...config, activeDatabases: [...current, database] })
+			}
+		}
+	}
+
 	await loadSchemaTree(connectionId, database)
 	await loadAvailableDatabases(connectionId)
 }
 
 async function deactivateDatabase(connectionId: string, database: string) {
 	await rpc.databases.deactivate({ connectionId, database })
+
+	// Update local config so reconnect doesn't restore this database
+	const idx = state.connections.findIndex((c) => c.id === connectionId)
+	if (idx >= 0) {
+		const config = state.connections[idx].config
+		if ('activeDatabases' in config) {
+			const filtered = (config.activeDatabases ?? []).filter((db: string) => db !== database)
+			setState('connections', idx, 'config', { ...config, activeDatabases: filtered.length > 0 ? filtered : undefined })
+		}
+	}
 
 	// Remove schema tree and schema data cache for this database
 	if (state.schemaTrees[connectionId]) {
@@ -162,8 +199,10 @@ async function loadConnections() {
 
 async function loadSchemaTreesForConnection(conn: ConnectionInfo) {
 	// Load default database schema tree
-	loadSchemaTree(conn.id).catch(() => {
-		uiStore.addToast('warning', `Failed to load schema for "${conn.name}".`)
+	loadSchemaTree(conn.id).catch((err) => {
+		// Set empty schema tree so spinner stops
+		setEmptySchemaTree(conn.id)
+		uiStore.addToast('warning', `Failed to load schema for "${conn.name}": ${err instanceof Error ? err.message : 'unknown error'}`)
 	})
 
 	// For multi-database types, load active databases and their schema trees
@@ -172,8 +211,9 @@ async function loadSchemaTreesForConnection(conn: ConnectionInfo) {
 		const activeDbs = ('activeDatabases' in conn.config ? conn.config.activeDatabases : undefined) ?? []
 		for (const db of activeDbs) {
 			if (db !== getDefaultDatabase(conn.config)) {
-				loadSchemaTree(conn.id, db).catch(() => {
-					uiStore.addToast('warning', `Failed to load schema for "${conn.name}" database "${db}".`)
+				loadSchemaTree(conn.id, db).catch((err) => {
+					setEmptySchemaTree(conn.id, db)
+					uiStore.addToast('warning', `Failed to load schema for "${conn.name}" database "${db}": ${err instanceof Error ? err.message : 'unknown error'}`)
 				})
 			}
 		}
