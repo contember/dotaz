@@ -27,7 +27,11 @@ export class SessionManager {
 	private idleCheckRunning = false
 	private onTransactionRollback?: (connectionId: string, database?: string, sessionId?: string) => void
 
-	constructor(cm: ConnectionManager, appDb: AppDatabase, onTransactionRollback?: (connectionId: string, database?: string, sessionId?: string) => void) {
+	constructor(
+		cm: ConnectionManager,
+		appDb: AppDatabase,
+		onTransactionRollback?: (connectionId: string, database?: string, sessionId?: string) => void,
+	) {
 		this.cm = cm
 		this.appDb = appDb
 		this.onTransactionRollback = onTransactionRollback
@@ -82,7 +86,9 @@ export class SessionManager {
 		}
 
 		const driver = this.cm.getDriver(info.connectionId, info.database)
-		try { await driver.cancel(sessionId) } catch { /* best effort */ }
+		try {
+			await driver.cancel(sessionId)
+		} catch { /* best effort */ }
 		await driver.releaseSession(sessionId)
 
 		this.txFirstSeen.delete(sessionId)
@@ -103,7 +109,9 @@ export class SessionManager {
 			if (info.database === database) {
 				try {
 					const driver = this.cm.getDriver(info.connectionId, info.database)
-					try { await driver.cancel(sessionId) } catch { /* best effort */ }
+					try {
+						await driver.cancel(sessionId)
+					} catch { /* best effort */ }
 					await driver.releaseSession(sessionId)
 				} catch { /* driver may already be disconnected */ }
 				this.txFirstSeen.delete(sessionId)
@@ -225,7 +233,9 @@ export class SessionManager {
 			} catch {
 				// Session restoration is best-effort — skip on failure
 				if (reserved && driver && sessionId) {
-					try { await driver.releaseSession(sessionId) } catch {}
+					try {
+						await driver.releaseSession(sessionId)
+					} catch {}
 				}
 			}
 		}

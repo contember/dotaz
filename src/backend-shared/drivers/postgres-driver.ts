@@ -805,7 +805,9 @@ export class PostgresDriver implements DatabaseDriver {
 			if (ownConn) {
 				await safeReleaseConnection(conn as ReservedSQL, pgResetConnection, { rollback: !rolledBack })
 			} else if (session && !rolledBack) {
-				try { await conn.unsafe('ROLLBACK') } catch { /* ignore if no tx */ }
+				try {
+					await conn.unsafe('ROLLBACK')
+				} catch { /* ignore if no tx */ }
 			}
 		}
 	}

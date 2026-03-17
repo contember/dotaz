@@ -30,7 +30,8 @@ export function isConnectionLevelError(err: unknown): boolean {
 	}
 	// fallback for errors without .code (Bun-specific, string messages, etc.)
 	const message = err instanceof Error ? err.message : String(err)
-	return /ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|connection (terminated|ended|closed|lost|reset)|socket.*(closed|hang up|end)|write after end|broken pipe|network/i.test(message)
+	return /ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|connection (terminated|ended|closed|lost|reset)|socket.*(closed|hang up|end)|write after end|broken pipe|network/i
+		.test(message)
 }
 
 /**
@@ -44,12 +45,18 @@ export async function safeReleaseConnection(
 	options?: { rollback?: boolean },
 ): Promise<void> {
 	if (options?.rollback) {
-		try { await conn.unsafe('ROLLBACK') } catch { /* ignore — no tx is fine */ }
+		try {
+			await conn.unsafe('ROLLBACK')
+		} catch { /* ignore — no tx is fine */ }
 	}
 	try {
 		await resetFn(conn)
-		try { conn.release() } catch { /* broken connection */ }
+		try {
+			conn.release()
+		} catch { /* broken connection */ }
 	} catch {
-		try { conn.close({ timeout: 0 }) } catch { /* already dead */ }
+		try {
+			conn.close({ timeout: 0 })
+		} catch { /* already dead */ }
 	}
 }

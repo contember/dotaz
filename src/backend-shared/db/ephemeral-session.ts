@@ -13,7 +13,11 @@ export async function withEphemeralSession<T>(
 	try {
 		return await fn(sessionId)
 	} finally {
-		try { await driver.cancel(sessionId) } catch { /* best effort */ }
-		try { await driver.releaseSession(sessionId) } catch { /* best effort */ }
+		try {
+			await driver.cancel(sessionId)
+		} catch { /* best effort */ }
+		try {
+			await driver.releaseSession(sessionId)
+		} catch { /* best effort */ }
 	}
 }

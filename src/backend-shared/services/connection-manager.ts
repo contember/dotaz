@@ -469,17 +469,21 @@ export class ConnectionManager {
 				try {
 					await Promise.race([
 						driver.ping(),
-						new Promise<never>((_, reject) =>
-							setTimeout(() => reject(new Error('Health check timed out')), this.opts.healthCheckTimeoutMs)
-						),
+						new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Health check timed out')), this.opts.healthCheckTimeoutMs)),
 					])
 				} catch {
 					// Check if any driver had an active transaction before disconnecting
 					let hadTransaction = false
 					for (const d of driverMap.values()) {
-						if (d.inTransaction()) { hadTransaction = true; break }
+						if (d.inTransaction()) {
+							hadTransaction = true
+							break
+						}
 						for (const sid of d.getSessionIds()) {
-							if (d.inTransaction(sid)) { hadTransaction = true; break }
+							if (d.inTransaction(sid)) {
+								hadTransaction = true
+								break
+							}
 						}
 						if (hadTransaction) break
 					}
@@ -499,9 +503,13 @@ export class ConnectionManager {
 					try {
 						await driver.execute('SELECT 1', undefined, sid)
 					} catch {
-						try { await driver.releaseSession(sid) } catch { /* already dead */ }
+						try {
+							await driver.releaseSession(sid)
+						} catch { /* already dead */ }
 						for (const l of this.sessionDeadListeners) {
-							try { await l({ connectionId, sessionId: sid }) } catch { /* best effort */ }
+							try {
+								await l({ connectionId, sessionId: sid })
+							} catch { /* best effort */ }
 						}
 					}
 				}

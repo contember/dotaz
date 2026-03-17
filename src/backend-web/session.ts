@@ -144,7 +144,10 @@ export function createSession(
 		handlers,
 		sessionManager,
 		serverManagedIds,
-		unsubscribe: () => { unsubSessionDead(); unsubscribe() },
+		unsubscribe: () => {
+			unsubSessionDead()
+			unsubscribe()
+		},
 		ws,
 		activeStreams: 0,
 		disconnectedAt: null,

@@ -1,14 +1,20 @@
 import { describe, expect, it } from 'bun:test'
-import { withEphemeralSession } from '../src/backend-shared/db/ephemeral-session'
 import type { DatabaseDriver } from '../src/backend-shared/db/driver'
+import { withEphemeralSession } from '../src/backend-shared/db/ephemeral-session'
 
 function createMockDriver(): DatabaseDriver & { calls: string[] } {
 	const calls: string[] = []
 	return {
 		calls,
-		reserveSession: async (id: string) => { calls.push(`reserve:${id}`) },
-		releaseSession: async (id: string) => { calls.push(`release:${id}`) },
-		cancel: async (id?: string) => { calls.push(`cancel:${id}`) },
+		reserveSession: async (id: string) => {
+			calls.push(`reserve:${id}`)
+		},
+		releaseSession: async (id: string) => {
+			calls.push(`release:${id}`)
+		},
+		cancel: async (id?: string) => {
+			calls.push(`cancel:${id}`)
+		},
 	} as unknown as DatabaseDriver & { calls: string[] }
 }
 
@@ -34,7 +40,9 @@ describe('withEphemeralSession', () => {
 		const error = new Error('test error')
 
 		await expect(
-			withEphemeralSession(driver, async () => { throw error }),
+			withEphemeralSession(driver, async () => {
+				throw error
+			}),
 		).rejects.toThrow('test error')
 
 		expect(driver.calls.length).toBe(3)
@@ -47,9 +55,15 @@ describe('withEphemeralSession', () => {
 		const calls: string[] = []
 		const driver = {
 			calls,
-			reserveSession: async (id: string) => { calls.push(`reserve:${id}`) },
-			releaseSession: async (id: string) => { calls.push(`release:${id}`) },
-			cancel: async () => { throw new Error('cancel failed') },
+			reserveSession: async (id: string) => {
+				calls.push(`reserve:${id}`)
+			},
+			releaseSession: async (id: string) => {
+				calls.push(`release:${id}`)
+			},
+			cancel: async () => {
+				throw new Error('cancel failed')
+			},
 		} as unknown as DatabaseDriver
 
 		const result = await withEphemeralSession(driver, async () => 'ok')
@@ -62,8 +76,12 @@ describe('withEphemeralSession', () => {
 		const driver = createMockDriver()
 		const ids: string[] = []
 
-		await withEphemeralSession(driver, async (id) => { ids.push(id) })
-		await withEphemeralSession(driver, async (id) => { ids.push(id) })
+		await withEphemeralSession(driver, async (id) => {
+			ids.push(id)
+		})
+		await withEphemeralSession(driver, async (id) => {
+			ids.push(id)
+		})
 
 		expect(ids[0]).not.toBe(ids[1])
 	})

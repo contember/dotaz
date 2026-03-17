@@ -102,7 +102,9 @@ export class SqliteDriver implements DatabaseDriver {
 	async disconnect(): Promise<void> {
 		this.connected = false
 		if (this.iterateDb) {
-			try { await this.iterateDb.close() } catch { /* best effort */ }
+			try {
+				await this.iterateDb.close()
+			} catch { /* best effort */ }
 			this.iterateDb = null
 		}
 		if (this.db) {
@@ -377,7 +379,9 @@ export class SqliteDriver implements DatabaseDriver {
 			throw err
 		} finally {
 			if (!committed) {
-				try { await readConn.unsafe('ROLLBACK') } catch { /* ignore */ }
+				try {
+					await readConn.unsafe('ROLLBACK')
+				} catch { /* ignore */ }
 			}
 			if (useMainConn) {
 				this.iterating = false

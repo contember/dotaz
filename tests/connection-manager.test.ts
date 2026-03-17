@@ -675,7 +675,9 @@ describe('ConnectionManager', () => {
 			// Guard should be released — reconnect and check again
 			await manager.connect(conn.id)
 			const events: StatusChangeEvent[] = []
-			manager.onStatusChanged((e) => { events.push(e) })
+			manager.onStatusChanged((e) => {
+				events.push(e)
+			})
 			await (manager as any).performHealthCheck(conn.id)
 
 			// Should have run successfully (no disconnect event)
@@ -718,7 +720,9 @@ describe('ConnectionManager', () => {
 			}
 
 			const events: SessionDeadEvent[] = []
-			manager.onSessionDead((e) => { events.push(e) })
+			manager.onSessionDead((e) => {
+				events.push(e)
+			})
 
 			await (manager as any).performHealthCheck(conn.id)
 
@@ -738,7 +742,9 @@ describe('ConnectionManager', () => {
 			await driver.reserveSession('healthy-session')
 
 			const events: SessionDeadEvent[] = []
-			manager.onSessionDead((e) => { events.push(e) })
+			manager.onSessionDead((e) => {
+				events.push(e)
+			})
 
 			await (manager as any).performHealthCheck(conn.id)
 
@@ -753,7 +759,9 @@ describe('ConnectionManager', () => {
 			await manager.connect(conn.id)
 
 			const events: SessionDeadEvent[] = []
-			const unsub = manager.onSessionDead((e) => { events.push(e) })
+			const unsub = manager.onSessionDead((e) => {
+				events.push(e)
+			})
 			unsub()
 
 			const driver = manager.getDriver(conn.id)
@@ -787,7 +795,9 @@ describe('ConnectionManager', () => {
 			await timeoutManager.connect(conn.id)
 
 			const events: StatusChangeEvent[] = []
-			timeoutManager.onStatusChanged((e) => { events.push(e) })
+			timeoutManager.onStatusChanged((e) => {
+				events.push(e)
+			})
 
 			// Make ping block forever to simulate pool exhaustion
 			const driver = timeoutManager.getDriver(conn.id)
