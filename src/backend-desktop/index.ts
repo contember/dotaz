@@ -204,7 +204,15 @@ emitToFrontend = (channel: string, payload: unknown) => {
 }
 
 // Wire up BE→FE notifications after window creation
-connectionManager.onStatusChanged((event) => {
+connectionManager.onSessionDead((event) => {
+	sessionManager.handleSessionDead(event.sessionId)
+	emitToFrontend!('session.changed', {
+		connectionId: event.connectionId,
+		sessions: sessionManager.listSessions(event.connectionId),
+	})
+})
+
+connectionManager.onStatusChanged(async (event) => {
 	emitToFrontend!('connections.statusChanged', {
 		connectionId: event.connectionId,
 		state: event.state,
@@ -224,16 +232,17 @@ connectionManager.onStatusChanged((event) => {
 
 	// Restore sessions after successful reconnect
 	if (event.state === 'connected') {
-		sessionManager.handleConnectionRestored(event.connectionId).then((restored) => {
+		try {
+			const restored = await sessionManager.handleConnectionRestored(event.connectionId)
 			if (restored.length > 0) {
 				emitToFrontend!('session.changed', {
 					connectionId: event.connectionId,
 					sessions: restored,
 				})
 			}
-		}).catch((err) => {
+		} catch (err) {
 			console.warn('Session restoration failed:', err instanceof Error ? err.message : err)
-		})
+		}
 	}
 })
 

@@ -22,6 +22,7 @@ export type DatabaseErrorCode =
 	| 'DEADLOCK_DETECTED'
 	| 'TRANSACTION_ABORTED'
 	| 'COMMIT_UNCERTAIN'
+	| 'STATEMENT_UNCERTAIN'
 	| 'UNKNOWN'
 
 /** Base domain error with a typed code for programmatic handling */
@@ -82,6 +83,19 @@ export function serializeError(err: unknown): SerializedError {
 	return { code: 'UNKNOWN', message }
 }
 
+/** Whether a failed operation with this error code can be retried */
+export function isRetriable(code: DatabaseErrorCode): boolean {
+	switch (code) {
+		case 'SERIALIZATION_FAILURE':
+		case 'DEADLOCK_DETECTED':
+		case 'CONNECTION_TIMEOUT':
+		case 'CONNECTION_LIMIT':
+			return true
+		default:
+			return false
+	}
+}
+
 /** Map a DatabaseErrorCode to a user-friendly message, falling back to the raw message */
 export function friendlyMessageForCode(code: DatabaseErrorCode, rawMessage: string): string {
 	switch (code) {
@@ -119,6 +133,8 @@ export function friendlyMessageForCode(code: DatabaseErrorCode, rawMessage: stri
 			return 'Transaction is aborted — rollback before executing new statements'
 		case 'COMMIT_UNCERTAIN':
 			return 'Commit status unknown — the connection was lost before confirmation. Your data may have been saved. Please verify before retrying.'
+		case 'STATEMENT_UNCERTAIN':
+			return 'Statement may have completed — the timeout fired but the server may have already executed the statement. Verify your data before retrying.'
 		case 'UNKNOWN':
 			return rawMessage || 'An unexpected error occurred'
 	}

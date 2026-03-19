@@ -128,10 +128,12 @@ export function settingsToAiConfig(settings: Record<string, string>): AiConfig {
 
 export interface ConsoleConfig {
 	defaultResultLimit: number // 0 = unlimited
+	queryResponseTimeoutMs: number
 }
 
 export const DEFAULT_CONSOLE_CONFIG: ConsoleConfig = {
 	defaultResultLimit: 500,
+	queryResponseTimeoutMs: 300_000, // 5 minutes — safety net for fire-and-forget queries
 }
 
 /** Setting key prefix for console configuration entries. */
@@ -141,6 +143,7 @@ export const CONSOLE_PREFIX = 'console.'
 export function consoleConfigToSettings(config: ConsoleConfig): Record<string, string> {
 	return {
 		[`${CONSOLE_PREFIX}defaultResultLimit`]: String(config.defaultResultLimit),
+		[`${CONSOLE_PREFIX}queryResponseTimeout`]: String(config.queryResponseTimeoutMs),
 	}
 }
 
@@ -148,8 +151,11 @@ export function consoleConfigToSettings(config: ConsoleConfig): Record<string, s
 export function settingsToConsoleConfig(settings: Record<string, string>): ConsoleConfig {
 	const raw = settings[`${CONSOLE_PREFIX}defaultResultLimit`]
 	const parsed = raw !== undefined ? Number(raw) : NaN
+	const rawTimeout = settings[`${CONSOLE_PREFIX}queryResponseTimeout`]
+	const parsedTimeout = rawTimeout !== undefined ? Number(rawTimeout) : NaN
 	return {
 		defaultResultLimit: !Number.isNaN(parsed) && parsed >= 0 ? parsed : DEFAULT_CONSOLE_CONFIG.defaultResultLimit,
+		queryResponseTimeoutMs: !Number.isNaN(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : DEFAULT_CONSOLE_CONFIG.queryResponseTimeoutMs,
 	}
 }
 

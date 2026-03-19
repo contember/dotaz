@@ -8,6 +8,7 @@ import type { ReservedSQL } from 'bun'
 import type { DatabaseDriver } from '../db/driver'
 import { mapPostgresError } from '../db/error-mapping'
 import { getAffectedRowCount } from '../db/result-utils'
+import { isConnectionLevelError, safeReleaseConnection, syncTxActive } from './driver-utils'
 
 /** Row shape from information_schema.columns joined with PK info */
 interface PgColumnRow {
@@ -83,6 +84,7 @@ interface PgMatviewColumnRow {
 interface SessionState {
 	conn: ReservedSQL
 	txActive: boolean
+	txAborted: boolean
 	iterating: boolean
 	activeQueries: Set<ReturnType<SQL['unsafe']>>
 }
@@ -90,11 +92,9 @@ interface SessionState {
 /** Internal session ID used for backward-compatible beginTransaction() without sessionId */
 const DEFAULT_SESSION = '__default__'
 
-/** Detect connection-level errors (TCP drop, reset, etc.) as opposed to PostgreSQL protocol errors. */
-function isConnectionLevelError(err: unknown): boolean {
-	const message = err instanceof Error ? err.message : String(err)
-	return /ECONNRESET|ECONNREFUSED|EPIPE|ETIMEDOUT|connection (terminated|ended|closed|lost|reset)|socket.*(closed|hang up|end)|write after end|broken pipe|network/i
-		.test(message)
+/** Reset function for PostgreSQL: runs DISCARD ALL to clear all session state. */
+async function pgResetConnection(conn: ReservedSQL): Promise<void> {
+	await conn.unsafe('DISCARD ALL')
 }
 
 /** Map PostgreSQL information_schema data_type to DatabaseDataType. */
@@ -149,6 +149,7 @@ export class PostgresDriver implements DatabaseDriver {
 	private db: SQL | null = null
 	private connected = false
 	private sessions = new Map<string, SessionState>()
+	private defaultSessionPending = false
 	private poolActiveQueries = new Map<symbol, ReturnType<SQL['unsafe']>>()
 
 	async connect(config: ConnectionConfig): Promise<void> {
@@ -173,24 +174,17 @@ export class PostgresDriver implements DatabaseDriver {
 	}
 
 	async disconnect(): Promise<void> {
+		this.connected = false
+
 		// Release all sessions
 		for (const [, session] of this.sessions) {
-			if (session.txActive) {
-				try {
-					await session.conn.unsafe('ROLLBACK')
-				} catch { /* ignore */ }
-			}
-			try {
-				await session.conn.unsafe('DISCARD ALL')
-			} catch { /* best effort */ }
-			session.conn.release()
+			await safeReleaseConnection(session.conn, pgResetConnection, { rollback: true })
 		}
 		this.sessions.clear()
 
 		if (this.db) {
 			await this.db.close()
 			this.db = null
-			this.connected = false
 		}
 	}
 
@@ -206,23 +200,13 @@ export class PostgresDriver implements DatabaseDriver {
 			throw new Error(`Session "${sessionId}" already exists`)
 		}
 		const conn = await this.db!.reserve()
-		this.sessions.set(sessionId, { conn, txActive: false, iterating: false, activeQueries: new Set() })
+		this.sessions.set(sessionId, { conn, txActive: false, txAborted: false, iterating: false, activeQueries: new Set() })
 	}
 
 	async releaseSession(sessionId: string): Promise<void> {
 		const session = this.sessions.get(sessionId)
-		if (!session) {
-			throw new Error(`Session "${sessionId}" not found`)
-		}
-		if (session.txActive) {
-			try {
-				await session.conn.unsafe('ROLLBACK')
-			} catch { /* ignore */ }
-		}
-		try {
-			await session.conn.unsafe('DISCARD ALL')
-		} catch { /* best effort — connection may be broken */ }
-		session.conn.release()
+		if (!session) return // idempotent — already released or never existed
+		await safeReleaseConnection(session.conn, pgResetConnection, { rollback: true })
 		this.sessions.delete(sessionId)
 	}
 
@@ -232,22 +216,27 @@ export class PostgresDriver implements DatabaseDriver {
 
 	// --- Query execution ---
 
-	async execute(sql: string, params?: unknown[], sessionId?: string): Promise<QueryResult> {
+	async execute(sql: string, params?: unknown[], sessionId?: string, poolQueryKey?: symbol): Promise<QueryResult> {
 		this.ensureConnected()
 		const session = this.resolveSession(sessionId)
 		const conn = session ? session.conn : this.db!
 		const start = performance.now()
 		const query = conn.unsafe(sql, params ?? [])
-		const queryKey = session ? undefined : Symbol()
+		const effectiveQueryKey = session ? undefined : (poolQueryKey ?? Symbol())
 		if (session) {
 			session.activeQueries.add(query)
 		} else {
-			this.poolActiveQueries.set(queryKey!, query)
+			this.poolActiveQueries.set(effectiveQueryKey!, query)
 		}
 		try {
 			const result = await query
 			const durationMs = Math.round(performance.now() - start)
 			const rows = [...result] as Record<string, unknown>[]
+
+			// Sync txActive for raw transaction-control statements
+			if (session) {
+				syncTxActive(session, sql)
+			}
 
 			const columns: QueryResultColumn[] = rows.length > 0
 				? Object.keys(rows[0]).map((name) => ({
@@ -264,17 +253,21 @@ export class PostgresDriver implements DatabaseDriver {
 				durationMs,
 			}
 		} catch (err) {
+			// Any error inside an active transaction puts PostgreSQL into aborted state (25P02)
+			if (session?.txActive && !isConnectionLevelError(err)) {
+				session.txAborted = true
+			}
 			throw err instanceof DatabaseError ? err : mapPostgresError(err)
 		} finally {
 			if (session) {
 				session.activeQueries.delete(query)
 			} else {
-				this.poolActiveQueries.delete(queryKey!)
+				this.poolActiveQueries.delete(effectiveQueryKey!)
 			}
 		}
 	}
 
-	async cancel(sessionId?: string): Promise<void> {
+	async cancel(sessionId?: string, poolQueryKey?: symbol): Promise<void> {
 		if (sessionId) {
 			const session = this.sessions.get(sessionId)
 			if (session) {
@@ -282,6 +275,12 @@ export class PostgresDriver implements DatabaseDriver {
 					query.cancel()
 				}
 				session.activeQueries.clear()
+			}
+		} else if (poolQueryKey) {
+			const query = this.poolActiveQueries.get(poolQueryKey)
+			if (query) {
+				query.cancel()
+				this.poolActiveQueries.delete(poolQueryKey)
 			}
 		} else {
 			for (const query of this.poolActiveQueries.values()) {
@@ -623,19 +622,25 @@ export class PostgresDriver implements DatabaseDriver {
 			if (!session) throw new Error(`Session "${sessionId}" not found`)
 			await session.conn.unsafe('BEGIN')
 			session.txActive = true
+			session.txAborted = false
 		} else {
 			// Backward compat: reserve into __default__ session
-			if (this.sessions.has(DEFAULT_SESSION)) {
+			if (this.sessions.has(DEFAULT_SESSION) || this.defaultSessionPending) {
 				throw new Error('A default transaction is already active. Commit or rollback before starting a new one.')
 			}
-			const conn = await this.db!.reserve()
+			this.defaultSessionPending = true
 			try {
-				await conn.unsafe('BEGIN')
-			} catch (err) {
-				conn.release()
-				throw err
+				const conn = await this.db!.reserve()
+				try {
+					await conn.unsafe('BEGIN')
+				} catch (err) {
+					conn.release()
+					throw err
+				}
+				this.sessions.set(DEFAULT_SESSION, { conn, txActive: true, txAborted: false, iterating: false, activeQueries: new Set() })
+			} finally {
+				this.defaultSessionPending = false
 			}
-			this.sessions.set(DEFAULT_SESSION, { conn, txActive: true, iterating: false, activeQueries: new Set() })
 		}
 	}
 
@@ -647,11 +652,15 @@ export class PostgresDriver implements DatabaseDriver {
 		if (session.iterating) throw new Error('Cannot commit during active iteration')
 		try {
 			await session.conn.unsafe('COMMIT')
+			session.txActive = false
+			session.txAborted = false
 		} catch (err) {
 			// If the error is connection-level, the COMMIT may have succeeded server-side
 			// before the TCP connection dropped. Raise a distinct error so the UI can warn
 			// the user to verify data state before retrying.
 			if (isConnectionLevelError(err)) {
+				session.txActive = false
+				session.txAborted = false
 				throw new DatabaseError(
 					'COMMIT_UNCERTAIN',
 					'Connection lost during COMMIT — the transaction may have been committed. Verify your data before retrying.',
@@ -660,17 +669,13 @@ export class PostgresDriver implements DatabaseDriver {
 			}
 			try {
 				await session.conn.unsafe('ROLLBACK')
-			} catch {}
+				session.txActive = false
+				session.txAborted = false
+			} catch { /* ROLLBACK failed — leave txActive true so session is known-dirty */ }
 			throw err
 		} finally {
-			session.txActive = false
 			if (id === DEFAULT_SESSION) {
-				try {
-					await session.conn.unsafe('DISCARD ALL')
-				} catch { /* best effort — connection may be broken */ }
-				try {
-					session.conn.release()
-				} catch { /* connection may be broken */ }
+				await safeReleaseConnection(session.conn, pgResetConnection)
 				this.sessions.delete(DEFAULT_SESSION)
 			}
 		}
@@ -684,15 +689,18 @@ export class PostgresDriver implements DatabaseDriver {
 		if (session.iterating) throw new Error('Cannot rollback during active iteration')
 		try {
 			await session.conn.unsafe('ROLLBACK')
-		} finally {
 			session.txActive = false
+			session.txAborted = false
+		} catch (err) {
+			if (isConnectionLevelError(err)) {
+				session.txActive = false
+				session.txAborted = false
+			}
+			// Non-connection error: leave txActive true so session is known-dirty
+			throw err
+		} finally {
 			if (id === DEFAULT_SESSION) {
-				try {
-					await session.conn.unsafe('DISCARD ALL')
-				} catch { /* best effort — connection may be broken */ }
-				try {
-					session.conn.release()
-				} catch { /* connection may be broken */ }
+				await safeReleaseConnection(session.conn, pgResetConnection)
 				this.sessions.delete(DEFAULT_SESSION)
 			}
 		}
@@ -702,6 +710,18 @@ export class PostgresDriver implements DatabaseDriver {
 		const id = sessionId ?? DEFAULT_SESSION
 		const session = this.sessions.get(id)
 		return session?.txActive ?? false
+	}
+
+	isTxAborted(sessionId?: string): boolean {
+		const id = sessionId ?? DEFAULT_SESSION
+		const session = this.sessions.get(id)
+		return session?.txAborted ?? false
+	}
+
+	isIterating(sessionId?: string): boolean {
+		const id = sessionId ?? DEFAULT_SESSION
+		const session = this.sessions.get(id)
+		return session?.iterating ?? false
 	}
 
 	getDriverType(): 'postgresql' {
@@ -745,6 +765,7 @@ export class PostgresDriver implements DatabaseDriver {
 			session.txActive = true
 			session.iterating = true
 		}
+		let rolledBack = false
 		try {
 			await conn.unsafe('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
 			await conn.unsafe(
@@ -771,6 +792,7 @@ export class PostgresDriver implements DatabaseDriver {
 			}
 			await conn.unsafe('COMMIT')
 		} catch (err) {
+			rolledBack = true
 			try {
 				await conn.unsafe('ROLLBACK')
 			} catch { /* ignore rollback errors */ }
@@ -781,10 +803,11 @@ export class PostgresDriver implements DatabaseDriver {
 				session.iterating = false
 			}
 			if (ownConn) {
+				await safeReleaseConnection(conn as ReservedSQL, pgResetConnection, { rollback: !rolledBack })
+			} else if (session && !rolledBack) {
 				try {
-					await (conn as ReservedSQL).unsafe('DISCARD ALL')
-				} catch { /* best effort */ }
-				;(conn as ReservedSQL).release()
+					await conn.unsafe('ROLLBACK')
+				} catch { /* ignore if no tx */ }
 			}
 		}
 	}
@@ -821,8 +844,7 @@ export class PostgresDriver implements DatabaseDriver {
 
 	private resolveSession(sessionId?: string): SessionState | undefined {
 		if (!sessionId) {
-			// Check for __default__ session (backward compat for tx without sessionId)
-			return this.sessions.get(DEFAULT_SESSION)
+			return undefined
 		}
 		const session = this.sessions.get(sessionId)
 		if (!session) throw new Error(`Session "${sessionId}" not found`)

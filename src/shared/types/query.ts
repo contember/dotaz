@@ -63,6 +63,17 @@ export interface ExplainResult {
 	error?: string
 }
 
+// ── Fire-and-forget query completion event ──────────────
+
+export interface QueryCompletedEvent {
+	queryId: string
+	results?: QueryResult[]
+	explainResult?: ExplainResult
+	error?: string
+	errorCode?: import('./errors').DatabaseErrorCode
+	durationMs: number
+}
+
 export type QueryHistoryStatus = 'success' | 'error'
 
 export interface QueryHistoryEntry {

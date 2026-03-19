@@ -572,4 +572,14 @@ describe('SqliteDriver session isolation', () => {
 		await driver.releaseSession('session-a')
 		await driver.releaseSession('session-b')
 	})
+
+	test('releaseSession is idempotent for unknown session ID', async () => {
+		await driver.releaseSession('nonexistent')
+	})
+
+	test('releaseSession is idempotent on double release', async () => {
+		await driver.reserveSession('double-s')
+		await driver.releaseSession('double-s')
+		await driver.releaseSession('double-s')
+	})
 })
