@@ -11,8 +11,8 @@ const KEY_NAME = 'encryption-key'
 
 const args = process.argv.slice(2)
 
-let port = 6401
-let host = 'localhost'
+let port = Number(process.env.DOTAZ_PORT) || 6401
+let host = process.env.DOTAZ_HOST || 'localhost'
 
 for (let i = 0; i < args.length; i++) {
 	const arg = args[i]
