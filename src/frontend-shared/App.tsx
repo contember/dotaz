@@ -11,11 +11,15 @@ export default function App() {
 		connectionsStore.setOnTransactionLost((connectionId) => {
 			editorStore.resetTransactionStateForConnection(connectionId)
 		})
+		connectionsStore.setOnConnectionLost((connectionId) => {
+			editorStore.rejectPendingQueriesForConnection(connectionId)
+		})
 	})
 
 	onCleanup(() => {
 		cleanup?.()
 		connectionsStore.setOnTransactionLost(null)
+		connectionsStore.setOnConnectionLost(null)
 	})
 
 	return <AppShell />

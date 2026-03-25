@@ -500,10 +500,14 @@ export default function AppShell() {
 							const map = new Map<string, TabStatus>()
 							// Pre-compute which connections have active transactions
 							const connTx = new Set<string>()
+							const connTxAborted = new Set<string>()
 							for (const tab of tabsStore.openTabs) {
 								if (tab.type === 'sql-console') {
 									const et = editorStore.getTab(tab.id)
-									if (et?.inTransaction) connTx.add(tab.connectionId)
+									if (et?.inTransaction) {
+										connTx.add(tab.connectionId)
+										if (et.txAborted) connTxAborted.add(tab.connectionId)
+									}
 								}
 							}
 							for (const tab of tabsStore.openTabs) {
@@ -516,6 +520,7 @@ export default function AppShell() {
 									status.readOnly = true
 								}
 								if (connTx.has(tab.connectionId)) status.inTransaction = true
+								if (connTxAborted.has(tab.connectionId)) status.txAborted = true
 								if (status.color || status.readOnly || status.inTransaction) {
 									map.set(tab.id, status)
 								}

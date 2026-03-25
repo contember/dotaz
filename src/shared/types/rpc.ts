@@ -8,6 +8,7 @@ export interface SessionInfo {
 	database?: string
 	label: string
 	inTransaction: boolean
+	txAborted: boolean
 	createdAt: number
 }
 

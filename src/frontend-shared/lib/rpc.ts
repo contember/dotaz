@@ -4,6 +4,7 @@
 import type { NamespacedRpcClient } from '@dotaz/backend-types'
 import type { ConnectionState } from '@dotaz/shared/types/connection'
 import type { DatabaseErrorCode } from '@dotaz/shared/types/errors'
+import type { QueryCompletedEvent } from '@dotaz/shared/types/query'
 import type { SessionInfo } from '@dotaz/shared/types/rpc'
 import { transport } from './transport'
 
@@ -48,6 +49,11 @@ export const messages = {
 		handler: (event: { connectionId: string; sessions: SessionInfo[] }) => void,
 	) => {
 		return transport.addMessageListener('session.changed', handler)
+	},
+	onQueryCompleted: (
+		handler: (event: QueryCompletedEvent) => void,
+	) => {
+		return transport.addMessageListener('query.completed', handler)
 	},
 	onUpdateReady: (
 		handler: (event: { version: string }) => void,

@@ -20,6 +20,7 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
 	autoUnpin: 'never',
 	maxSessionsPerConnection: '5',
 	idleTransactionTimeoutMs: '300000',
+	'console.queryResponseTimeout': '300000',
 }
 
 let instance: AppDatabase | null = null

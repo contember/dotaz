@@ -2,7 +2,7 @@ import type { ConnectionConfig, ConnectionInfo } from '@dotaz/shared/types/conne
 import type { DatabaseInfo } from '@dotaz/shared/types/database'
 import type { ExportOptions, ExportPreviewRequest, ExportRawPreviewRequest, ExportRawPreviewResponse, ExportResult } from '@dotaz/shared/types/export'
 import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from '@dotaz/shared/types/import'
-import type { ExplainResult, QueryHistoryEntry, QueryResult } from '@dotaz/shared/types/query'
+import type { QueryHistoryEntry, QueryResult } from '@dotaz/shared/types/query'
 import type {
 	AiGenerateSqlParams,
 	AiGenerateSqlResult,
@@ -68,7 +68,26 @@ export interface RpcAdapter {
 		sessionId?: string,
 	): Promise<QueryResult[]>
 	cancelQuery(queryId: string): Promise<void>
-	explainQuery(connectionId: string, sql: string, analyze: boolean, database?: string, sessionId?: string, searchPath?: string): Promise<ExplainResult>
+	/** Fire-and-forget query submission — result delivered via 'query.completed' message. */
+	submitQuery(
+		connectionId: string,
+		sql: string,
+		params: unknown[] | undefined,
+		queryId: string,
+		database?: string,
+		sessionId?: string,
+		searchPath?: string,
+	): void
+	/** Fire-and-forget EXPLAIN submission — result delivered via 'query.completed' message. */
+	submitExplain(
+		connectionId: string,
+		sql: string,
+		analyze: boolean,
+		queryId: string,
+		database?: string,
+		sessionId?: string,
+		searchPath?: string,
+	): void
 
 	// ── Transactions ──────────────────────────────────────
 	beginTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void>

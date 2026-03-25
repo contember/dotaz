@@ -93,8 +93,18 @@ export class LoggingDriver implements DatabaseDriver {
 	ping(): Promise<void> {
 		return this.inner.ping()
 	}
-	loadSchema(sessionId?: string): Promise<SchemaData> {
-		return this.inner.loadSchema(sessionId)
+	async loadSchema(sessionId?: string): Promise<SchemaData> {
+		console.debug('[SQL] loadSchema started' + (sessionId ? ` (session: ${sessionId})` : ''))
+		const start = performance.now()
+		try {
+			const result = await this.inner.loadSchema(sessionId)
+			const tables = Object.values(result.tables).reduce((sum, t) => sum + t.length, 0)
+			console.debug(`[SQL] loadSchema completed — ${result.schemas.length} schemas, ${tables} tables (${Math.round(performance.now() - start)}ms)`)
+			return result
+		} catch (err) {
+			console.debug(`[SQL ERROR] loadSchema failed (${Math.round(performance.now() - start)}ms)`, err)
+			throw err
+		}
 	}
 	beginTransaction(sessionId?: string): Promise<void> {
 		return this.inner.beginTransaction(sessionId)
@@ -107,6 +117,12 @@ export class LoggingDriver implements DatabaseDriver {
 	}
 	inTransaction(sessionId?: string): boolean {
 		return this.inner.inTransaction(sessionId)
+	}
+	isTxAborted(sessionId?: string): boolean {
+		return this.inner.isTxAborted(sessionId)
+	}
+	isIterating(sessionId?: string): boolean {
+		return this.inner.isIterating(sessionId)
 	}
 	getDriverType(): 'postgresql' | 'sqlite' | 'mysql' {
 		return (this.inner as any).getDriverType()

@@ -115,39 +115,50 @@ describe('PostgresDriver execute', () => {
 	})
 
 	test('INSERT returns affectedRows', async () => {
-		await driver.beginTransaction()
+		await driver.reserveSession('insert-s')
 		try {
+			await driver.beginTransaction('insert-s')
 			const result = await driver.execute(
 				'INSERT INTO test_schema.users (name, email, age) VALUES ($1, $2, $3)',
 				['Dave', 'dave@example.com', 40],
+				'insert-s',
 			)
 			expect(result.affectedRows).toBe(1)
+			await driver.rollback('insert-s')
 		} finally {
-			await driver.rollback()
+			await driver.releaseSession('insert-s')
 		}
 	})
 
 	test('UPDATE returns affectedRows', async () => {
-		await driver.beginTransaction()
+		await driver.reserveSession('update-s')
 		try {
+			await driver.beginTransaction('update-s')
 			const result = await driver.execute(
 				'UPDATE test_schema.users SET age = 99 WHERE age IS NOT NULL',
+				[],
+				'update-s',
 			)
 			expect(result.affectedRows).toBe(2)
+			await driver.rollback('update-s')
 		} finally {
-			await driver.rollback()
+			await driver.releaseSession('update-s')
 		}
 	})
 
 	test('DELETE returns affectedRows', async () => {
-		await driver.beginTransaction()
+		await driver.reserveSession('delete-s')
 		try {
+			await driver.beginTransaction('delete-s')
 			const result = await driver.execute(
 				'DELETE FROM test_schema.posts WHERE published = false',
+				[],
+				'delete-s',
 			)
 			expect(result.affectedRows).toBe(1)
+			await driver.rollback('delete-s')
 		} finally {
-			await driver.rollback()
+			await driver.releaseSession('delete-s')
 		}
 	})
 
@@ -428,11 +439,18 @@ describe('PostgresDriver transactions', () => {
 	})
 
 	test('commit persists changes', async () => {
-		await driver.beginTransaction()
-		await driver.execute(
-			"INSERT INTO test_schema.users (name, email, age) VALUES ('TxUser', 'tx@example.com', 50)",
-		)
-		await driver.commit()
+		await driver.reserveSession('commit-s')
+		try {
+			await driver.beginTransaction('commit-s')
+			await driver.execute(
+				"INSERT INTO test_schema.users (name, email, age) VALUES ('TxUser', 'tx@example.com', 50)",
+				[],
+				'commit-s',
+			)
+			await driver.commit('commit-s')
+		} finally {
+			await driver.releaseSession('commit-s')
+		}
 
 		const result = await driver.execute(
 			"SELECT * FROM test_schema.users WHERE email = 'tx@example.com'",
@@ -446,11 +464,18 @@ describe('PostgresDriver transactions', () => {
 	})
 
 	test('rollback discards changes', async () => {
-		await driver.beginTransaction()
-		await driver.execute(
-			"INSERT INTO test_schema.users (name, email, age) VALUES ('TxUser2', 'tx2@example.com', 50)",
-		)
-		await driver.rollback()
+		await driver.reserveSession('rb-s')
+		try {
+			await driver.beginTransaction('rb-s')
+			await driver.execute(
+				"INSERT INTO test_schema.users (name, email, age) VALUES ('TxUser2', 'tx2@example.com', 50)",
+				[],
+				'rb-s',
+			)
+			await driver.rollback('rb-s')
+		} finally {
+			await driver.releaseSession('rb-s')
+		}
 
 		const result = await driver.execute(
 			"SELECT * FROM test_schema.users WHERE email = 'tx2@example.com'",

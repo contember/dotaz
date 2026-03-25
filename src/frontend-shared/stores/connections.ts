@@ -59,9 +59,14 @@ function setBeforeDisconnectHook(hook: ((connectionId: string) => boolean) | nul
  * Used to decouple connections store from editor store (avoids circular dependency).
  */
 let onTransactionLost: ((connectionId: string) => void) | null = null
+let onConnectionLost: ((connectionId: string) => void) | null = null
 
 function setOnTransactionLost(callback: ((connectionId: string) => void) | null) {
 	onTransactionLost = callback
+}
+
+function setOnConnectionLost(callback: ((connectionId: string) => void) | null) {
+	onConnectionLost = callback
 }
 
 // ── Password prompt signal ───────────────────────────────
@@ -96,6 +101,14 @@ async function loadSchemaTree(connectionId: string, database?: string) {
 	})
 }
 
+function setEmptySchemaTree(connectionId: string, database?: string) {
+	const dbKey = database ?? getDefaultDatabaseKey(connectionId)
+	if (!state.schemaTrees[connectionId]) {
+		setState('schemaTrees', connectionId, {})
+	}
+	setState('schemaTrees', connectionId, dbKey, { schemas: [], tables: {} })
+}
+
 function getDefaultDatabaseKey(connectionId: string): string {
 	const conn = state.connections.find((c) => c.id === connectionId)
 	if (!conn) return '__default__'
@@ -113,12 +126,35 @@ async function loadAvailableDatabases(connectionId: string) {
 
 async function activateDatabase(connectionId: string, database: string) {
 	await rpc.databases.activate({ connectionId, database })
+
+	// Update local config so reconnect sees the new database
+	const idx = state.connections.findIndex((c) => c.id === connectionId)
+	if (idx >= 0) {
+		const config = state.connections[idx].config
+		if ('activeDatabases' in config) {
+			const current = config.activeDatabases ?? []
+			if (!current.includes(database)) {
+				setState('connections', idx, 'config', { ...config, activeDatabases: [...current, database] })
+			}
+		}
+	}
+
 	await loadSchemaTree(connectionId, database)
 	await loadAvailableDatabases(connectionId)
 }
 
 async function deactivateDatabase(connectionId: string, database: string) {
 	await rpc.databases.deactivate({ connectionId, database })
+
+	// Update local config so reconnect doesn't restore this database
+	const idx = state.connections.findIndex((c) => c.id === connectionId)
+	if (idx >= 0) {
+		const config = state.connections[idx].config
+		if ('activeDatabases' in config) {
+			const filtered = (config.activeDatabases ?? []).filter((db: string) => db !== database)
+			setState('connections', idx, 'config', { ...config, activeDatabases: filtered.length > 0 ? filtered : undefined })
+		}
+	}
 
 	// Remove schema tree and schema data cache for this database
 	if (state.schemaTrees[connectionId]) {
@@ -162,8 +198,10 @@ async function loadConnections() {
 
 async function loadSchemaTreesForConnection(conn: ConnectionInfo) {
 	// Load default database schema tree
-	loadSchemaTree(conn.id).catch(() => {
-		uiStore.addToast('warning', `Failed to load schema for "${conn.name}".`)
+	loadSchemaTree(conn.id).catch((err) => {
+		// Set empty schema tree so spinner stops
+		setEmptySchemaTree(conn.id)
+		uiStore.addToast('warning', `Failed to load schema for "${conn.name}": ${err instanceof Error ? err.message : 'unknown error'}`)
 	})
 
 	// For multi-database types, load active databases and their schema trees
@@ -172,8 +210,9 @@ async function loadSchemaTreesForConnection(conn: ConnectionInfo) {
 		const activeDbs = ('activeDatabases' in conn.config ? conn.config.activeDatabases : undefined) ?? []
 		for (const db of activeDbs) {
 			if (db !== getDefaultDatabase(conn.config)) {
-				loadSchemaTree(conn.id, db).catch(() => {
-					uiStore.addToast('warning', `Failed to load schema for "${conn.name}" database "${db}".`)
+				loadSchemaTree(conn.id, db).catch((err) => {
+					setEmptySchemaTree(conn.id, db)
+					uiStore.addToast('warning', `Failed to load schema for "${conn.name}" database "${db}": ${err instanceof Error ? err.message : 'unknown error'}`)
 				})
 			}
 		}
@@ -381,6 +420,9 @@ export function initConnectionsListener(): () => void {
 				: event.error
 			uiStore.addToast('error', `${name}: ${friendlyErrorMessage(errObj)}`)
 		}
+		if (event.state === 'disconnected' || event.state === 'error') {
+			onConnectionLost?.(event.connectionId)
+		}
 	})
 }
 
@@ -495,5 +537,6 @@ export const connectionsStore = {
 	deleteConnectionGroup,
 	setBeforeDisconnectHook,
 	setOnTransactionLost,
+	setOnConnectionLost,
 	resolvePasswordPrompt,
 }

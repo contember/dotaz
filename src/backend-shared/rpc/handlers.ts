@@ -108,23 +108,36 @@ export function createHandlers(adapter: RpcAdapter) {
 			}
 			return adapter.executeQuery(connectionId, sql, params, queryId, database, sessionId, searchPath)
 		},
+		'query.submit': ({ connectionId, sql, queryId, params, database, sessionId, searchPath }: {
+			connectionId: string
+			sql: string
+			queryId: string
+			params?: unknown[]
+			database?: string
+			sessionId?: string
+			searchPath?: string
+		}) => {
+			adapter.submitQuery(connectionId, sql, params, queryId, database, sessionId, searchPath)
+			return { queryId }
+		},
+		'query.submitExplain': ({ connectionId, sql, analyze, queryId, database, sessionId, searchPath }: {
+			connectionId: string
+			sql: string
+			analyze?: boolean
+			queryId: string
+			database?: string
+			sessionId?: string
+			searchPath?: string
+		}) => {
+			adapter.submitExplain(connectionId, sql, analyze ?? false, queryId, database, sessionId, searchPath)
+			return { queryId }
+		},
 		'query.cancel': async ({ queryId }: { queryId: string }) => {
 			await adapter.cancelQuery(queryId)
 		},
 		'query.format': ({ sql }: { sql: string }) => {
 			return { sql: adapter.formatSql(sql) }
 		},
-		'query.explain': async ({ connectionId, sql, analyze, database, sessionId, searchPath }: {
-			connectionId: string
-			sql: string
-			analyze?: boolean
-			database?: string
-			sessionId?: string
-			searchPath?: string
-		}) => {
-			return adapter.explainQuery(connectionId, sql, analyze ?? false, database, sessionId, searchPath)
-		},
-
 		// ── Transactions ─────────────────────────────────
 		'tx.begin': async ({ connectionId, database, sessionId }: { connectionId: string; database?: string; sessionId?: string }) => {
 			await adapter.beginTransaction(connectionId, database, sessionId)

@@ -1,5 +1,5 @@
 import { ConnectionManager } from '@dotaz/backend-shared/services/connection-manager'
-import type { StatusChangeEvent } from '@dotaz/backend-shared/services/connection-manager'
+import type { SessionDeadEvent, StatusChangeEvent } from '@dotaz/backend-shared/services/connection-manager'
 import { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
 import type { PostgresConnectionConfig, SqliteConnectionConfig } from '@dotaz/shared/types/connection'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
@@ -612,6 +612,78 @@ describe('ConnectionManager', () => {
 			expect(manager.getConnectionState(conn.id)).toBe('connected')
 		})
 
+		test('concurrent health check invocations are guarded by re-entrancy check', async () => {
+			const conn = manager.createConnection({
+				name: 'SQLite',
+				config: sqliteConfig,
+			})
+			await manager.connect(conn.id)
+
+			// Make ping slow so the first health check is still running when the second starts
+			const driver = manager.getDriver(conn.id)
+			let pingCount = 0
+			const origPing = driver.ping.bind(driver)
+			driver.ping = async () => {
+				pingCount++
+				await Bun.sleep(100)
+				return origPing()
+			}
+
+			// Start two concurrent health checks
+			const p1 = (manager as any).performHealthCheck(conn.id)
+			const p2 = (manager as any).performHealthCheck(conn.id)
+			await Promise.all([p1, p2])
+
+			// Only one should have actually run (ping called once, not twice)
+			expect(pingCount).toBe(1)
+		})
+
+		test('health check guard is released after completion', async () => {
+			const conn = manager.createConnection({
+				name: 'SQLite',
+				config: sqliteConfig,
+			})
+			await manager.connect(conn.id)
+
+			// Run health check twice sequentially — both should execute
+			let pingCount = 0
+			const driver = manager.getDriver(conn.id)
+			const origPing = driver.ping.bind(driver)
+			driver.ping = async () => {
+				pingCount++
+				return origPing()
+			}
+
+			await (manager as any).performHealthCheck(conn.id)
+			await (manager as any).performHealthCheck(conn.id)
+
+			expect(pingCount).toBe(2)
+		})
+
+		test('health check guard is released even on error', async () => {
+			const conn = manager.createConnection({
+				name: 'SQLite',
+				config: sqliteConfig,
+			})
+			await manager.connect(conn.id)
+
+			// Make first health check fail (connection loss)
+			const driver = manager.getDriver(conn.id)
+			await driver.disconnect()
+			await (manager as any).performHealthCheck(conn.id)
+
+			// Guard should be released — reconnect and check again
+			await manager.connect(conn.id)
+			const events: StatusChangeEvent[] = []
+			manager.onStatusChanged((e) => {
+				events.push(e)
+			})
+			await (manager as any).performHealthCheck(conn.id)
+
+			// Should have run successfully (no disconnect event)
+			expect(events).toHaveLength(0)
+		})
+
 		test('health check is a no-op when no driver exists', async () => {
 			const conn = manager.createConnection({
 				name: 'SQLite',
@@ -620,6 +692,125 @@ describe('ConnectionManager', () => {
 
 			// No connect, so no driver — should not throw
 			await (manager as any).performHealthCheck(conn.id)
+		})
+	})
+
+	// ── onSessionDead ──────────────────────────────────────
+
+	describe('onSessionDead', () => {
+		test('emits sessionDead when health check detects dead session', async () => {
+			const conn = manager.createConnection({
+				name: 'SQLite',
+				config: sqliteConfig,
+			})
+			await manager.connect(conn.id)
+
+			const driver = manager.getDriver(conn.id)
+			const sessionId = 'test-session'
+			await driver.reserveSession(sessionId)
+
+			// Close the session's connection to simulate it dying
+			// We need to make execute fail for that specific session
+			const origExecute = driver.execute.bind(driver)
+			driver.execute = async (sql: string, params?: unknown[], sid?: string) => {
+				if (sid === sessionId && sql === 'SELECT 1') {
+					throw new Error('connection dead')
+				}
+				return origExecute(sql, params, sid)
+			}
+
+			const events: SessionDeadEvent[] = []
+			manager.onSessionDead((e) => {
+				events.push(e)
+			})
+
+			await (manager as any).performHealthCheck(conn.id)
+
+			expect(events).toHaveLength(1)
+			expect(events[0].connectionId).toBe(conn.id)
+			expect(events[0].sessionId).toBe(sessionId)
+		})
+
+		test('does not emit sessionDead for healthy sessions', async () => {
+			const conn = manager.createConnection({
+				name: 'SQLite',
+				config: sqliteConfig,
+			})
+			await manager.connect(conn.id)
+
+			const driver = manager.getDriver(conn.id)
+			await driver.reserveSession('healthy-session')
+
+			const events: SessionDeadEvent[] = []
+			manager.onSessionDead((e) => {
+				events.push(e)
+			})
+
+			await (manager as any).performHealthCheck(conn.id)
+
+			expect(events).toHaveLength(0)
+		})
+
+		test('unsubscribe stops receiving sessionDead events', async () => {
+			const conn = manager.createConnection({
+				name: 'SQLite',
+				config: sqliteConfig,
+			})
+			await manager.connect(conn.id)
+
+			const events: SessionDeadEvent[] = []
+			const unsub = manager.onSessionDead((e) => {
+				events.push(e)
+			})
+			unsub()
+
+			const driver = manager.getDriver(conn.id)
+			const sessionId = 'test-session'
+			await driver.reserveSession(sessionId)
+
+			const origExecute = driver.execute.bind(driver)
+			driver.execute = async (sql: string, params?: unknown[], sid?: string) => {
+				if (sid === sessionId && sql === 'SELECT 1') {
+					throw new Error('connection dead')
+				}
+				return origExecute(sql, params, sid)
+			}
+
+			await (manager as any).performHealthCheck(conn.id)
+
+			expect(events).toHaveLength(0)
+		})
+
+		test('health check times out when ping blocks (e.g. pool exhaustion)', async () => {
+			// Use a manager with a very short timeout so the test runs fast
+			const timeoutManager = new ConnectionManager(appDb, {
+				healthCheckIntervalMs: 60_000,
+				healthCheckTimeoutMs: 100,
+			})
+
+			const conn = timeoutManager.createConnection({
+				name: 'SQLite',
+				config: sqliteConfig,
+			})
+			await timeoutManager.connect(conn.id)
+
+			const events: StatusChangeEvent[] = []
+			timeoutManager.onStatusChanged((e) => {
+				events.push(e)
+			})
+
+			// Make ping block forever to simulate pool exhaustion
+			const driver = timeoutManager.getDriver(conn.id)
+			driver.ping = () => new Promise(() => {}) // never resolves
+
+			await (timeoutManager as any).performHealthCheck(conn.id)
+
+			// Should treat timeout as connection failure
+			const lastEvent = events[events.length - 1]
+			expect(lastEvent.state).toBe('disconnected')
+			expect(lastEvent.error).toBe('Connection lost')
+
+			await timeoutManager.disconnectAll()
 		})
 	})
 

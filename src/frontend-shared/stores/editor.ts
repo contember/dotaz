@@ -6,7 +6,7 @@ import { createSignal } from 'solid-js'
 import { createStore } from 'solid-js/store'
 import { buildDataChanges } from '../lib/data-changes'
 import { analyzeResultEditability } from '../lib/query-editability'
-import { friendlyErrorMessage, rpc } from '../lib/rpc'
+import { friendlyErrorMessage, messages, rpc } from '../lib/rpc'
 import { getStatementAtCursor } from '../lib/sql-utils'
 import { storage } from '../lib/storage'
 import { createTabHelpers } from '../lib/tab-store-helpers'
@@ -58,6 +58,7 @@ export interface TabEditorState {
 	queryId: string | null
 	txMode: TxMode
 	inTransaction: boolean
+	txAborted: boolean
 	/** Range of the last executed statement (for visual flash feedback) */
 	executedRange: { from: number; to: number } | null
 	/** Error position in the editor (character offset, 0-based) for highlighting */
@@ -106,6 +107,7 @@ function createDefaultEditorState(connectionId: string, database?: string): TabE
 		queryId: null,
 		txMode: 'auto-commit',
 		inTransaction: false,
+		txAborted: false,
 		executedRange: null,
 		errorOffset: null,
 		explainResult: null,
@@ -162,6 +164,11 @@ function findDestructiveStatements(sql: string): string[] {
 	const statements = splitStatements(sql)
 	return statements.filter(detectDestructiveWithoutWhere)
 }
+
+/** Track active query message listeners so they can be cleaned up on cancel/new-query. */
+const activeQueryUnsubs = new Map<string, () => void>()
+/** Track active query reject functions so connection-loss can fail pending queries. */
+const activeQueryRejects = new Map<string, (error: Error) => void>()
 
 const DML_PATTERN = /^\s*(INSERT|UPDATE|DELETE|TRUNCATE|DROP|ALTER|CREATE)\b/i
 
@@ -267,17 +274,57 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit =
 	}
 
 	const startTime = performance.now()
+	let responseTimer: ReturnType<typeof setTimeout> | undefined
 
 	try {
 		// Resolve session (auto-pin if configured)
 		const sessionId = await sessionStore.resolveSessionForExecution(tabId, tab.connectionId, sql, tab.database)
-		const results = await rpc.query.execute({
-			connectionId: tab.connectionId,
-			sql: executeSql,
-			queryId,
-			database: tab.database,
-			sessionId,
-			searchPath: tab.searchPath ?? undefined,
+
+		// Set up result listener BEFORE submitting (fire-and-forget pattern)
+		const results = await new Promise<QueryResult[]>((resolve, reject) => {
+			let settled = false
+			responseTimer = setTimeout(() => {
+				if (settled) return
+				settled = true
+				reject(new Error('Query timed out — no response received from backend'))
+			}, settingsStore.consoleConfig.queryResponseTimeoutMs)
+
+			const unsub = messages.onQueryCompleted((event) => {
+				if (event.queryId !== queryId || settled) return
+				settled = true
+				clearTimeout(responseTimer)
+				unsub()
+				if (event.error) {
+					const err = Object.assign(new Error(event.error), {
+						code: event.errorCode,
+					})
+					reject(err)
+				} else {
+					resolve(event.results!)
+				}
+			})
+			activeQueryUnsubs.set(queryId, unsub)
+			activeQueryRejects.set(queryId, (err) => {
+				if (settled) return
+				settled = true
+				clearTimeout(responseTimer)
+				unsub()
+				reject(err)
+			})
+
+			// Submit query (returns immediately)
+			rpc.query.submit({
+				connectionId: tab.connectionId,
+				sql: executeSql,
+				queryId,
+				database: tab.database,
+				sessionId,
+				searchPath: tab.searchPath ?? undefined,
+			}).catch((err) => {
+				if (settled) return
+				settled = true
+				reject(err)
+			})
 		})
 
 		// Discard stale results if a newer query was started
@@ -323,11 +370,17 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit =
 		// Auto-unpin after commit/rollback if configured
 		sessionStore.checkAutoUnpin(tabId, sql).catch(() => {})
 	} catch (err) {
-		// Discard stale errors if a newer query was started
-		if (state.tabs[tabId]?.queryId !== queryId) return
+		// Discard if tab was removed or a newer query was started
+		if (!getTab(tabId) || state.tabs[tabId]?.queryId !== queryId) return
 
 		const duration = Math.round(performance.now() - startTime)
 		const errorMessage = friendlyErrorMessage(err)
+
+		// Detect aborted transaction state (PostgreSQL 25P02)
+		const errorCode = (err as any)?.code as string | undefined
+		const txAborted = errorCode === 'TRANSACTION_ABORTED'
+			|| (tab.inTransaction && errorCode !== undefined && errorCode !== 'UNKNOWN'
+				&& connectionsStore.getConnectionType(tab.connectionId) === 'postgresql')
 
 		setState('tabs', tabId, {
 			error: errorMessage,
@@ -335,6 +388,7 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit =
 			isRunning: false,
 			queryId: null,
 			errorOffset: null,
+			...(txAborted ? { txAborted: true } : {}),
 		})
 
 		recordHistory(tab.connectionId, tab.database, sql, [{
@@ -345,6 +399,10 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit =
 			error: errorMessage,
 		}])
 		setTxLogVersion((v) => v + 1)
+	} finally {
+		clearTimeout(responseTimer)
+		activeQueryUnsubs.delete(queryId)
+		activeQueryRejects.delete(queryId)
 	}
 }
 
@@ -414,6 +472,10 @@ async function cancelQuery(tabId: string) {
 	const tab = ensureTab(tabId)
 	if (!tab.isRunning || !tab.queryId) return
 
+	// Reject the pending promise so runQuery's catch/finally can clean up tab state
+	const reject = activeQueryRejects.get(tab.queryId)
+	if (reject) reject(new Error('Query was cancelled'))
+
 	try {
 		await rpc.query.cancel({ queryId: tab.queryId })
 	} catch (err) {
@@ -450,7 +512,7 @@ async function beginTransaction(tabId: string) {
 	const sessionId = sessionStore.getSessionForTab(tabId)
 	try {
 		await rpc.tx.begin({ connectionId: tab.connectionId, database: tab.database, sessionId })
-		setState('tabs', tabId, 'inTransaction', true)
+		setState('tabs', tabId, { inTransaction: true, txAborted: false })
 	} catch (err) {
 		setState('tabs', tabId, 'error', friendlyErrorMessage(err))
 	}
@@ -463,7 +525,7 @@ async function commitTransaction(tabId: string) {
 	const sessionId = sessionStore.getSessionForTab(tabId)
 	try {
 		await rpc.tx.commit({ connectionId: tab.connectionId, database: tab.database, sessionId })
-		setState('tabs', tabId, 'inTransaction', false)
+		setState('tabs', tabId, { inTransaction: false, txAborted: false })
 		// Auto-unpin after commit if configured
 		sessionStore.checkAutoUnpin(tabId, 'COMMIT').catch(() => {})
 	} catch (err) {
@@ -478,7 +540,7 @@ async function rollbackTransaction(tabId: string) {
 	const sessionId = sessionStore.getSessionForTab(tabId)
 	try {
 		await rpc.tx.rollback({ connectionId: tab.connectionId, database: tab.database, sessionId })
-		setState('tabs', tabId, 'inTransaction', false)
+		setState('tabs', tabId, { inTransaction: false, txAborted: false })
 		// Auto-unpin after rollback if configured
 		sessionStore.checkAutoUnpin(tabId, 'ROLLBACK').catch(() => {})
 	} catch (err) {
@@ -495,9 +557,12 @@ async function explainQuery(tabId: string, analyze = false) {
 	}
 	if (!sql) return
 
+	const queryId = crypto.randomUUID()
+
 	setState('tabs', tabId, {
 		isRunning: true,
 		error: null,
+		queryId,
 		results: [],
 		explainResult: null,
 		duration: 0,
@@ -505,30 +570,73 @@ async function explainQuery(tabId: string, analyze = false) {
 		activeResultView: null,
 	})
 
+	let responseTimer: ReturnType<typeof setTimeout> | undefined
 	try {
 		const sessionId = sessionStore.getSessionForTab(tabId)
-		const explainResult = await rpc.query.explain({
-			connectionId: tab.connectionId,
-			sql,
-			analyze,
-			database: tab.database,
-			sessionId,
-			searchPath: tab.searchPath ?? undefined,
+
+		const explainResult = await new Promise<ExplainResult>((resolve, reject) => {
+			let settled = false
+			responseTimer = setTimeout(() => {
+				if (settled) return
+				settled = true
+				reject(new Error('Query timed out — no response received from backend'))
+			}, settingsStore.consoleConfig.queryResponseTimeoutMs)
+
+			const unsub = messages.onQueryCompleted((event) => {
+				if (event.queryId !== queryId || settled) return
+				settled = true
+				clearTimeout(responseTimer)
+				unsub()
+				if (event.error) {
+					reject(new Error(event.error))
+				} else {
+					resolve(event.explainResult!)
+				}
+			})
+			activeQueryUnsubs.set(queryId, unsub)
+			activeQueryRejects.set(queryId, (err) => {
+				if (settled) return
+				settled = true
+				clearTimeout(responseTimer)
+				unsub()
+				reject(err)
+			})
+
+			rpc.query.submitExplain({
+				connectionId: tab.connectionId,
+				sql,
+				analyze,
+				queryId,
+				database: tab.database,
+				sessionId,
+				searchPath: tab.searchPath ?? undefined,
+			}).catch((err) => {
+				if (settled) return
+				settled = true
+				reject(err)
+			})
 		})
 
 		setState('tabs', tabId, {
 			explainResult,
 			duration: explainResult.durationMs,
 			isRunning: false,
+			queryId: null,
 			error: explainResult.error ?? null,
 		})
 	} catch (err) {
+		if (!getTab(tabId)) return
 		const errorMessage = friendlyErrorMessage(err)
 		setState('tabs', tabId, {
 			error: errorMessage,
 			isRunning: false,
+			queryId: null,
 			explainResult: null,
 		})
+	} finally {
+		clearTimeout(responseTimer)
+		activeQueryUnsubs.delete(queryId)
+		activeQueryRejects.delete(queryId)
 	}
 }
 
@@ -578,14 +686,29 @@ function setActiveResultView(tabId: string, view: string | null) {
 }
 
 function removeTab(tabId: string) {
+	const tab = getTab(tabId)
+	if (tab?.queryId) {
+		const reject = activeQueryRejects.get(tab.queryId)
+		if (reject) reject(new Error('Tab closed'))
+	}
 	setState('tabs', tabId, undefined!)
+}
+
+/** Reject all pending query Promises for tabs on a given connection (e.g., on connection loss). */
+function rejectPendingQueriesForConnection(connectionId: string) {
+	for (const tab of Object.values(state.tabs)) {
+		if (tab.connectionId === connectionId && tab.isRunning && tab.queryId) {
+			const reject = activeQueryRejects.get(tab.queryId)
+			if (reject) reject(new Error('Connection lost — query result unavailable'))
+		}
+	}
 }
 
 /** Reset transaction state for all editor tabs on a given connection. */
 function resetTransactionStateForConnection(connectionId: string) {
 	for (const [tabId, tab] of Object.entries(state.tabs)) {
 		if (tab.connectionId === connectionId && tab.inTransaction) {
-			setState('tabs', tabId, 'inTransaction', false)
+			setState('tabs', tabId, { inTransaction: false, txAborted: false })
 		}
 	}
 }
@@ -811,6 +934,7 @@ export const editorStore = {
 	rollbackTransaction,
 	removeTab,
 	resetTransactionStateForConnection,
+	rejectPendingQueriesForConnection,
 	pinCurrentResult,
 	unpinResult,
 	setActiveResultView,

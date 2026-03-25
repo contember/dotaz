@@ -9,6 +9,7 @@ export interface TabStatus {
 	color?: string
 	readOnly?: boolean
 	inTransaction?: boolean
+	txAborted?: boolean
 }
 
 interface TabBarProps {
@@ -190,7 +191,12 @@ export default function TabBar(props: TabBarProps) {
 									<span class="tab-bar__tab-badge tab-bar__tab-badge--ro" title="Read-only connection">RO</span>
 								</Show>
 								<Show when={status()?.inTransaction}>
-									<span class="tab-bar__tab-badge tab-bar__tab-badge--tx" title="Active transaction">TX</span>
+									<span
+										class={status()?.txAborted ? 'tab-bar__tab-badge tab-bar__tab-badge--tx-aborted' : 'tab-bar__tab-badge tab-bar__tab-badge--tx'}
+										title={status()?.txAborted ? 'Transaction aborted — rollback required' : 'Active transaction'}
+									>
+										{status()?.txAborted ? 'TX!' : 'TX'}
+									</span>
 								</Show>
 								<button
 									class="tab-bar__tab-close"

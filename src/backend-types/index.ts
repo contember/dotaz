@@ -1,5 +1,6 @@
 import type { createHandlers } from '@dotaz/backend-shared/rpc/handlers'
 import type { ConnectionState } from '@dotaz/shared/types/connection'
+import type { QueryCompletedEvent } from '@dotaz/shared/types/query'
 import type { RPCSchema } from 'electrobun/bun'
 
 // ── Handler type inference ──────────────────────────────
@@ -73,6 +74,7 @@ export type DotazRPC = {
 				error?: string
 				transactionLost?: boolean
 			}
+			'query.completed': QueryCompletedEvent
 			'menu.action': {
 				action: string
 			}

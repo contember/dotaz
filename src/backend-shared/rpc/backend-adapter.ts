@@ -2,7 +2,7 @@ import type { ConnectionConfig, ConnectionInfo } from '@dotaz/shared/types/conne
 import type { DatabaseInfo } from '@dotaz/shared/types/database'
 import type { ExportOptions, ExportPreviewRequest, ExportRawPreviewRequest, ExportRawPreviewResponse, ExportResult } from '@dotaz/shared/types/export'
 import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from '@dotaz/shared/types/import'
-import type { ExplainResult, QueryHistoryEntry, QueryResult } from '@dotaz/shared/types/query'
+import type { QueryHistoryEntry, QueryResult } from '@dotaz/shared/types/query'
 import type {
 	AiGenerateSqlParams,
 	AiGenerateSqlResult,
@@ -19,6 +19,7 @@ import type {
 } from '@dotaz/shared/types/rpc'
 import { settingsToAiConfig } from '@dotaz/shared/types/settings'
 import type { DatabaseDriver } from '../db/driver'
+import { withEphemeralSession } from '../db/ephemeral-session'
 import { buildSchemaContext, generateSql } from '../services/ai-sql'
 import type { ConnectionManager } from '../services/connection-manager'
 import type { EncryptionService } from '../services/encryption'
@@ -170,6 +171,10 @@ export class BackendAdapter implements RpcAdapter {
 	}
 
 	async deactivateDatabase(connectionId: string, database: string): Promise<void> {
+		if (this.sessionManager) {
+			await this.sessionManager.destroySessionsForDatabase(connectionId, database)
+			this.emitMessage?.('session.changed', { connectionId, sessions: this.sessionManager.listSessions(connectionId) })
+		}
 		await this.cm.deactivateDatabase(connectionId, database)
 	}
 
@@ -194,64 +199,142 @@ export class BackendAdapter implements RpcAdapter {
 		sessionId?: string,
 	): Promise<QueryResult[]> {
 		const driver = this.cm.getDriver(connectionId, database)
-		const inExistingTx = driver.inTransaction(sessionId)
-		if (!inExistingTx) {
-			await driver.beginTransaction(sessionId)
-		}
-		try {
-			const results: QueryResult[] = []
-			for (const stmt of statements) {
-				const start = performance.now()
-				const result = sessionId !== undefined
-					? await driver.execute(stmt.sql, stmt.params, sessionId)
-					: await driver.execute(stmt.sql, stmt.params)
-				results.push({ ...result, durationMs: Math.round(performance.now() - start) })
-			}
-			if (!inExistingTx) {
-				await driver.commit(sessionId)
-			}
-			return results
-		} catch (err) {
-			if (!inExistingTx) {
-				try {
-					await driver.rollback(sessionId)
-				} catch (rbErr) {
-					console.debug('Rollback after error failed:', rbErr instanceof Error ? rbErr.message : rbErr)
+
+		const runInSession = async (effectiveSessionId: string) => {
+			const inExistingTx = driver.inTransaction(effectiveSessionId)
+			try {
+				if (!inExistingTx) {
+					await driver.beginTransaction(effectiveSessionId)
 				}
+				const results: QueryResult[] = []
+				for (const stmt of statements) {
+					const start = performance.now()
+					try {
+						const result = await driver.execute(stmt.sql, stmt.params, effectiveSessionId)
+						const durationMs = Math.round(performance.now() - start)
+						results.push({ ...result, durationMs })
+						this.queryExecutor.sessionLog.add(
+							connectionId,
+							stmt.sql,
+							result.error ? 'error' : 'success',
+							durationMs,
+							result.affectedRows ?? result.rowCount,
+							result.error,
+							database,
+							effectiveSessionId,
+						)
+					} catch (err) {
+						const durationMs = Math.round(performance.now() - start)
+						this.queryExecutor.sessionLog.add(
+							connectionId,
+							stmt.sql,
+							'error',
+							durationMs,
+							0,
+							err instanceof Error ? err.message : String(err),
+							database,
+							effectiveSessionId,
+						)
+						throw err
+					}
+				}
+				if (!inExistingTx) {
+					await driver.commit(effectiveSessionId)
+				}
+				return results
+			} catch (err) {
+				if (!inExistingTx) {
+					try {
+						await driver.rollback(effectiveSessionId)
+					} catch (rbErr) {
+						console.debug('Rollback after error failed:', rbErr instanceof Error ? rbErr.message : rbErr)
+					}
+				}
+				throw err
 			}
-			throw err
 		}
+
+		if (sessionId) {
+			return runInSession(sessionId)
+		}
+		return withEphemeralSession(driver, runInSession)
+	}
+
+	submitQuery(
+		connectionId: string,
+		sql: string,
+		params: unknown[] | undefined,
+		queryId: string,
+		database?: string,
+		sessionId?: string,
+		searchPath?: string,
+	): void {
+		const start = performance.now()
+		this.queryExecutor.executeQuery(connectionId, sql, params, 0, queryId, database, sessionId, searchPath)
+			.then((results) => {
+				this.emitMessage?.('query.completed', {
+					queryId,
+					results,
+					durationMs: Math.round(performance.now() - start),
+				})
+			})
+			.catch((err) => {
+				const errorCode = (err as any)?.code as string | undefined
+				this.emitMessage?.('query.completed', {
+					queryId,
+					error: err instanceof Error ? err.message : String(err),
+					errorCode,
+					durationMs: Math.round(performance.now() - start),
+				})
+			})
+	}
+
+	submitExplain(
+		connectionId: string,
+		sql: string,
+		analyze: boolean,
+		queryId: string,
+		database?: string,
+		sessionId?: string,
+		searchPath?: string,
+	): void {
+		const start = performance.now()
+		this.queryExecutor.explainQuery(connectionId, sql, analyze, database, sessionId, searchPath)
+			.then((explainResult) => {
+				this.emitMessage?.('query.completed', {
+					queryId,
+					explainResult,
+					durationMs: Math.round(performance.now() - start),
+				})
+			})
+			.catch((err) => {
+				this.emitMessage?.('query.completed', {
+					queryId,
+					error: err instanceof Error ? err.message : String(err),
+					durationMs: Math.round(performance.now() - start),
+				})
+			})
 	}
 
 	async cancelQuery(queryId: string): Promise<void> {
 		await this.queryExecutor.cancelQuery(queryId)
 	}
 
-	async explainQuery(
-		connectionId: string,
-		sql: string,
-		analyze: boolean,
-		database?: string,
-		sessionId?: string,
-		searchPath?: string,
-	): Promise<ExplainResult> {
-		return this.queryExecutor.explainQuery(connectionId, sql, analyze, database, sessionId, searchPath)
-	}
-
 	// ── Transactions ──────────────────────────────────────
 
 	async beginTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void> {
 		await this.txManager.begin(connectionId, database, sessionId)
+		this.queryExecutor.sessionLog.resetPendingCount(connectionId, database, sessionId)
 	}
 
 	async commitTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void> {
 		await this.txManager.commit(connectionId, database, sessionId)
-		this.queryExecutor.sessionLog.resetPendingCount(connectionId, database)
+		this.queryExecutor.sessionLog.resetPendingCount(connectionId, database, sessionId)
 	}
 
 	async rollbackTransaction(connectionId: string, database?: string, sessionId?: string): Promise<void> {
 		await this.txManager.rollback(connectionId, database, sessionId)
-		this.queryExecutor.sessionLog.resetPendingCount(connectionId, database)
+		this.queryExecutor.sessionLog.resetPendingCount(connectionId, database, sessionId)
 	}
 
 	// ── Transaction Log ──────────────────────────────────
@@ -269,7 +352,7 @@ export class BackendAdapter implements RpcAdapter {
 
 		const inTransaction = this.txManager.isActive(params.connectionId, params.database, params.sessionId)
 		const pendingStatementCount = inTransaction
-			? this.queryExecutor.sessionLog.getPendingCount(params.connectionId, params.database)
+			? this.queryExecutor.sessionLog.getPendingCount(params.connectionId, params.database, params.sessionId)
 			: 0
 
 		return { entries, pendingStatementCount, inTransaction }
