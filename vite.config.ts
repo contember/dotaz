@@ -5,12 +5,9 @@ import solid from 'vite-plugin-solid'
 export default defineConfig(({ mode }) => {
 	const isWeb = mode === 'web'
 	const isDemo = mode === 'demo'
-	const isElectron = mode === 'electron'
 
 	const root = isDemo
 		? 'src/frontend-demo'
-		: isElectron
-		? 'src/frontend-electron'
 		: isWeb
 		? 'src/frontend-web'
 		: 'src/frontend-desktop'
@@ -23,14 +20,9 @@ export default defineConfig(({ mode }) => {
 			emptyOutDir: true,
 		},
 		server: {
-			port: isDemo ? 6403 : isElectron ? 6404 : isWeb ? 6402 : 6400,
+			port: isDemo ? 6403 : isWeb ? 6402 : 6400,
 			strictPort: true,
-			proxy: isElectron
-				? {
-					'/rpc': { target: 'ws://localhost:6405', ws: true },
-					'/api': { target: 'http://localhost:6405' },
-				}
-				: isWeb
+			proxy: isWeb
 				? { '/rpc': { target: 'ws://localhost:6401', ws: true } }
 				: undefined,
 			headers: isDemo
