@@ -13,6 +13,10 @@
   <a href="https://contember.github.io/dotaz/">Try the live demo</a> (runs entirely in your browser)
 </p>
 
+<p align="center">
+  <img src="assets/screenshot.png" alt="Dotaz screenshot" width="800">
+</p>
+
 ---
 
 ## What is Dotaz?
