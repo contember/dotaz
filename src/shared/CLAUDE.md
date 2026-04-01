@@ -41,14 +41,14 @@ src/shared/
 
 ## SQL Building (`src/shared/sql/`)
 
-| File            | Purpose                                                                   |
-| --------------- | ------------------------------------------------------------------------- |
-| `dialect.ts`    | `SqlDialect` interface — `quoteIdentifier()`, `qualifyTable()`            |
-| `dialects.ts`   | `PostgresDialect`, `SqliteDialect`, `MysqlDialect` implementations        |
-| `builders.ts`   | `buildSelectQuery()`, `buildCountQuery()`, `generateChangeSql()`, etc.    |
-| `statements.ts` | `splitStatements()`, `parseErrorPosition()` — zero-dependency SQL parsing |
-| `editability.ts`| Query editability analysis                                                 |
-| `index.ts`      | Barrel re-exports                                                          |
+| File             | Purpose                                                                   |
+| ---------------- | ------------------------------------------------------------------------- |
+| `dialect.ts`     | `SqlDialect` interface — `quoteIdentifier()`, `qualifyTable()`            |
+| `dialects.ts`    | `PostgresDialect`, `SqliteDialect`, `MysqlDialect` implementations        |
+| `builders.ts`    | `buildSelectQuery()`, `buildCountQuery()`, `generateChangeSql()`, etc.    |
+| `statements.ts`  | `splitStatements()`, `parseErrorPosition()` — zero-dependency SQL parsing |
+| `editability.ts` | Query editability analysis                                                |
+| `index.ts`       | Barrel re-exports                                                         |
 
 ## Conventions
 

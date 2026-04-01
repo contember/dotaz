@@ -162,10 +162,22 @@ describe('AppDatabase', () => {
 		// Insert test data
 		const now = new Date().toISOString()
 		const pgConfig = JSON.stringify({ type: 'postgresql', host: 'h', port: 5432, database: 'd', user: 'u', password: 'p' })
-		db.run('INSERT INTO connections (id, name, type, config, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)', ['conn-1', 'PG', 'postgresql', pgConfig, now, now])
-		db.run("INSERT INTO query_history (connection_id, sql, status, duration_ms, row_count, executed_at) VALUES ('conn-1', 'SELECT 1', 'success', 10, 1, ?)", [now])
+		db.run('INSERT INTO connections (id, name, type, config, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)', [
+			'conn-1',
+			'PG',
+			'postgresql',
+			pgConfig,
+			now,
+			now,
+		])
+		db.run(
+			"INSERT INTO query_history (connection_id, sql, status, duration_ms, row_count, executed_at) VALUES ('conn-1', 'SELECT 1', 'success', 10, 1, ?)",
+			[now],
+		)
 		db.run("INSERT INTO query_bookmarks (id, connection_id, name, sql) VALUES ('bm-1', 'conn-1', 'My Bookmark', 'SELECT * FROM users')")
-		db.run("INSERT INTO saved_views (id, connection_id, schema_name, table_name, name, config) VALUES ('sv-1', 'conn-1', 'public', 'users', 'My View', '{}')")
+		db.run(
+			"INSERT INTO saved_views (id, connection_id, schema_name, table_name, name, config) VALUES ('sv-1', 'conn-1', 'public', 'users', 'My View', '{}')",
+		)
 
 		// Run remaining migrations (should apply migration 9)
 		const applied = runMigrations(db)
@@ -192,7 +204,14 @@ describe('AppDatabase', () => {
 
 		// Verify mysql type is now allowed
 		const mysqlConfig = JSON.stringify({ type: 'mysql', host: 'h', port: 3306, database: 'd', user: 'u', password: 'p' })
-		db.run('INSERT INTO connections (id, name, type, config, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)', ['conn-2', 'MySQL', 'mysql', mysqlConfig, now, now])
+		db.run('INSERT INTO connections (id, name, type, config, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)', [
+			'conn-2',
+			'MySQL',
+			'mysql',
+			mysqlConfig,
+			now,
+			now,
+		])
 		const allConns = db.prepare('SELECT * FROM connections').all() as any[]
 		expect(allConns).toHaveLength(2)
 
