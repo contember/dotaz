@@ -6,7 +6,7 @@ See also: `src/frontend-shared/CLAUDE.md` (frontend), `src/shared/CLAUDE.md` (sh
 
 ## Project
 
-Dotaz is a database client built on **Electrobun** (Bun backend + system webview) with a **Solid.js** frontend. It supports PostgreSQL and SQLite, focused on DML operations (viewing, editing, querying data) — no DDL/schema management.
+Dotaz is a database client built on **Electrobun** (Bun backend + system webview) with a **Solid.js** frontend. It supports PostgreSQL, MySQL, and SQLite, focused on DML operations (viewing, editing, querying data) — no DDL/schema management.
 
 Runs in three modes:
 
@@ -129,7 +129,8 @@ This project may have multiple agents working concurrently. Follow these rules s
 - Tests use Bun test runner, all files in `tests/*.test.ts`
 - SQLite tests: in-memory (`:memory:`), no external setup
 - PostgreSQL tests: require `docker compose up -d`, connection `postgres://dotaz:dotaz@localhost:5488/dotaz_test`
-- Test helpers: `tests/helpers.ts` — `seedPostgres()`, `seedSqlite()`
+- MySQL tests: require `docker compose up -d`, connection `mysql://dotaz:dotaz@localhost:3388/dotaz_test`
+- Test helpers: `tests/helpers.ts` — `seedPostgres()`, `seedSqlite()`, `seedMysql()`
 
 ### What to test
 

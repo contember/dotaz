@@ -4,6 +4,7 @@ export interface Migration {
 	version: number
 	description: string
 	up: (db: Database) => void
+	disableForeignKeys?: boolean
 }
 
 const migrations: Migration[] = [
@@ -15,7 +16,7 @@ const migrations: Migration[] = [
 				CREATE TABLE connections (
 					id TEXT PRIMARY KEY,
 					name TEXT NOT NULL,
-					type TEXT NOT NULL CHECK(type IN ('postgresql', 'sqlite')),
+					type TEXT NOT NULL CHECK(type IN ('postgresql', 'sqlite', 'mysql')),
 					config TEXT NOT NULL,
 					created_at TEXT NOT NULL DEFAULT (datetime('now')),
 					updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -133,6 +134,33 @@ const migrations: Migration[] = [
 			db.run('ALTER TABLE connections ADD COLUMN group_name TEXT DEFAULT NULL')
 		},
 	},
+	{
+		version: 9,
+		description: 'Allow mysql connection type in CHECK constraint',
+		disableForeignKeys: true,
+		up: (db) => {
+			db.run(`
+				CREATE TABLE connections_new (
+					id TEXT PRIMARY KEY,
+					name TEXT NOT NULL,
+					type TEXT NOT NULL CHECK(type IN ('postgresql', 'sqlite', 'mysql')),
+					config TEXT NOT NULL,
+					created_at TEXT NOT NULL DEFAULT (datetime('now')),
+					updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+					read_only INTEGER NOT NULL DEFAULT 0,
+					color TEXT DEFAULT NULL,
+					group_name TEXT DEFAULT NULL
+				)
+			`)
+			db.run(`
+				INSERT INTO connections_new (id, name, type, config, created_at, updated_at, read_only, color, group_name)
+				SELECT id, name, type, config, created_at, updated_at, read_only, color, group_name
+				FROM connections
+			`)
+			db.run('DROP TABLE connections')
+			db.run('ALTER TABLE connections_new RENAME TO connections')
+		},
+	},
 ]
 
 /**
@@ -166,6 +194,9 @@ export function runMigrations(db: Database): number {
 	const pending = migrations.filter((m) => m.version > currentVersion)
 
 	for (const migration of pending) {
+		if (migration.disableForeignKeys) {
+			db.run('PRAGMA foreign_keys = OFF')
+		}
 		db.run('BEGIN')
 		try {
 			migration.up(db)
@@ -174,6 +205,9 @@ export function runMigrations(db: Database): number {
 		} catch (err) {
 			db.run('ROLLBACK')
 			throw err
+		}
+		if (migration.disableForeignKeys) {
+			db.run('PRAGMA foreign_keys = ON')
 		}
 	}
 

@@ -5,7 +5,7 @@
 <h1 align="center">Dotaz</h1>
 
 <p align="center">
-  A fast, lightweight database client for PostgreSQL and SQLite.<br>
+  A fast, lightweight database client for PostgreSQL, MySQL, and SQLite.<br>
   Browse, edit, and query your data. No DDL, no bloat — just data.
 </p>
 
@@ -107,6 +107,10 @@ bun test
 # PostgreSQL (needs Docker)
 docker compose up -d
 bun test tests/pg-smoke.test.ts
+
+# MySQL / MariaDB (needs Docker)
+docker compose up -d
+bun test tests/mysql-driver.test.ts
 ```
 
 ## License
