@@ -16,7 +16,7 @@ const migrations: Migration[] = [
 				CREATE TABLE connections (
 					id TEXT PRIMARY KEY,
 					name TEXT NOT NULL,
-					type TEXT NOT NULL CHECK(type IN ('postgresql', 'sqlite', 'mysql')),
+					type TEXT NOT NULL,
 					config TEXT NOT NULL,
 					created_at TEXT NOT NULL DEFAULT (datetime('now')),
 					updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -136,14 +136,14 @@ const migrations: Migration[] = [
 	},
 	{
 		version: 9,
-		description: 'Allow mysql connection type in CHECK constraint',
+		description: 'Remove connection type CHECK constraint',
 		disableForeignKeys: true,
 		up: (db) => {
 			db.run(`
 				CREATE TABLE connections_new (
 					id TEXT PRIMARY KEY,
 					name TEXT NOT NULL,
-					type TEXT NOT NULL CHECK(type IN ('postgresql', 'sqlite', 'mysql')),
+					type TEXT NOT NULL,
 					config TEXT NOT NULL,
 					created_at TEXT NOT NULL DEFAULT (datetime('now')),
 					updated_at TEXT NOT NULL DEFAULT (datetime('now')),
