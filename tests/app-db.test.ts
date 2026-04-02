@@ -1,7 +1,8 @@
 import { isEncryptedPassword } from '@dotaz/backend-shared/services/encryption'
 import { AppDatabase, DEFAULT_SETTINGS } from '@dotaz/backend-shared/storage/app-db'
-import { getSchemaVersion } from '@dotaz/backend-shared/storage/migrations'
-import type { PostgresConnectionConfig, SqliteConnectionConfig } from '@dotaz/shared/types/connection'
+import { getSchemaVersion, runMigrations } from '@dotaz/backend-shared/storage/migrations'
+import type { MysqlConnectionConfig, PostgresConnectionConfig, SqliteConnectionConfig } from '@dotaz/shared/types/connection'
+import Database from 'bun:sqlite'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { hkdfSync } from 'node:crypto'
 
@@ -29,12 +30,12 @@ describe('AppDatabase', () => {
 
 	test('migrations run automatically on initialization', () => {
 		const version = getSchemaVersion(appDb.db)
-		expect(version).toBe(8)
+		expect(version).toBe(9)
 	})
 
 	test('schema_version table tracks current version', () => {
 		const rows = appDb.db.prepare('SELECT version FROM schema_version ORDER BY version').all() as { version: number }[]
-		expect(rows.map(r => r.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
+		expect(rows.map(r => r.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9])
 	})
 
 	test('migration 002 converts boolean SSL to SSLMode string', () => {
@@ -79,6 +80,144 @@ describe('AppDatabase', () => {
 		expect((connFalse.config as any).ssl).toBe('disable')
 	})
 
+	test('migration 9 preserves child table data during table recreation', () => {
+		// Simulate a database at version 8 by creating a fresh DB and manually
+		// inserting data, then running migration 9 on it
+		const db = new Database(':memory:')
+		db.run('PRAGMA foreign_keys = ON')
+
+		// Create the connections table with the OLD CHECK constraint (version 1 schema)
+		db.run(`
+			CREATE TABLE schema_version (
+				version INTEGER PRIMARY KEY,
+				applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+			)
+		`)
+		db.run(`
+			CREATE TABLE connections (
+				id TEXT PRIMARY KEY,
+				name TEXT NOT NULL,
+				type TEXT NOT NULL CHECK(type IN ('postgresql', 'sqlite')),
+				config TEXT NOT NULL,
+				created_at TEXT NOT NULL DEFAULT (datetime('now')),
+				updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+				read_only INTEGER NOT NULL DEFAULT 0,
+				color TEXT DEFAULT NULL,
+				group_name TEXT DEFAULT NULL
+			)
+		`)
+		db.run(`
+			CREATE TABLE query_history (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				connection_id TEXT NOT NULL,
+				sql TEXT NOT NULL,
+				status TEXT NOT NULL CHECK(status IN ('success', 'error')),
+				duration_ms INTEGER,
+				row_count INTEGER,
+				error_message TEXT,
+				executed_at TEXT NOT NULL DEFAULT (datetime('now')),
+				database TEXT DEFAULT NULL,
+				FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE CASCADE
+			)
+		`)
+		db.run(`
+			CREATE TABLE query_bookmarks (
+				id TEXT PRIMARY KEY,
+				connection_id TEXT NOT NULL,
+				name TEXT NOT NULL,
+				description TEXT NOT NULL DEFAULT '',
+				sql TEXT NOT NULL,
+				created_at TEXT NOT NULL DEFAULT (datetime('now')),
+				updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+				database TEXT DEFAULT NULL,
+				FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE CASCADE
+			)
+		`)
+		db.run(`
+			CREATE TABLE saved_views (
+				id TEXT PRIMARY KEY,
+				connection_id TEXT NOT NULL,
+				schema_name TEXT NOT NULL,
+				table_name TEXT NOT NULL,
+				name TEXT NOT NULL,
+				config TEXT NOT NULL,
+				created_at TEXT NOT NULL DEFAULT (datetime('now')),
+				updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+				FOREIGN KEY (connection_id) REFERENCES connections(id) ON DELETE CASCADE
+			)
+		`)
+		db.run(`CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`)
+		db.run(`
+			CREATE TABLE workspace (
+				id TEXT PRIMARY KEY DEFAULT 'default',
+				data TEXT NOT NULL,
+				updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+			)
+		`)
+		// Mark versions 1-8 as applied
+		for (let v = 1; v <= 8; v++) {
+			db.run('INSERT INTO schema_version (version) VALUES (?)', [v])
+		}
+
+		// Insert test data
+		const now = new Date().toISOString()
+		const pgConfig = JSON.stringify({ type: 'postgresql', host: 'h', port: 5432, database: 'd', user: 'u', password: 'p' })
+		db.run('INSERT INTO connections (id, name, type, config, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)', [
+			'conn-1',
+			'PG',
+			'postgresql',
+			pgConfig,
+			now,
+			now,
+		])
+		db.run(
+			"INSERT INTO query_history (connection_id, sql, status, duration_ms, row_count, executed_at) VALUES ('conn-1', 'SELECT 1', 'success', 10, 1, ?)",
+			[now],
+		)
+		db.run("INSERT INTO query_bookmarks (id, connection_id, name, sql) VALUES ('bm-1', 'conn-1', 'My Bookmark', 'SELECT * FROM users')")
+		db.run(
+			"INSERT INTO saved_views (id, connection_id, schema_name, table_name, name, config) VALUES ('sv-1', 'conn-1', 'public', 'users', 'My View', '{}')",
+		)
+
+		// Run remaining migrations (should apply migration 9)
+		const applied = runMigrations(db)
+		expect(applied).toBe(1)
+		expect(getSchemaVersion(db)).toBe(9)
+
+		// Verify connection data preserved
+		const conns = db.prepare('SELECT * FROM connections').all() as any[]
+		expect(conns).toHaveLength(1)
+		expect(conns[0].name).toBe('PG')
+
+		// Verify child table data NOT cascade-deleted
+		const history = db.prepare('SELECT * FROM query_history').all() as any[]
+		expect(history).toHaveLength(1)
+		expect(history[0].sql).toBe('SELECT 1')
+
+		const bookmarks = db.prepare('SELECT * FROM query_bookmarks').all() as any[]
+		expect(bookmarks).toHaveLength(1)
+		expect(bookmarks[0].name).toBe('My Bookmark')
+
+		const views = db.prepare('SELECT * FROM saved_views').all() as any[]
+		expect(views).toHaveLength(1)
+		expect(views[0].name).toBe('My View')
+
+		// Verify mysql type is now allowed
+		const mysqlConfig = JSON.stringify({ type: 'mysql', host: 'h', port: 3306, database: 'd', user: 'u', password: 'p' })
+		db.run('INSERT INTO connections (id, name, type, config, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)', [
+			'conn-2',
+			'MySQL',
+			'mysql',
+			mysqlConfig,
+			now,
+			now,
+		])
+		const allConns = db.prepare('SELECT * FROM connections').all() as any[]
+		expect(allConns).toHaveLength(2)
+
+		db.close()
+	})
+
 	test('all tables are created by migrations', () => {
 		const tables = appDb.db
 			.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
@@ -108,6 +247,33 @@ describe('AppDatabase', () => {
 			type: 'sqlite',
 			path: '/tmp/test.db',
 		}
+
+		const mysqlConfig: MysqlConnectionConfig = {
+			type: 'mysql',
+			host: 'localhost',
+			port: 3306,
+			database: 'mydb',
+			user: 'root',
+			password: 'secret',
+		}
+
+		test('create and retrieve mysql connection', () => {
+			const conn = appDb.createConnection({ name: 'MySQL Dev', config: mysqlConfig })
+			expect(conn.name).toBe('MySQL Dev')
+			expect(conn.config).toEqual(mysqlConfig)
+			const found = appDb.getConnectionById(conn.id)!
+			expect(found.config.type).toBe('mysql')
+		})
+
+		test('all three connection types coexist', () => {
+			appDb.createConnection({ name: 'PG', config: pgConfig })
+			appDb.createConnection({ name: 'SQLite', config: sqliteConfig })
+			appDb.createConnection({ name: 'MySQL', config: mysqlConfig })
+			const list = appDb.listConnections()
+			expect(list).toHaveLength(3)
+			const types = list.map(c => c.config.type).sort()
+			expect(types).toEqual(['mysql', 'postgresql', 'sqlite'])
+		})
 
 		test('create and list connections', () => {
 			appDb.createConnection({ name: 'PG Dev', config: pgConfig })
