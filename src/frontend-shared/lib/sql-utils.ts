@@ -48,12 +48,19 @@ function findSemicolons(sql: string): number[] {
 export function getStatementAtCursor(sql: string, cursorPos: number): StatementAtCursor | null {
 	const semicolons = findSemicolons(sql)
 
+	// If cursor is right after a semicolon and at a line boundary (newline or EOF),
+	// treat it as belonging to the preceding statement
+	const atLineEnd = cursorPos >= sql.length || sql[cursorPos] === '\n'
+	const effectiveCursor = (cursorPos > 0 && semicolons.includes(cursorPos - 1) && atLineEnd)
+		? cursorPos - 1
+		: cursorPos
+
 	// Find the statement boundaries around the cursor
 	let start = 0
 	let end = sql.length
 
 	for (const pos of semicolons) {
-		if (pos < cursorPos) {
+		if (pos < effectiveCursor) {
 			start = pos + 1
 		} else {
 			end = pos

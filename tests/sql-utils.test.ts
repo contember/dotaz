@@ -43,9 +43,19 @@ describe('getStatementAtCursor', () => {
 		expect(result?.text).toBe('SELECT 1')
 	})
 
-	test('cursor right after semicolon goes to next statement', () => {
+	test('cursor right after semicolon on same line goes to next statement', () => {
 		const result = getStatementAtCursor('SELECT 1; SELECT 2', 9)
 		expect(result?.text).toBe('SELECT 2')
+	})
+
+	test('cursor right after semicolon at line end stays on preceding statement', () => {
+		const result = getStatementAtCursor('SELECT 1;\nSELECT 2', 9)
+		expect(result?.text).toBe('SELECT 1')
+	})
+
+	test('cursor right after semicolon at EOF stays on preceding statement', () => {
+		const result = getStatementAtCursor('SELECT 1;', 9)
+		expect(result?.text).toBe('SELECT 1')
 	})
 
 	test('handles semicolons inside single-quoted strings', () => {
