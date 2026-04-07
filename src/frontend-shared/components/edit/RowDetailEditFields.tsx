@@ -49,22 +49,17 @@ export default function RowDetailEditFields(props: RowDetailEditFieldsProps) {
 	}
 
 	function renderFieldInput(col: GridColumnDef) {
-		const isPk = props.pkColumns.has(col.name)
-		const readOnly = isPk
-		const value = props.getValue(col.name)
-		const isNull = isFieldNull(col.name)
-		const isDef = isFieldDefault(col.name)
-		const specialPlaceholder = isDef ? 'DEFAULT' : isNull ? 'NULL' : ''
+		const readOnly = props.pkColumns.has(col.name)
 
 		if (isBooleanType(col.dataType)) {
 			return (
 				<FieldInput
 					column={col}
-					value={value}
+					value={props.getValue(col.name)}
 					onChange={(v) => props.setFieldValue(col.name, v)}
 					readOnly={readOnly}
-					isNull={isNull}
-					isDefault={isDef}
+					isNull={isFieldNull(col.name)}
+					isDefault={isFieldDefault(col.name)}
 					onKeyDown={(e) => handleFieldKeyDown(e, col)}
 				/>
 			)
@@ -74,12 +69,12 @@ export default function RowDetailEditFields(props: RowDetailEditFieldsProps) {
 			<div class="row-detail__input-row">
 				<FieldInput
 					column={col}
-					value={value}
+					value={props.getValue(col.name)}
 					onChange={(v) => props.setFieldValue(col.name, v)}
 					readOnly={readOnly}
-					isNull={isNull}
-					isDefault={isDef}
-					placeholder={specialPlaceholder}
+					isNull={isFieldNull(col.name)}
+					isDefault={isFieldDefault(col.name)}
+					placeholder={isFieldDefault(col.name) ? 'DEFAULT' : isFieldNull(col.name) ? 'NULL' : ''}
 					onKeyDown={(e) => handleFieldKeyDown(e, col)}
 					prettyJson
 				/>
