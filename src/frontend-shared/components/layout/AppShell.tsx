@@ -337,7 +337,6 @@ export default function AppShell() {
 				if (editor) {
 					wsTab.editorContent = editor.content
 					wsTab.editorCursorPosition = editor.cursorPosition
-					wsTab.editorTxMode = editor.txMode
 					wsTab.editorSearchPath = editor.searchPath ?? undefined
 				}
 			}
@@ -415,9 +414,6 @@ export default function AppShell() {
 				}
 				if (wsTab.editorCursorPosition != null) {
 					editorStore.setCursorPosition(wsTab.id, wsTab.editorCursorPosition)
-				}
-				if (wsTab.editorTxMode === 'manual') {
-					editorStore.setTxMode(wsTab.id, 'manual')
 				}
 				if (wsTab.editorSearchPath) {
 					editorStore.setSearchPath(wsTab.id, wsTab.editorSearchPath)
@@ -498,15 +494,18 @@ export default function AppShell() {
 						)}
 						tabStatuses={(() => {
 							const map = new Map<string, TabStatus>()
-							// Pre-compute which connections have active transactions
-							const connTx = new Set<string>()
-							const connTxAborted = new Set<string>()
+							// Pre-compute which sessions have active transactions
+							const sessionTx = new Set<string>()
+							const sessionTxAborted = new Set<string>()
 							for (const tab of tabsStore.openTabs) {
 								if (tab.type === 'sql-console') {
 									const et = editorStore.getTab(tab.id)
 									if (et?.inTransaction) {
-										connTx.add(tab.connectionId)
-										if (et.txAborted) connTxAborted.add(tab.connectionId)
+										const sid = sessionStore.getSessionForTab(tab.id)
+										if (sid) {
+											sessionTx.add(sid)
+											if (et.txAborted) sessionTxAborted.add(sid)
+										}
 									}
 								}
 							}
@@ -519,8 +518,12 @@ export default function AppShell() {
 								if (connectionsStore.isReadOnly(tab.connectionId)) {
 									status.readOnly = true
 								}
-								if (connTx.has(tab.connectionId)) status.inTransaction = true
-								if (connTxAborted.has(tab.connectionId)) status.txAborted = true
+								// Show TX badge only for tabs whose session has an active transaction
+								const sid = sessionStore.getSessionForTab(tab.id)
+								if (sid && sessionTx.has(sid)) {
+									status.inTransaction = true
+									if (sessionTxAborted.has(sid)) status.txAborted = true
+								}
 								if (status.color || status.readOnly || status.inTransaction) {
 									map.set(tab.id, status)
 								}
@@ -588,6 +591,7 @@ export default function AppShell() {
 												<TransactionLog
 													connectionId={tab.connectionId}
 													database={tab.database}
+													sessionId={sessionStore.getSessionForTab(tab.id)}
 												/>
 											</Show>
 											<SqlResultPanel

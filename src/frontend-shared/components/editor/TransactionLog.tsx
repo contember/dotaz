@@ -7,6 +7,7 @@ import './TransactionLog.css'
 interface TransactionLogProps {
 	connectionId: string
 	database?: string
+	sessionId?: string
 }
 
 function formatTime(isoDate: string): string {
@@ -41,7 +42,7 @@ export default function TransactionLog(props: TransactionLogProps) {
 		statusFilter()
 		search()
 		editorStore.txLogVersion // Re-fetch after query execution
-		editorStore.fetchTransactionLog(props.connectionId, props.database)
+		editorStore.fetchTransactionLog(props.connectionId, props.database, props.sessionId)
 	})
 
 	function handleStatusFilter(filter: TransactionLogStatus | undefined) {
