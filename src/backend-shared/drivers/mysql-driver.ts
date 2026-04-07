@@ -144,7 +144,7 @@ export class MysqlDriver implements DatabaseDriver {
 		const url = `mysql://${encodeURIComponent(config.user)}:${encodeURIComponent(config.password)}@${config.host}:${config.port}/${
 			encodeURIComponent(config.database)
 		}`
-		this.db = new SQL({ url })
+		this.db = new SQL({ url, idleTimeout: 30 })
 		// Verify the connection works and cache the server's default isolation level
 		try {
 			await this.db`SELECT 1`
