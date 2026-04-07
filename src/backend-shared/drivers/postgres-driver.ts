@@ -293,7 +293,12 @@ export class PostgresDriver implements DatabaseDriver {
 	async loadSchema(sessionId?: string): Promise<SchemaData> {
 		this.ensureConnected()
 		const session = this.resolveSession(sessionId)
-		const conn = session ? session.conn : this.db!
+		// Reserve a dedicated connection for introspection to avoid consuming
+		// multiple pool connections (especially during Promise.all).
+		// When a session is provided we reuse its existing reserved connection.
+		const dedicatedConn = session ? null : await this.db!.reserve()
+		const conn = session ? session.conn : dedicatedConn!
+		try {
 
 		const schemas = await this.getSchemas(conn)
 		const schemaNames = schemas.map((s) => s.name)
@@ -561,6 +566,12 @@ export class PostgresDriver implements DatabaseDriver {
 		}
 
 		return { schemas, tables, columns, indexes, foreignKeys, referencingForeignKeys }
+
+		} finally {
+			if (dedicatedConn) {
+				dedicatedConn.release()
+			}
+		}
 	}
 
 	private async getSchemas(conn: SQL | ReservedSQL): Promise<SchemaInfo[]> {
