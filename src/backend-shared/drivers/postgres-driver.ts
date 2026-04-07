@@ -3,12 +3,12 @@ import { DatabaseDataType } from '@dotaz/shared/types/database'
 import type { SchemaData, SchemaInfo, TableInfo } from '@dotaz/shared/types/database'
 import { DatabaseError } from '@dotaz/shared/types/errors'
 import type { QueryResult, QueryResultColumn } from '@dotaz/shared/types/query'
-import { SQL } from 'bun'
-import type { ReservedSQL } from 'bun'
+import type { SQL } from 'bun'
+import { ConnectionPool } from '../db/connection-pool'
 import type { DatabaseDriver } from '../db/driver'
 import { mapPostgresError } from '../db/error-mapping'
 import { getAffectedRowCount } from '../db/result-utils'
-import { isConnectionLevelError, safeReleaseConnection, syncTxActive } from './driver-utils'
+import { isConnectionLevelError, safeCloseConnection, syncTxActive } from './driver-utils'
 
 /** Row shape from information_schema.columns joined with PK info */
 interface PgColumnRow {
@@ -82,7 +82,7 @@ interface PgMatviewColumnRow {
 }
 
 interface SessionState {
-	conn: ReservedSQL
+	conn: SQL
 	txActive: boolean
 	txAborted: boolean
 	iterating: boolean
@@ -91,11 +91,6 @@ interface SessionState {
 
 /** Internal session ID used for backward-compatible beginTransaction() without sessionId */
 const DEFAULT_SESSION = '__default__'
-
-/** Reset function for PostgreSQL: runs DISCARD ALL to clear all session state. */
-async function pgResetConnection(conn: ReservedSQL): Promise<void> {
-	await conn.unsafe('DISCARD ALL')
-}
 
 /** Map PostgreSQL information_schema data_type to DatabaseDataType. */
 function mapPgDataType(dataType: string): DatabaseDataType {
@@ -146,7 +141,7 @@ function mapPgDataType(dataType: string): DatabaseDataType {
 }
 
 export class PostgresDriver implements DatabaseDriver {
-	private db: SQL | null = null
+	private pool: ConnectionPool | null = null
 	private connected = false
 	private sessions = new Map<string, SessionState>()
 	private defaultSessionPending = false
@@ -164,12 +159,11 @@ export class PostgresDriver implements DatabaseDriver {
 		const url = `postgres://${encodeURIComponent(config.user)}:${encodeURIComponent(config.password)}@${config.host}:${config.port}/${
 			encodeURIComponent(config.database)
 		}?${params}`
-		this.db = new SQL({ url, idleTimeout: 30 })
-		// Verify the connection works
+		this.pool = new ConnectionPool(url, (conn) => conn.unsafe('DISCARD ALL'))
 		try {
-			await this.db`SELECT 1`
+			await this.pool.connect()
 		} catch (err) {
-			this.db = null
+			this.pool = null
 			throw err instanceof DatabaseError ? err : mapPostgresError(err)
 		}
 		this.connected = true
@@ -178,15 +172,15 @@ export class PostgresDriver implements DatabaseDriver {
 	async disconnect(): Promise<void> {
 		this.connected = false
 
-		// Release all sessions
+		// Close all session connections
 		for (const [, session] of this.sessions) {
-			await safeReleaseConnection(session.conn, pgResetConnection, { rollback: true })
+			await safeCloseConnection(session.conn, { rollback: true })
 		}
 		this.sessions.clear()
 
-		if (this.db) {
-			await this.db.close()
-			this.db = null
+		if (this.pool) {
+			await this.pool.disconnectAll()
+			this.pool = null
 		}
 	}
 
@@ -201,15 +195,15 @@ export class PostgresDriver implements DatabaseDriver {
 		if (this.sessions.has(sessionId)) {
 			throw new Error(`Session "${sessionId}" already exists`)
 		}
-		const conn = await this.db!.reserve()
+		const conn = this.pool!.createConnection()
 		this.sessions.set(sessionId, { conn, txActive: false, txAborted: false, iterating: false, activeQueries: new Set() })
 	}
 
 	async releaseSession(sessionId: string): Promise<void> {
 		const session = this.sessions.get(sessionId)
 		if (!session) return // idempotent — already released or never existed
-		await safeReleaseConnection(session.conn, pgResetConnection, { rollback: true })
 		this.sessions.delete(sessionId)
+		await safeCloseConnection(session.conn, { rollback: true })
 	}
 
 	getSessionIds(): string[] {
@@ -221,7 +215,7 @@ export class PostgresDriver implements DatabaseDriver {
 	async execute(sql: string, params?: unknown[], sessionId?: string, poolQueryKey?: symbol): Promise<QueryResult> {
 		this.ensureConnected()
 		const session = this.resolveSession(sessionId)
-		const conn = session ? session.conn : this.db!
+		const conn = session ? session.conn : this.pool!.getSystemConnection()
 		const start = performance.now()
 		const query = conn.unsafe(sql, params ?? [])
 		const effectiveQueryKey = session ? undefined : (poolQueryKey ?? Symbol())
@@ -295,12 +289,7 @@ export class PostgresDriver implements DatabaseDriver {
 	async loadSchema(sessionId?: string): Promise<SchemaData> {
 		this.ensureConnected()
 		const session = this.resolveSession(sessionId)
-		// Reserve a dedicated connection for introspection to avoid consuming
-		// multiple pool connections (especially during Promise.all).
-		// When a session is provided we reuse its existing reserved connection.
-		const dedicatedConn = session ? null : await this.db!.reserve()
-		const conn = session ? session.conn : dedicatedConn!
-		try {
+		const conn = session ? session.conn : this.pool!.getSystemConnection()
 
 		const schemas = await this.getSchemas(conn)
 		const schemaNames = schemas.map((s) => s.name)
@@ -568,15 +557,9 @@ export class PostgresDriver implements DatabaseDriver {
 		}
 
 		return { schemas, tables, columns, indexes, foreignKeys, referencingForeignKeys }
-
-		} finally {
-			if (dedicatedConn) {
-				dedicatedConn.release()
-			}
-		}
 	}
 
-	private async getSchemas(conn: SQL | ReservedSQL): Promise<SchemaInfo[]> {
+	private async getSchemas(conn: SQL): Promise<SchemaInfo[]> {
 		this.ensureConnected()
 		const rows = await conn.unsafe(
 			`SELECT schema_name AS name
@@ -587,7 +570,7 @@ export class PostgresDriver implements DatabaseDriver {
 		return [...rows] as SchemaInfo[]
 	}
 
-	private async getTables(conn: SQL | ReservedSQL, schema: string): Promise<TableInfo[]> {
+	private async getTables(conn: SQL, schema: string): Promise<TableInfo[]> {
 		this.ensureConnected()
 		const rows = await conn.unsafe(
 			`SELECT table_name AS name, table_type
@@ -603,7 +586,7 @@ export class PostgresDriver implements DatabaseDriver {
 		}))
 	}
 
-	private async getMaterializedViews(conn: SQL | ReservedSQL, schema: string): Promise<TableInfo[]> {
+	private async getMaterializedViews(conn: SQL, schema: string): Promise<TableInfo[]> {
 		this.ensureConnected()
 		const rows = await conn.unsafe(
 			`SELECT matviewname
@@ -623,7 +606,11 @@ export class PostgresDriver implements DatabaseDriver {
 
 	async ping(): Promise<void> {
 		this.ensureConnected()
-		await this.db!.unsafe('SELECT 1')
+		try {
+			await this.pool!.getSystemConnection().unsafe('SELECT 1')
+		} catch {
+			await this.pool!.reconnectSystemConnection()
+		}
 	}
 
 	// --- Transactions ---
@@ -643,11 +630,11 @@ export class PostgresDriver implements DatabaseDriver {
 			}
 			this.defaultSessionPending = true
 			try {
-				const conn = await this.db!.reserve()
+				const conn = this.pool!.acquireConnection()
 				try {
 					await conn.unsafe('BEGIN')
 				} catch (err) {
-					conn.release()
+					await this.pool!.releaseConnection(conn)
 					throw err
 				}
 				this.sessions.set(DEFAULT_SESSION, { conn, txActive: true, txAborted: false, iterating: false, activeQueries: new Set() })
@@ -688,8 +675,8 @@ export class PostgresDriver implements DatabaseDriver {
 			throw err
 		} finally {
 			if (id === DEFAULT_SESSION) {
-				await safeReleaseConnection(session.conn, pgResetConnection)
 				this.sessions.delete(DEFAULT_SESSION)
+				await this.pool!.releaseConnection(session.conn)
 			}
 		}
 	}
@@ -713,8 +700,8 @@ export class PostgresDriver implements DatabaseDriver {
 			throw err
 		} finally {
 			if (id === DEFAULT_SESSION) {
-				await safeReleaseConnection(session.conn, pgResetConnection)
 				this.sessions.delete(DEFAULT_SESSION)
+				await this.pool!.releaseConnection(session.conn)
 			}
 		}
 	}
@@ -772,7 +759,7 @@ export class PostgresDriver implements DatabaseDriver {
 		if (sessionId && !session) throw new Error(`Session "${sessionId}" not found`)
 		if (session?.txActive) throw new Error('Cannot iterate on a session with an active transaction')
 
-		const conn = session ? session.conn : await this.db!.reserve()
+		const conn = session ? session.conn : this.pool!.acquireConnection()
 		const ownConn = !session // we own the connection if not using a session
 		if (session) {
 			session.txActive = true
@@ -816,7 +803,7 @@ export class PostgresDriver implements DatabaseDriver {
 				session.iterating = false
 			}
 			if (ownConn) {
-				await safeReleaseConnection(conn as ReservedSQL, pgResetConnection, { rollback: !rolledBack })
+				await this.pool!.releaseConnection(conn)
 			} else if (session && !rolledBack) {
 				try {
 					await conn.unsafe('ROLLBACK')
@@ -850,7 +837,7 @@ export class PostgresDriver implements DatabaseDriver {
 	}
 
 	private ensureConnected(): void {
-		if (!this.db || !this.connected) {
+		if (!this.pool || !this.connected) {
 			throw new Error('Not connected. Call connect() first.')
 		}
 	}

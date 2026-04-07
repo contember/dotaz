@@ -1,5 +1,5 @@
 import { stripLiteralsAndComments } from '@dotaz/shared/sql'
-import type { ReservedSQL } from 'bun'
+import type { SQL } from 'bun'
 
 /** Minimal interface for transaction state tracking. */
 interface TxTrackable {
@@ -35,13 +35,11 @@ export function isConnectionLevelError(err: unknown): boolean {
 }
 
 /**
- * Safely release a reserved connection back to the pool.
- * Optionally rolls back, then runs the reset function (e.g. DISCARD ALL or RESET CONNECTION),
- * releases the connection, or closes it if reset/release fails.
+ * Safely close a connection.
+ * Optionally rolls back, then closes the connection.
  */
-export async function safeReleaseConnection(
-	conn: ReservedSQL,
-	resetFn: (conn: ReservedSQL) => Promise<void>,
+export async function safeCloseConnection(
+	conn: SQL,
 	options?: { rollback?: boolean },
 ): Promise<void> {
 	if (options?.rollback) {
@@ -50,13 +48,6 @@ export async function safeReleaseConnection(
 		} catch { /* ignore — no tx is fine */ }
 	}
 	try {
-		await resetFn(conn)
-		try {
-			conn.release()
-		} catch { /* broken connection */ }
-	} catch {
-		try {
-			conn.close({ timeout: 0 })
-		} catch { /* already dead */ }
-	}
+		await conn.close()
+	} catch { /* already dead */ }
 }

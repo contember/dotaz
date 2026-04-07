@@ -3,12 +3,12 @@ import { DatabaseDataType } from '@dotaz/shared/types/database'
 import type { SchemaData, SchemaInfo, TableInfo } from '@dotaz/shared/types/database'
 import { DatabaseError } from '@dotaz/shared/types/errors'
 import type { QueryResult, QueryResultColumn } from '@dotaz/shared/types/query'
-import { SQL } from 'bun'
-import type { ReservedSQL } from 'bun'
+import type { SQL } from 'bun'
+import { ConnectionPool } from '../db/connection-pool'
 import type { DatabaseDriver } from '../db/driver'
 import { mapMysqlError } from '../db/error-mapping'
 import { getAffectedRowCount } from '../db/result-utils'
-import { isConnectionLevelError, safeReleaseConnection, syncTxActive } from './driver-utils'
+import { isConnectionLevelError, safeCloseConnection, syncTxActive } from './driver-utils'
 
 /** Row shape from information_schema.columns */
 interface MysqlColumnRow {
@@ -64,7 +64,7 @@ interface MysqlTableRow {
 }
 
 interface SessionState {
-	conn: ReservedSQL
+	conn: SQL
 	txActive: boolean
 	iterating: boolean
 	activeQueries: Set<ReturnType<SQL['unsafe']>>
@@ -127,13 +127,11 @@ function mapMysqlDataType(dataType: string): DatabaseDataType {
 }
 
 export class MysqlDriver implements DatabaseDriver {
-	private db: SQL | null = null
+	private pool: ConnectionPool | null = null
 	private connected = false
 	private sessions = new Map<string, SessionState>()
 	private defaultSessionPending = false
 	private poolActiveQueries = new Map<symbol, ReturnType<SQL['unsafe']>>()
-	/** Server's global default isolation level, queried on connect. */
-	private defaultIsolationLevel = 'REPEATABLE READ'
 
 	async connect(config: ConnectionConfig): Promise<void> {
 		if (config.type !== 'mysql') {
@@ -144,17 +142,11 @@ export class MysqlDriver implements DatabaseDriver {
 		const url = `mysql://${encodeURIComponent(config.user)}:${encodeURIComponent(config.password)}@${config.host}:${config.port}/${
 			encodeURIComponent(config.database)
 		}`
-		this.db = new SQL({ url, idleTimeout: 30 })
-		// Verify the connection works and cache the server's default isolation level
+		this.pool = new ConnectionPool(url, (conn) => conn.unsafe('RESET CONNECTION'))
 		try {
-			await this.db`SELECT 1`
-			const isoResult = await this.db.unsafe('SELECT @@GLOBAL.transaction_isolation AS level')
-			const level = [...isoResult][0]?.level as string | undefined
-			if (level) {
-				this.defaultIsolationLevel = level.replace(/-/g, ' ')
-			}
+			await this.pool.connect()
 		} catch (err) {
-			this.db = null
+			this.pool = null
 			throw err instanceof DatabaseError ? err : mapMysqlError(err)
 		}
 		this.connected = true
@@ -163,15 +155,15 @@ export class MysqlDriver implements DatabaseDriver {
 	async disconnect(): Promise<void> {
 		this.connected = false
 
-		// Release all sessions
+		// Close all session connections
 		for (const [, session] of this.sessions) {
-			await safeReleaseConnection(session.conn, (c) => this.resetConnection(c), { rollback: session.txActive })
+			await safeCloseConnection(session.conn, { rollback: session.txActive })
 		}
 		this.sessions.clear()
 
-		if (this.db) {
-			await this.db.close()
-			this.db = null
+		if (this.pool) {
+			await this.pool.disconnectAll()
+			this.pool = null
 		}
 	}
 
@@ -184,15 +176,15 @@ export class MysqlDriver implements DatabaseDriver {
 		if (this.sessions.has(sessionId)) {
 			throw new Error(`Session "${sessionId}" already exists`)
 		}
-		const conn = await this.db!.reserve()
+		const conn = this.pool!.createConnection()
 		this.sessions.set(sessionId, { conn, txActive: false, iterating: false, activeQueries: new Set() })
 	}
 
 	async releaseSession(sessionId: string): Promise<void> {
 		const session = this.sessions.get(sessionId)
 		if (!session) return // idempotent — already released or never existed
-		await safeReleaseConnection(session.conn, (c) => this.resetConnection(c), { rollback: true })
 		this.sessions.delete(sessionId)
+		await safeCloseConnection(session.conn, { rollback: true })
 	}
 
 	getSessionIds(): string[] {
@@ -202,7 +194,7 @@ export class MysqlDriver implements DatabaseDriver {
 	async execute(sql: string, params?: unknown[], sessionId?: string, poolQueryKey?: symbol): Promise<QueryResult> {
 		this.ensureConnected()
 		const session = this.resolveSession(sessionId)
-		const conn = session ? session.conn : this.db!
+		const conn = session ? session.conn : this.pool!.getSystemConnection()
 		const start = performance.now()
 		const query = conn.unsafe(sql, params ?? [])
 		const effectiveQueryKey = session ? undefined : (poolQueryKey ?? Symbol())
@@ -272,7 +264,7 @@ export class MysqlDriver implements DatabaseDriver {
 	async loadSchema(sessionId?: string): Promise<SchemaData> {
 		this.ensureConnected()
 		const session = this.resolveSession(sessionId)
-		const conn = session ? session.conn : this.db!
+		const conn = session ? session.conn : this.pool!.getSystemConnection()
 
 		const schemas = await this.getSchemas(conn)
 		const schemaNames = schemas.map((s) => s.name)
@@ -438,13 +430,13 @@ export class MysqlDriver implements DatabaseDriver {
 		return { schemas, tables, columns, indexes, foreignKeys, referencingForeignKeys }
 	}
 
-	private async getSchemas(conn: SQL | ReservedSQL): Promise<SchemaInfo[]> {
+	private async getSchemas(conn: SQL): Promise<SchemaInfo[]> {
 		this.ensureConnected()
 		const rows = await conn.unsafe('SELECT DATABASE() AS name')
 		return [...rows] as SchemaInfo[]
 	}
 
-	private async getTables(conn: SQL | ReservedSQL, schema: string): Promise<TableInfo[]> {
+	private async getTables(conn: SQL, schema: string): Promise<TableInfo[]> {
 		this.ensureConnected()
 		const rows = await conn.unsafe(
 			`SELECT table_name AS name, table_type
@@ -462,7 +454,11 @@ export class MysqlDriver implements DatabaseDriver {
 
 	async ping(): Promise<void> {
 		this.ensureConnected()
-		await this.db!.unsafe('SELECT 1')
+		try {
+			await this.pool!.getSystemConnection().unsafe('SELECT 1')
+		} catch {
+			await this.pool!.reconnectSystemConnection()
+		}
 	}
 
 	async *iterate(
@@ -475,7 +471,7 @@ export class MysqlDriver implements DatabaseDriver {
 		this.ensureConnected()
 		const session = this.resolveSession(sessionId)
 		if (session?.txActive) throw new Error('Cannot iterate on a session with an active transaction')
-		const conn = session ? session.conn : await this.db!.reserve()
+		const conn = session ? session.conn : this.pool!.acquireConnection()
 		const ownConn = !session
 		if (session) {
 			session.txActive = true
@@ -508,7 +504,7 @@ export class MysqlDriver implements DatabaseDriver {
 				session.iterating = false
 			}
 			if (ownConn) {
-				await safeReleaseConnection(conn as ReservedSQL, (c) => this.resetConnection(c))
+				await this.pool!.releaseConnection(conn)
 			}
 		}
 	}
@@ -551,11 +547,11 @@ export class MysqlDriver implements DatabaseDriver {
 			}
 			this.defaultSessionPending = true
 			try {
-				const conn = await this.db!.reserve()
+				const conn = this.pool!.acquireConnection()
 				try {
 					await conn.unsafe('START TRANSACTION')
 				} catch (err) {
-					conn.release()
+					await this.pool!.releaseConnection(conn)
 					throw err
 				}
 				this.sessions.set(DEFAULT_SESSION, { conn, txActive: true, iterating: false, activeQueries: new Set() })
@@ -590,8 +586,8 @@ export class MysqlDriver implements DatabaseDriver {
 			throw err
 		} finally {
 			if (id === DEFAULT_SESSION) {
-				await safeReleaseConnection(session.conn, (c) => this.resetConnection(c))
 				this.sessions.delete(DEFAULT_SESSION)
+				await this.pool!.releaseConnection(session.conn)
 			}
 		}
 	}
@@ -612,8 +608,8 @@ export class MysqlDriver implements DatabaseDriver {
 			throw err
 		} finally {
 			if (id === DEFAULT_SESSION) {
-				await safeReleaseConnection(session.conn, (c) => this.resetConnection(c))
 				this.sessions.delete(DEFAULT_SESSION)
+				await this.pool!.releaseConnection(session.conn)
 			}
 		}
 	}
@@ -654,34 +650,8 @@ export class MysqlDriver implements DatabaseDriver {
 		return '?'
 	}
 
-	/** Reset all session state on a connection before returning it to the pool. */
-	private async resetConnection(conn: ReservedSQL): Promise<void> {
-		try {
-			await conn.unsafe('RESET CONNECTION')
-		} catch {
-			// Fallback for older MySQL versions without RESET CONNECTION.
-			// RESET CONNECTION would also clear user variables, session variables,
-			// prepared statements, and temp tables — best-effort approximation:
-			const fallbacks = [
-				'ROLLBACK',
-				'UNLOCK TABLES',
-				`SET SESSION TRANSACTION ISOLATION LEVEL ${this.defaultIsolationLevel}`,
-				'SET NAMES utf8mb4',
-				'SET SESSION sql_mode = DEFAULT',
-				'SET autocommit = 1',
-				'SET FOREIGN_KEY_CHECKS = 1',
-				'SET UNIQUE_CHECKS = 1',
-			]
-			for (const sql of fallbacks) {
-				try {
-					await conn.unsafe(sql)
-				} catch { /* best effort */ }
-			}
-		}
-	}
-
 	private ensureConnected(): void {
-		if (!this.db || !this.connected) {
+		if (!this.pool || !this.connected) {
 			throw new Error('Not connected. Call connect() first.')
 		}
 	}
