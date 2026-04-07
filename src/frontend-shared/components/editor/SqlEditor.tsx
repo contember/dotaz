@@ -299,7 +299,7 @@ export default function SqlEditor(props: SqlEditorProps) {
 		const initialContent = tab?.content ?? ''
 		const dialect = getDialect(props.connectionId)
 
-		const executeKeymap = keymap.of([
+		const executeKeymap = Prec.highest(keymap.of([
 			{
 				key: 'Ctrl-Enter',
 				mac: 'Cmd-Enter',
@@ -332,7 +332,7 @@ export default function SqlEditor(props: SqlEditorProps) {
 					return true
 				},
 			},
-		])
+		]))
 
 		const navigationKeymap = Prec.highest(keymap.of([
 			{
