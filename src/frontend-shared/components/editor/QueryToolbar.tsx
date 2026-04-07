@@ -1,5 +1,4 @@
 import Check from 'lucide-solid/icons/check'
-import PlayCircle from 'lucide-solid/icons/circle-play'
 import ListTree from 'lucide-solid/icons/list-tree'
 import PinIcon from 'lucide-solid/icons/pin'
 import PinOff from 'lucide-solid/icons/pin-off'
@@ -32,7 +31,6 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 	const hasContent = () => (tab()?.content.trim().length ?? 0) > 0
 	const duration = () => tab()?.duration ?? 0
 	const txMode = () => tab()?.txMode ?? 'auto-commit'
-	const inTransaction = () => tab()?.inTransaction ?? false
 	const txAborted = () => tab()?.txAborted ?? false
 	const isPinned = () => sessionStore.isTabPinned(props.tabId)
 	const sessionLabel = () => sessionStore.getSessionLabelForTab(props.tabId)
@@ -66,10 +64,6 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 
 	function handleTxModeChange(mode: TxMode) {
 		editorStore.setTxMode(props.tabId, mode)
-	}
-
-	function handleBeginTx() {
-		editorStore.beginTransaction(props.tabId)
 	}
 
 	function handleCommit() {
@@ -246,40 +240,27 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 
 			{/* Manual transaction controls */}
 			<Show when={txMode() === 'manual'}>
-				<Show
-					when={inTransaction()}
-					fallback={
-						<button
-							class="query-toolbar__btn"
-							onClick={handleBeginTx}
-							title="Begin Transaction"
-						>
-							<PlayCircle size={12} /> Begin
-						</button>
-					}
+				<div
+					class={txAborted() ? 'query-toolbar__tx-indicator query-toolbar__tx-indicator--aborted' : 'query-toolbar__tx-indicator'}
+					title={txAborted() ? 'Transaction is aborted — rollback required' : 'Transaction active'}
 				>
-					<div
-						class={txAborted() ? 'query-toolbar__tx-indicator query-toolbar__tx-indicator--aborted' : 'query-toolbar__tx-indicator'}
-						title={txAborted() ? 'Transaction is aborted — rollback required' : 'Transaction active'}
-					>
-						{txAborted() ? 'TXN ABORTED' : 'TXN'}
-					</div>
-					<button
-						class="query-toolbar__btn"
-						onClick={handleCommit}
-						disabled={txAborted()}
-						title={txAborted() ? 'Cannot commit an aborted transaction' : 'Commit Transaction'}
-					>
-						<Check size={12} /> Commit
-					</button>
-					<button
-						class="query-toolbar__btn"
-						onClick={handleRollback}
-						title="Rollback Transaction"
-					>
-						<RotateCcw size={12} /> Rollback
-					</button>
-				</Show>
+					{txAborted() ? 'TXN ABORTED' : 'TXN'}
+				</div>
+				<button
+					class="query-toolbar__btn"
+					onClick={handleCommit}
+					disabled={txAborted()}
+					title={txAborted() ? 'Cannot commit an aborted transaction' : 'Commit Transaction'}
+				>
+					<Check size={12} /> Commit
+				</button>
+				<button
+					class="query-toolbar__btn"
+					onClick={handleRollback}
+					title="Rollback Transaction"
+				>
+					<RotateCcw size={12} /> Rollback
+				</button>
 			</Show>
 
 			{/* Schema (search_path) — PostgreSQL only */}

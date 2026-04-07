@@ -280,6 +280,12 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit =
 		// Resolve session (auto-pin if configured)
 		const sessionId = await sessionStore.resolveSessionForExecution(tabId, tab.connectionId, sql, tab.database)
 
+		// Auto-BEGIN in manual mode if not yet in a transaction
+		if (tab.txMode === 'manual' && !tab.inTransaction && sessionId) {
+			await rpc.tx.begin({ connectionId: tab.connectionId, database: tab.database, sessionId })
+			setState('tabs', tabId, { inTransaction: true, txAborted: false })
+		}
+
 		// Set up result listener BEFORE submitting (fire-and-forget pattern)
 		const results = await new Promise<QueryResult[]>((resolve, reject) => {
 			let settled = false
@@ -501,10 +507,30 @@ function setSearchPath(tabId: string, searchPath: string | null) {
 	scheduleWorkspaceSave()
 }
 
-function setTxMode(tabId: string, mode: TxMode) {
-	ensureTab(tabId)
+async function setTxMode(tabId: string, mode: TxMode) {
+	const tab = ensureTab(tabId)
 	setState('tabs', tabId, 'txMode', mode)
 	scheduleWorkspaceSave()
+
+	if (mode === 'manual') {
+		// Auto-pin if not already pinned
+		if (!sessionStore.getSessionForTab(tabId)) {
+			await sessionStore.pinSession(tab.connectionId, tabId, tab.database)
+		}
+	} else if (mode === 'auto-commit') {
+		// Rollback any active transaction when switching back to auto-commit
+		if (tab.inTransaction) {
+			const sessionId = sessionStore.getSessionForTab(tabId)
+			if (sessionId) {
+				try {
+					await rpc.tx.rollback({ connectionId: tab.connectionId, database: tab.database, sessionId })
+				} catch (err) {
+					console.debug('Failed to rollback on mode switch:', err)
+				}
+				setState('tabs', tabId, { inTransaction: false, txAborted: false })
+			}
+		}
+	}
 }
 
 async function beginTransaction(tabId: string) {
