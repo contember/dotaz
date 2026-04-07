@@ -158,11 +158,13 @@ export class PostgresDriver implements DatabaseDriver {
 				'PostgresDriver requires a postgresql connection config',
 			)
 		}
-		const sslParam = config.ssl ? `?sslmode=${config.ssl}` : ''
+		const params = new URLSearchParams()
+		if (config.ssl) params.set('sslmode', config.ssl)
+		params.set('application_name', 'dotaz')
 		const url = `postgres://${encodeURIComponent(config.user)}:${encodeURIComponent(config.password)}@${config.host}:${config.port}/${
 			encodeURIComponent(config.database)
-		}${sslParam}`
-		this.db = new SQL({ url })
+		}?${params}`
+		this.db = new SQL({ url, idleTimeout: 30 })
 		// Verify the connection works
 		try {
 			await this.db`SELECT 1`
