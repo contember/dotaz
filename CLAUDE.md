@@ -103,6 +103,34 @@ setStorage(new RpcAppStateStorage())
 render(() => <App />, document.getElementById('app')!)
 ```
 
+## Release
+
+Release is fully automated via GitHub Actions (`.github/workflows/release.yml`). To release:
+
+```bash
+# 1. Push commits to origin
+git push origin main
+
+# 2. Create and push a version tag
+git tag v0.0.XX
+git push origin v0.0.XX
+```
+
+This triggers the release workflow which:
+- Builds desktop apps for 5 platforms (Linux x64/ARM64, macOS x64/ARM64, Windows x64)
+- Publishes Docker image to `ghcr.io/contember/dotaz`
+- Publishes `@dotaz/server` npm package
+- Creates GitHub Release with all artifacts
+
+Pre-release tags (containing `-beta`, `-alpha`, `-rc`) get `canary` electrobun env and `beta` npm tag.
+
+### Monitoring the release
+
+```bash
+# Watch the release workflow run
+gh run watch
+```
+
 ## Multi-agent coordination
 
 This project may have multiple agents working concurrently. Follow these rules strictly:
