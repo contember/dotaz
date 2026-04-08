@@ -12,8 +12,6 @@ COPY src/frontend-shared/package.json src/frontend-shared/
 COPY src/frontend-desktop/package.json src/frontend-desktop/
 COPY src/frontend-web/package.json src/frontend-web/
 COPY src/frontend-demo/package.json src/frontend-demo/
-COPY src/frontend-electron/package.json src/frontend-electron/
-COPY src/electron/package.json src/electron/
 COPY src/cli/package.json src/cli/
 RUN bun install --frozen-lockfile
 
