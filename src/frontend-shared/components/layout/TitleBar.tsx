@@ -3,6 +3,8 @@ import Square from 'lucide-solid/icons/square'
 import X from 'lucide-solid/icons/x'
 import { Show } from 'solid-js'
 import { closeWindow, maximizeWindow, minimizeWindow } from '../../lib/rpc'
+import { formatTabContext } from '../../lib/tab-context'
+import { tabsStore } from '../../stores/tabs'
 import './TitleBar.css'
 
 const isMac = navigator.platform.startsWith('Mac')
@@ -19,7 +21,17 @@ export default function TitleBar() {
 			<Show when={isMac}>
 				<div class="titlebar__traffic-spacer" />
 			</Show>
-			<div class="titlebar__title">Dotaz</div>
+			<div class="titlebar__title">
+				<span class="titlebar__app-name">Dotaz</span>
+				<Show when={formatTabContext(tabsStore.activeTab)}>
+					{(ctx) => (
+						<>
+							<span class="titlebar__sep">—</span>
+							<span class="titlebar__context">{ctx()}</span>
+						</>
+					)}
+				</Show>
+			</div>
 			<Show when={!isMac}>
 				<div class="titlebar__controls electrobun-webkit-app-region-no-drag">
 					<button class="titlebar__btn" onClick={minimizeWindow} title="Minimize">

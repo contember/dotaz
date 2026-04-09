@@ -2,7 +2,7 @@ import type { ComparisonColumnMapping, ComparisonSource } from '@dotaz/shared/ty
 import type { ConnectionInfo } from '@dotaz/shared/types/connection'
 import type { SearchScope } from '@dotaz/shared/types/rpc'
 import type { WorkspaceState, WorkspaceTab } from '@dotaz/shared/types/workspace'
-import { createSignal, Match, onCleanup, onMount, Show, Switch } from 'solid-js'
+import { createEffect, createSignal, Match, onCleanup, onMount, Show, Switch } from 'solid-js'
 import appIcon from '../../../../assets/icon.png'
 import { registerAppCommands } from '../../lib/app-commands'
 import { registerAppShortcuts } from '../../lib/app-shortcuts'
@@ -10,7 +10,8 @@ import { getCapabilities } from '../../lib/capabilities'
 import { commandRegistry } from '../../lib/commands'
 import type { ShortcutContext } from '../../lib/keyboard'
 import { keyboardManager } from '../../lib/keyboard'
-import { applyUpdate, friendlyErrorMessage, messages } from '../../lib/rpc'
+import { applyUpdate, friendlyErrorMessage, messages, setWindowTitle } from '../../lib/rpc'
+import { formatWindowTitle } from '../../lib/tab-context'
 import { loadWorkspace, saveWorkspaceNow, scheduleWorkspaceSave, setWorkspaceStateCollector } from '../../lib/workspace'
 import { getComparisonParams, setComparisonParams } from '../../stores/comparison'
 import { connectionsStore } from '../../stores/connections'
@@ -188,6 +189,18 @@ export default function AppShell() {
 		console.error('Unhandled promise rejection', event.reason)
 		uiStore.addToast('error', friendlyErrorMessage(event.reason))
 	}
+
+	// Keep the OS/browser window title in sync with the active tab context.
+	// Works for all modes — desktop (taskbar/app switcher), web (browser tab), demo.
+	createEffect(() => {
+		const title = formatWindowTitle(tabsStore.activeTab)
+		document.title = title
+		// On desktop, document.title from the webview does not propagate to the
+		// native OS window title, so push it over RPC as well.
+		if (getCapabilities().isDesktop) {
+			setWindowTitle(title).catch(() => {})
+		}
+	})
 
 	onMount(async () => {
 		await connectionsStore.loadConnections()

@@ -74,6 +74,9 @@ const rpc = BrowserView.defineRPC<DotazRPC>({
 			'window.close': () => {
 				mainWindow.close()
 			},
+			'window.setTitle': (params: { title: string }) => {
+				mainWindow.setTitle(params.title)
+			},
 		},
 		messages: {},
 	},

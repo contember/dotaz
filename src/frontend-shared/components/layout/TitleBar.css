@@ -19,6 +19,29 @@
 	padding-left: 12px;
 	font-size: 12px;
 	color: var(--ink-secondary);
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.titlebar__app-name {
+	font-weight: 500;
+}
+
+.titlebar__sep {
+	opacity: 0.5;
+}
+
+.titlebar__context {
+	color: var(--ink);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
 }
 
 /* ── Windows/Linux controls ─────────────────────────── */
@@ -53,7 +76,7 @@
 /* ── macOS: space for native traffic lights ─────────── */
 
 .titlebar--mac .titlebar__title {
-	text-align: center;
+	justify-content: center;
 	padding-left: 0;
 }
 

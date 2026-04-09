@@ -77,3 +77,7 @@ export function maximizeWindow(): Promise<void> {
 export function closeWindow(): Promise<void> {
 	return call('window.close', {})
 }
+
+export function setWindowTitle(title: string): Promise<void> {
+	return call('window.setTitle', { title })
+}
