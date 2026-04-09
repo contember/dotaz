@@ -1202,25 +1202,5 @@ describe('ConnectionManager', () => {
 			expect(updatedConfig.activeDatabases).toBeUndefined()
 		})
 
-		test('activateDatabase rejects when pool limit is reached', async () => {
-			const limitedManager = new ConnectionManager(appDb, { maxActiveDatabases: 3 })
-			const conn = limitedManager.createConnection({
-				name: 'PG',
-				config: pgConfig,
-			})
-
-			// Manually set up driver map with 3 active databases (at limit)
-			const driverMap = new Map()
-			driverMap.set('mydb', createMockDriver())
-			driverMap.set('db2', createMockDriver())
-			driverMap.set('db3', createMockDriver())
-			;(limitedManager as any).drivers.set(conn.id, driverMap)
-
-			await expect(
-				limitedManager.activateDatabase(conn.id, 'db4'),
-			).rejects.toThrow('maximum number of active databases (3) reached')
-
-			await limitedManager.disconnectAll()
-		})
 	})
 })

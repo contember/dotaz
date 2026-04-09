@@ -35,7 +35,6 @@ const DEFAULTS = {
 	reconnectBaseDelayMs: 1_000,
 	reconnectMaxDelayMs: 30_000,
 	reconnectMaxAttempts: 5,
-	maxActiveDatabases: 10,
 }
 
 export interface ConnectionManagerOptions {
@@ -44,7 +43,6 @@ export interface ConnectionManagerOptions {
 	reconnectBaseDelayMs?: number
 	reconnectMaxDelayMs?: number
 	reconnectMaxAttempts?: number
-	maxActiveDatabases?: number
 }
 
 interface ReconnectState {
@@ -244,14 +242,6 @@ export class ConnectionManager {
 
 		// Already active
 		if (driverMap.has(database)) return
-
-		// Enforce pool limit
-		const totalActive = this.getActiveDatabaseCount()
-		if (totalActive >= this.opts.maxActiveDatabases) {
-			throw new Error(
-				`Cannot activate database "${database}": maximum number of active databases (${this.opts.maxActiveDatabases}) reached. Deactivate an unused database first.`,
-			)
-		}
 
 		const password = this.passwords.get(connectionId) ?? pgConfig.password
 		const config: PostgresConnectionConfig = {
@@ -728,14 +718,6 @@ export class ConnectionManager {
 		const driverMap = this.drivers.get(connectionId)
 		if (!driverMap) return []
 		return [...driverMap.keys()]
-	}
-
-	private getActiveDatabaseCount(): number {
-		let count = 0
-		for (const driverMap of this.drivers.values()) {
-			count += driverMap.size
-		}
-		return count
 	}
 
 	private getDefaultDatabaseName(connectionId: string): string {
