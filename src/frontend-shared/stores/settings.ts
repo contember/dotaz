@@ -16,6 +16,7 @@ import {
 import { createStore } from 'solid-js/store'
 import { rpc } from '../lib/rpc'
 import type { AutoPin, AutoUnpin, ConnectionMode } from './session'
+import { uiStore } from './ui'
 
 // ── Session config ────────────────────────────────────────
 
@@ -142,8 +143,8 @@ async function saveFormatProfile(profile: FormatProfile) {
 	for (const [key, value] of Object.entries(entries)) {
 		try {
 			await rpc.settings.set({ key, value })
-		} catch {
-			console.debug('Failed to save setting', key)
+		} catch (err) {
+			uiStore.addToast('error', `Failed to save setting "${key}": ${err instanceof Error ? err.message : String(err)}`)
 		}
 	}
 }
@@ -154,8 +155,8 @@ async function saveAiConfig(config: AiConfig) {
 	for (const [key, value] of Object.entries(entries)) {
 		try {
 			await rpc.settings.set({ key, value })
-		} catch {
-			console.debug('Failed to save setting', key)
+		} catch (err) {
+			uiStore.addToast('error', `Failed to save setting "${key}": ${err instanceof Error ? err.message : String(err)}`)
 		}
 	}
 }
@@ -166,8 +167,8 @@ async function saveSessionConfig(config: SessionConfig) {
 	for (const [key, value] of Object.entries(entries)) {
 		try {
 			await rpc.settings.set({ key, value })
-		} catch {
-			console.debug('Failed to save setting', key)
+		} catch (err) {
+			uiStore.addToast('error', `Failed to save setting "${key}": ${err instanceof Error ? err.message : String(err)}`)
 		}
 	}
 }
@@ -178,8 +179,8 @@ async function saveConsoleConfig(config: ConsoleConfig) {
 	for (const [key, value] of Object.entries(entries)) {
 		try {
 			await rpc.settings.set({ key, value })
-		} catch {
-			console.debug('Failed to save setting', key)
+		} catch (err) {
+			uiStore.addToast('error', `Failed to save setting "${key}": ${err instanceof Error ? err.message : String(err)}`)
 		}
 	}
 }
@@ -190,8 +191,8 @@ async function saveGridConfig(config: GridConfig) {
 	for (const [key, value] of Object.entries(entries)) {
 		try {
 			await rpc.settings.set({ key, value })
-		} catch {
-			console.debug('Failed to save setting', key)
+		} catch (err) {
+			uiStore.addToast('error', `Failed to save setting "${key}": ${err instanceof Error ? err.message : String(err)}`)
 		}
 	}
 }
@@ -203,8 +204,8 @@ async function saveAppearanceConfig(config: AppearanceConfig) {
 	for (const [key, value] of Object.entries(entries)) {
 		try {
 			await rpc.settings.set({ key, value })
-		} catch {
-			console.debug('Failed to save setting', key)
+		} catch (err) {
+			uiStore.addToast('error', `Failed to save setting "${key}": ${err instanceof Error ? err.message : String(err)}`)
 		}
 	}
 }

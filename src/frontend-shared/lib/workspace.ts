@@ -1,4 +1,5 @@
 import type { WorkspaceState } from '@dotaz/shared/types/workspace'
+import { uiStore } from '../stores/ui'
 import { storage } from './storage'
 
 const SAVE_DEBOUNCE_MS = 1000
@@ -28,7 +29,7 @@ export function scheduleWorkspaceSave(): void {
 		const state = stateCollector()
 		capEditorContent(state)
 		storage.saveWorkspace(state).catch((e) => {
-			console.debug('Failed to save workspace:', e)
+			uiStore.addToast('error', `Failed to save workspace: ${e instanceof Error ? e.message : String(e)}`)
 		})
 	}, SAVE_DEBOUNCE_MS)
 }
@@ -38,7 +39,7 @@ export async function loadWorkspace(): Promise<WorkspaceState | null> {
 	try {
 		return await storage.loadWorkspace()
 	} catch (e) {
-		console.debug('Failed to load workspace:', e)
+		uiStore.addToast('error', `Failed to load workspace: ${e instanceof Error ? e.message : String(e)}`)
 		return null
 	}
 }

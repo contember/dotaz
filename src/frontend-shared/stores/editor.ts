@@ -497,7 +497,7 @@ async function formatSql(tabId: string) {
 		const result = await rpc.query.format({ sql: tab.content })
 		setState('tabs', tabId, 'content', result.sql)
 	} catch (err) {
-		console.debug('SQL format failed:', err instanceof Error ? err.message : err)
+		uiStore.addToast('error', `SQL format failed: ${err instanceof Error ? err.message : String(err)}`)
 	}
 }
 
@@ -525,7 +525,7 @@ async function setTxMode(tabId: string, mode: TxMode) {
 				try {
 					await rpc.tx.rollback({ connectionId: tab.connectionId, database: tab.database, sessionId })
 				} catch (err) {
-					console.debug('Failed to rollback on mode switch:', err)
+					uiStore.addToast('error', `Failed to rollback on mode switch: ${err instanceof Error ? err.message : String(err)}`)
 				}
 				setState('tabs', tabId, { inTransaction: false, txAborted: false })
 			}

@@ -120,7 +120,7 @@ async function loadAvailableDatabases(connectionId: string) {
 		const databases = await rpc.databases.list({ connectionId })
 		setState('availableDatabases', connectionId, databases)
 	} catch (err) {
-		console.debug('Failed to load available databases:', err instanceof Error ? err.message : err)
+		uiStore.addToast('error', `Failed to load databases: ${friendlyErrorMessage(err)}`)
 	}
 }
 

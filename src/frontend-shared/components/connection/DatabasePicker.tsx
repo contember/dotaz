@@ -2,6 +2,7 @@ import type { ConnectionInfo } from '@dotaz/shared/types/connection'
 import type { DatabaseInfo } from '@dotaz/shared/types/database'
 import { createEffect, createSignal, For, Show } from 'solid-js'
 import { connectionsStore } from '../../stores/connections'
+import { uiStore } from '../../stores/ui'
 import Dialog from '../common/Dialog'
 
 interface DatabasePickerProps {
@@ -50,6 +51,7 @@ export default function DatabasePicker(props: DatabasePickerProps) {
 			}
 		} catch (err) {
 			console.error('Failed to toggle database:', err)
+			uiStore.addToast('error', `Toggle failed: ${err instanceof Error ? err.message : String(err)}`)
 		} finally {
 			setLoading((prev) => {
 				const next = new Set(prev)
