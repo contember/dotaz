@@ -18,7 +18,11 @@ export function formatTabContext(tab: TabInfo | null | undefined): string {
 
 /**
  * Build a window title for the given tab:
- * "schema.table — connection · database — Dotaz" (or similar, skipping missing parts).
+ * "schema.table - connection / database - Dotaz" (or similar, skipping missing parts).
+ *
+ * Uses ASCII-only separators because Electrobun's Linux X11 backend sets the
+ * window title via XStoreName, which mangles UTF-8 (em-dash, middle-dot, etc.)
+ * as Latin-1. Once that's fixed upstream we can switch back to " — " / " · ".
  */
 export function formatWindowTitle(tab: TabInfo | null | undefined): string {
 	if (!tab) return 'Dotaz'
@@ -26,8 +30,8 @@ export function formatWindowTitle(tab: TabInfo | null | undefined): string {
 	const context: string[] = []
 	if (conn) context.push(conn.name)
 	if (tab.database) context.push(tab.database)
-	const contextStr = context.join(' · ')
+	const contextStr = context.join(' / ')
 	const label = tab.viewName ? `${tab.title} (${tab.viewName})` : tab.title
-	if (contextStr) return `${label} — ${contextStr} — Dotaz`
-	return `${label} — Dotaz`
+	if (contextStr) return `${label} - ${contextStr} - Dotaz`
+	return `${label} - Dotaz`
 }
