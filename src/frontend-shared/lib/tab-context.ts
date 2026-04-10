@@ -31,7 +31,10 @@ export function formatWindowTitle(tab: TabInfo | null | undefined): string {
 	if (conn) context.push(conn.name)
 	if (tab.database) context.push(tab.database)
 	const contextStr = context.join(' / ')
-	const label = tab.viewName ? `${tab.title} (${tab.viewName})` : tab.title
+	// Replace non-ASCII separators (em-dash, middle-dot, etc.) that appear in tab
+	// titles — XStoreName on Linux mangles them as Latin-1.
+	const rawLabel = tab.viewName ? `${tab.title} (${tab.viewName})` : tab.title
+	const label = rawLabel.replace(/\s*[—–]\s*/g, ' - ').replace(/\s*·\s*/g, ' / ')
 	if (contextStr) return `${label} - ${contextStr} - Dotaz`
 	return `${label} - Dotaz`
 }
