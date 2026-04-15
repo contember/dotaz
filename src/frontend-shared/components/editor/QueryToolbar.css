@@ -140,6 +140,10 @@
 
 /* Schema (search_path) select */
 .query-toolbar__schema-select {
+	max-width: 140px;
+}
+
+.query-toolbar__schema-select .custom-select__trigger {
 	height: 24px;
 	padding: 0 var(--spacing-sm);
 	border: 1px solid var(--edge);
@@ -147,19 +151,17 @@
 	background: transparent;
 	color: var(--ink-secondary);
 	font-size: var(--font-size-xs);
-	font-family: var(--font-ui);
-	cursor: pointer;
-	max-width: 140px;
 }
 
-.query-toolbar__schema-select:hover {
+.query-toolbar__schema-select .custom-select__trigger:hover:not(:disabled) {
 	background: var(--surface-hover);
 	color: var(--ink);
 }
 
-.query-toolbar__schema-select:focus {
+.query-toolbar__schema-select .custom-select__trigger:focus {
 	outline: 1px solid var(--accent);
 	outline-offset: -1px;
+	border-color: var(--edge);
 }
 
 /* Connection info */
