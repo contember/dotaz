@@ -291,15 +291,30 @@ export class PostgresDriver implements DatabaseDriver {
 		const session = this.resolveSession(sessionId)
 		const conn = session ? session.conn : this.pool!.getSystemConnection()
 
-		const schemas = await this.getSchemas(conn)
+		const debugSql = !!process.env.DEBUG_SQL
+		const timed = async <T>(label: string, fn: () => Promise<T>): Promise<T> => {
+			if (!debugSql) return fn()
+			const start = performance.now()
+			console.debug(`[SQL] loadSchema: ${label} — started`)
+			try {
+				const result = await fn()
+				console.debug(`[SQL] loadSchema: ${label} — completed (${Math.round(performance.now() - start)}ms)`)
+				return result
+			} catch (err) {
+				console.debug(`[SQL ERROR] loadSchema: ${label} — failed (${Math.round(performance.now() - start)}ms)`, err)
+				throw err
+			}
+		}
+
+		const schemas = await timed('getSchemas', () => this.getSchemas(conn))
 		const schemaNames = schemas.map((s) => s.name)
 		// Format as PG array literal for use with ANY($1)
 		const pgArray = `{${schemaNames.join(',')}}`
 
 		const tables: SchemaData['tables'] = {}
 		for (const schema of schemas) {
-			const regularTables = await this.getTables(conn, schema.name)
-			const matviews = await this.getMaterializedViews(conn, schema.name)
+			const regularTables = await timed(`getTables(${schema.name})`, () => this.getTables(conn, schema.name))
+			const matviews = await timed(`getMaterializedViews(${schema.name})`, () => this.getMaterializedViews(conn, schema.name))
 			tables[schema.name] = [...regularTables, ...matviews]
 		}
 
@@ -314,7 +329,7 @@ export class PostgresDriver implements DatabaseDriver {
 
 		const [allColumns, allIndexes, allForeignKeys, allReferencingForeignKeys] = await Promise.all([
 			// All columns across all schemas
-			conn.unsafe(
+			timed('columns', () => conn.unsafe(
 				`SELECT
 					c.table_schema,
 					c.table_name,
@@ -343,9 +358,9 @@ export class PostgresDriver implements DatabaseDriver {
 				WHERE c.table_schema = ANY($1)
 				ORDER BY c.table_schema, c.table_name, c.ordinal_position`,
 				[pgArray],
-			),
+			)),
 			// All indexes across all schemas
-			conn.unsafe(
+			timed('indexes', () => conn.unsafe(
 				`SELECT
 					n.nspname AS table_schema,
 					t.relname AS table_name,
@@ -364,9 +379,9 @@ export class PostgresDriver implements DatabaseDriver {
 				GROUP BY n.nspname, t.relname, i.relname, ix.indisunique, ix.indisprimary
 				ORDER BY n.nspname, t.relname, i.relname`,
 				[pgArray],
-			),
+			)),
 			// All foreign keys across all schemas
-			conn.unsafe(
+			timed('foreignKeys', () => conn.unsafe(
 				`SELECT
 					nsp_src.nspname AS table_schema,
 					cl_src.relname AS table_name,
@@ -405,9 +420,9 @@ export class PostgresDriver implements DatabaseDriver {
 					nsp_ref.nspname, cl_ref.relname, con.confupdtype, con.confdeltype
 				ORDER BY nsp_src.nspname, cl_src.relname, con.conname`,
 				[pgArray],
-			),
+			)),
 			// All referencing foreign keys across all schemas
-			conn.unsafe(
+			timed('referencingForeignKeys', () => conn.unsafe(
 				`SELECT
 					nsp_ref.nspname AS referenced_schema,
 					cl_ref.relname AS referenced_table,
@@ -432,12 +447,12 @@ export class PostgresDriver implements DatabaseDriver {
 					nsp_src.nspname, cl_src.relname
 				ORDER BY nsp_ref.nspname, cl_ref.relname, con.conname`,
 				[pgArray],
-			),
+			)),
 		])
 
 		// Fetch materialized view columns from pg_attribute (not in information_schema)
 		for (const [schemaName, mvNames] of matviewNames) {
-			const mvRows = await conn.unsafe(
+			const mvRows = await timed(`matviewColumns(${schemaName})`, () => conn.unsafe(
 				`SELECT
 					n.nspname AS schema_name,
 					c.relname AS table_name,
@@ -458,7 +473,7 @@ export class PostgresDriver implements DatabaseDriver {
 					AND NOT a.attisdropped
 				ORDER BY n.nspname, c.relname, a.attnum`,
 				[schemaName, `{${mvNames.join(',')}}`],
-			)
+			))
 			for (const row of mvRows as PgMatviewColumnRow[]) {
 				;(allColumns as PgColumnRow[]).push({
 					table_schema: row.schema_name,
