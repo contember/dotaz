@@ -36,10 +36,18 @@ export interface AppStateStorage {
 	updateView(params: { id: string; name: string; config: SavedViewConfig }): Promise<SavedView>
 	deleteView(id: string): Promise<void>
 
-	// Whether this adapter needs encrypted config to be passed on connect
+	// Whether this adapter needs config + encrypted secrets to be passed on connect.
+	// True for IndexedDB (web mode) — backend has no persistent storage of its own.
+	// False for RPC storage (desktop) — backend already owns the connection record.
 	readonly passConfigOnConnect: boolean
-	getEncryptedConfig(id: string): Promise<string | undefined>
+	getEncryptedSecrets(id: string): Promise<string | undefined>
 	getRememberPassword(id: string): Promise<boolean>
+	/**
+	 * Persist a change to `config.activeDatabases` for a connection.
+	 * Web/IndexedDB stores this in the plain `config` field — no re-encryption needed.
+	 * Desktop is a no-op: the backend already persisted via the `databases.activate` RPC.
+	 */
+	updateConnectionActiveDatabases(id: string, activeDatabases: string[] | undefined): Promise<void>
 
 	// Workspace persistence
 	saveWorkspace(state: WorkspaceState): Promise<void>

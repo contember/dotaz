@@ -67,12 +67,16 @@ export class RpcAppStateStorage implements AppStateStorage {
 		await rpc.views.delete({ id })
 	}
 
-	async getEncryptedConfig(_id: string): Promise<string | undefined> {
+	async getEncryptedSecrets(_id: string): Promise<string | undefined> {
 		return undefined
 	}
 
 	async getRememberPassword(_id: string): Promise<boolean> {
 		return true
+	}
+
+	async updateConnectionActiveDatabases(_id: string, _activeDatabases: string[] | undefined): Promise<void> {
+		// No-op: desktop backend already persisted via `databases.activate` / `.deactivate`.
 	}
 
 	async saveWorkspace(state: WorkspaceState): Promise<void> {

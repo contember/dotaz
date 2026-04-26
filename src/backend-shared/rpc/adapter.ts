@@ -34,7 +34,11 @@ export interface RpcAdapter {
 	deleteConnectionGroup(groupName: string): void
 	deleteConnection(id: string): void | Promise<void>
 	testConnection(config: ConnectionConfig): Promise<{ success: boolean; error?: string }>
-	connect(connectionId: string, password?: string, encryptedConfig?: string, name?: string): Promise<void>
+	connect(
+		connectionId: string,
+		password?: string,
+		params?: { config?: ConnectionConfig; encryptedSecrets?: string; name?: string; encryptedConfig?: string },
+	): Promise<void>
 	disconnect(connectionId: string): Promise<void>
 
 	// ── Sessions ──────────────────────────────────────────
@@ -133,7 +137,8 @@ export interface RpcAdapter {
 	setSetting(key: string, value: string): void
 
 	// ── Storage ──────────────────────────────────────────
-	encrypt?(config: string): Promise<string>
+	encryptSecrets?(secrets: string): Promise<string>
+	decryptConfig?(encryptedConfig: string): Promise<string>
 
 	// ── System (optional — unavailable in demo/web) ──────
 	showOpenDialog?(params: OpenDialogParams): Promise<{ paths: string[]; cancelled: boolean }>

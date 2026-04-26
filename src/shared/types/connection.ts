@@ -82,6 +82,54 @@ export function isServerConfig(config: ConnectionConfig): config is PostgresConn
 	return CONNECTION_TYPE_META[config.type].hasHost
 }
 
+// ── Secrets handling ──
+// Sensitive fields are stored separately (encrypted) from the rest of the config,
+// so non-sensitive metadata (host, activeDatabases, etc.) can be persisted/updated
+// without round-tripping through encryption.
+
+export interface ConnectionSecrets {
+	password?: string
+	sshPassword?: string
+	sshKeyPassphrase?: string
+}
+
+export function extractSecrets(config: ConnectionConfig): ConnectionSecrets {
+	const secrets: ConnectionSecrets = {}
+	if (!isServerConfig(config)) return secrets
+	if (config.password) secrets.password = config.password
+	if (config.type === 'postgresql' && config.sshTunnel) {
+		if (config.sshTunnel.password) secrets.sshPassword = config.sshTunnel.password
+		if (config.sshTunnel.keyPassphrase) secrets.sshKeyPassphrase = config.sshTunnel.keyPassphrase
+	}
+	return secrets
+}
+
+export function stripSecrets(config: ConnectionConfig): ConnectionConfig {
+	if (!isServerConfig(config)) return config
+	const stripped = { ...config, password: '' }
+	if (stripped.type === 'postgresql' && stripped.sshTunnel) {
+		stripped.sshTunnel = {
+			...stripped.sshTunnel,
+			password: stripped.sshTunnel.password !== undefined ? '' : undefined,
+			keyPassphrase: stripped.sshTunnel.keyPassphrase !== undefined ? '' : undefined,
+		}
+	}
+	return stripped
+}
+
+export function mergeSecrets(config: ConnectionConfig, secrets: ConnectionSecrets): ConnectionConfig {
+	if (!isServerConfig(config)) return config
+	const merged = { ...config, password: secrets.password ?? config.password ?? '' }
+	if (merged.type === 'postgresql' && merged.sshTunnel) {
+		merged.sshTunnel = {
+			...merged.sshTunnel,
+			password: secrets.sshPassword ?? merged.sshTunnel.password,
+			keyPassphrase: secrets.sshKeyPassphrase ?? merged.sshTunnel.keyPassphrase,
+		}
+	}
+	return merged
+}
+
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'error'
 
 export interface ConnectionInfo {

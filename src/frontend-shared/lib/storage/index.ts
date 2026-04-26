@@ -48,11 +48,14 @@ export const storage: AppStateStorage = {
 	deleteView(id) {
 		return getStorage().deleteView(id)
 	},
-	getEncryptedConfig(id) {
-		return getStorage().getEncryptedConfig(id)
+	getEncryptedSecrets(id) {
+		return getStorage().getEncryptedSecrets(id)
 	},
 	getRememberPassword(id) {
 		return getStorage().getRememberPassword(id)
+	},
+	updateConnectionActiveDatabases(id, activeDatabases) {
+		return getStorage().updateConnectionActiveDatabases(id, activeDatabases)
 	},
 	saveWorkspace(state) {
 		return getStorage().saveWorkspace(state)

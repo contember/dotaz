@@ -98,7 +98,7 @@ export class DemoAdapter implements RpcAdapter {
 		return { success: false, error: 'Only SQLite connections are supported in demo mode' }
 	}
 
-	async connect(connectionId: string, _password?: string, _encryptedConfig?: string, _name?: string): Promise<void> {
+	async connect(connectionId: string, _password?: string, _params?: unknown): Promise<void> {
 		const conn = this.state.getConnectionById(connectionId)
 		if (!conn) throw new Error(`Connection not found: ${connectionId}`)
 

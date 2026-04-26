@@ -1,6 +1,6 @@
 import type { SqlDialect } from '@dotaz/shared/sql'
 import { MysqlDialect, PostgresDialect, SqliteDialect } from '@dotaz/shared/sql'
-import type { ConnectionConfig, ConnectionInfo, ConnectionState } from '@dotaz/shared/types/connection'
+import type { ConnectionConfig, ConnectionInfo, ConnectionState, PostgresConnectionConfig } from '@dotaz/shared/types/connection'
 import { CONNECTION_TYPE_META, getDefaultDatabase } from '@dotaz/shared/types/connection'
 import type { ConnectionType } from '@dotaz/shared/types/connection'
 import type {
@@ -131,10 +131,12 @@ async function activateDatabase(connectionId: string, database: string) {
 	const idx = state.connections.findIndex((c) => c.id === connectionId)
 	if (idx >= 0) {
 		const config = state.connections[idx].config
-		if ('activeDatabases' in config) {
-			const current = config.activeDatabases ?? []
+		if (CONNECTION_TYPE_META[config.type].supportsMultiDatabase) {
+			const current = (config as PostgresConnectionConfig).activeDatabases ?? []
 			if (!current.includes(database)) {
-				setState('connections', idx, 'config', { ...config, activeDatabases: [...current, database] })
+				const next = [...current, database]
+				setState('connections', idx, 'config', { ...config, activeDatabases: next } as PostgresConnectionConfig)
+				await storage.updateConnectionActiveDatabases(connectionId, next)
 			}
 		}
 	}
@@ -150,9 +152,11 @@ async function deactivateDatabase(connectionId: string, database: string) {
 	const idx = state.connections.findIndex((c) => c.id === connectionId)
 	if (idx >= 0) {
 		const config = state.connections[idx].config
-		if ('activeDatabases' in config) {
-			const filtered = (config.activeDatabases ?? []).filter((db: string) => db !== database)
-			setState('connections', idx, 'config', { ...config, activeDatabases: filtered.length > 0 ? filtered : undefined })
+		if (CONNECTION_TYPE_META[config.type].supportsMultiDatabase) {
+			const filtered = ((config as PostgresConnectionConfig).activeDatabases ?? []).filter((db: string) => db !== database)
+			const next = filtered.length > 0 ? filtered : undefined
+			setState('connections', idx, 'config', { ...config, activeDatabases: next } as PostgresConnectionConfig)
+			await storage.updateConnectionActiveDatabases(connectionId, next)
 		}
 	}
 
@@ -335,8 +339,14 @@ async function connectTo(id: string, password?: string) {
 	updateConnectionState(id, 'connecting')
 	try {
 		if (storage.passConfigOnConnect) {
-			const encryptedConfig = await storage.getEncryptedConfig(id)
-			await rpc.connections.connect({ connectionId: id, password, encryptedConfig, name: conn?.name })
+			const encryptedSecrets = await storage.getEncryptedSecrets(id)
+			await rpc.connections.connect({
+				connectionId: id,
+				password,
+				config: conn?.config,
+				encryptedSecrets,
+				name: conn?.name,
+			})
 		} else {
 			await rpc.connections.connect({ connectionId: id, password })
 		}

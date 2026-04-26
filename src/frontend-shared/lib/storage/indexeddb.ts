@@ -1,5 +1,5 @@
-import type { ConnectionConfig, ConnectionInfo } from '@dotaz/shared/types/connection'
-import { isServerConfig } from '@dotaz/shared/types/connection'
+import type { ConnectionConfig, ConnectionInfo, ConnectionSecrets } from '@dotaz/shared/types/connection'
+import { CONNECTION_TYPE_META, extractSecrets, isServerConfig, stripSecrets } from '@dotaz/shared/types/connection'
 import type { QueryHistoryEntry } from '@dotaz/shared/types/query'
 import type { HistoryListParams, SavedView, SavedViewConfig } from '@dotaz/shared/types/rpc'
 import type { WorkspaceState } from '@dotaz/shared/types/workspace'
@@ -21,14 +21,16 @@ const STORES = {
 interface StoredConnectionRecord {
 	id: string
 	name: string
-	config: ConnectionConfig // display config — password stripped
-	encryptedConfig: string // full config encrypted by server
+	config: ConnectionConfig // plain config — secrets stripped
+	encryptedSecrets: string // ConnectionSecrets JSON encrypted by server
 	rememberPassword: boolean
 	readOnly?: boolean
 	color?: string
 	groupName?: string
 	createdAt: string
 	updatedAt: string
+	/** @deprecated legacy full-config blob — migrated to `config` + `encryptedSecrets` on read */
+	encryptedConfig?: string
 }
 
 let dbPromise: Promise<IDBDatabase> | null = null
@@ -77,11 +79,30 @@ function txOp<T>(storeName: string, mode: IDBTransactionMode, op: (store: IDBObj
 	})
 }
 
-function stripPassword(config: ConnectionConfig): ConnectionConfig {
-	if (isServerConfig(config)) {
-		return { ...config, password: '' }
+async function encryptSecrets(secrets: ConnectionSecrets): Promise<string> {
+	const { encryptedSecrets } = await rpc.storage.encryptSecrets({ secrets: JSON.stringify(secrets) })
+	return encryptedSecrets
+}
+
+/**
+ * Migrate a legacy record (encryptedConfig blob with full config) into the new
+ * shape (plain config + encryptedSecrets). Decrypts via RPC, splits, re-encrypts
+ * just the secrets, and writes the new shape back.
+ */
+async function migrateLegacyRecord(record: StoredConnectionRecord): Promise<StoredConnectionRecord> {
+	if (!record.encryptedConfig) return record
+	const { config: configJson } = await rpc.storage.decryptConfig({ encryptedConfig: record.encryptedConfig })
+	const fullConfig = JSON.parse(configJson) as ConnectionConfig
+	const remember = record.rememberPassword
+	const secrets = remember ? extractSecrets(fullConfig) : {}
+	const migrated: StoredConnectionRecord = {
+		...record,
+		config: stripSecrets(fullConfig),
+		encryptedSecrets: await encryptSecrets(secrets),
+		encryptedConfig: undefined,
 	}
-	return config
+	await txOp(STORES.connections, 'readwrite', (s) => s.put(migrated))
+	return migrated
 }
 
 // ── IndexedDbAppStateStorage ─────────────────────────────
@@ -92,7 +113,14 @@ export class IndexedDbAppStateStorage implements AppStateStorage {
 	// ── Connections ──────────────────────────────────────
 
 	async listConnections(): Promise<ConnectionInfo[]> {
-		const records = await txOp<StoredConnectionRecord[]>(STORES.connections, 'readonly', (s) => s.getAll())
+		let records = await txOp<StoredConnectionRecord[]>(STORES.connections, 'readonly', (s) => s.getAll())
+		// Migrate legacy records (full-config blob) into split shape lazily.
+		const legacy = records.filter((r) => r.encryptedConfig && !r.encryptedSecrets)
+		if (legacy.length > 0) {
+			const migrated = await Promise.all(legacy.map(migrateLegacyRecord))
+			const byId = new Map(migrated.map((r) => [r.id, r]))
+			records = records.map((r) => byId.get(r.id) ?? r)
+		}
 		return records.map((r) => ({
 			id: r.id,
 			name: r.name,
@@ -117,16 +145,13 @@ export class IndexedDbAppStateStorage implements AppStateStorage {
 		const id = crypto.randomUUID()
 		const now = new Date().toISOString()
 
-		const configToEncrypt = !rememberPassword && isServerConfig(config)
-			? { ...config, password: '' }
-			: config
-		const { encryptedConfig } = await rpc.storage.encrypt({ config: JSON.stringify(configToEncrypt) })
+		const secrets = rememberPassword && isServerConfig(config) ? extractSecrets(config) : {}
 
 		const record: StoredConnectionRecord = {
 			id,
 			name,
-			config: stripPassword(config),
-			encryptedConfig,
+			config: stripSecrets(config),
+			encryptedSecrets: await encryptSecrets(secrets),
 			rememberPassword,
 			readOnly: readOnly || undefined,
 			color: color || undefined,
@@ -165,10 +190,7 @@ export class IndexedDbAppStateStorage implements AppStateStorage {
 		const remember = rememberPassword ?? existing.rememberPassword
 		const now = new Date().toISOString()
 
-		const configToEncrypt = !remember && isServerConfig(config)
-			? { ...config, password: '' }
-			: config
-		const { encryptedConfig } = await rpc.storage.encrypt({ config: JSON.stringify(configToEncrypt) })
+		const secrets = remember && isServerConfig(config) ? extractSecrets(config) : {}
 
 		const resolvedReadOnly = readOnly ?? existing.readOnly
 		const resolvedColor = color !== undefined ? (color || undefined) : existing.color
@@ -176,14 +198,15 @@ export class IndexedDbAppStateStorage implements AppStateStorage {
 		const record: StoredConnectionRecord = {
 			id,
 			name,
-			config: stripPassword(config),
-			encryptedConfig,
+			config: stripSecrets(config),
+			encryptedSecrets: await encryptSecrets(secrets),
 			rememberPassword: remember,
 			readOnly: resolvedReadOnly || undefined,
 			color: resolvedColor,
 			groupName: resolvedGroupName,
 			createdAt: existing.createdAt,
 			updatedAt: now,
+			encryptedConfig: undefined,
 		}
 
 		await txOp(STORES.connections, 'readwrite', (s) => s.put(record))
@@ -337,14 +360,31 @@ export class IndexedDbAppStateStorage implements AppStateStorage {
 
 	// ── Config access ────────────────────────────────────
 
-	async getEncryptedConfig(id: string): Promise<string | undefined> {
-		const record = await txOp<StoredConnectionRecord | undefined>(STORES.connections, 'readonly', (s) => s.get(id))
-		return record?.encryptedConfig
+	async getEncryptedSecrets(id: string): Promise<string | undefined> {
+		let record = await txOp<StoredConnectionRecord | undefined>(STORES.connections, 'readonly', (s) => s.get(id))
+		if (record && record.encryptedConfig && !record.encryptedSecrets) {
+			record = await migrateLegacyRecord(record)
+		}
+		return record?.encryptedSecrets
 	}
 
 	async getRememberPassword(id: string): Promise<boolean> {
 		const record = await txOp<StoredConnectionRecord | undefined>(STORES.connections, 'readonly', (s) => s.get(id))
 		return record?.rememberPassword ?? true
+	}
+
+	async updateConnectionActiveDatabases(id: string, activeDatabases: string[] | undefined): Promise<void> {
+		const existing = await txOp<StoredConnectionRecord | undefined>(STORES.connections, 'readonly', (s) => s.get(id))
+		if (!existing) throw new Error(`Connection not found: ${id}`)
+		if (!CONNECTION_TYPE_META[existing.config.type].supportsMultiDatabase) return
+
+		const updatedConfig = { ...existing.config, activeDatabases: activeDatabases && activeDatabases.length > 0 ? activeDatabases : undefined }
+		const updated: StoredConnectionRecord = {
+			...existing,
+			config: updatedConfig as ConnectionConfig,
+			updatedAt: new Date().toISOString(),
+		}
+		await txOp(STORES.connections, 'readwrite', (s) => s.put(updated))
 	}
 
 	// ── Workspace ────────────────────────────────────────

@@ -1,4 +1,5 @@
-import type { ConnectionConfig, ConnectionInfo } from '@dotaz/shared/types/connection'
+import type { ConnectionConfig, ConnectionInfo, ConnectionSecrets } from '@dotaz/shared/types/connection'
+import { mergeSecrets } from '@dotaz/shared/types/connection'
 import type { DatabaseInfo } from '@dotaz/shared/types/database'
 import type { ExportOptions, ExportPreviewRequest, ExportRawPreviewRequest, ExportRawPreviewResponse, ExportResult } from '@dotaz/shared/types/export'
 import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from '@dotaz/shared/types/import'
@@ -112,16 +113,31 @@ export class BackendAdapter implements RpcAdapter {
 		return this.cm.testConnection(config)
 	}
 
-	async connect(connectionId: string, password?: string, encryptedConfig?: string, name?: string): Promise<void> {
-		if (encryptedConfig && this.encryption) {
-			// Web mode: decrypt config, register in session's in-memory app-db
-			const configJson = await this.encryption.decrypt(encryptedConfig)
-			const config = JSON.parse(configJson) as ConnectionConfig
-			const existing = this.appDb.getConnectionById(connectionId)
-			if (!existing) {
-				this.appDb.createConnectionWithId(connectionId, { name: name ?? connectionId, config })
-			} else {
-				this.appDb.updateConnection({ id: connectionId, name: name ?? existing.name, config })
+	async connect(
+		connectionId: string,
+		password?: string,
+		params?: { config?: ConnectionConfig; encryptedSecrets?: string; name?: string; encryptedConfig?: string },
+	): Promise<void> {
+		if (this.encryption) {
+			// Web mode: register the connection in this session's in-memory app-db.
+			let fullConfig: ConnectionConfig | undefined
+			if (params?.config) {
+				const secrets: ConnectionSecrets = params.encryptedSecrets
+					? JSON.parse(await this.encryption.decrypt(params.encryptedSecrets)) as ConnectionSecrets
+					: {}
+				fullConfig = mergeSecrets(params.config, secrets)
+			} else if (params?.encryptedConfig) {
+				// Legacy: full config blob (pre-split). Used until IndexedDB migration completes.
+				fullConfig = JSON.parse(await this.encryption.decrypt(params.encryptedConfig)) as ConnectionConfig
+			}
+			if (fullConfig) {
+				const existing = this.appDb.getConnectionById(connectionId)
+				const resolvedName = params?.name ?? existing?.name ?? connectionId
+				if (!existing) {
+					this.appDb.createConnectionWithId(connectionId, { name: resolvedName, config: fullConfig })
+				} else {
+					this.appDb.updateConnection({ id: connectionId, name: resolvedName, config: fullConfig })
+				}
 			}
 		}
 		await this.cm.connect(connectionId, password ? { password } : undefined)
@@ -605,9 +621,14 @@ export class BackendAdapter implements RpcAdapter {
 
 	// ── Storage ──────────────────────────────────────────
 
-	async encrypt(config: string): Promise<string> {
+	async encryptSecrets(secrets: string): Promise<string> {
 		if (!this.encryption) throw new Error('Encryption not available')
-		return this.encryption.encrypt(config)
+		return this.encryption.encrypt(secrets)
+	}
+
+	async decryptConfig(encryptedConfig: string): Promise<string> {
+		if (!this.encryption) throw new Error('Encryption not available')
+		return this.encryption.decrypt(encryptedConfig)
 	}
 
 	// ── System ────────────────────────────────────────────

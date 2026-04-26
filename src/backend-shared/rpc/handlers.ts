@@ -56,9 +56,16 @@ export function createHandlers(adapter: RpcAdapter) {
 			return adapter.testConnection(config)
 		},
 		'connections.connect': async (
-			{ connectionId, password, encryptedConfig, name }: { connectionId: string; password?: string; encryptedConfig?: string; name?: string },
+			{ connectionId, password, config, encryptedSecrets, name, encryptedConfig }: {
+				connectionId: string
+				password?: string
+				config?: ConnectionConfig
+				encryptedSecrets?: string
+				name?: string
+				encryptedConfig?: string
+			},
 		) => {
-			await adapter.connect(connectionId, password, encryptedConfig, name)
+			await adapter.connect(connectionId, password, { config, encryptedSecrets, name, encryptedConfig })
 		},
 		'connections.disconnect': async ({ connectionId }: { connectionId: string }) => {
 			await adapter.disconnect(connectionId)
@@ -292,12 +299,21 @@ export function createHandlers(adapter: RpcAdapter) {
 		},
 
 		// ── Storage ──────────────────────────────────────
-		'storage.encrypt': async ({ config }: { config: string }) => {
-			if (!adapter.encrypt) {
+		'storage.encryptSecrets': async ({ secrets }: { secrets: string }) => {
+			if (!adapter.encryptSecrets) {
 				throw new Error('Encryption not available')
 			}
-			const encryptedConfig = await adapter.encrypt(config)
-			return { encryptedConfig }
+			const encryptedSecrets = await adapter.encryptSecrets(secrets)
+			return { encryptedSecrets }
+		},
+		// Legacy: used only by the IndexedDB migration path that splits the old
+		// full-config blob into plain config + encryptedSecrets.
+		'storage.decryptConfig': async ({ encryptedConfig }: { encryptedConfig: string }) => {
+			if (!adapter.decryptConfig) {
+				throw new Error('Encryption not available')
+			}
+			const config = await adapter.decryptConfig(encryptedConfig)
+			return { config }
 		},
 
 		// ── AI SQL generation ─────────────────────────────
