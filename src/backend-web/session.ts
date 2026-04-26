@@ -172,6 +172,7 @@ export async function destroySession(session: Session): Promise<void> {
 		session.ttlTimer = null
 	}
 	session.unsubscribe()
+	session.sessionManager.dispose()
 	for (const queryId of session.queryExecutor.getRunningQueryIds()) {
 		await session.queryExecutor.cancelQuery(queryId)
 	}
