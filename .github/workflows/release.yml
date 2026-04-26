@@ -120,19 +120,15 @@ jobs:
         run: |
           $buildDir = "build/${{ needs.prepare.outputs.electrobun-env }}-${{ matrix.platform }}"
           $appDir = Get-ChildItem -Path $buildDir -Directory -Filter "Dotaz*" | Select-Object -First 1
-          $iconPng = Resolve-Path "assets\icon.png"
+          $iconIco = Resolve-Path "assets\icon.ico"
 
-          # Install rcedit and png-to-ico in isolated temp dir (avoids workspace:* conflict)
+          # Install rcedit in isolated temp dir (avoids workspace:* conflict)
           $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "icon-tools"
           New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
           Push-Location $tempDir
           npm init -y | Out-Null
-          npm install rcedit png-to-ico --silent
+          npm install rcedit --silent
           Pop-Location
-
-          # Convert PNG to ICO
-          $iconIco = Join-Path $buildDir "app-icon.ico"
-          node -e "const m=require('$($tempDir -replace '\\','/')/node_modules/png-to-ico');const p=m.default||m;const fs=require('fs');p('$($iconPng -replace '\\','/')').then(b=>fs.writeFileSync('$($iconIco -replace '\\','/')',b))"
 
           # Embed icon into executables and copy .ico for shortcuts
           $rcedit = Join-Path $tempDir "node_modules\rcedit\bin\rcedit-x64.exe"
@@ -146,6 +142,14 @@ jobs:
         run: |
           BUILD_DIR="build/${{ needs.prepare.outputs.electrobun-env }}-${{ matrix.platform }}"
           tar -czf ${{ matrix.artifact }}.tar.gz -C "$BUILD_DIR" .
+
+      - name: Build Windows installer (Inno Setup)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $buildDir = "build/${{ needs.prepare.outputs.electrobun-env }}-${{ matrix.platform }}"
+          $appDir = (Get-ChildItem -Path $buildDir -Directory -Filter "Dotaz*" | Select-Object -First 1).FullName
+          iscc /DAppVersion=${{ needs.prepare.outputs.version }} /DAppDir="$appDir" /DOutputDir="$PWD" installer\dotaz.iss
 
       - name: Package artifact (Windows)
         if: runner.os == 'Windows'
@@ -161,6 +165,7 @@ jobs:
           path: |
             ${{ matrix.artifact }}.tar.gz
             ${{ matrix.artifact }}.zip
+            dotaz-win-x64-setup.exe
           if-no-files-found: error
 
       - name: Upload update artifacts
