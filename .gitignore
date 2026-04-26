@@ -5,6 +5,8 @@ dist-electron/
 build/
 artifacts/
 .data/
+.env
+.env.local
 
 # Seed demo databases
 scripts/seed/*.db
