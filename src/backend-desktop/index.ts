@@ -86,6 +86,7 @@ const url = await getMainViewUrl()
 
 const isMac = process.platform === 'darwin'
 const isLinux = process.platform === 'linux'
+const isWindows = process.platform === 'win32'
 
 // Set up native application menu (macOS only).
 // The Edit menu with roles is required for clipboard shortcuts (Cmd+C/V/X/A)
@@ -186,7 +187,7 @@ if (isMac) {
 
 const mainWindow = new BrowserWindow({
 	title: 'Dotaz',
-	titleBarStyle: isMac ? 'hiddenInset' : isLinux ? 'default' : 'hidden',
+	titleBarStyle: isMac ? 'hiddenInset' : 'default',
 	transparent: false,
 	url,
 	rpc,
@@ -199,7 +200,13 @@ const mainWindow = new BrowserWindow({
 })
 
 // Maximize on startup so the window appears on the primary monitor at full size
-mainWindow.maximize()
+// On Windows, the webview doesn't resize correctly on initial maximize,
+// so we delay it briefly to let the window finish initializing.
+if (isWindows) {
+	setTimeout(() => mainWindow.maximize(), 500)
+} else {
+	mainWindow.maximize()
+}
 
 // Wire up BE→FE message emitter after window creation
 emitToFrontend = (channel: string, payload: unknown) => {
