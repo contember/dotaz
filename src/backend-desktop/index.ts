@@ -85,7 +85,6 @@ const rpc = BrowserView.defineRPC<DotazRPC>({
 const url = await getMainViewUrl()
 
 const isMac = process.platform === 'darwin'
-const isLinux = process.platform === 'linux'
 const isWindows = process.platform === 'win32'
 
 // Set up native application menu (macOS only).
