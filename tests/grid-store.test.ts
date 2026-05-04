@@ -1,4 +1,9 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
+// Import the real implementation so the rpc mock can re-expose it. Stubbing it
+// out here pollutes other suites in the same bun process (notably
+// rpc-errors.test.ts) on Linux — the mock leaks across files even though they
+// import from a different module path.
+import { friendlyErrorMessage } from '../src/frontend-shared/lib/rpc-errors'
 
 // ── Mock solid-js/store ──────────────────────────────────
 
@@ -93,7 +98,7 @@ mock.module('../src/frontend-shared/lib/rpc', () => {
 			onConnectionStatusChanged: () => () => {},
 			onMenuAction: () => () => {},
 		},
-		friendlyErrorMessage: (err: unknown) => String(err),
+		friendlyErrorMessage,
 	}
 })
 
