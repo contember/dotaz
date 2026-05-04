@@ -20,6 +20,11 @@ interface ServerConnectionFormProps {
 	rememberPassword: boolean
 	onFieldChange: (field: string, value: string | boolean) => void
 	onRememberPasswordChange: (value: boolean) => void
+	availableDatabases: string[] | null
+	loadingDatabases: boolean
+	fetchDatabasesError: string | null
+	onFetchDatabases: () => void
+	onClearAvailableDatabases: () => void
 }
 
 export default function ServerConnectionForm(props: ServerConnectionFormProps) {
@@ -57,16 +62,56 @@ export default function ServerConnectionForm(props: ServerConnectionFormProps) {
 
 			<div class="conn-dialog__field">
 				<label class="conn-dialog__label">Database</label>
-				<input
-					class="conn-dialog__input"
-					classList={{ 'conn-dialog__input--error': !!props.errors.database }}
-					type="text"
-					value={props.fields.database}
-					onInput={(e) => props.onFieldChange('database', e.currentTarget.value)}
-					placeholder="mydb"
-				/>
+				<div class="conn-dialog__database-row">
+					<Show
+						when={props.availableDatabases !== null}
+						fallback={
+							<input
+								class="conn-dialog__input conn-dialog__database-input"
+								classList={{ 'conn-dialog__input--error': !!props.errors.database }}
+								type="text"
+								value={props.fields.database}
+								onInput={(e) => props.onFieldChange('database', e.currentTarget.value)}
+								placeholder="mydb"
+							/>
+						}
+					>
+						<Select
+							class="conn-dialog__input conn-dialog__database-input"
+							value={props.fields.database}
+							onChange={(v) => props.onFieldChange('database', v)}
+							options={(props.availableDatabases ?? []).map((d) => ({ value: d, label: d }))}
+							placeholder="Select database…"
+						/>
+					</Show>
+					<Show
+						when={props.availableDatabases !== null}
+						fallback={
+							<button
+								type="button"
+								class="btn btn--secondary conn-dialog__database-action"
+								onClick={props.onFetchDatabases}
+								disabled={props.loadingDatabases}
+							>
+								{props.loadingDatabases ? 'Fetching…' : 'Fetch'}
+							</button>
+						}
+					>
+						<button
+							type="button"
+							class="btn btn--secondary conn-dialog__database-action"
+							onClick={props.onClearAvailableDatabases}
+							title="Type database name manually"
+						>
+							Clear
+						</button>
+					</Show>
+				</div>
 				<Show when={props.errors.database}>
 					<span class="conn-dialog__error">{props.errors.database}</span>
+				</Show>
+				<Show when={props.fetchDatabasesError}>
+					<span class="conn-dialog__error">{props.fetchDatabasesError}</span>
 				</Show>
 			</div>
 

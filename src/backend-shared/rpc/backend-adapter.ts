@@ -182,6 +182,10 @@ export class BackendAdapter implements RpcAdapter {
 		return this.cm.listDatabases(connectionId)
 	}
 
+	async listDatabasesForConfig(config: ConnectionConfig): Promise<string[]> {
+		return this.cm.listDatabasesForConfig(config)
+	}
+
 	async activateDatabase(connectionId: string, database: string): Promise<void> {
 		await this.cm.activateDatabase(connectionId, database)
 	}

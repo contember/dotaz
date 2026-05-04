@@ -102,11 +102,17 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 	const [readOnly, setReadOnly] = createSignal(false)
 	const [connectionColor, setConnectionColor] = createSignal<string | undefined>(undefined)
 	const [rememberPassword, setRememberPassword] = createSignal(true)
+	const [availableDatabases, setAvailableDatabases] = createSignal<string[] | null>(null)
+	const [loadingDatabases, setLoadingDatabases] = createSignal(false)
+	const [fetchDatabasesError, setFetchDatabasesError] = createSignal<string | null>(null)
 
 	// Reset form when dialog opens or connection changes
 	function resetForm() {
 		setForm(reconcile({ testResult: null, testing: false, saving: false, errors: {} as Record<string, string> }))
 		setConn('url', '')
+		setAvailableDatabases(null)
+		setLoadingDatabases(false)
+		setFetchDatabasesError(null)
 
 		const conn = props.connection
 		if (conn) {
@@ -260,6 +266,44 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 		return Object.keys(errs).length === 0
 	}
 
+	async function handleFetchDatabases() {
+		// Only validate the fields we need to connect — skip database, which the user is about to pick.
+		const f = conn.pgFields
+		const errs: Record<string, string> = {}
+		if (!f.host.trim()) errs.host = 'Host is required'
+		if (!f.port.trim() || Number.isNaN(Number(f.port))) errs.port = 'Valid port is required'
+		if (!f.user.trim()) errs.user = 'Username is required'
+		if (Object.keys(errs).length > 0) {
+			setForm('errors', (e) => ({ ...e, ...errs }))
+			return
+		}
+
+		setLoadingDatabases(true)
+		setFetchDatabasesError(null)
+		try {
+			const config = buildConfig()
+			const databases = await rpc.databases.listForConfig({ config })
+			setAvailableDatabases(databases)
+			// If the current value isn't in the list, clear it so the dropdown shows a placeholder.
+			if (f.database && !databases.includes(f.database)) {
+				updatePgField('database', '')
+			}
+			// Auto-select if there's exactly one match (rare but tidy).
+			if (!f.database && databases.length === 1) {
+				updatePgField('database', databases[0])
+			}
+		} catch (err) {
+			setFetchDatabasesError(err instanceof Error ? err.message : String(err))
+		} finally {
+			setLoadingDatabases(false)
+		}
+	}
+
+	function clearAvailableDatabases() {
+		setAvailableDatabases(null)
+		setFetchDatabasesError(null)
+	}
+
 	async function handleTestConnection() {
 		if (!validate()) return
 
@@ -323,6 +367,10 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 			delete next[field]
 			return next
 		})
+		// Any change that targets a different server invalidates the fetched DB list.
+		if (field !== 'database' && field !== 'name') {
+			clearAvailableDatabases()
+		}
 	}
 
 	function updateSqliteField(field: string, value: string) {
@@ -336,6 +384,8 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 
 	function updateSshField(field: string, value: string | boolean) {
 		setSsh(field as keyof ReturnType<typeof defaultSshFields>, value as never)
+		// SSH tunnel changes route the connection through a different server.
+		clearAvailableDatabases()
 		setForm('errors', (e) => {
 			const next = { ...e }
 			// Map SSH field names to error keys
@@ -386,6 +436,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 					name: conn.pgFields.name || parsed.fields.name,
 				}),
 			)
+			clearAvailableDatabases()
 		}
 	}
 
@@ -414,7 +465,10 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 							<button
 								class="conn-dialog__type-btn"
 								classList={{ 'conn-dialog__type-btn--active': conn.type === type }}
-								onClick={() => setConn('type', type)}
+								onClick={() => {
+									setConn('type', type)
+									clearAvailableDatabases()
+								}}
 								disabled={!!props.connection}
 							>
 								<svg width={14} height={14} viewBox="0 0 24 24" fill={`#${icon.hex}`} aria-hidden="true">
@@ -465,6 +519,11 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 						rememberPassword={rememberPassword()}
 						onFieldChange={updatePgField}
 						onRememberPasswordChange={setRememberPassword}
+						availableDatabases={availableDatabases()}
+						loadingDatabases={loadingDatabases()}
+						fetchDatabasesError={fetchDatabasesError()}
+						onFetchDatabases={handleFetchDatabases}
+						onClearAvailableDatabases={clearAvailableDatabases}
 					/>
 				</Show>
 

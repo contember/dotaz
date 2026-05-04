@@ -86,6 +86,9 @@ export function createHandlers(adapter: RpcAdapter) {
 		'databases.list': async ({ connectionId }: { connectionId: string }) => {
 			return adapter.listDatabases(connectionId)
 		},
+		'databases.listForConfig': async ({ config }: { config: ConnectionConfig }) => {
+			return adapter.listDatabasesForConfig(config)
+		},
 		'databases.activate': async ({ connectionId, database }: { connectionId: string; database: string }) => {
 			await adapter.activateDatabase(connectionId, database)
 		},

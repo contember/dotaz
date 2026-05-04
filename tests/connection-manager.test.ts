@@ -360,6 +360,16 @@ describe('ConnectionManager', () => {
 		})
 	})
 
+	// ── listDatabasesForConfig ──────────────────────────────
+
+	describe('listDatabasesForConfig', () => {
+		test('rejects SQLite configs', async () => {
+			await expect(manager.listDatabasesForConfig(sqliteConfig)).rejects.toThrow(
+				'Listing databases is not supported',
+			)
+		})
+	})
+
 	// ── Status change events ────────────────────────────────
 
 	describe('status events', () => {
