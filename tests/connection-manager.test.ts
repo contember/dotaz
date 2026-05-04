@@ -1201,6 +1201,5 @@ describe('ConnectionManager', () => {
 			const updatedConfig = updatedConn!.config as PostgresConnectionConfig
 			expect(updatedConfig.activeDatabases).toBeUndefined()
 		})
-
 	})
 })

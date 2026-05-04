@@ -117,6 +117,7 @@ git push origin v0.0.XX
 ```
 
 This triggers the release workflow which:
+
 - Builds desktop apps for 5 platforms (Linux x64/ARM64, macOS x64/ARM64, Windows x64)
 - Publishes Docker image to `ghcr.io/contember/dotaz`
 - Publishes `@dotaz/server` npm package

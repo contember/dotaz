@@ -96,7 +96,9 @@ export class ConnectionPool {
 	async reconnectSystemConnection(): Promise<void> {
 		if (this.systemConn) {
 			this.connections.delete(this.systemConn)
-			try { await this.systemConn.close() } catch { /* already dead */ }
+			try {
+				await this.systemConn.close()
+			} catch { /* already dead */ }
 		}
 		this.systemConn = this.createSql()
 		this.connections.add(this.systemConn)

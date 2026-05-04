@@ -329,8 +329,9 @@ export class PostgresDriver implements DatabaseDriver {
 
 		const [allColumns, allIndexes, allForeignKeys, allReferencingForeignKeys] = await Promise.all([
 			// All columns across all schemas
-			timed('columns', () => conn.unsafe(
-				`SELECT
+			timed('columns', () =>
+				conn.unsafe(
+					`SELECT
 					c.table_schema,
 					c.table_name,
 					c.column_name,
@@ -357,11 +358,12 @@ export class PostgresDriver implements DatabaseDriver {
 					AND pk.column_name = c.column_name
 				WHERE c.table_schema = ANY($1)
 				ORDER BY c.table_schema, c.table_name, c.ordinal_position`,
-				[pgArray],
-			)),
+					[pgArray],
+				)),
 			// All indexes across all schemas
-			timed('indexes', () => conn.unsafe(
-				`SELECT
+			timed('indexes', () =>
+				conn.unsafe(
+					`SELECT
 					n.nspname AS table_schema,
 					t.relname AS table_name,
 					i.relname AS index_name,
@@ -378,11 +380,12 @@ export class PostgresDriver implements DatabaseDriver {
 				WHERE n.nspname = ANY($1)
 				GROUP BY n.nspname, t.relname, i.relname, ix.indisunique, ix.indisprimary
 				ORDER BY n.nspname, t.relname, i.relname`,
-				[pgArray],
-			)),
+					[pgArray],
+				)),
 			// All foreign keys across all schemas
-			timed('foreignKeys', () => conn.unsafe(
-				`SELECT
+			timed('foreignKeys', () =>
+				conn.unsafe(
+					`SELECT
 					nsp_src.nspname AS table_schema,
 					cl_src.relname AS table_name,
 					con.conname AS constraint_name,
@@ -419,11 +422,12 @@ export class PostgresDriver implements DatabaseDriver {
 				GROUP BY nsp_src.nspname, cl_src.relname, con.conname,
 					nsp_ref.nspname, cl_ref.relname, con.confupdtype, con.confdeltype
 				ORDER BY nsp_src.nspname, cl_src.relname, con.conname`,
-				[pgArray],
-			)),
+					[pgArray],
+				)),
 			// All referencing foreign keys across all schemas
-			timed('referencingForeignKeys', () => conn.unsafe(
-				`SELECT
+			timed('referencingForeignKeys', () =>
+				conn.unsafe(
+					`SELECT
 					nsp_ref.nspname AS referenced_schema,
 					cl_ref.relname AS referenced_table,
 					con.conname AS constraint_name,
@@ -446,14 +450,15 @@ export class PostgresDriver implements DatabaseDriver {
 				GROUP BY nsp_ref.nspname, cl_ref.relname, con.conname,
 					nsp_src.nspname, cl_src.relname
 				ORDER BY nsp_ref.nspname, cl_ref.relname, con.conname`,
-				[pgArray],
-			)),
+					[pgArray],
+				)),
 		])
 
 		// Fetch materialized view columns from pg_attribute (not in information_schema)
 		for (const [schemaName, mvNames] of matviewNames) {
-			const mvRows = await timed(`matviewColumns(${schemaName})`, () => conn.unsafe(
-				`SELECT
+			const mvRows = await timed(`matviewColumns(${schemaName})`, () =>
+				conn.unsafe(
+					`SELECT
 					n.nspname AS schema_name,
 					c.relname AS table_name,
 					a.attname AS column_name,
@@ -472,8 +477,8 @@ export class PostgresDriver implements DatabaseDriver {
 					AND a.attnum > 0
 					AND NOT a.attisdropped
 				ORDER BY n.nspname, c.relname, a.attnum`,
-				[schemaName, `{${mvNames.join(',')}}`],
-			))
+					[schemaName, `{${mvNames.join(',')}}`],
+				))
 			for (const row of mvRows as PgMatviewColumnRow[]) {
 				;(allColumns as PgColumnRow[]).push({
 					table_schema: row.schema_name,
