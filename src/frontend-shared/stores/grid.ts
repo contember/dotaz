@@ -423,7 +423,7 @@ async function fetchData(tabId: string) {
 		}))
 
 		// Build joined columns metadata
-		let joinedColumnSets: JoinedColumnSet[] = []
+		const joinedColumnSets: JoinedColumnSet[] = []
 		if (hasJoins) {
 			for (const join of tab.autoJoins) {
 				const refCols = connectionsStore.getColumns(
