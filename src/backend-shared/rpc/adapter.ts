@@ -51,6 +51,7 @@ export interface RpcAdapter {
 
 	// ── Multi-database ────────────────────────────────────
 	listDatabases(connectionId: string): Promise<DatabaseInfo[]>
+	listDatabasesForConfig(config: ConnectionConfig): Promise<string[]>
 	activateDatabase(connectionId: string, database: string): Promise<void>
 	deactivateDatabase(connectionId: string, database: string): Promise<void>
 

@@ -120,6 +120,21 @@
 	flex: 1;
 }
 
+/* Database row (input/select + Fetch button) */
+.conn-dialog__database-row {
+	display: flex;
+	gap: var(--spacing-sm);
+}
+
+.conn-dialog__database-input {
+	flex: 1;
+	min-width: 0;
+}
+
+.conn-dialog__database-action {
+	white-space: nowrap;
+}
+
 .conn-dialog__browse-btn {
 	background: var(--surface-inset);
 	border: 1px solid var(--edge-strong);

@@ -392,6 +392,50 @@ export class ConnectionManager {
 		}
 	}
 
+	/**
+	 * List databases on a server using an unsaved config — for the connection
+	 * dialog's "Fetch databases" picker. Connects with a fallback maintenance
+	 * database when the user hasn't picked one yet, queries the server's
+	 * database catalog, then disconnects.
+	 */
+	async listDatabasesForConfig(config: ConnectionConfig): Promise<string[]> {
+		if (config.type !== 'postgresql' && config.type !== 'mysql') {
+			throw new Error(`Listing databases is not supported for connection type: ${config.type}`)
+		}
+
+		// PG/MySQL drivers require a database in the URL. Fall back to a
+		// maintenance database that always exists when the user hasn't typed one.
+		const fallbackDb = config.type === 'postgresql' ? 'postgres' : 'information_schema'
+		let effectiveConfig: ConnectionConfig = config.database
+			? config
+			: { ...config, database: fallbackDb }
+		validateConfig(effectiveConfig)
+
+		let tunnel: SshTunnel | null = null
+		try {
+			if (effectiveConfig.type === 'postgresql' && effectiveConfig.sshTunnel?.enabled) {
+				tunnel = await createSshTunnel(effectiveConfig.sshTunnel, effectiveConfig.host, effectiveConfig.port)
+				effectiveConfig = { ...effectiveConfig, host: '127.0.0.1', port: tunnel.localPort }
+			}
+
+			const driver = createDriver(effectiveConfig)
+			try {
+				await driver.connect(effectiveConfig)
+				const sql = effectiveConfig.type === 'postgresql'
+					? 'SELECT datname AS name FROM pg_database WHERE datistemplate = false AND datallowconn = true ORDER BY datname'
+					: "SELECT schema_name AS name FROM information_schema.schemata WHERE schema_name NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys') ORDER BY schema_name"
+				const result = await driver.execute(sql)
+				return result.rows.map((row) => row.name as string)
+			} finally {
+				await driver.disconnect().catch(() => {})
+			}
+		} finally {
+			if (tunnel) {
+				await tunnel.close().catch(() => {})
+			}
+		}
+	}
+
 	// ── Event system ────────────────────────────────────────
 
 	onStatusChanged(listener: StatusChangeListener): () => void {

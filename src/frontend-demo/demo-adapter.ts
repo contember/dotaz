@@ -152,6 +152,10 @@ export class DemoAdapter implements RpcAdapter {
 		return []
 	}
 
+	async listDatabasesForConfig(): Promise<string[]> {
+		throw new Error('Database listing is not available in demo mode')
+	}
+
 	async activateDatabase(): Promise<void> {
 		throw new Error('Multi-database is not available in demo mode')
 	}
