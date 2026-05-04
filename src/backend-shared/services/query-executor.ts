@@ -180,7 +180,7 @@ export class QueryExecutor {
 				// Set search_path if requested (save original for restore)
 				if (searchPath && effectiveSessionId !== undefined) {
 					const spResult = await driver.execute('SHOW search_path', undefined, effectiveSessionId)
-					savedSearchPath = spResult.rows[0]?.['search_path'] as string | undefined
+					savedSearchPath = spResult.rows[0]?.search_path as string | undefined
 					const quotedSearchPath = quoteSearchPath(searchPath, driver)
 					await driver.execute(`SET search_path TO ${quotedSearchPath}`, undefined, effectiveSessionId)
 				}
@@ -303,7 +303,7 @@ export class QueryExecutor {
 				// Set search_path if requested
 				if (searchPath && effectiveSessionId !== undefined) {
 					const spResult = await driver.execute('SHOW search_path', undefined, effectiveSessionId)
-					savedSearchPath = spResult.rows[0]?.['search_path'] as string | undefined
+					savedSearchPath = spResult.rows[0]?.search_path as string | undefined
 					const quotedSearchPath = quoteSearchPath(searchPath, driver)
 					await driver.execute(`SET search_path TO ${quotedSearchPath}`, undefined, effectiveSessionId)
 				}

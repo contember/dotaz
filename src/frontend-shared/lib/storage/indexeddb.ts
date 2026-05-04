@@ -362,7 +362,7 @@ export class IndexedDbAppStateStorage implements AppStateStorage {
 
 	async getEncryptedSecrets(id: string): Promise<string | undefined> {
 		let record = await txOp<StoredConnectionRecord | undefined>(STORES.connections, 'readonly', (s) => s.get(id))
-		if (record && record.encryptedConfig && !record.encryptedSecrets) {
+		if (record?.encryptedConfig && !record.encryptedSecrets) {
 			record = await migrateLegacyRecord(record)
 		}
 		return record?.encryptedSecrets
