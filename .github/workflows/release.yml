@@ -79,6 +79,8 @@ jobs:
 
       - name: Build desktop app
         run: bunx electrobun build --env=${{ needs.prepare.outputs.electrobun-env }}
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
 
       - name: Extract app from Electrobun installer (Linux)
         if: runner.os == 'Linux'

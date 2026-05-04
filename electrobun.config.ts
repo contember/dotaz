@@ -1,10 +1,11 @@
 import type { ElectrobunConfig } from 'electrobun'
+import pkg from './package.json'
 
 export default {
 	app: {
 		name: 'Dotaz',
 		identifier: 'dotaz.electrobun.dev',
-		version: '0.0.1',
+		version: process.env.VERSION || pkg.version,
 	},
 	build: {
 		bun: {
