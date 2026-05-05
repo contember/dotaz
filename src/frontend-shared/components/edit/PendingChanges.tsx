@@ -1,3 +1,4 @@
+import type { DatabaseDataType } from '@dotaz/shared/types/database'
 import { isSqlDefault } from '@dotaz/shared/types/database'
 import type { GridColumnDef } from '@dotaz/shared/types/grid'
 import Check from 'lucide-solid/icons/check'
@@ -9,6 +10,7 @@ import RotateCcw from 'lucide-solid/icons/rotate-ccw'
 import X from 'lucide-solid/icons/x'
 import { createSignal, For, type JSX, Show } from 'solid-js'
 import { friendlyErrorMessage } from '../../lib/rpc-errors'
+import { formatColumnValue } from '../../lib/value-format'
 import { gridStore } from '../../stores/grid'
 import Dialog from '../common/Dialog'
 import './PendingChanges.css'
@@ -28,7 +30,8 @@ interface ChangeItem {
 	description: string
 }
 
-function formatValue(value: unknown): string {
+function formatValue(value: unknown, dataType?: DatabaseDataType): string {
+	if (dataType !== undefined) return formatColumnValue(value, dataType)
 	if (isSqlDefault(value)) return 'DEFAULT'
 	if (value === null || value === undefined) return 'NULL'
 	if (typeof value === 'object') return JSON.stringify(value)
@@ -52,6 +55,8 @@ export default function PendingChanges(props: PendingChangesProps) {
 
 		const items: ChangeItem[] = []
 		const pkColumns = t.columns.filter((c: GridColumnDef) => c.isPrimaryKey).map((c: GridColumnDef) => c.name)
+		const colByName = new Map(t.columns.map((c: GridColumnDef) => [c.name, c] as const))
+		const fmt = (col: string, value: unknown) => formatValue(value, colByName.get(col)?.dataType)
 
 		// Collect updates: group cell edits by row
 		const editsByRow = new Map<number, Array<{ column: string; oldValue: unknown; newValue: unknown }>>()
@@ -68,9 +73,9 @@ export default function PendingChanges(props: PendingChangesProps) {
 
 		for (const [rowIndex, edits] of editsByRow) {
 			const row = t.rows[rowIndex]
-			const pkDesc = pkColumns.map((pk: string) => `${pk}=${formatValue(row?.[pk])}`).join(', ')
+			const pkDesc = pkColumns.map((pk: string) => `${pk}=${fmt(pk, row?.[pk])}`).join(', ')
 			const editDescs = edits.map(
-				(e) => `${e.column}: ${truncate(formatValue(e.oldValue), 20)} \u2192 ${truncate(formatValue(e.newValue), 20)}`,
+				(e) => `${e.column}: ${truncate(fmt(e.column, e.oldValue), 20)} \u2192 ${truncate(fmt(e.column, e.newValue), 20)}`,
 			)
 			items.push({
 				type: 'update',
@@ -85,7 +90,7 @@ export default function PendingChanges(props: PendingChangesProps) {
 			if (!row) continue
 			const nonNullCols = Object.entries(row)
 				.filter(([, v]) => v !== null && v !== undefined)
-				.map(([k, v]) => `${k}=${truncate(formatValue(v), 15)}`)
+				.map(([k, v]) => `${k}=${truncate(fmt(k, v), 15)}`)
 			items.push({
 				type: 'insert',
 				rowIndex,
@@ -97,7 +102,7 @@ export default function PendingChanges(props: PendingChangesProps) {
 		for (const rowIndex of t.pendingChanges.deletedRows) {
 			const row = t.rows[rowIndex]
 			if (!row) continue
-			const pkDesc = pkColumns.map((pk: string) => `${pk}=${formatValue(row[pk])}`).join(', ')
+			const pkDesc = pkColumns.map((pk: string) => `${pk}=${fmt(pk, row[pk])}`).join(', ')
 			items.push({
 				type: 'delete',
 				rowIndex,

@@ -26,6 +26,10 @@ const JSON_TYPES = new Set<DatabaseDataType>([
 	DatabaseDataType.Json,
 ])
 
+const ARRAY_TYPES = new Set<DatabaseDataType>([
+	DatabaseDataType.Array,
+])
+
 export function isNumericType(dataType: DatabaseDataType): boolean {
 	return NUMERIC_TYPES.has(dataType)
 }
@@ -44,6 +48,18 @@ export function isTextType(dataType: DatabaseDataType): boolean {
 
 export function isJsonType(dataType: DatabaseDataType): boolean {
 	return JSON_TYPES.has(dataType)
+}
+
+export function isArrayType(dataType: DatabaseDataType): boolean {
+	return ARRAY_TYPES.has(dataType)
+}
+
+/**
+ * Column types whose values are structured JS (objects/arrays) and should be
+ * displayed and edited as JSON in the UI: JSON/JSONB columns and PG arrays.
+ */
+export function isStructuredType(dataType: DatabaseDataType): boolean {
+	return JSON_TYPES.has(dataType) || ARRAY_TYPES.has(dataType)
 }
 
 export function isBinaryType(dataType: DatabaseDataType): boolean {

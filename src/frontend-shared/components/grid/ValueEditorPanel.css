@@ -233,6 +233,21 @@
 	word-break: break-all;
 }
 
+.value-editor-panel__textarea--error {
+	box-shadow: inset 0 0 0 1px var(--danger, #ef4444);
+}
+
+.value-editor-panel__json-error {
+	padding: var(--spacing-xs) var(--spacing-sm);
+	font-family: var(--font-mono);
+	font-size: var(--font-size-xs);
+	color: var(--danger, #ef4444);
+	background: var(--surface);
+	border-top: 1px solid var(--edge);
+	flex-shrink: 0;
+	white-space: pre-wrap;
+}
+
 .value-editor-panel__editor-actions {
 	display: flex;
 	gap: var(--spacing-xs);

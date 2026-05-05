@@ -5,8 +5,16 @@
  * DataChange objects suitable for SQL generation.
  */
 
+import { serializeValueForDialect } from '@dotaz/shared/sql'
+import type { SqlDialect } from '@dotaz/shared/sql/dialect'
+import type { DatabaseDataType } from '@dotaz/shared/types/database'
 import type { DataChange } from '@dotaz/shared/types/rpc.js'
 import type { CellChange } from '../stores/grid.js'
+
+interface ColumnRef {
+	name: string
+	dataType: DatabaseDataType
+}
 
 export interface PendingEdits {
 	cellEdits: Record<string, CellChange>
@@ -15,8 +23,9 @@ export interface PendingEdits {
 /**
  * Build DataChange objects from pending cell edits for a single result set.
  *
- * Groups edits by row and uses original row data for PK values.
- * Returns an empty array if there are no changes or the result is not editable.
+ * Groups edits by row and uses original row data for PK values. When a
+ * dialect + columns are supplied, values are serialised through the dialect
+ * (PG arrays → array literals) so the resulting params are wire-ready.
  */
 export function buildDataChanges(
 	pending: PendingEdits,
@@ -24,8 +33,21 @@ export function buildDataChanges(
 	schema: string,
 	table: string,
 	pkColumns: string[],
+	options?: { columns?: ColumnRef[]; dialect?: SqlDialect },
 ): DataChange[] {
 	const changes: DataChange[] = []
+	const colByName = options?.columns ? new Map(options.columns.map((c) => [c.name, c] as const)) : null
+	const dialect = options?.dialect
+
+	const serialiseRow = (values: Record<string, unknown>): Record<string, unknown> => {
+		if (!colByName || !dialect) return values
+		const out: Record<string, unknown> = {}
+		for (const [k, v] of Object.entries(values)) {
+			const col = colByName.get(k)
+			out[k] = col ? serializeValueForDialect(v, col.dataType, dialect) : v
+		}
+		return out
+	}
 
 	// Group cell edits by row
 	const editsByRow = new Map<number, Record<string, unknown>>()
@@ -53,8 +75,8 @@ export function buildDataChanges(
 			type: 'update',
 			schema,
 			table,
-			primaryKeys,
-			values,
+			primaryKeys: serialiseRow(primaryKeys),
+			values: serialiseRow(values),
 		})
 	}
 

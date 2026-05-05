@@ -14,6 +14,7 @@ export interface RowDetailEditFieldsProps {
 	getValue: (col: string) => unknown
 	isChanged: (col: string) => boolean
 	setFieldValue: (col: string, value: unknown) => void
+	setFieldError?: (col: string, error: string | null) => void
 	connectionId: string
 	database?: string
 }
@@ -71,6 +72,7 @@ export default function RowDetailEditFields(props: RowDetailEditFieldsProps) {
 					column={col}
 					value={props.getValue(col.name)}
 					onChange={(v) => props.setFieldValue(col.name, v)}
+					onError={(err) => props.setFieldError?.(col.name, err)}
 					readOnly={readOnly}
 					isNull={isFieldNull(col.name)}
 					isDefault={isFieldDefault(col.name)}

@@ -1,4 +1,4 @@
-import { buildSelectQuery, generateUpdate } from '@dotaz/shared/sql'
+import { buildSelectQuery, generateUpdate, serializeValueForDialect } from '@dotaz/shared/sql'
 import type { ForeignKeyInfo } from '@dotaz/shared/types/database'
 import type { ColumnFilter, GridColumnDef } from '@dotaz/shared/types/grid'
 import type { UpdateChange } from '@dotaz/shared/types/rpc'
@@ -143,6 +143,10 @@ export default function RowDetailTab(props: RowDetailTabProps) {
 	// ── Save ─────────────────────────────────────────────────
 
 	async function handleSave() {
+		if (detail.hasFieldErrors()) {
+			setSaveError('Fix invalid fields before saving.')
+			return
+		}
 		const edits = detail.localEdits()
 		if (Object.keys(edits).length === 0) return
 
@@ -150,14 +154,24 @@ export default function RowDetailTab(props: RowDetailTabProps) {
 		setSaveError(null)
 
 		try {
+			const d = dialect()
+			const colByName = new Map(columns().map((c) => [c.name, c] as const))
+			const serialiseRow = (values: Record<string, unknown>): Record<string, unknown> => {
+				const out: Record<string, unknown> = {}
+				for (const [k, v] of Object.entries(values)) {
+					const col = colByName.get(k)
+					out[k] = col ? serializeValueForDialect(v, col.dataType, d) : v
+				}
+				return out
+			}
 			const change: UpdateChange = {
 				type: 'update',
 				schema: props.schema,
 				table: props.table,
-				primaryKeys: props.primaryKeys,
-				values: edits,
+				primaryKeys: serialiseRow(props.primaryKeys),
+				values: serialiseRow(edits),
 			}
-			const stmt = generateUpdate(change, dialect())
+			const stmt = generateUpdate(change, d)
 
 			await rpc.query.execute({
 				connectionId: props.connectionId,
@@ -206,8 +220,8 @@ export default function RowDetailTab(props: RowDetailTabProps) {
 					<button
 						class="btn btn--primary btn--sm"
 						onClick={handleSave}
-						disabled={!detail.hasEdits() || saving()}
-						title="Save changes"
+						disabled={!detail.hasEdits() || saving() || detail.hasFieldErrors()}
+						title={detail.hasFieldErrors() ? 'Fix invalid fields first' : 'Save changes'}
 					>
 						<Save size={14} /> Save
 					</button>
@@ -236,6 +250,7 @@ export default function RowDetailTab(props: RowDetailTabProps) {
 							getValue={detail.getValue}
 							isChanged={detail.isFieldChanged}
 							setFieldValue={detail.setFieldValue}
+							setFieldError={detail.setFieldError}
 							connectionId={props.connectionId}
 							database={props.database}
 						/>

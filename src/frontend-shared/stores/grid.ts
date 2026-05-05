@@ -9,7 +9,7 @@ import { createTabHelpers } from '../lib/tab-store-helpers'
 import { connectionsStore } from './connections'
 import { createGridAutoJoinActions } from './gridAutoJoin'
 import { computePinStyles, createGridColumnActions, getOrderedColumns, getVisibleColumns } from './gridColumns'
-import { createDefaultPendingChanges, createGridEditingActions } from './gridEditing'
+import { createDefaultPendingChanges, createGridEditingActions, valuesEqual } from './gridEditing'
 import { createGridFkActions } from './gridFk'
 import { computeHeatmapColor, computeHeatmapStats, createGridHeatmapActions } from './gridHeatmap'
 import { createGridSelectionActions } from './gridSelection'
@@ -1066,7 +1066,7 @@ function setCellValueWithUndo(tabId: string, rowIndex: number, column: string, n
 	if (tab) {
 		// Skip snapshot if value isn't actually changing
 		const currentValue = tab.rows[rowIndex]?.[column]
-		if (currentValue === newValue) return
+		if (valuesEqual(currentValue, newValue)) return
 	}
 	undoRedoActions.pushSnapshot(tabId)
 	editingActions.setCellValue(tabId, rowIndex, column, newValue)

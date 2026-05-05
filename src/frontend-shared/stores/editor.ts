@@ -877,6 +877,10 @@ function buildResultDataChanges(tabId: string, resultIndex: number): DataChange[
 		editability.schema!,
 		editability.table!,
 		editability.primaryKeys!,
+		{
+			columns: tab.results[resultIndex]?.columns,
+			dialect: connectionsStore.getDialect(tab.connectionId),
+		},
 	)
 }
 

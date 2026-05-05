@@ -1,10 +1,10 @@
-import { isBooleanType, isDateType, isNumericType, isTextType } from '@dotaz/shared/column-types'
+import { isBooleanType, isDateType, isNumericType, isStructuredType, isTextType } from '@dotaz/shared/column-types'
 import { DatabaseDataType, isSqlDefault, SQL_DEFAULT } from '@dotaz/shared/types/database'
 import type { GridColumnDef } from '@dotaz/shared/types/grid'
 import Search from 'lucide-solid/icons/search'
 import { createSignal, onMount, Show } from 'solid-js'
 import { isQuickValueModifier } from '../../lib/keyboard'
-import { parseValue, valueToString } from '../../lib/value-format'
+import { formatColumnValueForEditor, parseJsonColumnInput, parseValue, valueToString } from '../../lib/value-format'
 import type { FkTarget } from '../../stores/grid'
 import DateInput from '../common/DateInput'
 import './InlineEditor.css'
@@ -87,11 +87,17 @@ export default function InlineEditor(props: InlineEditorProps) {
 	const isDate = () => isDateType(dataType())
 	const isNum = () => isNumericType(dataType())
 	const isText = () => isTextType(dataType())
+	const isJson = () => isStructuredType(dataType())
+	const [jsonError, setJsonError] = createSignal<string | null>(null)
 
 	const [dateValue, setDateValue] = createSignal(dateInputValue())
 
 	onMount(() => {
 		if (inputRef) {
+			if (inputRef instanceof HTMLTextAreaElement) {
+				inputRef.style.height = 'auto'
+				inputRef.style.height = `${Math.min(inputRef.scrollHeight, 240)}px`
+			}
 			inputRef.focus()
 			if ('select' in inputRef) {
 				inputRef.select()
@@ -99,30 +105,42 @@ export default function InlineEditor(props: InlineEditorProps) {
 		}
 	})
 
-	function save() {
-		if (cancelled) return
+	function save(): boolean {
+		if (cancelled) return true
 		if (isNull()) {
 			props.onSave(null)
-			return
+			return true
 		}
 		if (isDefault()) {
 			props.onSave(SQL_DEFAULT)
-			return
+			return true
 		}
 		if (isBool()) {
 			// Checkbox value is handled in handleCheckboxChange
-			return
+			return true
 		}
 		if (isDate()) {
 			const v = dateValue()
 			const parsed = parseValue(v, props.column)
 			props.onSave(parsed)
-			return
+			return true
 		}
 		if (inputRef) {
+			if (isJson()) {
+				const result = parseJsonColumnInput(inputRef.value, props.column.nullable)
+				if (!result.ok) {
+					setJsonError(result.error)
+					inputRef.focus()
+					return false
+				}
+				setJsonError(null)
+				props.onSave(result.value)
+				return true
+			}
 			const parsed = parseValue(inputRef.value, props.column)
 			props.onSave(parsed)
 		}
+		return true
 	}
 
 	function getInputEmpty(): boolean {
@@ -142,16 +160,20 @@ export default function InlineEditor(props: InlineEditorProps) {
 			e.stopPropagation()
 			cancelled = true
 			props.onCancel()
-		} else if (e.key === 'Tab') {
+			return
+		}
+		if (e.key === 'Tab') {
 			e.preventDefault()
 			e.stopPropagation()
-			save()
-			props.onMoveNext()
-		} else if (e.key === 'Enter' && !e.shiftKey) {
+			if (save()) props.onMoveNext()
+			return
+		}
+		if (e.key === 'Enter' && !e.shiftKey) {
+			// In JSON mode plain Enter inserts a newline; require Ctrl/Cmd+Enter to commit.
+			if (isJson() && !(e.ctrlKey || e.metaKey)) return
 			e.preventDefault()
 			e.stopPropagation()
-			save()
-			props.onMoveDown()
+			if (save()) props.onMoveDown()
 		}
 	}
 
@@ -324,6 +346,48 @@ export default function InlineEditor(props: InlineEditorProps) {
 						el.style.height = 'auto'
 						el.style.height = `${Math.min(el.scrollHeight, 120)}px`
 					}}
+				/>
+				{props.column.nullable && (
+					<button
+						class="inline-editor__null-btn"
+						onMouseDown={(e) => {
+							e.preventDefault()
+							e.stopPropagation()
+						}}
+						onClick={handleSetNull}
+						title="Set NULL"
+					>
+						NULL
+					</button>
+				)}
+				{browseBtn()}
+			</div>
+		)
+	}
+
+	if (isJson()) {
+		return (
+			<div
+				class="inline-editor inline-editor--json"
+				classList={{ 'inline-editor--json-error': jsonError() !== null }}
+				style={{ width: `${props.width}px` }}
+				onKeyDown={handleKeyDown}
+			>
+				<textarea
+					ref={(el) => {
+						inputRef = el
+					}}
+					value={isNull() || isDefault() ? '' : formatColumnValueForEditor(props.value, dataType())}
+					onBlur={() => save()}
+					onInput={(e) => {
+						if (jsonError() !== null) setJsonError(null)
+						const el = e.target as HTMLTextAreaElement
+						el.style.height = 'auto'
+						el.style.height = `${Math.min(el.scrollHeight, 240)}px`
+					}}
+					rows={1}
+					spellcheck={false}
+					title={jsonError() ?? undefined}
 				/>
 				{props.column.nullable && (
 					<button

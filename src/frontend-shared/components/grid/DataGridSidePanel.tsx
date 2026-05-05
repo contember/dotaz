@@ -1,4 +1,4 @@
-import { generateUpdate } from '@dotaz/shared/sql'
+import { generateUpdate, serializeValueForDialect } from '@dotaz/shared/sql'
 import type { ForeignKeyInfo } from '@dotaz/shared/types/database'
 import type { ColumnFilter, GridColumnDef } from '@dotaz/shared/types/grid'
 import type { UpdateChange } from '@dotaz/shared/types/rpc'
@@ -324,12 +324,21 @@ export default function DataGridSidePanel(
 		for (const pk of pkCols) pks[pk.name] = currentRow[pk.name]
 
 		const dialect = connectionsStore.getDialect(props.connectionId)
+		const colByName = new Map(panel.columns.map((c) => [c.name, c] as const))
+		const serialiseRow = (values: Record<string, unknown>): Record<string, unknown> => {
+			const out: Record<string, unknown> = {}
+			for (const [k, v] of Object.entries(values)) {
+				const col = colByName.get(k)
+				out[k] = col ? serializeValueForDialect(v, col.dataType, dialect) : v
+			}
+			return out
+		}
 		const change: UpdateChange = {
 			type: 'update',
 			schema: panel.schema,
 			table: panel.table,
-			primaryKeys: pks,
-			values: changes,
+			primaryKeys: serialiseRow(pks),
+			values: serialiseRow(changes),
 		}
 		const stmt = generateUpdate(change, dialect)
 		await rpc.query.execute({

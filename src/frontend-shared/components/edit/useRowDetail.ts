@@ -31,18 +31,23 @@ export interface UseRowDetailReturn {
 	resetEdits: () => void
 	getValue: (column: string) => unknown
 	isFieldChanged: (column: string) => boolean
+	fieldErrors: Accessor<Record<string, string>>
+	setFieldError: (column: string, error: string | null) => void
+	hasFieldErrors: Accessor<boolean>
 	fetchReferencingCount: (fk: ReferencingForeignKeyInfo) => Promise<void>
 	buildReferencingFilters: (fk: ReferencingForeignKeyInfo) => ColumnFilter[] | null
 }
 
 export function useRowDetail(params: UseRowDetailParams): UseRowDetailReturn {
 	const [localEdits, setLocalEdits] = createSignal<Record<string, unknown>>({})
+	const [fieldErrors, setFieldErrors] = createSignal<Record<string, string>>({})
 	const [referencingCounts, setReferencingCounts] = createSignal<Record<string, number | null>>({})
 	const [countingFks, setCountingFks] = createSignal<Set<string>>(new Set())
 
 	const fkLookup = createMemo(() => buildFkLookup(params.foreignKeys))
 	const pkColumns = createMemo(() => new Set(params.columns.filter((c) => c.isPrimaryKey).map((c) => c.name)))
 	const hasEdits = createMemo(() => Object.keys(localEdits()).length > 0)
+	const hasFieldErrors = createMemo(() => Object.keys(fieldErrors()).length > 0)
 
 	const referencingFks = createMemo(() =>
 		connectionsStore.getReferencingForeignKeys(
@@ -56,6 +61,7 @@ export function useRowDetail(params: UseRowDetailParams): UseRowDetailReturn {
 	// Reset edits when row data changes
 	createEffect(on(() => params.row, () => {
 		setLocalEdits({})
+		setFieldErrors({})
 	}))
 
 	// Reset referencing counts when the row or FK list changes
@@ -70,6 +76,16 @@ export function useRowDetail(params: UseRowDetailParams): UseRowDetailReturn {
 
 	function resetEdits() {
 		setLocalEdits({})
+		setFieldErrors({})
+	}
+
+	function setFieldError(column: string, error: string | null) {
+		setFieldErrors((prev) => {
+			const next = { ...prev }
+			if (error === null) delete next[column]
+			else next[column] = error
+			return next
+		})
 	}
 
 	function getValue(column: string): unknown {
@@ -145,6 +161,9 @@ export function useRowDetail(params: UseRowDetailParams): UseRowDetailReturn {
 		resetEdits,
 		getValue,
 		isFieldChanged,
+		fieldErrors,
+		setFieldError,
+		hasFieldErrors,
 		fetchReferencingCount,
 		buildReferencingFilters,
 	}

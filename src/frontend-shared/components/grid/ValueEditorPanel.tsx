@@ -1,9 +1,9 @@
-import { getDataTypeLabel, isBooleanType, isJsonType } from '@dotaz/shared/column-types'
+import { getDataTypeLabel, isBooleanType, isStructuredType } from '@dotaz/shared/column-types'
 import { isSqlDefault, SQL_DEFAULT } from '@dotaz/shared/types/database'
 import type { GridColumnDef } from '@dotaz/shared/types/grid'
 import X from 'lucide-solid/icons/x'
 import { createEffect, createSignal, on, Show } from 'solid-js'
-import { displayValue, tryFormatJson } from '../../lib/value-format'
+import { formatColumnValue, formatColumnValueForEditor, parseJsonColumnInput, tryFormatJson } from '../../lib/value-format'
 import Icon from '../common/Icon'
 import Resizer from '../layout/Resizer'
 import JsonTreeView from './JsonTreeView'
@@ -25,19 +25,13 @@ export default function ValueEditorPanel(props: ValueEditorPanelProps) {
 	const [isEditing, setIsEditing] = createSignal(false)
 	const [wordWrap, setWordWrap] = createSignal(true)
 	const [viewMode, setViewMode] = createSignal<'text' | 'tree'>('text')
+	const [jsonError, setJsonError] = createSignal<string | null>(null)
 
-	// Determine display mode based on column type and value
-	const isJson = () => isJsonType(props.column.dataType) || tryFormatJson(props.value) !== null
+	const isJson = () => isStructuredType(props.column.dataType) || tryFormatJson(props.value) !== null
 	const isNull = () => props.value === null || props.value === undefined
 	const isDefault = () => isSqlDefault(props.value)
 
-	const formattedValue = () => {
-		if (isNull()) return 'NULL'
-		if (isDefault()) return 'DEFAULT'
-		const jsonFormatted = tryFormatJson(props.value)
-		if (jsonFormatted !== null) return jsonFormatted
-		return displayValue(props.value)
-	}
+	const formattedValue = () => formatColumnValue(props.value, props.column.dataType, { pretty: true })
 
 	// Reset editing state when cell changes
 	createEffect(on(
@@ -49,30 +43,23 @@ export default function ValueEditorPanel(props: ValueEditorPanelProps) {
 
 	function startEditing() {
 		if (props.readOnly) return
-		if (isNull()) {
-			setEditValue('')
-		} else if (isDefault()) {
-			setEditValue('')
-		} else {
-			const jsonFormatted = tryFormatJson(props.value)
-			setEditValue(jsonFormatted ?? displayValue(props.value))
-		}
+		setEditValue(formatColumnValueForEditor(props.value, props.column.dataType))
 		setIsEditing(true)
 	}
 
 	function handleSave() {
 		const raw = editValue()
 
-		// Try to parse as JSON if the column type is JSON
-		if (isJsonType(props.column.dataType)) {
-			try {
-				const parsed = JSON.parse(raw)
-				props.onSave(parsed)
-				setIsEditing(false)
+		if (isStructuredType(props.column.dataType)) {
+			const result = parseJsonColumnInput(raw, props.column.nullable)
+			if (!result.ok) {
+				setJsonError(result.error)
 				return
-			} catch {
-				// Save as string if JSON parse fails
 			}
+			setJsonError(null)
+			props.onSave(result.value)
+			setIsEditing(false)
+			return
 		}
 
 		// Boolean handling
@@ -95,6 +82,7 @@ export default function ValueEditorPanel(props: ValueEditorPanelProps) {
 	}
 
 	function handleCancel() {
+		setJsonError(null)
 		setIsEditing(false)
 	}
 
@@ -223,13 +211,22 @@ export default function ValueEditorPanel(props: ValueEditorPanelProps) {
 						<div class="value-editor-panel__editor-area">
 							<textarea
 								class="value-editor-panel__textarea"
-								classList={{ 'value-editor-panel__textarea--wrap': wordWrap() }}
+								classList={{
+									'value-editor-panel__textarea--wrap': wordWrap(),
+									'value-editor-panel__textarea--error': jsonError() !== null,
+								}}
 								value={editValue()}
-								onInput={(e) => setEditValue(e.currentTarget.value)}
+								onInput={(e) => {
+									setEditValue(e.currentTarget.value)
+									if (jsonError() !== null) setJsonError(null)
+								}}
 								onKeyDown={handleKeyDown}
 								autofocus
 								spellcheck={false}
 							/>
+							<Show when={jsonError() !== null}>
+								<div class="value-editor-panel__json-error">{jsonError()}</div>
+							</Show>
 							<div class="value-editor-panel__editor-actions">
 								<button
 									class="value-editor-panel__save-btn"

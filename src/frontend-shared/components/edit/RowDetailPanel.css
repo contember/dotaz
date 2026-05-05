@@ -393,6 +393,31 @@
 	border-color: var(--edge-focus);
 }
 
+.row-detail__json-field {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	gap: var(--spacing-xs);
+}
+
+.row-detail__json-field .row-detail__textarea {
+	resize: none;
+	min-height: 32px;
+	max-height: 240px;
+}
+
+.row-detail__input--error,
+.row-detail__textarea.row-detail__input--error {
+	border-color: var(--danger, #ef4444);
+}
+
+.row-detail__field-error {
+	font-family: var(--font-mono);
+	font-size: var(--font-size-xs);
+	color: var(--danger, #ef4444);
+	white-space: pre-wrap;
+}
+
 .row-detail__checkbox-row {
 	display: flex;
 	align-items: center;

@@ -1,8 +1,9 @@
-import { isBinaryType, isBooleanType, isJsonType, isNumericType, isTimestampType } from '@dotaz/shared/column-types'
+import { isBinaryType, isBooleanType, isNumericType, isStructuredType, isTimestampType } from '@dotaz/shared/column-types'
 import { isSqlDefault } from '@dotaz/shared/types/database'
 import type { GridColumnDef } from '@dotaz/shared/types/grid'
 import { createEffect, createSignal, onCleanup, Show } from 'solid-js'
 import { formatBinary, formatBoolean, formatNumberWithProfile, formatTimestamp } from '../../lib/cell-formatters'
+import { formatJsonValue } from '../../lib/value-format'
 import { settingsStore } from '../../stores/settings'
 import InlineEditor from '../edit/InlineEditor'
 import './GridCell.css'
@@ -41,7 +42,7 @@ export default function GridCell(props: GridCellProps) {
 	const isNumber = () => isNumericType(props.column.dataType)
 	const isBool = () => isBooleanType(props.column.dataType)
 	const isTs = () => isTimestampType(props.column.dataType)
-	const isJson = () => isJsonType(props.column.dataType)
+	const isJson = () => isStructuredType(props.column.dataType)
 	const isBin = () => isBinaryType(props.column.dataType)
 
 	const displayValue = () => {
@@ -52,9 +53,7 @@ export default function GridCell(props: GridCellProps) {
 		if (isTs()) return formatTimestamp(props.value, profile.dateFormat)
 		if (isBin()) return formatBinary(props.value, profile)
 		if (isNumber()) return formatNumberWithProfile(props.value, profile)
-		if (isJson() && typeof props.value === 'object') {
-			return JSON.stringify(props.value)
-		}
+		if (isJson()) return formatJsonValue(props.value)
 		return String(props.value)
 	}
 
@@ -66,9 +65,7 @@ export default function GridCell(props: GridCellProps) {
 			return `\u2192 ${props.fkTarget.table}.${props.fkTarget.column}`
 		}
 		if (isNull()) return undefined
-		if (isJson() && typeof props.value === 'object') {
-			return JSON.stringify(props.value, null, 2)
-		}
+		if (isJson()) return formatJsonValue(props.value, true)
 		const str = String(props.value)
 		return str.length > 50 ? str : undefined
 	}
@@ -162,7 +159,7 @@ export default function GridCell(props: GridCellProps) {
 
 				<Show when={jsonExpanded()}>
 					<div class="grid-cell__json-popup" onClick={(e) => e.stopPropagation()}>
-						<pre>{JSON.stringify(props.value, null, 2)}</pre>
+						<pre>{formatJsonValue(props.value, true)}</pre>
 					</div>
 				</Show>
 			</div>

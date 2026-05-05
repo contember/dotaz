@@ -1,4 +1,5 @@
-import { generateChangesPreview, generateChangeSql } from '@dotaz/shared/sql'
+import { generateChangesPreview, generateChangeSql, serializeValueForDialect } from '@dotaz/shared/sql'
+import type { GridColumnDef } from '@dotaz/shared/types/grid'
 import type { DataChange } from '@dotaz/shared/types/rpc'
 import type { SetStoreFunction } from 'solid-js/store'
 import { rpc } from '../lib/rpc'
@@ -14,7 +15,23 @@ function createDefaultPendingChanges(): PendingChanges {
 	}
 }
 
-export { createDefaultPendingChanges }
+/**
+ * Equality check tolerant of object identity changes — JSON columns come back from
+ * the DB as parsed JS values; re-parsing user input creates a new instance with
+ * the same content, which a `===` check would mis-flag as a modification.
+ */
+function valuesEqual(a: unknown, b: unknown): boolean {
+	if (a === b) return true
+	if (a == null || b == null) return false
+	if (typeof a !== 'object' || typeof b !== 'object') return false
+	try {
+		return JSON.stringify(a) === JSON.stringify(b)
+	} catch {
+		return false
+	}
+}
+
+export { createDefaultPendingChanges, valuesEqual }
 
 export function createGridEditingActions(
 	_state: GridStoreState,
@@ -46,7 +63,7 @@ export function createGridEditingActions(
 		const oldValue = existing ? existing.oldValue : tab.rows[rowIndex]?.[column]
 
 		// If reverting to original value, remove the edit
-		if (oldValue === newValue) {
+		if (valuesEqual(oldValue, newValue)) {
 			const next = { ...tab.pendingChanges.cellEdits }
 			delete next[key]
 			setState('tabs', tabId, 'pendingChanges', 'cellEdits', next)
@@ -288,10 +305,23 @@ export function createGridEditingActions(
 	}
 
 	/**
-	 * Build DataChange array from pending changes for backend submission.
+	 * Build DataChange array from pending changes for backend submission. Values
+	 * are serialised through the connection's dialect — JS arrays become PG
+	 * array literals so the params are wire-ready (Bun.SQL would otherwise
+	 * stringify them as `"a,b"` and PG rejects that as a malformed array).
 	 */
 	function buildDataChanges(tabId: string): DataChange[] {
 		const tab = ensureTab(tabId)
+		const dialect = connectionsStore.getDialect(tab.connectionId)
+		const colByName = new Map(tab.columns.map((c) => [c.name, c] as const))
+		const serialiseRow = (values: Record<string, unknown>): Record<string, unknown> => {
+			const out: Record<string, unknown> = {}
+			for (const [k, v] of Object.entries(values)) {
+				const col: GridColumnDef | undefined = colByName.get(k)
+				out[k] = col ? serializeValueForDialect(v, col.dataType, dialect) : v
+			}
+			return out
+		}
 		const changes: DataChange[] = []
 		const pkColumns = tab.columns
 			.filter((c) => c.isPrimaryKey)
@@ -322,8 +352,8 @@ export function createGridEditingActions(
 				type: 'update',
 				schema: tab.schema,
 				table: tab.table,
-				primaryKeys,
-				values,
+				primaryKeys: serialiseRow(primaryKeys),
+				values: serialiseRow(values),
 			})
 		}
 
@@ -341,7 +371,7 @@ export function createGridEditingActions(
 				type: 'insert',
 				schema: tab.schema,
 				table: tab.table,
-				values,
+				values: serialiseRow(values),
 			})
 		}
 
@@ -357,7 +387,7 @@ export function createGridEditingActions(
 				type: 'delete',
 				schema: tab.schema,
 				table: tab.table,
-				primaryKeys,
+				primaryKeys: serialiseRow(primaryKeys),
 			})
 		}
 

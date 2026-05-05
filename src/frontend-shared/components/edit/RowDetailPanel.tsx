@@ -7,7 +7,7 @@ import ExternalLink from 'lucide-solid/icons/external-link'
 import Pencil from 'lucide-solid/icons/pencil'
 import X from 'lucide-solid/icons/x'
 import { createEffect, createSignal, For, on, Show } from 'solid-js'
-import { formatDisplayValue } from '../../lib/value-format'
+import { formatColumnValue } from '../../lib/value-format'
 import type { FkBreadcrumb } from '../../stores/grid'
 import Resizer from '../layout/Resizer'
 import RowDetailEditFields from './RowDetailEditFields'
@@ -116,6 +116,7 @@ export default function RowDetailPanel(props: RowDetailPanelProps) {
 
 	// ── Save / Cancel ────────────────────────────────────────
 	function saveCurrentEdits() {
+		if (detail.hasFieldErrors()) return
 		const edits = detail.localEdits()
 		if (Object.keys(edits).length > 0 && props.onSave) {
 			props.onSave(edits)
@@ -124,6 +125,7 @@ export default function RowDetailPanel(props: RowDetailPanelProps) {
 	}
 
 	async function handleSave() {
+		if (detail.hasFieldErrors()) return
 		const edits = detail.localEdits()
 		if (Object.keys(edits).length === 0) {
 			setEditing(false)
@@ -319,7 +321,7 @@ export default function RowDetailPanel(props: RowDetailPanelProps) {
 													: undefined}
 												title={isFk() ? `Go to ${detail.fkLookup().get(col.name)!.table}` : undefined}
 											>
-												{formatDisplayValue(value(), 200)}
+												{formatColumnValue(value(), col.dataType, { maxLength: 200 })}
 											</span>
 										</div>
 									)
@@ -337,6 +339,7 @@ export default function RowDetailPanel(props: RowDetailPanelProps) {
 									getValue={detail.getValue}
 									isChanged={isChanged}
 									setFieldValue={detail.setFieldValue}
+									setFieldError={detail.setFieldError}
 									connectionId={props.connectionId}
 									database={props.database}
 								/>
@@ -409,7 +412,8 @@ export default function RowDetailPanel(props: RowDetailPanelProps) {
 						<button
 							class="btn btn--primary"
 							onClick={handleSave}
-							disabled={saving() || !detail.hasEdits()}
+							disabled={saving() || !detail.hasEdits() || detail.hasFieldErrors()}
+							title={detail.hasFieldErrors() ? 'Fix invalid fields first' : undefined}
 						>
 							{saving() ? 'Saving...' : 'Apply'}
 						</button>

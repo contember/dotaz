@@ -7,7 +7,7 @@ import X from 'lucide-solid/icons/x'
 import { createEffect, For, onCleanup, Show } from 'solid-js'
 import { buildFkLookup } from '../../lib/fk-utils'
 import { useClickOutside } from '../../lib/hooks'
-import { formatDisplayValue } from '../../lib/value-format'
+import { formatColumnValue } from '../../lib/value-format'
 import type { FkPeekState } from '../../stores/grid'
 import './FkPeekPopover.css'
 
@@ -136,6 +136,7 @@ export default function FkPeekPopover(props: FkPeekPopoverProps) {
 					<For each={props.peek.columns}>
 						{(col) => {
 							const value = () => props.peek.rows[0]?.[col.name]
+							const display = () => formatColumnValue(value(), col.dataType)
 							const isFk = () => fkLookup().has(col.name) && value() !== null && value() !== undefined
 							const isNull = () => value() === null || value() === undefined
 							return (
@@ -148,22 +149,22 @@ export default function FkPeekPopover(props: FkPeekPopoverProps) {
 											'fk-peek__field-value--fk': isFk(),
 										}}
 										onClick={isFk() ? () => handleFkValueClick(col.name, value()) : undefined}
-										title={isFk() ? `Go to ${fkLookup().get(col.name)!.table}` : formatDisplayValue(value())}
+										title={isFk() ? `Go to ${fkLookup().get(col.name)!.table}` : display()}
 									>
-										{formatDisplayValue(value())}
+										{display()}
 									</span>
 									<Show when={props.onFilter}>
 										<span class="fk-peek__field-actions">
 											<button
 												class="fk-peek__filter-btn"
-												title={`Filter: ${col.name} = ${formatDisplayValue(value())}`}
+												title={`Filter: ${col.name} = ${display()}`}
 												onClick={() => props.onFilter!(col.name, value(), false)}
 											>
 												<FilterIcon size={10} />
 											</button>
 											<button
 												class="fk-peek__filter-btn"
-												title={`Filter: ${col.name} != ${formatDisplayValue(value())}`}
+												title={`Filter: ${col.name} != ${display()}`}
 												onClick={() => props.onFilter!(col.name, value(), true)}
 											>
 												<FilterXIcon size={10} />

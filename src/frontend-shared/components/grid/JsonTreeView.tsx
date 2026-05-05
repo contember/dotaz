@@ -57,16 +57,11 @@ export default function JsonTreeView(props: JsonTreeViewProps) {
 		}
 	}
 
-	const parsedValue = createMemo(() => {
-		if (typeof props.value === 'string') {
-			try {
-				return JSON.parse(props.value)
-			} catch {
-				return props.value
-			}
-		}
-		return props.value
-	})
+	// Render the value as-is. Don't auto-parse JSON-looking strings — a JSON
+	// scalar that's actually stored as a string in the column needs to be visible
+	// as a string leaf, not silently re-interpreted as the array/object it
+	// happens to encode.
+	const parsedValue = createMemo(() => props.value)
 
 	return (
 		<div class="json-tree">

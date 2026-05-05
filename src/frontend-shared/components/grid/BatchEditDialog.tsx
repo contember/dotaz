@@ -2,7 +2,6 @@ import { isDateType, isNumericType } from '@dotaz/shared/column-types'
 import { SQL_DEFAULT } from '@dotaz/shared/types/database'
 import type { GridColumnDef } from '@dotaz/shared/types/grid'
 import { createSignal, For, Show } from 'solid-js'
-import { parseValue } from '../../lib/value-format'
 import type { FkTarget } from '../../stores/grid'
 import { gridStore } from '../../stores/grid'
 import Dialog from '../common/Dialog'
@@ -105,7 +104,11 @@ export default function BatchEditDialog(props: BatchEditDialogProps) {
 					let finalValue: unknown
 					switch (mode) {
 						case 'set':
-							finalValue = parseValue(String(values()[col.name] ?? ''), col)
+							// FieldInput already returns a properly typed value for each column
+							// kind (parsed JSON for json columns, parsed numbers, etc.). Don't
+							// re-coerce through String()/parseValue — it would turn an object
+							// into "[object Object]" and break JSON saves.
+							finalValue = values()[col.name] ?? null
 							break
 						case 'null':
 							finalValue = null

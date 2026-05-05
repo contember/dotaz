@@ -1,4 +1,4 @@
-import { getDataTypeLabel, isBooleanType, isJsonType } from '@dotaz/shared/column-types'
+import { getDataTypeLabel, isBooleanType, isStructuredType } from '@dotaz/shared/column-types'
 import type { ForeignKeyInfo } from '@dotaz/shared/types/database'
 import { isSqlDefault, SQL_DEFAULT } from '@dotaz/shared/types/database'
 import type { ColumnFilter, GridColumnDef } from '@dotaz/shared/types/grid'
@@ -9,7 +9,7 @@ import Trash2 from 'lucide-solid/icons/trash-2'
 import WrapText from 'lucide-solid/icons/wrap-text'
 import X from 'lucide-solid/icons/x'
 import { createEffect, createSignal, Match, on, Show, Switch } from 'solid-js'
-import { displayValue, tryFormatJson } from '../../lib/value-format'
+import { formatColumnValue, formatColumnValueForEditor, parseJsonColumnInput, tryFormatJson } from '../../lib/value-format'
 import RowDetailPanel from '../edit/RowDetailPanel'
 import Resizer from '../layout/Resizer'
 import AggregatePanel from './AggregatePanel'
@@ -134,18 +134,13 @@ function ValueViewer(props: {
 	const [editValue, setEditValue] = createSignal('')
 	const [isEditing, setIsEditing] = createSignal(false)
 	const [wordWrap, setWordWrap] = createSignal(true)
+	const [jsonError, setJsonError] = createSignal<string | null>(null)
 
-	const isJson = () => isJsonType(props.column.dataType) || tryFormatJson(props.value) !== null
+	const isJson = () => isStructuredType(props.column.dataType) || tryFormatJson(props.value) !== null
 	const isNull = () => props.value === null || props.value === undefined
 	const isDefault = () => isSqlDefault(props.value)
 
-	const formattedValue = () => {
-		if (isNull()) return 'NULL'
-		if (isDefault()) return 'DEFAULT'
-		const jsonFormatted = tryFormatJson(props.value)
-		if (jsonFormatted !== null) return jsonFormatted
-		return displayValue(props.value)
-	}
+	const formattedValue = () => formatColumnValue(props.value, props.column.dataType, { pretty: true })
 
 	const charCount = () => {
 		if (isNull() || isDefault()) return null
@@ -162,26 +157,22 @@ function ValueViewer(props: {
 
 	function startEditing() {
 		if (props.readOnly) return
-		if (isNull() || isDefault()) {
-			setEditValue('')
-		} else {
-			const jsonFormatted = tryFormatJson(props.value)
-			setEditValue(jsonFormatted ?? displayValue(props.value))
-		}
+		setEditValue(formatColumnValueForEditor(props.value, props.column.dataType))
 		setIsEditing(true)
 	}
 
 	function handleSave() {
 		const raw = editValue()
-		if (isJsonType(props.column.dataType)) {
-			try {
-				const parsed = JSON.parse(raw)
-				props.onSave(parsed)
-				setIsEditing(false)
+		if (isStructuredType(props.column.dataType)) {
+			const result = parseJsonColumnInput(raw, props.column.nullable)
+			if (!result.ok) {
+				setJsonError(result.error)
 				return
-			} catch {
-				/* save as string */
 			}
+			setJsonError(null)
+			props.onSave(result.value)
+			setIsEditing(false)
+			return
 		}
 		if (isBooleanType(props.column.dataType)) {
 			const lower = raw.toLowerCase().trim()
@@ -287,13 +278,22 @@ function ValueViewer(props: {
 				>
 					<textarea
 						class="side-panel__value-textarea"
-						classList={{ 'side-panel__value-textarea--wrap': wordWrap() }}
+						classList={{
+							'side-panel__value-textarea--wrap': wordWrap(),
+							'side-panel__value-textarea--error': jsonError() !== null,
+						}}
 						value={editValue()}
-						onInput={(e) => setEditValue(e.currentTarget.value)}
+						onInput={(e) => {
+							setEditValue(e.currentTarget.value)
+							if (jsonError() !== null) setJsonError(null)
+						}}
 						onKeyDown={handleKeyDown}
 						autofocus
 						spellcheck={false}
 					/>
+					<Show when={jsonError() !== null}>
+						<div class="side-panel__value-error">{jsonError()}</div>
+					</Show>
 					<div class="side-panel__value-edit-actions">
 						<button
 							class="side-panel__action-btn side-panel__action-btn--primary"
@@ -303,7 +303,10 @@ function ValueViewer(props: {
 						</button>
 						<button
 							class="side-panel__action-btn"
-							onClick={() => setIsEditing(false)}
+							onClick={() => {
+								setJsonError(null)
+								setIsEditing(false)
+							}}
 						>
 							Cancel
 						</button>

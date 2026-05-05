@@ -39,6 +39,20 @@
 	line-height: 1.4;
 }
 
+.inline-editor--json {
+	height: auto;
+	min-height: 32px;
+	align-items: stretch;
+}
+
+.inline-editor--json textarea {
+	overflow: auto;
+}
+
+.inline-editor--json-error textarea {
+	border-color: var(--danger, #ef4444);
+}
+
 .inline-editor--boolean {
 	justify-content: center;
 	gap: var(--spacing-xs);
