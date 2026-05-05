@@ -59,6 +59,9 @@
 	box-sizing: border-box;
 	overflow: auto;
 	resize: none;
+	/* Override --surface-inset (a translucent overlay) so the floating textarea
+	 * doesn't bleed the row underneath when it overflows the cell. */
+	background: var(--surface-raised);
 }
 
 .inline-editor--json-error textarea {

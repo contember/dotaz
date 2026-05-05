@@ -317,6 +317,10 @@ export default function DataGrid(props: DataGridProps) {
 
 	function handleRowMouseDown(index: number, e: MouseEvent) {
 		if (e.button !== 0) return
+		// Don't hijack clicks that land inside an open inline editor — selecting
+		// the row would steal focus from the textarea and immediately close it.
+		const target = e.target as Element | null
+		if (target?.closest('.inline-editor')) return
 		const colIdx = resolveColIndex(e)
 
 		if (e.shiftKey && (e.ctrlKey || e.metaKey)) {
