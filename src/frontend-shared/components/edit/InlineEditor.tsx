@@ -33,21 +33,23 @@ function tryQuickValueShortcut(
 	e: KeyboardEvent,
 	column: GridColumnDef,
 	inputEmpty: boolean,
-	isTextColumn: boolean,
+	isFreeformColumn: boolean,
 	onSave: (value: unknown) => void,
 ): boolean {
 	const key = e.key.toLowerCase()
 	const isCtrl = isQuickValueModifier(e)
+	// Single-key shortcuts only trigger when modifier is held OR the input is
+	// empty AND it isn't a column where the letter is a legitimate first keystroke
+	// (text columns, JSON/array columns where `{` `[` `"` `t` `n` `f` `d` are valid).
+	const allowSingleKey = isCtrl || (inputEmpty && !isFreeformColumn)
 
-	// Ctrl+N or 'n' when empty (non-text) → NULL
-	if (key === 'n' && column.nullable && (isCtrl || (inputEmpty && !isTextColumn))) {
+	if (key === 'n' && column.nullable && allowSingleKey) {
 		e.preventDefault()
 		e.stopPropagation()
 		onSave(null)
 		return true
 	}
 
-	// Ctrl+T or 't' when empty (non-text) → true (boolean only)
 	if (key === 't' && isBooleanType(column.dataType) && (isCtrl || inputEmpty)) {
 		e.preventDefault()
 		e.stopPropagation()
@@ -55,7 +57,6 @@ function tryQuickValueShortcut(
 		return true
 	}
 
-	// Ctrl+F or 'f' when empty (non-text) → false (boolean only)
 	if (key === 'f' && isBooleanType(column.dataType) && (isCtrl || inputEmpty)) {
 		e.preventDefault()
 		e.stopPropagation()
@@ -63,8 +64,7 @@ function tryQuickValueShortcut(
 		return true
 	}
 
-	// Ctrl+D or 'd' when empty (non-text) → DEFAULT
-	if (key === 'd' && (isCtrl || (inputEmpty && !isTextColumn))) {
+	if (key === 'd' && allowSingleKey) {
 		e.preventDefault()
 		e.stopPropagation()
 		onSave(SQL_DEFAULT)
@@ -150,8 +150,10 @@ export default function InlineEditor(props: InlineEditorProps) {
 	}
 
 	function handleKeyDown(e: KeyboardEvent) {
-		// Try quick value shortcuts first
-		if (tryQuickValueShortcut(e, props.column, getInputEmpty(), isText(), props.onSave)) {
+		// Try quick value shortcuts first. Skip single-key shortcuts when the
+		// editor accepts free-form text (text columns, JSON/array columns) so
+		// the user's first keystroke isn't swallowed.
+		if (tryQuickValueShortcut(e, props.column, getInputEmpty(), isText() || isJson(), props.onSave)) {
 			return
 		}
 

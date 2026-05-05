@@ -38,6 +38,22 @@ export function quickValueModifierLabel(): string {
 	return shortcutMode === 'browser' ? 'Alt' : 'Ctrl'
 }
 
+// ── Event helpers ────────────────────────────────────────
+
+/** Is the keystroke originating from a text-editable element (input, textarea, contenteditable)? */
+export function isEditableTarget(e: KeyboardEvent): boolean {
+	const el = e.target as { tagName?: string; isContentEditable?: boolean } | null
+	if (!el) return false
+	const tag = el.tagName
+	if (tag === 'INPUT' || tag === 'TEXTAREA') return true
+	return el.isContentEditable === true
+}
+
+/** Does the event carry a modifier key (Ctrl/Meta/Alt)? Shift alone doesn't count. */
+export function hasModifier(e: KeyboardEvent): boolean {
+	return e.ctrlKey || e.metaKey || e.altKey
+}
+
 // ── Per-element key handler ──────────────────────────────
 
 export interface KeyBinding {
@@ -159,6 +175,12 @@ class KeyboardManager {
 		// Context check: "global" always matches; specific contexts must match current
 		const currentContext = this.contextProvider()
 		if (entry.context !== 'global' && entry.context !== currentContext) return
+
+		// Don't hijack unmodified keystrokes (Delete, F2, Enter, …) when the user
+		// is typing into an editable element — let the browser handle the native
+		// behaviour (delete a character, etc.). Modifier-keyed shortcuts still
+		// fire so things like Ctrl+S keep working inside a focused cell editor.
+		if (isEditableTarget(e) && !hasModifier(e)) return
 
 		e.preventDefault()
 		commandRegistry.execute(entry.commandId)

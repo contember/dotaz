@@ -39,14 +39,26 @@
 	line-height: 1.4;
 }
 
+/*
+ * JSON / array inline editor — the textarea grows beyond the row's fixed 32px
+ * height, so we float it on top of the cell with z-index instead of growing
+ * the row (which the virtual scroller pins). Without z-index the next row
+ * paints over the overflow, swallowing clicks/typing into the textarea.
+ */
 .inline-editor--json {
-	height: auto;
-	min-height: 32px;
-	align-items: stretch;
+	z-index: 10;
 }
 
 .inline-editor--json textarea {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	min-height: 32px;
+	max-height: 240px;
+	box-sizing: border-box;
 	overflow: auto;
+	resize: none;
 }
 
 .inline-editor--json-error textarea {

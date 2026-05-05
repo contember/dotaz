@@ -250,4 +250,51 @@ describe('KeyboardManager', () => {
 		// Re-register for cleanup
 		keyboardManager.register('Ctrl+G', 'test-global')
 	})
+
+	describe('editable target handling', () => {
+		const fakeTarget = (tagName: string, isContentEditable = false) => ({ tagName, isContentEditable }) as unknown as EventTarget
+
+		test('unmodified shortcut bails when target is a textarea (Delete in JSON editor)', () => {
+			keyboardManager.setContextProvider(() => 'data-grid')
+			const e = makeKeyEvent({ key: 'F2' })
+			Object.defineProperty(e, 'target', { value: fakeTarget('TEXTAREA'), configurable: true })
+			keyboardManager.handleKeyDown(e)
+			expect(handler).not.toHaveBeenCalled()
+			expect(e.preventDefault).not.toHaveBeenCalled()
+		})
+
+		test('unmodified shortcut bails when target is an input', () => {
+			keyboardManager.setContextProvider(() => 'data-grid')
+			const e = makeKeyEvent({ key: 'F2' })
+			Object.defineProperty(e, 'target', { value: fakeTarget('INPUT'), configurable: true })
+			keyboardManager.handleKeyDown(e)
+			expect(handler).not.toHaveBeenCalled()
+		})
+
+		test('unmodified shortcut bails when target is contenteditable', () => {
+			keyboardManager.setContextProvider(() => 'data-grid')
+			const e = makeKeyEvent({ key: 'F2' })
+			Object.defineProperty(e, 'target', { value: fakeTarget('DIV', true), configurable: true })
+			keyboardManager.handleKeyDown(e)
+			expect(handler).not.toHaveBeenCalled()
+		})
+
+		test('modified shortcut still fires inside an editable target', () => {
+			// Ctrl+G is registered as global → should still work in a textarea
+			// so the user can hit save-view / command-palette / etc.
+			keyboardManager.setContextProvider(() => 'data-grid')
+			const e = makeKeyEvent({ key: 'g', ctrlKey: true })
+			Object.defineProperty(e, 'target', { value: fakeTarget('TEXTAREA'), configurable: true })
+			keyboardManager.handleKeyDown(e)
+			expect(handler).toHaveBeenCalledTimes(1)
+		})
+
+		test('non-editable target dispatches as normal', () => {
+			keyboardManager.setContextProvider(() => 'data-grid')
+			const e = makeKeyEvent({ key: 'F2' })
+			Object.defineProperty(e, 'target', { value: fakeTarget('DIV'), configurable: true })
+			keyboardManager.handleKeyDown(e)
+			expect(handler).toHaveBeenCalledTimes(1)
+		})
+	})
 })

@@ -1,6 +1,6 @@
 import type { GridColumnDef } from '@dotaz/shared/types/grid'
 import type { Accessor } from 'solid-js'
-import { createKeyHandler } from '../../lib/keyboard'
+import { createKeyHandler, isEditableTarget } from '../../lib/keyboard'
 import { gridStore } from '../../stores/grid'
 import type { DataGridSidePanelHandle } from './DataGridSidePanel'
 
@@ -15,11 +15,6 @@ interface UseDataGridKeyboardParams {
 	startEditingFocused: () => void
 	handleDeleteSelected: () => void
 	handleCellCancel: () => void
-}
-
-function isEditableTarget(e: KeyboardEvent): boolean {
-	const el = e.target
-	return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || (el instanceof HTMLElement && el.isContentEditable)
 }
 
 export function useDataGridKeyboard(params: UseDataGridKeyboardParams) {
