@@ -1,3 +1,4 @@
+import { formatAll } from '@dotaz/shared/export/formatters'
 import type { CsvDelimiter, CsvEncoding, ExportFormat, ExportPreviewRequest } from '@dotaz/shared/types/export'
 import type { AutoJoinDef, ColumnFilter, SortColumn } from '@dotaz/shared/types/grid'
 import ClipboardCopy from 'lucide-solid/icons/clipboard-copy'
@@ -17,14 +18,24 @@ import './ExportDialog.css'
 
 type ExportScope = 'all' | 'view' | 'selected'
 
+/** In-memory row set — bypasses the server-side streaming export path. */
+export interface RowsExportSource {
+	columns: string[]
+	rows: Record<string, unknown>[]
+	defaultName?: string
+}
+
 interface ExportDialogProps {
 	open: boolean
-	tabId: string
-	connectionId: string
-	schema: string
-	table: string
+	/** Required in table mode (driving filters/sort/scope from the grid store). */
+	tabId?: string
+	connectionId?: string
+	schema?: string
+	table?: string
 	database?: string
 	initialScope?: ExportScope
+	/** When set, the dialog exports these rows client-side and ignores tabId/connectionId/etc. */
+	rowsSource?: RowsExportSource
 	onClose: () => void
 }
 
@@ -84,6 +95,8 @@ export default function ExportDialog(props: ExportDialogProps) {
 		loading: false,
 	})
 	const [phase, setPhase] = createSignal<ExportPhase>({ status: 'idle' })
+	const isRowsSource = () => !!props.rowsSource
+
 	const preview = createMemo(() =>
 		formatPreview(
 			previewData.rows,
@@ -92,15 +105,16 @@ export default function ExportDialog(props: ExportDialogProps) {
 			options.delimiter,
 			options.includeHeaders,
 			options.batchSize,
-			props.schema,
-			props.table,
+			props.schema ?? '',
+			props.table ?? (props.rowsSource?.defaultName?.replace(/\.[^.]+$/, '') ?? 'result'),
 		)
 	)
 
 	const caps = () => getCapabilities()
-	const tab = () => gridStore.getTab(props.tabId)
+	const tab = () => (props.tabId ? gridStore.getTab(props.tabId) : undefined)
 
 	const hasSelection = () => {
+		if (!props.tabId) return false
 		const snapshot = gridStore.getSelectionSnapshot(props.tabId)
 		return !!snapshot && snapshot.rowCount > 0 && snapshot.columns.length > 0
 	}
@@ -112,25 +126,41 @@ export default function ExportDialog(props: ExportDialogProps) {
 	}
 
 	const selectedRowCount = () => {
+		if (!props.tabId) return 0
 		return gridStore.getSelectionSnapshot(props.tabId)?.rowCount ?? 0
 	}
 
 	const selectedCellCount = () => {
+		if (!props.tabId) return 0
 		return gridStore.getSelectionSnapshot(props.tabId)?.cellCount ?? 0
 	}
 
 	const selectedColumnNames = () => {
+		if (!props.tabId) return undefined
 		return gridStore
 			.getSelectionSnapshot(props.tabId)
 			?.columns.map((column) => column.name)
 	}
 
 	const rowCountForScope = () => {
+		if (props.rowsSource) return props.rowsSource.rows.length
 		const t = tab()
 		if (!t) return 0
 		if (options.scope === 'selected') return selectedRowCount()
 		if (options.scope === 'view' && t.filters.length > 0) return t.totalCount
 		return t.totalCount
+	}
+
+	function buildClientSideContent(rows: Record<string, unknown>[], columns: string[]): string {
+		const tableName = props.rowsSource?.defaultName?.replace(/\.[^.]+$/, '') ?? 'result'
+		return formatAll(rows, columns, {
+			format: options.format,
+			schema: '',
+			table: tableName,
+			delimiter: options.delimiter,
+			includeHeaders: options.includeHeaders,
+			batchSize: options.batchSize,
+		})
 	}
 
 	// Reset form when dialog opens
@@ -167,7 +197,9 @@ export default function ExportDialog(props: ExportDialogProps) {
 			const pkCols = t.columns.filter((c) => c.isPrimaryKey)
 			if (pkCols.length === 0) return undefined
 
-			const selectedIndices = gridStore.getSelectionSnapshot(props.tabId)?.rowIndices ?? []
+			const selectedIndices = props.tabId
+				? (gridStore.getSelectionSnapshot(props.tabId)?.rowIndices ?? [])
+				: []
 			const filters: ColumnFilter[] = []
 
 			for (const pkCol of pkCols) {
@@ -215,11 +247,20 @@ export default function ExportDialog(props: ExportDialogProps) {
 		setPreviewData({ rows: null, columns: [], loading: true })
 		setPhase({ status: 'idle' })
 
+		if (props.rowsSource) {
+			setPreviewData({
+				rows: props.rowsSource.rows.slice(0, 10),
+				columns: props.rowsSource.columns,
+				loading: false,
+			})
+			return
+		}
+
 		try {
 			const result = await rpc.export.previewRows({
-				connectionId: props.connectionId,
-				schema: props.schema,
-				table: props.table,
+				connectionId: props.connectionId!,
+				schema: props.schema!,
+				table: props.table!,
 				limit: 10,
 				columns: getExportColumns(),
 				filters: getExportFilters(),
@@ -238,7 +279,13 @@ export default function ExportDialog(props: ExportDialogProps) {
 		setPhase({ status: 'idle' })
 
 		const ext = FILE_EXTENSIONS[options.format]
-		const defaultName = `${props.table}.${ext}`
+		const tableHint = props.rowsSource?.defaultName?.replace(/\.[^.]+$/, '') ?? props.table ?? 'result'
+		const defaultName = `${tableHint}.${ext}`
+
+		// Client-side path for in-memory rows
+		if (props.rowsSource) {
+			return handleClientSideExport(defaultName)
+		}
 
 		// Web mode: use HTTP streaming via token
 		if (caps().hasHttpStreaming && !caps().hasFileSystem) {
@@ -274,9 +321,9 @@ export default function ExportDialog(props: ExportDialogProps) {
 
 		try {
 			const result = await rpc.export.exportData({
-				connectionId: props.connectionId,
-				schema: props.schema,
-				table: props.table,
+				connectionId: props.connectionId!,
+				schema: props.schema!,
+				table: props.table!,
 				format: options.format,
 				filePath: exportFilePath ?? defaultName,
 				columns: getExportColumns(),
@@ -296,6 +343,27 @@ export default function ExportDialog(props: ExportDialogProps) {
 			setPhase({ status: 'error', message: err instanceof Error ? err.message : String(err) })
 		} finally {
 			unsub()
+		}
+	}
+
+	function handleClientSideExport(defaultName: string) {
+		const src = props.rowsSource
+		if (!src) return
+		setPhase({ status: 'exporting', rows: src.rows.length })
+		try {
+			const content = buildClientSideContent(src.rows, src.columns)
+			const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+			const url = URL.createObjectURL(blob)
+			const a = document.createElement('a')
+			a.href = url
+			a.download = defaultName
+			document.body.appendChild(a)
+			a.click()
+			document.body.removeChild(a)
+			URL.revokeObjectURL(url)
+			setPhase({ status: 'done', result: { rowCount: src.rows.length, sizeBytes: blob.size } })
+		} catch (err) {
+			setPhase({ status: 'error', message: err instanceof Error ? err.message : String(err) })
 		}
 	}
 
@@ -322,10 +390,10 @@ export default function ExportDialog(props: ExportDialogProps) {
 			const { token } = await transport.call<{ token: string }>(
 				'stream.createExportToken',
 				{
-					connectionId: props.connectionId,
+					connectionId: props.connectionId!,
 					database: props.database,
-					schema: props.schema,
-					table: props.table,
+					schema: props.schema!,
+					table: props.table!,
 					format: options.format,
 					columns: getExportColumns(),
 					delimiter: options.format === 'csv' ? options.delimiter : undefined,
@@ -376,22 +444,27 @@ export default function ExportDialog(props: ExportDialogProps) {
 		setPhase({ status: 'copying' })
 
 		try {
-			const params: ExportPreviewRequest = {
-				connectionId: props.connectionId,
-				schema: props.schema,
-				table: props.table,
-				format: options.format,
-				limit: Number.MAX_SAFE_INTEGER,
-				columns: getExportColumns(),
-				delimiter: options.format === 'csv' ? options.delimiter : undefined,
-				filters: getExportFilters(),
-				sort: getExportSort(),
-				autoJoins: getExportAutoJoins(),
-				database: props.database,
+			let content: string
+			if (props.rowsSource) {
+				content = buildClientSideContent(props.rowsSource.rows, props.rowsSource.columns)
+			} else {
+				const params: ExportPreviewRequest = {
+					connectionId: props.connectionId!,
+					schema: props.schema!,
+					table: props.table!,
+					format: options.format,
+					limit: Number.MAX_SAFE_INTEGER,
+					columns: getExportColumns(),
+					delimiter: options.format === 'csv' ? options.delimiter : undefined,
+					filters: getExportFilters(),
+					sort: getExportSort(),
+					autoJoins: getExportAutoJoins(),
+					database: props.database,
+				}
+				const result = await rpc.export.preview(params)
+				content = result.content
 			}
-
-			const result = await rpc.export.preview(params)
-			await navigator.clipboard.writeText(result.content)
+			await navigator.clipboard.writeText(content)
 			setPhase({ status: 'copied' })
 			setTimeout(() => setPhase({ status: 'idle' }), 2000)
 		} catch (err) {
@@ -433,47 +506,49 @@ export default function ExportDialog(props: ExportDialogProps) {
 
 				{/* Scope + Options */}
 				<div class="export-dialog__row">
-					<div class="export-dialog__section">
-						<label class="export-dialog__label">Scope</label>
-						<div class="export-dialog__scope-group">
-							<label class="export-dialog__radio-label">
-								<input
-									type="radio"
-									name="scope"
-									value="all"
-									checked={options.scope === 'all'}
-									onChange={() => setOptions('scope', 'all')}
-								/>
-								Entire table
-							</label>
-							<label class="export-dialog__radio-label">
-								<input
-									type="radio"
-									name="scope"
-									value="view"
-									checked={options.scope === 'view'}
-									onChange={() => setOptions('scope', 'view')}
-								/>
-								Current view
-							</label>
-							<label
-								class="export-dialog__radio-label"
-								classList={{
-									'export-dialog__radio-label--disabled': !hasSelection() || !hasPrimaryKey(),
-								}}
-							>
-								<input
-									type="radio"
-									name="scope"
-									value="selected"
-									checked={options.scope === 'selected'}
-									disabled={!hasSelection() || !hasPrimaryKey()}
-									onChange={() => setOptions('scope', 'selected')}
-								/>
-								Selected ({selectedRowCount()})
-							</label>
+					<Show when={!isRowsSource()}>
+						<div class="export-dialog__section">
+							<label class="export-dialog__label">Scope</label>
+							<div class="export-dialog__scope-group">
+								<label class="export-dialog__radio-label">
+									<input
+										type="radio"
+										name="scope"
+										value="all"
+										checked={options.scope === 'all'}
+										onChange={() => setOptions('scope', 'all')}
+									/>
+									Entire table
+								</label>
+								<label class="export-dialog__radio-label">
+									<input
+										type="radio"
+										name="scope"
+										value="view"
+										checked={options.scope === 'view'}
+										onChange={() => setOptions('scope', 'view')}
+									/>
+									Current view
+								</label>
+								<label
+									class="export-dialog__radio-label"
+									classList={{
+										'export-dialog__radio-label--disabled': !hasSelection() || !hasPrimaryKey(),
+									}}
+								>
+									<input
+										type="radio"
+										name="scope"
+										value="selected"
+										checked={options.scope === 'selected'}
+										disabled={!hasSelection() || !hasPrimaryKey()}
+										onChange={() => setOptions('scope', 'selected')}
+									/>
+									Selected ({selectedRowCount()})
+								</label>
+							</div>
 						</div>
-					</div>
+					</Show>
 
 					<Show when={options.format === 'csv'}>
 						<div class="export-dialog__section">
@@ -490,17 +565,19 @@ export default function ExportDialog(props: ExportDialogProps) {
 										)}
 									/>
 								</div>
-								<div class="export-dialog__field">
-									<label class="export-dialog__field-label">Encoding</label>
-									<Select
-										class="export-dialog__select"
-										value={options.encoding}
-										onChange={(v) => setOptions('encoding', v as CsvEncoding)}
-										options={Object.entries(ENCODING_LABELS).map(
-											([value, label]) => ({ value, label }),
-										)}
-									/>
-								</div>
+								<Show when={!isRowsSource()}>
+									<div class="export-dialog__field">
+										<label class="export-dialog__field-label">Encoding</label>
+										<Select
+											class="export-dialog__select"
+											value={options.encoding}
+											onChange={(v) => setOptions('encoding', v as CsvEncoding)}
+											options={Object.entries(ENCODING_LABELS).map(
+												([value, label]) => ({ value, label }),
+											)}
+										/>
+									</div>
+								</Show>
 								<div class="export-dialog__field">
 									<div class="export-dialog__field-label" />
 									<label class="export-dialog__checkbox-label">
@@ -512,7 +589,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 										Include headers
 									</label>
 								</div>
-								<Show when={options.encoding === 'utf-8'}>
+								<Show when={!isRowsSource() && options.encoding === 'utf-8'}>
 									<div class="export-dialog__field">
 										<div class="export-dialog__field-label" />
 										<label class="export-dialog__checkbox-label">

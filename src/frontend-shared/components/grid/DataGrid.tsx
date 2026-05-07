@@ -9,7 +9,6 @@ import Undo2 from 'lucide-solid/icons/undo-2'
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show, untrack } from 'solid-js'
 import { createStore } from 'solid-js/store'
 import { buildFkLookup } from '../../lib/fk-utils'
-import { HEADER_HEIGHT } from '../../lib/layout-constants'
 import { connectionsStore } from '../../stores/connections'
 import type { FkTarget } from '../../stores/grid'
 import { getSelectedRowIndices, gridStore } from '../../stores/grid'
@@ -23,22 +22,20 @@ import ImportDialog from '../import/ImportDialog'
 import SaveViewDialog from '../views/SaveViewDialog'
 import AdvancedCopyDialog from './AdvancedCopyDialog'
 import BatchEditDialog from './BatchEditDialog'
-import type { DataGridContextMenuHandle } from './DataGridContextMenu'
-import DataGridContextMenu from './DataGridContextMenu'
+import { useDataGridContextMenu } from './DataGridContextMenu'
 import type { DataGridSidePanelHandle } from './DataGridSidePanel'
 import DataGridSidePanel from './DataGridSidePanel'
 import DataGridToolbar from './DataGridToolbar'
-import GridHeader from './GridHeader'
+import GridShell from './GridShell'
+import GridView, { type GridViewEditing } from './GridView'
 import Pagination from './Pagination'
 import PastePreviewDialog from './PastePreviewDialog'
 import RowColoringPanel from './RowColoringPanel'
 import TransposedGrid from './TransposedGrid'
 import { useDataGridCellEdit } from './useDataGridCellEdit'
 import { useDataGridClipboard } from './useDataGridClipboard'
-import { useDataGridKeyboard } from './useDataGridKeyboard'
 import type { DataGridModal } from './useDataGridModals'
 import { useDataGridModals } from './useDataGridModals'
-import VirtualScroller from './VirtualScroller'
 import './DataGrid.css'
 
 interface DataGridProps {
@@ -61,15 +58,9 @@ export default function DataGrid(props: DataGridProps) {
 	const [savedViewConfig, setSavedViewConfig] = createSignal<SavedViewConfig | null>(null)
 	const [rowColoringOpen, setRowColoringOpen] = createSignal(false)
 
-	let scrollRef: HTMLDivElement | undefined
-	let gridRef: HTMLDivElement | undefined
-	let isDragging = false
-	let dragCtrl = false
-
 	const [sidePanelHandle, setSidePanelHandle] = createSignal<
 		DataGridSidePanelHandle | undefined
 	>()
-	let contextMenuHandle: DataGridContextMenuHandle | undefined
 
 	const tab = () => gridStore.getTab(props.tabId)
 	const tabInfo = () => tabsStore.openTabs.find((t) => t.id === props.tabId)
@@ -101,23 +92,25 @@ export default function DataGrid(props: DataGridProps) {
 
 	const clipboard = useDataGridClipboard({
 		tabId: props.tabId,
-		visibleColumns,
 		isReadOnly,
 		getFocusedCellInfo: cellEdit.getFocusedCellInfo,
 		onOpenPastePreview: modals.openPastePreview,
 	})
 
-	const keyboard = useDataGridKeyboard({
+	const contextMenu = useDataGridContextMenu({
 		tabId: props.tabId,
+		connectionId: props.connectionId,
+		currentSchema: () => tab()?.schema ?? props.schema,
+		currentTable: () => tab()?.table ?? props.table,
+		database: props.database,
+		fkMap: () => fkState.map,
 		visibleColumns,
-		sidePanelHandle,
-		onCopy: clipboard.handleCopy,
+		isReadOnly,
 		onPaste: clipboard.handlePaste,
-		onOpenAdvancedCopy: modals.openAdvancedCopy,
-		onOpenSaveView: () => modals.openSaveView(false),
-		startEditingFocused: cellEdit.startEditingFocused,
-		handleDeleteSelected: cellEdit.handleDeleteSelected,
-		handleCellCancel: cellEdit.handleCellCancel,
+		onAdvancedCopy: () => modals.openAdvancedCopy(),
+		onDuplicateRow: cellEdit.handleDuplicateRow,
+		onFkClick: (rowIndex, column) => sidePanelHandle()?.handleFkClick(rowIndex, column),
+		onSetSidePanelOpen: (open) => sidePanelHandle()?.setSidePanelOpen(open),
 	})
 
 	// ── Event listeners ──────────────────────────────────
@@ -157,12 +150,6 @@ export default function DataGrid(props: DataGridProps) {
 		const modified = gridStore.isViewModified(props.tabId, config)
 		tabsStore.setViewModified(props.tabId, modified)
 	})
-
-	const pinStyles = () => {
-		const t = tab()
-		if (!t) return new Map<string, Record<string, string>>()
-		return gridStore.computePinStyles(visibleColumns(), t.columnConfig)
-	}
 
 	const heatmapInfo = createMemo(() => {
 		const t = tab()
@@ -277,7 +264,7 @@ export default function DataGrid(props: DataGridProps) {
 		}
 	})
 
-	// ── Mouse handling ──────────────────────────────────
+	// ── Sort / resize / row-number ──────────────────────
 
 	function handleToggleSort(column: string, multi: boolean) {
 		gridStore.toggleSort(props.tabId, column, multi)
@@ -285,86 +272,6 @@ export default function DataGrid(props: DataGridProps) {
 
 	function handleResizeColumn(column: string, width: number) {
 		gridStore.setColumnWidth(props.tabId, column, width)
-	}
-
-	function resolveColIndex(e: MouseEvent): number {
-		const target = e.target as HTMLElement
-		const cellEl = target.closest<HTMLElement>('[data-column]')
-		const columnName = cellEl?.dataset.column ?? null
-		if (!columnName) return 0
-		const cols = visibleColumns()
-		const idx = cols.findIndex((c) => c.name === columnName)
-		return idx >= 0 ? idx : 0
-	}
-
-	function resolveCellFromPoint(
-		x: number,
-		y: number,
-	): { row: number; col: number } | null {
-		const el = document.elementFromPoint(x, y)
-		if (!el) return null
-		const rowEl = (el as HTMLElement).closest<HTMLElement>('[data-row-index]')
-		if (!rowEl) return null
-		const row = parseInt(rowEl.dataset.rowIndex!, 10)
-		if (Number.isNaN(row)) return null
-		const cellEl = (el as HTMLElement).closest<HTMLElement>('[data-column]')
-		const columnName = cellEl?.dataset.column ?? null
-		if (!columnName) return { row, col: 0 }
-		const cols = visibleColumns()
-		const idx = cols.findIndex((c) => c.name === columnName)
-		return { row, col: idx >= 0 ? idx : 0 }
-	}
-
-	function handleRowMouseDown(index: number, e: MouseEvent) {
-		if (e.button !== 0) return
-		// Don't hijack clicks that land inside an open inline editor — selecting
-		// the row would steal focus from the textarea and immediately close it.
-		const target = e.target as Element | null
-		if (target?.closest('.inline-editor')) return
-		const colIdx = resolveColIndex(e)
-
-		if (e.shiftKey && (e.ctrlKey || e.metaKey)) {
-			gridStore.extendLastRange(props.tabId, index, colIdx)
-			e.preventDefault()
-			gridRef?.focus()
-			return
-		} else if (e.shiftKey) {
-			gridStore.extendSelection(props.tabId, index, colIdx)
-			e.preventDefault()
-			gridRef?.focus()
-			return
-		} else if (e.ctrlKey || e.metaKey) {
-			gridStore.addCellRange(props.tabId, index, colIdx)
-			dragCtrl = true
-		} else {
-			gridStore.selectCell(props.tabId, index, colIdx)
-		}
-
-		e.preventDefault()
-		gridRef?.focus()
-		isDragging = true
-
-		const onMouseMove = (ev: MouseEvent) => {
-			if (!isDragging) return
-			ev.preventDefault()
-			const cell = resolveCellFromPoint(ev.clientX, ev.clientY)
-			if (!cell) return
-			if (dragCtrl) {
-				gridStore.extendLastRange(props.tabId, cell.row, cell.col)
-			} else {
-				gridStore.extendSelection(props.tabId, cell.row, cell.col)
-			}
-		}
-
-		const onMouseUp = () => {
-			isDragging = false
-			dragCtrl = false
-			document.removeEventListener('mousemove', onMouseMove)
-			document.removeEventListener('mouseup', onMouseUp)
-		}
-
-		document.addEventListener('mousemove', onMouseMove)
-		document.addEventListener('mouseup', onMouseUp)
 	}
 
 	function handleRowNumberClick(index: number, e: MouseEvent) {
@@ -377,6 +284,32 @@ export default function DataGrid(props: DataGridProps) {
 			gridStore.selectFullRow(props.tabId, index, totalCols)
 			gridStore.closeFkPanel(props.tabId)
 			sidePanelHandle()?.setSidePanelOpen(true)
+		}
+	}
+
+	function handleActivateSelection() {
+		sidePanelHandle()?.openForSelection()
+	}
+
+	function gridEditing(): GridViewEditing {
+		return {
+			editingCell: tab()?.editingCell ?? null,
+			isEditable: () => !isReadOnly(),
+			onStart: (rowIdx, col) => {
+				if (isReadOnly()) return
+				if (gridStore.isRowDeleted(props.tabId, rowIdx)) return
+				gridStore.startEditing(props.tabId, rowIdx, col)
+			},
+			onSave: cellEdit.handleCellSave,
+			onCancel: cellEdit.handleCellCancel,
+			onMoveNext: cellEdit.handleCellMoveNext,
+			onMoveDown: cellEdit.handleCellMoveDown,
+			isCellChanged: (rowIdx, col) => cellEdit.getChangedCells(rowIdx).has(col),
+			isRowDeleted: (idx) => gridStore.isRowDeleted(props.tabId, idx),
+			isRowNew: (idx) => gridStore.isRowNew(props.tabId, idx),
+			onDeleteSelected: cellEdit.handleDeleteSelected,
+			onPaste: clipboard.handlePaste,
+			onBrowseFk: cellEdit.handleBrowseFkForInline,
 		}
 	}
 
@@ -465,13 +398,7 @@ export default function DataGrid(props: DataGridProps) {
 	})
 
 	return (
-		<div
-			ref={gridRef}
-			class="data-grid"
-			tabIndex={0}
-			onKeyDown={keyboard.handleKeyDown}
-			onContextMenu={(e) => contextMenuHandle?.handleGridContextMenu(e)}
-		>
+		<div class="data-grid">
 			<DataGridToolbar
 				tabId={props.tabId}
 				connectionId={props.connectionId}
@@ -578,156 +505,114 @@ export default function DataGrid(props: DataGridProps) {
 										</div>
 									</Show>
 
-									<div
-										ref={scrollRef}
-										class="data-grid__table-container"
-										classList={{
-											'data-grid__table-container--loading': tabState().loading,
-										}}
-									>
-										<Show
-											when={tabState().transposed}
-											fallback={
-												<>
-													<GridHeader
-														columns={visibleColumns()}
-														sort={tabState().sort}
-														columnConfig={tabState().columnConfig}
-														pinStyles={pinStyles()}
-														fkColumns={fkState.columns}
-														onToggleSort={handleToggleSort}
-														onResizeColumn={handleResizeColumn}
-														onHeaderContextMenu={(e, col) => contextMenuHandle?.handleHeaderContextMenu(e, col)}
-														onSelectAll={() => {
-															const t = tab()
-															if (t) {
-																gridStore.selectAll(
-																	props.tabId,
-																	t.rows.length,
-																	visibleColumns().length,
-																)
-															}
-														}}
-														onColumnSelect={(colIndex, e) => {
-															const t = tab()
-															if (!t) return
-															if (e.shiftKey) {
-																gridStore.selectFullColumnRange(
-																	props.tabId,
-																	colIndex,
-																	t.rows.length,
-																)
-															} else if (e.ctrlKey || e.metaKey) {
-																gridStore.toggleFullColumn(
-																	props.tabId,
-																	colIndex,
-																	t.rows.length,
-																)
-															} else {
-																gridStore.selectFullColumn(
-																	props.tabId,
-																	colIndex,
-																	t.rows.length,
-																)
-															}
-														}}
-													/>
-
-													<VirtualScroller
-														scrollElement={() => scrollRef}
-														rows={tabState().rows}
-														columns={visibleColumns()}
-														columnConfig={tabState().columnConfig}
-														pinStyles={pinStyles()}
-														selection={tabState().selection}
-														scrollMargin={HEADER_HEIGHT}
-														onRowMouseDown={handleRowMouseDown}
-														onRowDblClick={cellEdit.handleRowDblClick}
-														onRowNumberClick={handleRowNumberClick}
-														editingCell={tabState().editingCell}
-														getChangedCells={cellEdit.getChangedCells}
-														isRowDeleted={(idx) => gridStore.isRowDeleted(props.tabId, idx)}
-														isRowNew={(idx) => gridStore.isRowNew(props.tabId, idx)}
-														fkMap={fkState.map}
-														heatmapInfo={heatmapInfo()}
-														getRowColor={getRowColor}
-														onCellSave={cellEdit.handleCellSave}
-														onCellCancel={cellEdit.handleCellCancel}
-														onCellMoveNext={cellEdit.handleCellMoveNext}
-														onCellMoveDown={cellEdit.handleCellMoveDown}
-														onFkClick={(rowIndex, column, anchorEl) =>
-															sidePanelHandle()?.handleFkClick(
-																rowIndex,
-																column,
-																anchorEl,
-															)}
-														onPkClick={(rowIndex, column, anchorEl) =>
-															sidePanelHandle()?.handlePkClick(
-																rowIndex,
-																column,
-																anchorEl,
-															)}
-														onCellBrowseFk={cellEdit.handleBrowseFkForInline}
-													/>
-												</>
-											}
-										>
-											<TransposedGrid
+									<Show
+										when={tabState().transposed}
+										fallback={
+											<GridView
 												rows={tabState().rows}
 												columns={visibleColumns()}
-												columnConfig={tabState().columnConfig}
 												selection={tabState().selection}
-												onRowMouseDown={handleRowMouseDown}
-												onRowDblClick={cellEdit.handleRowDblClick}
-												editingCell={tabState().editingCell}
-												getChangedCells={cellEdit.getChangedCells}
-												isRowDeleted={(idx) => gridStore.isRowDeleted(props.tabId, idx)}
-												isRowNew={(idx) => gridStore.isRowNew(props.tabId, idx)}
+												onSelectionChange={(sel) => gridStore.setSelection(props.tabId, sel)}
+												columnConfig={tabState().columnConfig}
+												onResizeColumn={handleResizeColumn}
+												sort={tabState().sort}
+												onToggleSort={handleToggleSort}
+												editing={gridEditing()}
+												fkColumns={fkState.columns}
 												fkMap={fkState.map}
 												heatmapInfo={heatmapInfo()}
-												onCellSave={cellEdit.handleCellSave}
-												onCellCancel={cellEdit.handleCellCancel}
-												onCellMoveNext={cellEdit.handleCellMoveNext}
-												onCellMoveDown={cellEdit.handleCellMoveDown}
-												onFkClick={(rowIndex, column, anchorEl) =>
-													sidePanelHandle()?.handleFkClick(
-														rowIndex,
-														column,
-														anchorEl,
-													)}
-												onPkClick={(rowIndex, column, anchorEl) =>
-													sidePanelHandle()?.handlePkClick(
-														rowIndex,
-														column,
-														anchorEl,
-													)}
-												onCellBrowseFk={cellEdit.handleBrowseFkForInline}
+												getRowColor={getRowColor}
+												onFkClick={(rowIndex, column, anchorEl) => sidePanelHandle()?.handleFkClick(rowIndex, column, anchorEl)}
+												onPkClick={(rowIndex, column, anchorEl) => sidePanelHandle()?.handlePkClick(rowIndex, column, anchorEl)}
+												onRowNumberClick={handleRowNumberClick}
+												onActivateSelection={handleActivateSelection}
+												onSaveShortcut={() => modals.openSaveView(false)}
+												onAdvancedCopyShortcut={() => modals.openAdvancedCopy()}
+												getCellContextMenu={contextMenu.getCellContextMenu}
+												getHeaderContextMenu={contextMenu.getHeaderContextMenu}
+												loading={tabState().loading}
+												emptyState={
+													<div class="empty-state" style={{ 'padding-top': '48px' }}>
+														<Icon name="table" size={32} class="empty-state__icon" />
+														<div class="empty-state__title">No data</div>
+														<div class="empty-state__subtitle">
+															{tabState().quickSearch
+																? 'No rows match the current search.'
+																: tabState().filters.length > 0
+																? 'No rows match the current filters.'
+																: 'This table is empty.'}
+														</div>
+													</div>
+												}
 											/>
-										</Show>
-
-										<Show
-											when={!tabState().loading && tabState().rows.length === 0}
+										}
+									>
+										<GridShell
+											rows={tabState().rows}
+											columns={visibleColumns()}
+											selection={tabState().selection}
+											onSelectionChange={(sel) => gridStore.setSelection(props.tabId, sel)}
+											editing={gridEditing()}
+											getCellContextMenu={contextMenu.getCellContextMenu}
+											getHeaderContextMenu={contextMenu.getHeaderContextMenu}
+											onActivateSelection={handleActivateSelection}
+											onSaveShortcut={() => modals.openSaveView(false)}
+											onAdvancedCopyShortcut={() => modals.openAdvancedCopy()}
+											class="data-grid__transposed-shell"
 										>
 											<div
-												class="empty-state"
-												style={{ 'padding-top': '48px' }}
+												class="grid-view__scroll"
+												classList={{ 'grid-view__scroll--loading': tabState().loading }}
 											>
-												<Icon
-													name="table"
-													size={32}
-													class="empty-state__icon"
+												<TransposedGrid
+													rows={tabState().rows}
+													columns={visibleColumns()}
+													columnConfig={tabState().columnConfig}
+													selection={tabState().selection}
+													onRowMouseDown={(idx, e) => {
+														// Selection in transposed mode is intentionally simplified.
+														// Falls back to the previous direct gridStore actions.
+														if (e.button !== 0) return
+														const target = e.target as Element | null
+														if (target?.closest('.inline-editor')) return
+														const cellEl = (e.target as HTMLElement).closest<HTMLElement>('[data-column]')
+														const columnName = cellEl?.dataset.column ?? null
+														const cols = visibleColumns()
+														const colIdx = columnName
+															? cols.findIndex((c) => c.name === columnName)
+															: -1
+														const safeCol = colIdx >= 0 ? colIdx : 0
+														if (e.shiftKey && (e.ctrlKey || e.metaKey)) {
+															gridStore.extendLastRange(props.tabId, idx, safeCol)
+														} else if (e.shiftKey) {
+															gridStore.extendSelection(props.tabId, idx, safeCol)
+														} else if (e.ctrlKey || e.metaKey) {
+															gridStore.addCellRange(props.tabId, idx, safeCol)
+														} else {
+															gridStore.selectCell(props.tabId, idx, safeCol)
+														}
+														const shellEl = (e.currentTarget as HTMLElement | null)?.closest<HTMLElement>('.grid-view')
+														shellEl?.focus()
+														e.preventDefault()
+													}}
+													onRowDblClick={cellEdit.handleRowDblClick}
+													editingCell={tabState().editingCell}
+													getChangedCells={cellEdit.getChangedCells}
+													isRowDeleted={(idx) => gridStore.isRowDeleted(props.tabId, idx)}
+													isRowNew={(idx) => gridStore.isRowNew(props.tabId, idx)}
+													fkMap={fkState.map}
+													heatmapInfo={heatmapInfo()}
+													onCellSave={cellEdit.handleCellSave}
+													onCellCancel={cellEdit.handleCellCancel}
+													onCellMoveNext={cellEdit.handleCellMoveNext}
+													onCellMoveDown={cellEdit.handleCellMoveDown}
+													onFkClick={(rowIndex, column, anchorEl) => sidePanelHandle()?.handleFkClick(rowIndex, column, anchorEl)}
+													onPkClick={(rowIndex, column, anchorEl) => sidePanelHandle()?.handlePkClick(rowIndex, column, anchorEl)}
+													onCellBrowseFk={cellEdit.handleBrowseFkForInline}
 												/>
-												<div class="empty-state__title">No data</div>
-												<div class="empty-state__subtitle">
-													{tabState().quickSearch
-														? 'No rows match the current search.'
-														: tabState().filters.length > 0
-														? 'No rows match the current filters.'
-														: 'This table is empty.'}
-												</div>
 											</div>
-										</Show>
-									</div>
+										</GridShell>
+									</Show>
 								</div>
 
 								<DataGridSidePanel
@@ -856,7 +741,6 @@ export default function DataGrid(props: DataGridProps) {
 			<Show when={clipboard.copyFeedback()}>
 				<div class="data-grid__copy-toast">{clipboard.copyFeedback()}</div>
 			</Show>
-
 			<SaveViewDialog
 				open={modals.dgModal()?.type === 'save-view'}
 				tabId={props.tabId}
@@ -941,25 +825,6 @@ export default function DataGrid(props: DataGridProps) {
 					)
 				}}
 			</Show>
-
-			<DataGridContextMenu
-				ref={(h) => {
-					contextMenuHandle = h
-				}}
-				tabId={props.tabId}
-				connectionId={props.connectionId}
-				currentSchema={currentSchema}
-				currentTable={currentTable}
-				database={props.database}
-				fkMap={() => fkState.map}
-				visibleColumns={visibleColumns}
-				isReadOnly={isReadOnly}
-				onPaste={clipboard.handlePaste}
-				onAdvancedCopy={() => modals.openAdvancedCopy()}
-				onDuplicateRow={cellEdit.handleDuplicateRow}
-				onFkClick={(rowIndex, column) => sidePanelHandle()?.handleFkClick(rowIndex, column)}
-				onSetSidePanelOpen={(open) => sidePanelHandle()?.setSidePanelOpen(open)}
-			/>
 
 			<Show when={modals.dgModal()?.type === 'fk-picker'}>
 				{(_) => {

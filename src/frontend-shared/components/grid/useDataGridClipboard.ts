@@ -1,5 +1,4 @@
 import { cellValueToDbValue, parseClipboardText } from '@dotaz/shared/clipboard-paste'
-import type { GridColumnDef } from '@dotaz/shared/types/grid'
 import { type Accessor, createSignal } from 'solid-js'
 import { gridStore } from '../../stores/grid'
 
@@ -8,30 +7,17 @@ const PASTE_PREVIEW_THRESHOLD = 50
 
 interface UseDataGridClipboardParams {
 	tabId: string
-	visibleColumns: Accessor<GridColumnDef[]>
 	isReadOnly: Accessor<boolean>
 	getFocusedCellInfo: () => { row: number; column: string } | null
 	onOpenPastePreview: (rows: string[][], delimiter: string) => void
 }
 
+/**
+ * Paste-side clipboard logic for DataGrid: read clipboard, parse, optionally show preview,
+ * then paste into the grid. Copy is handled inside <GridView> directly.
+ */
 export function useDataGridClipboard(params: UseDataGridClipboardParams) {
 	const [copyFeedback, setCopyFeedback] = createSignal<string | null>(null)
-
-	async function handleCopy() {
-		const result = gridStore.buildClipboardTsv(params.tabId, params.visibleColumns())
-		if (!result) return
-
-		try {
-			await navigator.clipboard.writeText(result.text)
-			const msg = result.rowCount === 0
-				? 'Copied cell'
-				: `Copied ${result.rowCount} row${result.rowCount > 1 ? 's' : ''}`
-			setCopyFeedback(msg)
-			setTimeout(() => setCopyFeedback(null), COPY_FLASH_DURATION)
-		} catch {
-			// Clipboard API may fail in some contexts
-		}
-	}
 
 	async function handlePaste() {
 		if (params.isReadOnly()) return
@@ -74,7 +60,6 @@ export function useDataGridClipboard(params: UseDataGridClipboardParams) {
 
 	return {
 		copyFeedback,
-		handleCopy,
 		handlePaste,
 		handlePastePreviewConfirm,
 	}

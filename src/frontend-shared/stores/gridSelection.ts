@@ -219,6 +219,12 @@ export function createGridSelectionActions(
 		setState('tabs', tabId, 'selection', createDefaultSelection())
 	}
 
+	/** Replace the entire selection state (used when GridView reports a controlled change). */
+	function setSelection(tabId: string, selection: CellSelection) {
+		ensureTab(tabId)
+		setState('tabs', tabId, 'selection', selection)
+	}
+
 	/** Legacy compatibility: set focused cell by column name */
 	function setFocusedCell(
 		tabId: string,
@@ -255,5 +261,6 @@ export function createGridSelectionActions(
 		extendFocus,
 		clearSelection,
 		setFocusedCell,
+		setSelection,
 	}
 }

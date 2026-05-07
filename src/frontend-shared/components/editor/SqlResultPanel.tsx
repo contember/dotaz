@@ -3,6 +3,7 @@ import Check from 'lucide-solid/icons/check'
 import ChevronDown from 'lucide-solid/icons/chevron-down'
 import ChevronUp from 'lucide-solid/icons/chevron-up'
 import Code from 'lucide-solid/icons/code'
+import Download from 'lucide-solid/icons/download'
 import Lock from 'lucide-solid/icons/lock'
 import Pencil from 'lucide-solid/icons/pencil'
 import Pin from 'lucide-solid/icons/pin'
@@ -11,14 +12,15 @@ import RotateCcw from 'lucide-solid/icons/rotate-ccw'
 import TriangleAlert from 'lucide-solid/icons/triangle-alert'
 import X from 'lucide-solid/icons/x'
 import { createEffect, createSignal, For, Match, on, Show, Switch } from 'solid-js'
+import { type CellSelection, createDefaultSelection } from '../../lib/grid-selection'
 import { connectionsStore } from '../../stores/connections'
 import { editorStore, type PinnedResultSet } from '../../stores/editor'
-import type { CellSelection, ColumnConfig } from '../../stores/grid'
+import type { ColumnConfig } from '../../stores/grid'
 import { settingsStore } from '../../stores/settings'
 import Icon from '../common/Icon'
 import Select from '../common/Select'
-import GridHeader from '../grid/GridHeader'
-import VirtualScroller from '../grid/VirtualScroller'
+import ExportDialog from '../export/ExportDialog'
+import GridView from '../grid/GridView'
 import ExplainPanel from './ExplainPanel'
 import { formatDuration, getReadOnlyReason, getResultLabel, toGridColumn } from './resultPanelUtils'
 import './SqlResultPanel.css'
@@ -28,15 +30,10 @@ interface SqlResultPanelProps {
 	connectionId: string
 }
 
-const HEADER_HEIGHT = 34
-const EMPTY_SORT: [] = []
-const EMPTY_PIN_STYLES = new Map<string, Record<string, string>>()
-const EMPTY_FK_COLUMNS = new Set<string>()
-const noop = () => {}
-
 export default function SqlResultPanel(props: SqlResultPanelProps) {
 	const [activeResultIndex, setActiveResultIndex] = createSignal(0)
 	const [minimized, setMinimized] = createSignal(false)
+	const [exportOpen, setExportOpen] = createSignal(false)
 
 	const tab = () => editorStore.getTab(props.tabId)
 	const pinnedResults = () => tab()?.pinnedResults ?? []
@@ -277,6 +274,17 @@ export default function SqlResultPanel(props: SqlResultPanelProps) {
 							title="Default result limit"
 							options={[...LIMIT_OPTIONS].map((opt) => ({ value: String(opt), label: opt === 0 ? 'No limit' : `Limit ${opt}` }))}
 						/>
+						{/* Export button — only for non-error result sets with columns */}
+						<Show when={activeResult() && !activeResult()!.error && activeResult()!.columns.length > 0}>
+							<button
+								class="sql-result-panel__pin-btn"
+								onClick={() => setExportOpen(true)}
+								title="Export this result"
+							>
+								<Download size={12} />
+							</button>
+						</Show>
+
 						{/* Pin button for current results */}
 						<Show when={!isViewingPinned() && currentHasContent()}>
 							<button
@@ -375,6 +383,24 @@ export default function SqlResultPanel(props: SqlResultPanelProps) {
 					</Switch>
 				</div>
 			</Show>
+
+			<Show when={exportOpen() && activeResult() && activeResult()!.columns.length > 0}>
+				{(_) => {
+					const result = activeResult()!
+					const columnNames = result.columns.map((c) => c.name)
+					return (
+						<ExportDialog
+							open={true}
+							rowsSource={{
+								columns: columnNames,
+								rows: result.rows,
+								defaultName: 'result',
+							}}
+							onClose={() => setExportOpen(false)}
+						/>
+					)
+				}}
+			</Show>
 		</div>
 	)
 }
@@ -390,14 +416,8 @@ interface ResultGridProps {
 }
 
 function ResultGrid(props: ResultGridProps) {
-	const [scrollEl, setScrollEl] = createSignal<HTMLDivElement>()
 	const [columnWidths, setColumnWidths] = createSignal<Record<string, number>>({})
-	const [selection, setSelection] = createSignal<CellSelection>({
-		focusedCell: null,
-		ranges: [],
-		anchor: null,
-		selectMode: 'cells',
-	})
+	const [selection, setSelection] = createSignal<CellSelection>(createDefaultSelection())
 	const [showPendingPanel, setShowPendingPanel] = createSignal(false)
 	const [applying, setApplying] = createSignal(false)
 	const [applyError, setApplyError] = createSignal<string | null>(null)
@@ -447,25 +467,6 @@ function ResultGrid(props: ResultGridProps) {
 		setColumnWidths((prev) => ({ ...prev, [column]: width }))
 	}
 
-	function handleRowClick(index: number, _e: MouseEvent) {
-		setSelection({
-			focusedCell: { row: index, col: 0 },
-			ranges: [{ minRow: index, maxRow: index, minCol: 0, maxCol: Math.max(0, columns().length - 1) }],
-			anchor: { row: index, col: 0 },
-			selectMode: 'cells',
-		})
-	}
-
-	function handleRowDblClick(index: number, e: MouseEvent) {
-		if (!isEditable()) return
-		const target = e.target as HTMLElement
-		const cellEl = target.closest<HTMLElement>('[data-column]')
-		const columnName = cellEl?.dataset.column
-		if (columnName && editableColumnSet().has(columnName)) {
-			editorStore.startResultEditing(props.tabId, props.resultIndex, index, columnName)
-		}
-	}
-
 	function handleCellSave(rowIndex: number, column: string, value: unknown) {
 		editorStore.setResultCellValue(props.tabId, props.resultIndex, rowIndex, column, value)
 		editorStore.stopResultEditing(props.tabId)
@@ -473,6 +474,11 @@ function ResultGrid(props: ResultGridProps) {
 
 	function handleCellCancel() {
 		editorStore.stopResultEditing(props.tabId)
+	}
+
+	function handleStartEdit(rowIndex: number, column: string) {
+		if (!editableColumnSet().has(column)) return
+		editorStore.startResultEditing(props.tabId, props.resultIndex, rowIndex, column)
 	}
 
 	function handleCellMoveNext(rowIndex: number, currentColumn: string) {
@@ -497,19 +503,12 @@ function ResultGrid(props: ResultGridProps) {
 		}
 	}
 
-	function getChangedCells(rowIndex: number): Set<string> {
-		const changed = new Set<string>()
+	function isCellChanged(rowIndex: number, column: string): boolean {
 		const t = tab()
-		if (!t) return changed
+		if (!t) return false
 		const pending = t.resultPendingChanges[props.resultIndex]
-		if (!pending) return changed
-		for (const key of Object.keys(pending.cellEdits)) {
-			const edit = pending.cellEdits[key]
-			if (edit.rowIndex === rowIndex) {
-				changed.add(edit.column)
-			}
-		}
-		return changed
+		if (!pending) return false
+		return pending.cellEdits[`${rowIndex}:${column}`] !== undefined
 	}
 
 	async function handleApply() {
@@ -545,34 +544,26 @@ function ResultGrid(props: ResultGridProps) {
 
 	return (
 		<div class="result-grid-wrapper">
-			<div class="result-grid" ref={setScrollEl}>
-				<GridHeader
-					columns={columns()}
-					sort={EMPTY_SORT}
-					columnConfig={columnConfig()}
-					pinStyles={EMPTY_PIN_STYLES}
-					fkColumns={EMPTY_FK_COLUMNS}
-					onToggleSort={noop}
-					onResizeColumn={handleResizeColumn}
-				/>
-				<VirtualScroller
-					scrollElement={scrollEl}
-					rows={rows()}
-					columns={columns()}
-					columnConfig={columnConfig()}
-					pinStyles={EMPTY_PIN_STYLES}
-					selection={selection()}
-					scrollMargin={HEADER_HEIGHT}
-					onRowMouseDown={handleRowClick}
-					onRowDblClick={isEditable() ? handleRowDblClick : undefined}
-					editingCell={isEditable() ? editingCell() : undefined}
-					getChangedCells={isEditable() ? getChangedCells : undefined}
-					onCellSave={isEditable() ? handleCellSave : undefined}
-					onCellCancel={isEditable() ? handleCellCancel : undefined}
-					onCellMoveNext={isEditable() ? handleCellMoveNext : undefined}
-					onCellMoveDown={isEditable() ? handleCellMoveDown : undefined}
-				/>
-			</div>
+			<GridView
+				rows={rows()}
+				columns={columns()}
+				selection={selection()}
+				onSelectionChange={setSelection}
+				columnConfig={columnConfig()}
+				onResizeColumn={handleResizeColumn}
+				editing={isEditable()
+					? {
+						editingCell: editingCell(),
+						isEditable: (col) => editableColumnSet().has(col),
+						onStart: handleStartEdit,
+						onSave: handleCellSave,
+						onCancel: handleCellCancel,
+						onMoveNext: handleCellMoveNext,
+						onMoveDown: handleCellMoveDown,
+						isCellChanged,
+					}
+					: undefined}
+			/>
 
 			{/* Pending changes bar */}
 			<Show when={hasPending()}>

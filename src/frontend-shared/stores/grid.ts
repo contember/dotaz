@@ -4,6 +4,20 @@ import type { ForeignKeyInfo } from '@dotaz/shared/types/database'
 import type { AutoJoinDef, ColumnFilter, GridColumnDef, SortColumn } from '@dotaz/shared/types/grid'
 import type { RowColorRule } from '@dotaz/shared/types/rpc'
 import { createStore } from 'solid-js/store'
+import {
+	type AdvancedCopyOptions,
+	buildAdvancedCopyText as libBuildAdvancedCopyText,
+	buildClipboardTsv as libBuildClipboardTsv,
+	formatCellForClipboard as libFormatCellForClipboard,
+} from '../lib/grid-clipboard'
+import {
+	buildSelectionSnapshot as libBuildSelectionSnapshot,
+	type CellSelection,
+	createDefaultSelection,
+	getSelectedRowIndices,
+	normalizeRange,
+	type SelectionSnapshot,
+} from '../lib/grid-selection'
 import { rpc } from '../lib/rpc'
 import { createTabHelpers } from '../lib/tab-store-helpers'
 import { connectionsStore } from './connections'
@@ -38,102 +52,11 @@ export interface ColumnConfig {
 }
 
 // ── Cell selection ────────────────────────────────────────
+// Pure types and helpers live in `lib/grid-selection`. Re-exported here for
+// backward-compatible imports from `stores/grid`.
 
-export interface NormalizedRange {
-	minRow: number
-	maxRow: number
-	minCol: number
-	maxCol: number
-}
-
-export interface CellSelection {
-	focusedCell: { row: number; col: number } | null
-	ranges: NormalizedRange[]
-	anchor: { row: number; col: number } | null
-	selectMode: 'cells' | 'rows' | 'columns'
-}
-
-function createDefaultSelection(): CellSelection {
-	return { focusedCell: null, ranges: [], anchor: null, selectMode: 'cells' }
-}
-
-function normalizeRange(
-	startRow: number,
-	endRow: number,
-	startCol: number,
-	endCol: number,
-): NormalizedRange {
-	return {
-		minRow: Math.min(startRow, endRow),
-		maxRow: Math.max(startRow, endRow),
-		minCol: Math.min(startCol, endCol),
-		maxCol: Math.max(startCol, endCol),
-	}
-}
-
-export function isCellInSelection(
-	sel: CellSelection,
-	row: number,
-	col: number,
-): boolean {
-	for (const r of sel.ranges) {
-		if (
-			row >= r.minRow
-			&& row <= r.maxRow
-			&& col >= r.minCol
-			&& col <= r.maxCol
-		) {
-			return true
-		}
-	}
-	return false
-}
-
-export function getSelectedRowIndices(sel: CellSelection): number[] {
-	const rows = new Set<number>()
-	for (const r of sel.ranges) {
-		for (let i = r.minRow; i <= r.maxRow; i++) rows.add(i)
-	}
-	return [...rows].sort((a, b) => a - b)
-}
-
-export function getSelectedColIndices(sel: CellSelection): number[] {
-	const cols = new Set<number>()
-	for (const r of sel.ranges) {
-		for (let i = r.minCol; i <= r.maxCol; i++) cols.add(i)
-	}
-	return [...cols].sort((a, b) => a - b)
-}
-
-export function hasFullRowSelection(
-	sel: CellSelection,
-	totalCols: number,
-): boolean {
-	if (sel.ranges.length === 0) return false
-	return sel.ranges.some((r) => r.minCol === 0 && r.maxCol === totalCols - 1)
-}
-
-export interface SelectionSnapshot {
-	rowIndices: number[]
-	colIndices: number[]
-	rowCount: number
-	cellCount: number
-	columns: GridColumnDef[]
-	rows: Record<string, unknown>[]
-	hasExplicitSelection: boolean
-	fallbackToAll: boolean
-}
-
-function projectRowToColumns(
-	row: Record<string, unknown>,
-	columns: GridColumnDef[],
-): Record<string, unknown> {
-	const projected: Record<string, unknown> = {}
-	for (const column of columns) {
-		projected[column.name] = row[column.name]
-	}
-	return projected
-}
+export type { CellSelection, NormalizedRange, SelectionSnapshot } from '../lib/grid-selection'
+export { createDefaultSelection, getSelectedColIndices, getSelectedRowIndices, hasFullRowSelection, isCellInSelection } from '../lib/grid-selection'
 
 function getSelectionSnapshot(
 	tabId: string,
@@ -141,64 +64,7 @@ function getSelectionSnapshot(
 ): SelectionSnapshot | null {
 	const tab = getTab(tabId)
 	if (!tab) return null
-
-	const visibleColumns = getVisibleColumns(tab)
-	const selection = tab.selection
-
-	if (selection.ranges.length === 0) {
-		if (!fallbackToAll || visibleColumns.length === 0) return null
-
-		const rowIndices = tab.rows
-			.map((_, index) => index)
-			.filter((index) => tab.rows[index] != null)
-
-		return {
-			rowIndices,
-			colIndices: visibleColumns.map((_, index) => index),
-			rowCount: rowIndices.length,
-			cellCount: rowIndices.length * visibleColumns.length,
-			columns: visibleColumns,
-			rows: rowIndices.map((index) => projectRowToColumns(tab.rows[index], visibleColumns)),
-			hasExplicitSelection: false,
-			fallbackToAll: true,
-		}
-	}
-
-	const colIndices = getSelectedColIndices(selection).filter(
-		(index) => visibleColumns[index] != null,
-	)
-	if (colIndices.length === 0) return null
-
-	const rowIndices = getSelectedRowIndices(selection).filter(
-		(index) => tab.rows[index] != null,
-	)
-	const columns = colIndices.map((index) => visibleColumns[index])
-	let cellCount = 0
-
-	const rows = rowIndices.map((rowIndex) => {
-		const row = tab.rows[rowIndex]
-		const projected: Record<string, unknown> = {}
-
-		for (const colIndex of colIndices) {
-			if (!isCellInSelection(selection, rowIndex, colIndex)) continue
-			const column = visibleColumns[colIndex]
-			projected[column.name] = row[column.name]
-			cellCount++
-		}
-
-		return projected
-	})
-
-	return {
-		rowIndices,
-		colIndices,
-		rowCount: rowIndices.length,
-		cellCount,
-		columns,
-		rows,
-		hasExplicitSelection: true,
-		fallbackToAll: false,
-	}
+	return libBuildSelectionSnapshot(tab.rows, getVisibleColumns(tab), tab.selection, fallbackToAll)
 }
 
 // ── Per-tab grid state ───────────────────────────────────
@@ -764,146 +630,28 @@ function getSelectedData(tabId: string): Record<string, unknown>[] {
 	return indices.filter((i) => tab.rows[i] != null).map((i) => tab.rows[i])
 }
 
-/** Format a cell value for TSV clipboard export. NULL -> empty string. */
-function formatCellForClipboard(value: unknown): string {
-	if (value === null || value === undefined) return ''
-	if (typeof value === 'object') return JSON.stringify(value)
-	return String(value)
-		.replace(/\t/g, ' ')
-		.replace(/\n/g, ' ')
-		.replace(/\r/g, '')
-}
+// ── Clipboard wrappers ───────────────────────────────────
+// Re-export advanced-copy types and delegate the per-tab helpers to lib.
 
-/**
- * Build TSV string for clipboard from current selection.
- * Returns the TSV text and the count of copied rows (0 = single cell).
- */
+export type { AdvancedCopyDelimiter, AdvancedCopyOptions, AdvancedCopyValueFormat } from '../lib/grid-clipboard'
+
+const formatCellForClipboard = libFormatCellForClipboard
+
 function buildClipboardTsv(
 	tabId: string,
 	visibleColumns: GridColumnDef[],
 ): { text: string; rowCount: number } | null {
 	const tab = ensureTab(tabId)
-	const sel = tab.selection
-	if (sel.ranges.length === 0) return null
-
-	const selectedRows = getSelectedRowIndices(sel)
-	const selectedCols = getSelectedColIndices(sel)
-
-	// Single cell -> copy just the cell value
-	if (selectedRows.length === 1 && selectedCols.length === 1) {
-		const row = tab.rows[selectedRows[0]]
-		if (!row) return null
-		const colName = visibleColumns[selectedCols[0]]?.name
-		if (!colName) return null
-		return { text: formatCellForClipboard(row[colName]), rowCount: 0 }
-	}
-
-	// Full row selection or multi-cell -> copy selected cells as TSV
-	const colNames = selectedCols
-		.map((i) => visibleColumns[i]?.name)
-		.filter(Boolean) as string[]
-	const header = colNames.join('\t')
-	const rows = selectedRows
-		.filter((i) => tab.rows[i] != null)
-		.map((i) => {
-			const row = tab.rows[i]
-			return colNames.map((col) => formatCellForClipboard(row[col])).join('\t')
-		})
-
-	return { text: [header, ...rows].join('\n'), rowCount: selectedRows.length }
+	return libBuildClipboardTsv(tab.rows, visibleColumns, tab.selection)
 }
 
-// ── Advanced copy ─────────────────────────────────────────
-
-export type AdvancedCopyDelimiter =
-	| 'tab'
-	| 'comma'
-	| 'semicolon'
-	| 'pipe'
-	| 'custom'
-export type AdvancedCopyValueFormat = 'displayed' | 'raw' | 'quoted'
-
-export interface AdvancedCopyOptions {
-	delimiter: AdvancedCopyDelimiter
-	customDelimiter: string
-	includeHeaders: boolean
-	includeRowNumbers: boolean
-	valueFormat: AdvancedCopyValueFormat
-	nullRepresentation: string
-}
-
-const DELIMITER_MAP: Record<
-	Exclude<AdvancedCopyDelimiter, 'custom'>,
-	string
-> = {
-	tab: '\t',
-	comma: ',',
-	semicolon: ';',
-	pipe: '|',
-}
-
-function getDelimiterChar(options: AdvancedCopyOptions): string {
-	return options.delimiter === 'custom'
-		? options.customDelimiter || '\t'
-		: DELIMITER_MAP[options.delimiter]
-}
-
-function formatAdvancedCellValue(
-	value: unknown,
-	options: AdvancedCopyOptions,
-): string {
-	if (value === null || value === undefined) return options.nullRepresentation
-
-	const str = typeof value === 'object' ? JSON.stringify(value) : String(value)
-
-	if (options.valueFormat === 'quoted') {
-		// SQL-style quoting: wrap in single quotes, escape internal quotes
-		return `'${str.replace(/'/g, "''")}'`
-	}
-
-	return str
-}
-
-/**
- * Build formatted clipboard text using advanced copy options.
- * Always copies all selected rows with visible columns (never single-cell mode).
- */
 function buildAdvancedCopyText(
 	tabId: string,
 	visibleColumns: GridColumnDef[],
 	options: AdvancedCopyOptions,
 ): string | null {
 	const tab = ensureTab(tabId)
-	const sel = tab.selection
-	if (sel.ranges.length === 0) return null
-
-	const delim = getDelimiterChar(options)
-	const selectedRows = getSelectedRowIndices(sel)
-	const selectedCols = getSelectedColIndices(sel)
-	const colNames = selectedCols
-		.map((i) => visibleColumns[i]?.name)
-		.filter(Boolean) as string[]
-	const lines: string[] = []
-
-	if (options.includeHeaders) {
-		const headerParts = options.includeRowNumbers
-			? ['#', ...colNames]
-			: colNames
-		lines.push(headerParts.join(delim))
-	}
-
-	for (let i = 0; i < selectedRows.length; i++) {
-		const rowIdx = selectedRows[i]
-		const row = tab.rows[rowIdx]
-		if (!row) continue
-		const values = colNames.map((col) => formatAdvancedCellValue(row[col], options))
-		if (options.includeRowNumbers) {
-			values.unshift(String(i + 1))
-		}
-		lines.push(values.join(delim))
-	}
-
-	return lines.join('\n')
+	return libBuildAdvancedCopyText(tab.rows, visibleColumns, tab.selection, options)
 }
 
 // ── Transpose & value editor ─────────────────────────────
@@ -1124,6 +872,7 @@ export const gridStore = {
 	moveFocus: selectionActions.moveFocus,
 	extendFocus: selectionActions.extendFocus,
 	clearSelection: selectionActions.clearSelection,
+	setSelection: selectionActions.setSelection,
 	getSelectedData,
 	setFocusedCell: selectionActions.setFocusedCell,
 	buildClipboardTsv,

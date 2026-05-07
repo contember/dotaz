@@ -1,0 +1,44 @@
+.grid-view {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	overflow: hidden;
+	position: relative;
+}
+
+.grid-view:focus {
+	outline: none;
+}
+
+.grid-view__scroll {
+	flex: 1;
+	overflow: auto;
+}
+
+.grid-view__scroll--loading {
+	opacity: 0.5;
+	pointer-events: none;
+}
+
+.grid-view__copy-toast {
+	position: absolute;
+	bottom: 40px;
+	left: 50%;
+	transform: translateX(-50%);
+	background: var(--surface-active);
+	color: var(--ink);
+	padding: var(--spacing-xs) var(--spacing-md);
+	border-radius: var(--radius-md);
+	font-size: var(--font-size-sm);
+	border: 1px solid var(--edge);
+	box-shadow: var(--shadow-float);
+	z-index: 20;
+	pointer-events: none;
+	animation: grid-view-copy-toast-fade 0.4s ease-out forwards;
+}
+
+@keyframes grid-view-copy-toast-fade {
+	0% { opacity: 1; }
+	70% { opacity: 1; }
+	100% { opacity: 0; }
+}
