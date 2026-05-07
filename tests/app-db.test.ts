@@ -877,6 +877,67 @@ describe('AppDatabase', () => {
 			const found = appDb.getConnectionById(conn.id)!
 			expect((found.config as PostgresConnectionConfig).password).toBe('secret-password')
 		})
+
+		test('migration re-encrypts entries from a legacy key', () => {
+			const legacyKey = new Uint8Array(
+				hkdfSync('sha256', 'legacy-machine-data', 'dotaz-local-salt', 'dotaz-local-key', 32),
+			)
+
+			// Seed a connection encrypted with the legacy key (simulates an older install).
+			appDb.setLocalKey(legacyKey)
+			const conn = appDb.createConnection({ name: 'Legacy', config: pgConfig })
+			const beforeRow = appDb.db.prepare('SELECT config FROM connections WHERE id = ?').get(conn.id) as { config: string }
+			const beforeCipher = JSON.parse(beforeRow.config).password as string
+			expect(isEncryptedPassword(beforeCipher)).toBe(true)
+
+			// Switch to the new master key and pass the legacy key for migration.
+			appDb.setLocalKey(testKey, legacyKey)
+
+			const afterRow = appDb.db.prepare('SELECT config FROM connections WHERE id = ?').get(conn.id) as { config: string }
+			const afterCipher = JSON.parse(afterRow.config).password as string
+			expect(isEncryptedPassword(afterCipher)).toBe(true)
+			expect(afterCipher).not.toBe(beforeCipher)
+
+			// API still returns the original plaintext.
+			const found = appDb.getConnectionById(conn.id)!
+			expect((found.config as PostgresConnectionConfig).password).toBe('secret-password')
+		})
+
+		test('migration re-encrypts SSH tunnel secrets from a legacy key', () => {
+			const legacyKey = new Uint8Array(
+				hkdfSync('sha256', 'legacy-machine-data', 'dotaz-local-salt', 'dotaz-local-key', 32),
+			)
+			const tunnelConfig: PostgresConnectionConfig = {
+				...pgConfig,
+				sshTunnel: {
+					enabled: true,
+					host: 'bastion.example.com',
+					port: 22,
+					username: 'tunneluser',
+					authMethod: 'password',
+					password: 'tunnel-pwd',
+					keyPassphrase: 'key-pwd',
+				},
+			}
+
+			appDb.setLocalKey(legacyKey)
+			const conn = appDb.createConnection({ name: 'TunnelLegacy', config: tunnelConfig })
+
+			appDb.setLocalKey(testKey, legacyKey)
+
+			const found = appDb.getConnectionById(conn.id)!
+			const cfg = found.config as PostgresConnectionConfig
+			expect(cfg.password).toBe('secret-password')
+			expect(cfg.sshTunnel?.password).toBe('tunnel-pwd')
+			expect(cfg.sshTunnel?.keyPassphrase).toBe('key-pwd')
+
+			// Raw row should be re-encrypted under the new key.
+			const row = appDb.db.prepare('SELECT config FROM connections WHERE id = ?').get(conn.id) as { config: string }
+			const raw = JSON.parse(row.config)
+			expect(isEncryptedPassword(raw.password)).toBe(true)
+			expect(isEncryptedPassword(raw.sshTunnel.password)).toBe(true)
+			expect(isEncryptedPassword(raw.sshTunnel.keyPassphrase)).toBe(true)
+		})
 	})
 
 	// ── Transaction ──────────────────────────────────────────

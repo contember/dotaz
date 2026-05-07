@@ -1,6 +1,6 @@
 import { createHandlers } from '@dotaz/backend-shared/rpc/rpc-handlers'
 import { ConnectionManager } from '@dotaz/backend-shared/services/connection-manager'
-import { createLocalKey } from '@dotaz/backend-shared/services/encryption'
+import { createLocalKey, loadOrCreateMasterKey } from '@dotaz/backend-shared/services/encryption'
 import { AppDatabase, setDefaultDbPath } from '@dotaz/backend-shared/storage/app-db'
 import type { DotazRPC } from '@dotaz/backend-types'
 import { ApplicationMenu, BrowserView, BrowserWindow, Updater, Utils } from 'electrobun/bun'
@@ -38,9 +38,12 @@ setDefaultDbPath(() => {
 
 // Initialize backend services
 const appDb = AppDatabase.getInstance()
-const localKey = createLocalKey()
-if (localKey) {
-	appDb.setLocalKey(localKey)
+// Master key lives in the OS keychain (Bun.secrets). The legacy hostname-derived
+// key is passed in so existing entries from older versions get re-encrypted on
+// first launch.
+const masterKey = await loadOrCreateMasterKey()
+if (masterKey) {
+	appDb.setLocalKey(masterKey, createLocalKey())
 }
 const connectionManager = new ConnectionManager(appDb)
 

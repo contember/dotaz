@@ -139,3 +139,50 @@ export function decryptLocalPassword(value: string, key: Uint8Array): string {
 export function isEncryptedPassword(value: string): boolean {
 	return value.startsWith(ENCRYPTED_PREFIX)
 }
+
+/**
+ * Decrypt with a fallback key if the primary key fails.
+ * Used during migration from the legacy hostname-derived key to a keychain-stored master key.
+ */
+export function tryDecryptLocalPassword(value: string, key: Uint8Array): string | null {
+	try {
+		return decryptLocalPassword(value, key)
+	} catch {
+		return null
+	}
+}
+
+// ── Keychain-backed master key (Bun.secrets) ─────────────────
+
+const KEYCHAIN_SERVICE = 'dotaz'
+const KEYCHAIN_KEY_NAME = 'app-encryption-key-v1'
+
+/**
+ * Load (or create + persist) a 32-byte AES master key from the OS keychain
+ * via `Bun.secrets`. Falls back to the legacy hostname-derived key when the
+ * keychain backend is unavailable (e.g. Linux without a running secret-service).
+ */
+export async function loadOrCreateMasterKey(): Promise<Uint8Array | null> {
+	try {
+		const existing = await Bun.secrets.get({
+			service: KEYCHAIN_SERVICE,
+			name: KEYCHAIN_KEY_NAME,
+		})
+		if (existing) {
+			return new Uint8Array(Buffer.from(existing, 'base64'))
+		}
+		const fresh = crypto.getRandomValues(new Uint8Array(32))
+		await Bun.secrets.set({
+			service: KEYCHAIN_SERVICE,
+			name: KEYCHAIN_KEY_NAME,
+			value: Buffer.from(fresh).toString('base64'),
+		})
+		return fresh
+	} catch (err) {
+		console.warn(
+			'Bun.secrets unavailable, falling back to machine-derived key:',
+			err instanceof Error ? err.message : err,
+		)
+		return createLocalKey()
+	}
+}

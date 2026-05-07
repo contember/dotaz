@@ -3,7 +3,7 @@ import { isServerConfig } from '@dotaz/shared/types/connection'
 import type { QueryHistoryEntry, QueryHistoryStatus } from '@dotaz/shared/types/query'
 import type { HistoryListParams, QueryBookmark, SavedView, SavedViewConfig } from '@dotaz/shared/types/rpc'
 import Database from 'bun:sqlite'
-import { decryptLocalPassword, encryptLocalPassword, isEncryptedPassword } from '../services/encryption'
+import { decryptLocalPassword, encryptLocalPassword, isEncryptedPassword, tryDecryptLocalPassword } from '../services/encryption'
 import { runMigrations } from './migrations'
 
 /** Default settings values — returned when a key has not been explicitly set. */
@@ -85,10 +85,14 @@ export class AppDatabase {
 
 	/**
 	 * Set the local encryption key and migrate any existing plaintext passwords.
+	 *
+	 * `legacyKey` (optional) is used during migration from the previous
+	 * hostname-derived key to a keychain-backed random key — entries that fail
+	 * to decrypt with `key` are retried with `legacyKey` and re-encrypted.
 	 */
-	setLocalKey(key: Uint8Array): void {
+	setLocalKey(key: Uint8Array, legacyKey?: Uint8Array | null): void {
 		this.localKey = key
-		this.migratePasswords()
+		this.migratePasswords(legacyKey ?? null)
 	}
 
 	private encryptConfigJson(config: ConnectionConfig): string {
@@ -125,37 +129,66 @@ export class AppDatabase {
 		return config
 	}
 
-	private migratePasswords(): void {
+	private migratePasswords(legacyKey: Uint8Array | null): void {
 		if (!this.localKey) return
+		const key = this.localKey
+		// Re-encode plaintext OR re-encrypt entries that were encrypted with the legacy key.
+		const rekey = (value: string): { value: string; changed: boolean } => {
+			if (!isEncryptedPassword(value)) {
+				return { value: encryptLocalPassword(value, key), changed: true }
+			}
+			if (tryDecryptLocalPassword(value, key) !== null) {
+				return { value, changed: false }
+			}
+			if (legacyKey) {
+				const plaintext = tryDecryptLocalPassword(value, legacyKey)
+				if (plaintext !== null) {
+					return { value: encryptLocalPassword(plaintext, key), changed: true }
+				}
+			}
+			// Entry can't be decrypted by either key — leave it alone; the user will see a
+			// decryption error and can re-enter the password.
+			return { value, changed: false }
+		}
+
 		this.transaction(() => {
 			const rows = this.db.prepare('SELECT id, config FROM connections').all() as ConnectionRow[]
 			const update = this.db.prepare('UPDATE connections SET config = ? WHERE id = ?')
 			for (const row of rows) {
 				try {
 					const config = JSON.parse(row.config) as ConnectionConfig
-					if (isServerConfig(config)) {
-						let changed = false
-						let encrypted = { ...config }
-						if (!isEncryptedPassword(config.password)) {
-							encrypted = { ...encrypted, password: encryptLocalPassword(config.password, this.localKey!) }
+					if (!isServerConfig(config)) continue
+					let changed = false
+					let encrypted = { ...config }
+					const pwd = rekey(config.password)
+					if (pwd.changed) {
+						encrypted = { ...encrypted, password: pwd.value }
+						changed = true
+					}
+					if (config.type === 'postgresql' && config.sshTunnel) {
+						const tunnel = { ...config.sshTunnel }
+						let tunnelChanged = false
+						if (tunnel.password) {
+							const t = rekey(tunnel.password)
+							if (t.changed) {
+								tunnel.password = t.value
+								tunnelChanged = true
+							}
+						}
+						if (tunnel.keyPassphrase) {
+							const t = rekey(tunnel.keyPassphrase)
+							if (t.changed) {
+								tunnel.keyPassphrase = t.value
+								tunnelChanged = true
+							}
+						}
+						if (tunnelChanged) {
+							encrypted = { ...encrypted, sshTunnel: tunnel } as typeof encrypted
 							changed = true
 						}
-						// Also migrate SSH tunnel secrets
-						if (config.type === 'postgresql' && config.sshTunnel) {
-							const tunnel = { ...config.sshTunnel }
-							if (tunnel.password && !isEncryptedPassword(tunnel.password)) {
-								tunnel.password = encryptLocalPassword(tunnel.password, this.localKey!)
-								changed = true
-							}
-							if (tunnel.keyPassphrase && !isEncryptedPassword(tunnel.keyPassphrase)) {
-								tunnel.keyPassphrase = encryptLocalPassword(tunnel.keyPassphrase, this.localKey!)
-								changed = true
-							}
-							if (changed) encrypted = { ...encrypted, sshTunnel: tunnel } as typeof encrypted
-						}
-						if (changed) {
-							update.run(JSON.stringify(encrypted), row.id)
-						}
+					}
+					if (changed) {
+						update.run(JSON.stringify(encrypted), row.id)
 					}
 				} catch {
 					// Skip corrupted configs
