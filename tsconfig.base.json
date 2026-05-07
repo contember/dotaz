@@ -16,9 +16,8 @@
 		"moduleResolution": "bundler",
 		"jsx": "preserve",
 		"jsxImportSource": "solid-js",
-		"baseUrl": ".",
 		"paths": {
-			"@dotaz/*": ["src/*"]
+			"@dotaz/*": ["./src/*"]
 		}
 	}
 }
