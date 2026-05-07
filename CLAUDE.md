@@ -52,6 +52,16 @@ bun run seed:sqlite
 bun run seed:postgres
 ```
 
+### Upgrading electrobun
+
+The electrobun CLI caches platform binaries in `node_modules/electrobun/dist-<platform>-<arch>/` and reuses them across version bumps without checking the version. After bumping electrobun, wipe the cache before running `electrobun dev`:
+
+```bash
+rm -rf node_modules/electrobun/dist-* node_modules/electrobun/.cache
+```
+
+Otherwise FFI calls into symbols added in the new version fail with `TypeError: null is not an object (evaluating 'bridge.requestHost')` — `dlopen` quietly returns `null` when symbols are missing, then the bridge fallback is also `null` outside of carrot workers.
+
 ## Architecture
 
 Two-process model communicating via type-safe RPC:
