@@ -35,17 +35,13 @@ export default function SettingsDialog(props: SettingsDialogProps) {
 	const [ai, setAi] = createStore({ provider: 'anthropic' as AiProvider, apiKey: '', model: '', endpoint: '' })
 	const [session, setSession] = createStore<SessionConfig>({ defaultConnectionMode: 'pool', autoPin: 'on-begin', autoUnpin: 'never' })
 	const [grid, setGrid] = createStore({ autoCount: false })
-	let savedTheme: ColorTheme = 'dark'
 
 	// Load all values when dialog opens
 	createEffect(() => {
 		if (props.open) {
 			setSection(props.initialSection ?? 'appearance')
 
-			const app = settingsStore.appearanceConfig
-			setAppearance(reconcile({ colorTheme: app.colorTheme }))
-			savedTheme = app.colorTheme
-
+			setAppearance(reconcile({ colorTheme: settingsStore.appearanceConfig.colorTheme }))
 			setDataFormat(reconcile({ ...unwrap(settingsStore.formatProfile) }))
 			setAi(reconcile({ ...unwrap(settingsStore.aiConfig) }))
 			setSession(reconcile({ ...unwrap(settingsStore.sessionConfig) }))
@@ -73,7 +69,8 @@ export default function SettingsDialog(props: SettingsDialogProps) {
 	}
 
 	function handleCancel() {
-		settingsStore.applyTheme(savedTheme)
+		// Revert any preview applied via handleThemeChange to the last saved value.
+		settingsStore.applyTheme(settingsStore.appearanceConfig.colorTheme)
 		props.onClose()
 	}
 

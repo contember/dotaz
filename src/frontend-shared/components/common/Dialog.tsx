@@ -1,4 +1,4 @@
-import { type JSX, onCleanup, onMount, Show } from 'solid-js'
+import { createEffect, type JSX, onCleanup, Show } from 'solid-js'
 import Icon from './Icon'
 import './Dialog.css'
 
@@ -16,7 +16,6 @@ const FOCUSABLE =
 
 export default function Dialog(props: DialogProps) {
 	let dialogRef: HTMLDivElement | undefined
-	let previouslyFocused: HTMLElement | null = null
 
 	function handleKeyDown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
@@ -51,22 +50,24 @@ export default function Dialog(props: DialogProps) {
 		}
 	}
 
-	onMount(() => {
-		previouslyFocused = document.activeElement as HTMLElement | null
+	// Guard on props.open: AppShell mounts every dialog instance permanently,
+	// so without this, every closed Dialog would call onClose on any Escape press.
+	createEffect(() => {
+		if (!props.open) return
+		const previouslyFocused = document.activeElement as HTMLElement | null
 		document.addEventListener('keydown', handleKeyDown)
 
-		// Focus the first focusable element inside the dialog
 		requestAnimationFrame(() => {
 			if (dialogRef) {
 				const firstFocusable = dialogRef.querySelector<HTMLElement>(FOCUSABLE)
 				firstFocusable?.focus()
 			}
 		})
-	})
 
-	onCleanup(() => {
-		document.removeEventListener('keydown', handleKeyDown)
-		previouslyFocused?.focus()
+		onCleanup(() => {
+			document.removeEventListener('keydown', handleKeyDown)
+			previouslyFocused?.focus()
+		})
 	})
 
 	return (
