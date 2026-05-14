@@ -29,4 +29,4 @@ jobs:
       - name: Test (unit — no external DB required)
         run: |
           shopt -s extglob
-          bun test tests/!(pg-*|postgres-*|mysql-*|driver-iterate|ui-store).test.ts
+          bun test tests/!(pg-*|postgres-*|mysql-*|multi-database|driver-iterate|ui-store).test.ts
