@@ -1,6 +1,8 @@
 import type { SqlDialect } from '@dotaz/shared/sql'
 import { MysqlDialect, PostgresDialect, SqliteDialect } from '@dotaz/shared/sql'
-import type { ConnectionConfig, ConnectionInfo, ConnectionState, PostgresConnectionConfig } from '@dotaz/shared/types/connection'
+import type { ConnectionConfig, ConnectionInfo, ConnectionState, MysqlConnectionConfig, PostgresConnectionConfig } from '@dotaz/shared/types/connection'
+
+type MultiDbConfig = PostgresConnectionConfig | MysqlConnectionConfig
 import { CONNECTION_TYPE_META, getDefaultDatabase } from '@dotaz/shared/types/connection'
 import type { ConnectionType } from '@dotaz/shared/types/connection'
 import type {
@@ -132,10 +134,10 @@ async function activateDatabase(connectionId: string, database: string) {
 	if (idx >= 0) {
 		const config = state.connections[idx].config
 		if (CONNECTION_TYPE_META[config.type].supportsMultiDatabase) {
-			const current = (config as PostgresConnectionConfig).activeDatabases ?? []
+			const current = (config as MultiDbConfig).activeDatabases ?? []
 			if (!current.includes(database)) {
 				const next = [...current, database]
-				setState('connections', idx, 'config', { ...config, activeDatabases: next } as PostgresConnectionConfig)
+				setState('connections', idx, 'config', { ...config, activeDatabases: next } as MultiDbConfig)
 				await storage.updateConnectionActiveDatabases(connectionId, next)
 			}
 		}
@@ -153,9 +155,9 @@ async function deactivateDatabase(connectionId: string, database: string) {
 	if (idx >= 0) {
 		const config = state.connections[idx].config
 		if (CONNECTION_TYPE_META[config.type].supportsMultiDatabase) {
-			const filtered = ((config as PostgresConnectionConfig).activeDatabases ?? []).filter((db: string) => db !== database)
+			const filtered = ((config as MultiDbConfig).activeDatabases ?? []).filter((db: string) => db !== database)
 			const next = filtered.length > 0 ? filtered : undefined
-			setState('connections', idx, 'config', { ...config, activeDatabases: next } as PostgresConnectionConfig)
+			setState('connections', idx, 'config', { ...config, activeDatabases: next } as MultiDbConfig)
 			await storage.updateConnectionActiveDatabases(connectionId, next)
 		}
 	}
