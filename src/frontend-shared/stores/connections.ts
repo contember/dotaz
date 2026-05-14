@@ -1,6 +1,12 @@
 import type { SqlDialect } from '@dotaz/shared/sql'
 import { MysqlDialect, PostgresDialect, SqliteDialect } from '@dotaz/shared/sql'
-import type { ConnectionConfig, ConnectionInfo, ConnectionState, MysqlConnectionConfig, PostgresConnectionConfig } from '@dotaz/shared/types/connection'
+import type {
+	ConnectionConfig,
+	ConnectionInfo,
+	ConnectionState,
+	MysqlConnectionConfig,
+	PostgresConnectionConfig,
+} from '@dotaz/shared/types/connection'
 
 type MultiDbConfig = PostgresConnectionConfig | MysqlConnectionConfig
 import { CONNECTION_TYPE_META, getDefaultDatabase } from '@dotaz/shared/types/connection'
