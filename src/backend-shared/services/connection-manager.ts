@@ -1,4 +1,10 @@
-import type { ConnectionConfig, ConnectionInfo, ConnectionState, MysqlConnectionConfig, PostgresConnectionConfig } from '@dotaz/shared/types/connection'
+import type {
+	ConnectionConfig,
+	ConnectionInfo,
+	ConnectionState,
+	MysqlConnectionConfig,
+	PostgresConnectionConfig,
+} from '@dotaz/shared/types/connection'
 import { CONNECTION_TYPE_META, getDefaultDatabase, isServerConfig } from '@dotaz/shared/types/connection'
 
 type MultiDbConfig = PostgresConnectionConfig | MysqlConnectionConfig
