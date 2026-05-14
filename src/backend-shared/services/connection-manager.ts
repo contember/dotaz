@@ -1,5 +1,7 @@
-import type { ConnectionConfig, ConnectionInfo, ConnectionState, PostgresConnectionConfig } from '@dotaz/shared/types/connection'
+import type { ConnectionConfig, ConnectionInfo, ConnectionState, MysqlConnectionConfig, PostgresConnectionConfig } from '@dotaz/shared/types/connection'
 import { CONNECTION_TYPE_META, getDefaultDatabase, isServerConfig } from '@dotaz/shared/types/connection'
+
+type MultiDbConfig = PostgresConnectionConfig | MysqlConnectionConfig
 import type { DatabaseInfo } from '@dotaz/shared/types/database'
 import type { DatabaseErrorCode } from '@dotaz/shared/types/errors'
 import { DatabaseError } from '@dotaz/shared/types/errors'
@@ -136,9 +138,10 @@ export class ConnectionManager {
 
 			// Connect active databases in parallel (multi-database types only)
 			if (CONNECTION_TYPE_META[config.type].supportsMultiDatabase && 'activeDatabases' in config && config.activeDatabases) {
-				const activations = config.activeDatabases
-					.filter((db) => db !== config.database)
-					.map((db) => this.connectDatabase(connectionId, config as PostgresConnectionConfig, db))
+				const multiConfig = config as MultiDbConfig
+				const activations = (multiConfig.activeDatabases ?? [])
+					.filter((db) => db !== multiConfig.database)
+					.map((db) => this.connectDatabase(connectionId, multiConfig, db))
 				await Promise.allSettled(activations)
 			}
 
@@ -212,17 +215,18 @@ export class ConnectionManager {
 
 		const defaultDb = getDefaultDatabase(connInfo.config)
 		const driver = this.getDriver(connectionId, defaultDb)
-		const result = await driver.execute(
-			'SELECT datname FROM pg_database WHERE datistemplate = false AND datallowconn = true ORDER BY datname',
-		)
+		const sql = connInfo.config.type === 'postgresql'
+			? 'SELECT datname AS name FROM pg_database WHERE datistemplate = false AND datallowconn = true ORDER BY datname'
+			: "SELECT schema_name AS name FROM information_schema.schemata WHERE schema_name NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys') ORDER BY schema_name"
+		const result = await driver.execute(sql)
 
 		const driverMap = this.drivers.get(connectionId)
 		const activeDbs = driverMap ? [...driverMap.keys()] : [defaultDb]
 
 		return result.rows.map((row) => ({
-			name: row.datname as string,
-			isDefault: row.datname === defaultDb,
-			isActive: activeDbs.includes(row.datname as string),
+			name: row.name as string,
+			isDefault: row.name === defaultDb,
+			isActive: activeDbs.includes(row.name as string),
 		}))
 	}
 
@@ -232,8 +236,7 @@ export class ConnectionManager {
 			throw new Error('activateDatabase is only supported for connections with multi-database support')
 		}
 
-		// Currently only PostgreSQL supports multi-database
-		const pgConfig = connInfo.config as PostgresConnectionConfig
+		const baseConfig = connInfo.config as MultiDbConfig
 
 		const driverMap = this.drivers.get(connectionId)
 		if (!driverMap) {
@@ -243,26 +246,26 @@ export class ConnectionManager {
 		// Already active
 		if (driverMap.has(database)) return
 
-		const password = this.passwords.get(connectionId) ?? pgConfig.password
-		const config: PostgresConnectionConfig = {
-			...pgConfig,
+		const password = this.passwords.get(connectionId) ?? baseConfig.password
+		const config = {
+			...baseConfig,
 			database,
 			password,
-		}
+		} as MultiDbConfig
 
 		await this.connectDatabase(connectionId, config, database)
 
 		// Persist to config
 		const activeDatabases = [
 			...new Set([
-				...(pgConfig.activeDatabases ?? []),
+				...(baseConfig.activeDatabases ?? []),
 				database,
 			]),
 		]
 		this.appDb.updateConnection({
 			id: connectionId,
 			name: connInfo.name,
-			config: { ...pgConfig, activeDatabases },
+			config: { ...baseConfig, activeDatabases } as MultiDbConfig,
 		})
 	}
 
@@ -272,10 +275,9 @@ export class ConnectionManager {
 			throw new Error('deactivateDatabase is only supported for connections with multi-database support')
 		}
 
-		// Currently only PostgreSQL supports multi-database
-		const pgConfig = connInfo.config as PostgresConnectionConfig
+		const baseConfig = connInfo.config as MultiDbConfig
 
-		if (database === getDefaultDatabase(pgConfig)) {
+		if (database === getDefaultDatabase(baseConfig)) {
 			throw new Error('Cannot deactivate the default database')
 		}
 
@@ -292,15 +294,15 @@ export class ConnectionManager {
 		}
 
 		// Persist to config
-		const activeDatabases = (pgConfig.activeDatabases ?? [])
+		const activeDatabases = (baseConfig.activeDatabases ?? [])
 			.filter((db: string) => db !== database)
 		this.appDb.updateConnection({
 			id: connectionId,
 			name: connInfo.name,
 			config: {
-				...pgConfig,
+				...baseConfig,
 				activeDatabases: activeDatabases.length > 0 ? activeDatabases : undefined,
-			},
+			} as MultiDbConfig,
 		})
 	}
 
@@ -635,11 +637,12 @@ export class ConnectionManager {
 
 			// Reconnect active databases
 			if (
-				CONNECTION_TYPE_META[config.type].supportsMultiDatabase && 'activeDatabases' in config && (config as PostgresConnectionConfig).activeDatabases
+				CONNECTION_TYPE_META[config.type].supportsMultiDatabase && 'activeDatabases' in config && (config as MultiDbConfig).activeDatabases
 			) {
-				const activations = (config as PostgresConnectionConfig).activeDatabases!
-					.filter((db) => db !== (config as PostgresConnectionConfig).database)
-					.map((db) => this.connectDatabase(connectionId, config as PostgresConnectionConfig, db))
+				const multiConfig = config as MultiDbConfig
+				const activations = (multiConfig.activeDatabases ?? [])
+					.filter((db) => db !== multiConfig.database)
+					.map((db) => this.connectDatabase(connectionId, multiConfig, db))
 				await Promise.allSettled(activations)
 			}
 
@@ -715,7 +718,7 @@ export class ConnectionManager {
 
 	private async connectDatabase(
 		connectionId: string,
-		baseConfig: PostgresConnectionConfig,
+		baseConfig: MultiDbConfig,
 		database: string,
 	): Promise<void> {
 		const driverMap = this.drivers.get(connectionId)
@@ -723,13 +726,13 @@ export class ConnectionManager {
 			throw new Error(`No active connection for id: ${connectionId}`)
 		}
 
-		// Use the tunnel-rewritten host/port if a tunnel is active
+		// Use the tunnel-rewritten host/port if a tunnel is active (PG-only)
 		const tunnel = this.tunnels.get(connectionId)
 		const tunnelOverride = tunnel
 			? { host: '127.0.0.1', port: tunnel.localPort }
 			: {}
 
-		const config: PostgresConnectionConfig = { ...baseConfig, ...tunnelOverride, database }
+		const config = { ...baseConfig, ...tunnelOverride, database } as MultiDbConfig
 		const driver = createDriver(config)
 		await driver.connect(config)
 		driverMap.set(database, driver)

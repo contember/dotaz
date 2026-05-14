@@ -45,6 +45,7 @@ export interface MysqlConnectionConfig {
 	user: string
 	password: string
 	ssl?: boolean
+	activeDatabases?: string[]
 }
 
 export type ConnectionConfig = PostgresConnectionConfig | SqliteConnectionConfig | MysqlConnectionConfig
@@ -62,7 +63,7 @@ export interface ConnectionTypeMeta {
 export const CONNECTION_TYPE_META: Record<ConnectionType, ConnectionTypeMeta> = {
 	postgresql: { label: 'PostgreSQL', hasPassword: true, hasHost: true, defaultPort: 5432, supportsMultiDatabase: true },
 	sqlite: { label: 'SQLite', hasPassword: false, hasHost: false, supportsMultiDatabase: false },
-	mysql: { label: 'MySQL', hasPassword: true, hasHost: true, defaultPort: 3306, supportsMultiDatabase: false },
+	mysql: { label: 'MySQL', hasPassword: true, hasHost: true, defaultPort: 3306, supportsMultiDatabase: true },
 }
 
 // ── Utility functions ──
