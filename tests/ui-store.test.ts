@@ -86,3 +86,54 @@ describe('uiStore', () => {
 		expect(uiStore.toasts).toHaveLength(1)
 	})
 })
+
+// ── UI Store: confirm dialog ─────────────────────────────
+
+describe('uiStore.confirm', () => {
+	test('confirm resolves true when user confirms', async () => {
+		const promise = uiStore.confirm({ title: 'T', message: 'M' })
+		expect(uiStore.confirmRequest).not.toBeNull()
+		uiStore.resolveConfirm(true)
+		expect(await promise).toBe(true)
+		expect(uiStore.confirmRequest).toBeNull()
+	})
+
+	test('confirm resolves false when user cancels', async () => {
+		const promise = uiStore.confirm({ title: 'T', message: 'M' })
+		uiStore.resolveConfirm(false)
+		expect(await promise).toBe(false)
+		expect(uiStore.confirmRequest).toBeNull()
+	})
+
+	test('opening a second confirm resolves the previous one with false', async () => {
+		const first = uiStore.confirm({ title: 'First', message: 'M1' })
+		// Open a second confirm before resolving the first — the first must not hang.
+		const second = uiStore.confirm({ title: 'Second', message: 'M2' })
+		expect(await first).toBe(false)
+
+		expect(uiStore.confirmRequest?.title).toBe('Second')
+		uiStore.resolveConfirm(true)
+		expect(await second).toBe(true)
+	})
+
+	test('confirmRequest carries through optional labels and danger flag', () => {
+		uiStore.confirm({
+			title: 'Delete connection',
+			message: 'Forever?',
+			confirmLabel: 'Delete',
+			cancelLabel: 'Keep',
+			danger: true,
+		})
+		const req = uiStore.confirmRequest
+		expect(req?.confirmLabel).toBe('Delete')
+		expect(req?.cancelLabel).toBe('Keep')
+		expect(req?.danger).toBe(true)
+		uiStore.resolveConfirm(false)
+	})
+
+	test('resolveConfirm is a no-op when no request is active', () => {
+		// Should not throw
+		uiStore.resolveConfirm(true)
+		expect(uiStore.confirmRequest).toBeNull()
+	})
+})

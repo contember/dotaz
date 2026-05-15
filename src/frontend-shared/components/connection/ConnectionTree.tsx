@@ -340,8 +340,12 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 			'separator',
 			{
 				label: 'Ungroup All',
-				action: () => {
-					const confirmed = window.confirm(`Ungroup all connections in "${folderName}"?`)
+				action: async () => {
+					const confirmed = await uiStore.confirm({
+						title: 'Ungroup all connections',
+						message: `Ungroup all connections in "${folderName}"?`,
+						confirmLabel: 'Ungroup',
+					})
 					if (confirmed) {
 						connectionsStore.deleteConnectionGroup(folderName)
 					}

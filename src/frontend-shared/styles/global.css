@@ -444,6 +444,16 @@ textarea:focus {
 	color: var(--ink);
 }
 
+.btn--danger {
+	background: var(--error);
+	color: white;
+	border: none;
+}
+
+.btn--danger:hover:not(:disabled) {
+	filter: brightness(1.1);
+}
+
 /* ── Dialog animation ───────────────────────────────────── */
 
 @keyframes dialog-fade-in {

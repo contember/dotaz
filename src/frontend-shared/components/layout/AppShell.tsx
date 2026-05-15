@@ -25,6 +25,7 @@ import { uiStore } from '../../stores/ui'
 import { viewsStore } from '../../stores/views'
 import BookmarksDialog from '../bookmarks/BookmarksDialog'
 import CommandPalette from '../common/CommandPalette'
+import ConfirmDialog from '../common/ConfirmDialog'
 import DemoWarningDialog from '../common/DemoWarningDialog'
 import KeyboardShortcutsDialog from '../common/KeyboardShortcutsDialog'
 import type { SettingsSection } from '../common/SettingsDialog'
@@ -758,6 +759,7 @@ export default function AppShell() {
 				onClose={() => setModal(null)}
 			/>
 
+			<ConfirmDialog />
 			<ToastContainer />
 		</div>
 	)

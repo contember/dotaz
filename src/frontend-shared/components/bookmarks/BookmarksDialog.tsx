@@ -10,6 +10,7 @@ import { truncateSql } from '../../lib/sql-utils'
 import { connectionsStore } from '../../stores/connections'
 import { editorStore } from '../../stores/editor'
 import { tabsStore } from '../../stores/tabs'
+import { uiStore } from '../../stores/ui'
 import Dialog from '../common/Dialog'
 import Icon from '../common/Icon'
 import Select from '../common/Select'
@@ -197,7 +198,12 @@ export default function BookmarksDialog(props: BookmarksDialogProps) {
 	}
 
 	async function handleDelete(bookmark: QueryBookmark) {
-		const confirmed = window.confirm(`Delete bookmark "${bookmark.name}"?`)
+		const confirmed = await uiStore.confirm({
+			title: 'Delete bookmark',
+			message: `Delete bookmark "${bookmark.name}"?`,
+			confirmLabel: 'Delete',
+			danger: true,
+		})
 		if (!confirmed) return
 
 		try {

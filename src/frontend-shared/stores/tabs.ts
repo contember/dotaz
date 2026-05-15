@@ -2,6 +2,7 @@ import type { TabInfo, TabType } from '@dotaz/shared/types/tab'
 import { createStore } from 'solid-js/store'
 import { scheduleWorkspaceSave } from '../lib/workspace'
 import { editorStore } from './editor'
+import { uiStore } from './ui'
 
 export interface TabState {
 	openTabs: TabInfo[]
@@ -92,7 +93,7 @@ function setActiveTab(id: string) {
 	}
 }
 
-function closeTab(id: string) {
+async function closeTab(id: string) {
 	const tab = state.openTabs.find((t) => t.id === id)
 	if (!tab) return
 
@@ -102,9 +103,12 @@ function closeTab(id: string) {
 	}
 
 	if (tab.dirty) {
-		const confirmed = window.confirm(
-			`"${tab.title}" has unsaved changes. Close anyway?`,
-		)
+		const confirmed = await uiStore.confirm({
+			title: 'Unsaved changes',
+			message: `"${tab.title}" has unsaved changes. Close anyway?`,
+			confirmLabel: 'Close',
+			danger: true,
+		})
 		if (!confirmed) return
 	}
 
@@ -122,14 +126,17 @@ function closeTab(id: string) {
 	scheduleWorkspaceSave()
 }
 
-function closeOtherTabs(id: string) {
+async function closeOtherTabs(id: string) {
 	const dirtyOthers = state.openTabs.filter(
 		(t) => t.id !== id && t.dirty,
 	)
 	if (dirtyOthers.length > 0) {
-		const confirmed = window.confirm(
-			`${dirtyOthers.length} tab(s) have unsaved changes. Close them anyway?`,
-		)
+		const confirmed = await uiStore.confirm({
+			title: 'Unsaved changes',
+			message: `${dirtyOthers.length} tab(s) have unsaved changes. Close them anyway?`,
+			confirmLabel: 'Close',
+			danger: true,
+		})
 		if (!confirmed) return
 	}
 
@@ -145,12 +152,15 @@ function closeOtherTabs(id: string) {
 	scheduleWorkspaceSave()
 }
 
-function closeAllTabs() {
+async function closeAllTabs() {
 	const dirtyTabs = state.openTabs.filter((t) => t.dirty)
 	if (dirtyTabs.length > 0) {
-		const confirmed = window.confirm(
-			`${dirtyTabs.length} tab(s) have unsaved changes. Close all anyway?`,
-		)
+		const confirmed = await uiStore.confirm({
+			title: 'Unsaved changes',
+			message: `${dirtyTabs.length} tab(s) have unsaved changes. Close all anyway?`,
+			confirmLabel: 'Close all',
+			danger: true,
+		})
 		if (!confirmed) return
 	}
 

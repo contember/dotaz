@@ -10,6 +10,7 @@ import { storage } from '../../lib/storage'
 import { connectionsStore } from '../../stores/connections'
 import { editorStore } from '../../stores/editor'
 import { tabsStore } from '../../stores/tabs'
+import { uiStore } from '../../stores/ui'
 import DateInput from '../common/DateInput'
 import Dialog from '../common/Dialog'
 import Icon from '../common/Icon'
@@ -220,11 +221,14 @@ export default function QueryHistory(props: QueryHistoryProps) {
 	}
 
 	async function handleClearHistory() {
-		const confirmed = window.confirm(
-			connectionFilter()
+		const confirmed = await uiStore.confirm({
+			title: 'Clear query history',
+			message: connectionFilter()
 				? `Clear history for "${connectionName(connectionFilter())}"?`
 				: 'Clear all query history?',
-		)
+			confirmLabel: 'Clear',
+			danger: true,
+		})
 		if (!confirmed) return
 
 		try {

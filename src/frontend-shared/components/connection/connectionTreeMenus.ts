@@ -5,6 +5,7 @@ import { rpc } from '../../lib/rpc'
 import { connectionsStore } from '../../stores/connections'
 import { editorStore } from '../../stores/editor'
 import { tabsStore } from '../../stores/tabs'
+import { uiStore } from '../../stores/ui'
 import { viewsStore } from '../../stores/views'
 import type { ContextMenuEntry } from '../common/ContextMenu'
 
@@ -135,12 +136,15 @@ export function connectionMenuItems(conn: ConnectionInfo, callbacks: TreeMenuCal
 			'separator',
 			{
 				label: 'Delete',
-				action: () => {
-					const confirmed = window.confirm(
-						`Delete connection "${conn.name}"? This cannot be undone.`,
-					)
+				action: async () => {
+					const confirmed = await uiStore.confirm({
+						title: 'Delete connection',
+						message: `Delete connection "${conn.name}"? This cannot be undone.`,
+						confirmLabel: 'Delete',
+						danger: true,
+					})
 					if (confirmed) {
-						connectionsStore.deleteConnection(conn.id)
+						await connectionsStore.deleteConnection(conn.id)
 					}
 				},
 			},
@@ -295,9 +299,12 @@ export function viewMenuItems(connectionId: string, view: SavedView, callbacks: 
 		{
 			label: 'Delete',
 			action: async () => {
-				const confirmed = window.confirm(
-					`Delete view "${view.name}"? This cannot be undone.`,
-				)
+				const confirmed = await uiStore.confirm({
+					title: 'Delete view',
+					message: `Delete view "${view.name}"? This cannot be undone.`,
+					confirmLabel: 'Delete',
+					danger: true,
+				})
 				if (confirmed) {
 					try {
 						await rpc.views.delete({ id: view.id })

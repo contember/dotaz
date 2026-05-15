@@ -29,18 +29,19 @@ mock.module('solid-js/store', () => ({
 
 // Must import after mock
 const { tabsStore } = await import('@dotaz/frontend-shared/stores/tabs')
+const { uiStore } = await import('@dotaz/frontend-shared/stores/ui')
 
-// Mock window.confirm
-const originalConfirm = globalThis.window?.confirm
+// Stub uiStore.confirm to return a preset result. Replaces the previous
+// window.confirm mock — Electrobun webview doesn't implement window.confirm,
+// so tabs.ts now delegates to uiStore.confirm (an in-app dialog).
+const originalUiConfirm = uiStore.confirm
 
 function mockConfirm(result: boolean) {
-	;(globalThis as any).window = { confirm: () => result }
+	;(uiStore as { confirm: typeof uiStore.confirm }).confirm = () => Promise.resolve(result)
 }
 
 function restoreConfirm() {
-	if (originalConfirm) {
-		;(globalThis as any).window = { confirm: originalConfirm }
-	}
+	;(uiStore as { confirm: typeof uiStore.confirm }).confirm = originalUiConfirm
 }
 
 describe('tabs store', () => {
@@ -138,21 +139,21 @@ describe('tabs store', () => {
 			expect(tabsStore.openTabs).toHaveLength(2)
 		})
 
-		test('does not close dirty tab without confirmation', () => {
+		test('does not close dirty tab without confirmation', async () => {
 			const id = tabsStore.openTab({ type: 'data-grid', title: 'tab1', connectionId: 'c1' })
 			tabsStore.setTabDirty(id, true)
 			mockConfirm(false)
 
-			tabsStore.closeTab(id)
+			await tabsStore.closeTab(id)
 			expect(tabsStore.openTabs).toHaveLength(1)
 		})
 
-		test('closes dirty tab with confirmation', () => {
+		test('closes dirty tab with confirmation', async () => {
 			const id = tabsStore.openTab({ type: 'data-grid', title: 'tab1', connectionId: 'c1' })
 			tabsStore.setTabDirty(id, true)
 			mockConfirm(true)
 
-			tabsStore.closeTab(id)
+			await tabsStore.closeTab(id)
 			expect(tabsStore.openTabs).toHaveLength(0)
 		})
 
@@ -176,34 +177,34 @@ describe('tabs store', () => {
 			expect(tabsStore.activeTabId).toBe(id2)
 		})
 
-		test('prompts confirmation when dirty tabs exist', () => {
+		test('prompts confirmation when dirty tabs exist', async () => {
 			const id1 = tabsStore.openTab({ type: 'data-grid', title: 'tab1', connectionId: 'c1' })
 			const id2 = tabsStore.openTab({ type: 'sql-console', title: 'tab2', connectionId: 'c1' })
 			tabsStore.setTabDirty(id1, true)
 			mockConfirm(false)
 
-			tabsStore.closeOtherTabs(id2)
+			await tabsStore.closeOtherTabs(id2)
 			// Should not close because user denied
 			expect(tabsStore.openTabs).toHaveLength(2)
 		})
 	})
 
 	describe('closeAllTabs', () => {
-		test('closes all tabs', () => {
+		test('closes all tabs', async () => {
 			tabsStore.openTab({ type: 'data-grid', title: 'tab1', connectionId: 'c1' })
 			tabsStore.openTab({ type: 'sql-console', title: 'tab2', connectionId: 'c1' })
 
-			tabsStore.closeAllTabs()
+			await tabsStore.closeAllTabs()
 			expect(tabsStore.openTabs).toHaveLength(0)
 			expect(tabsStore.activeTabId).toBeNull()
 		})
 
-		test('prompts confirmation when dirty tabs exist', () => {
+		test('prompts confirmation when dirty tabs exist', async () => {
 			const id = tabsStore.openTab({ type: 'data-grid', title: 'tab1', connectionId: 'c1' })
 			tabsStore.setTabDirty(id, true)
 			mockConfirm(false)
 
-			tabsStore.closeAllTabs()
+			await tabsStore.closeAllTabs()
 			expect(tabsStore.openTabs).toHaveLength(1)
 		})
 	})
