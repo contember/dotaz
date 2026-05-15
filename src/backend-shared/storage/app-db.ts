@@ -3,7 +3,7 @@ import { isServerConfig } from '@dotaz/shared/types/connection'
 import type { QueryHistoryEntry, QueryHistoryStatus } from '@dotaz/shared/types/query'
 import type { HistoryListParams, QueryBookmark, SavedView, SavedViewConfig } from '@dotaz/shared/types/rpc'
 import Database from 'bun:sqlite'
-import { decryptLocalPassword, encryptLocalPassword, isEncryptedPassword, tryDecryptLocalPassword } from '../services/encryption'
+import { encryptLocalPassword, isEncryptedPassword, tryDecryptLocalPassword } from '../services/encryption'
 import { runMigrations } from './migrations'
 
 /** Default settings values — returned when a key has not been explicitly set. */
@@ -112,15 +112,22 @@ export class AppDatabase {
 
 	private decryptConfig(config: ConnectionConfig): ConnectionConfig {
 		if (this.localKey && isServerConfig(config) && isEncryptedPassword(config.password)) {
-			let decrypted: ConnectionConfig = { ...config, password: decryptLocalPassword(config.password, this.localKey) }
+			// If the local key changed (keychain rotation, app reinstall, etc.) the
+			// stored ciphertext can't be decrypted anymore. Fall back to an empty
+			// password and keep the connection visible — the connect flow already
+			// prompts the user for a password when none is available. Throwing here
+			// would take down listConnections() and stop the entire UI.
+			const safeDecrypt = (value: string): string => tryDecryptLocalPassword(value, this.localKey!) ?? ''
+
+			let decrypted: ConnectionConfig = { ...config, password: safeDecrypt(config.password) }
 			// Decrypt SSH tunnel secrets if present
 			if (config.type === 'postgresql' && config.sshTunnel) {
 				const tunnel = { ...config.sshTunnel }
 				if (tunnel.password && isEncryptedPassword(tunnel.password)) {
-					tunnel.password = decryptLocalPassword(tunnel.password, this.localKey!)
+					tunnel.password = safeDecrypt(tunnel.password)
 				}
 				if (tunnel.keyPassphrase && isEncryptedPassword(tunnel.keyPassphrase)) {
-					tunnel.keyPassphrase = decryptLocalPassword(tunnel.keyPassphrase, this.localKey!)
+					tunnel.keyPassphrase = safeDecrypt(tunnel.keyPassphrase)
 				}
 				decrypted = { ...decrypted, sshTunnel: tunnel } as ConnectionConfig
 			}
