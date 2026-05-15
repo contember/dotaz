@@ -455,6 +455,38 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 		setContextMenu({ x: e.clientX, y: e.clientY, items })
 	}
 
+	/**
+	 * Right-click on the empty sidebar area (or empty state) — offers "Add
+	 * Connection" so the user doesn't have to hunt for the + button. Tree
+	 * items stop propagation in showContextMenu, so this only fires when
+	 * the click missed every item.
+	 */
+	function handleEmptyAreaContextMenu(e: MouseEvent) {
+		const target = e.target as HTMLElement | null
+		if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+			return
+		}
+		const items: ContextMenuEntry[] = [
+			{
+				label: 'Add Connection',
+				action: () => props.onAddConnection(),
+			},
+		]
+		if (connectionsStore.connections.length === 0) {
+			items.push('separator', {
+				label: 'Load Demo Database',
+				action: async () => {
+					try {
+						await connectionsStore.initializeDemo()
+					} catch (err) {
+						uiStore.addToast('error', err instanceof Error ? err.message : 'Failed to load demo')
+					}
+				},
+			})
+		}
+		showContextMenu(e, items)
+	}
+
 	const menuCallbacks: TreeMenuCallbacks = {
 		onEditConnection: (conn) => props.onEditConnection(conn),
 		onManageDatabases: (conn) => props.onManageDatabases?.(conn),
@@ -726,7 +758,7 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 	}
 
 	return (
-		<div class="connection-tree" onKeyDown={handleTreeKeyDown}>
+		<div class="connection-tree" onKeyDown={handleTreeKeyDown} onContextMenu={handleEmptyAreaContextMenu}>
 			<Show
 				when={connectionsStore.connections.length > 0}
 				fallback={
