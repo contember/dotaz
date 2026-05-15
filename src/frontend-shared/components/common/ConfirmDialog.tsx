@@ -62,10 +62,8 @@ export default function ConfirmDialog() {
 			{(req) => (
 				<div class="confirm-dialog-overlay" onClick={handleOverlayClick}>
 					<div class="confirm-dialog" role="alertdialog" aria-labelledby="confirm-title" aria-describedby="confirm-message">
-						<div class="confirm-dialog__header">
-							<span id="confirm-title" class="confirm-dialog__title">{req().title}</span>
-						</div>
-						<div id="confirm-message" class="confirm-dialog__message">{req().message}</div>
+						<h2 id="confirm-title" class="confirm-dialog__title">{req().title}</h2>
+						<p id="confirm-message" class="confirm-dialog__message">{req().message}</p>
 						<div class="confirm-dialog__actions">
 							<button type="button" class="btn btn--secondary" onClick={cancel}>
 								{req().cancelLabel ?? 'Cancel'}
