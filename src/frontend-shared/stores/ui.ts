@@ -16,16 +16,36 @@ export interface Toast {
 	duration: number
 }
 
+// ── Confirm dialog types ─────────────────────────────────
+
+export interface ConfirmOptions {
+	title: string
+	message: string
+	/** Defaults to "Confirm". */
+	confirmLabel?: string
+	/** Defaults to "Cancel". */
+	cancelLabel?: string
+	/** Style the confirm button as destructive. */
+	danger?: boolean
+}
+
+interface ConfirmRequest extends ConfirmOptions {
+	id: string
+	resolve: (confirmed: boolean) => void
+}
+
 // ── Store state ──────────────────────────────────────────
 
 interface UIState {
 	toasts: Toast[]
+	confirmRequest: ConfirmRequest | null
 }
 
 const DEFAULT_DURATION = 5000
 
 const [state, setState] = createStore<UIState>({
 	toasts: [],
+	confirmRequest: null,
 })
 
 /** Maps toast ID to its auto-dismiss timer, so we can cancel on manual dismiss. */
@@ -65,12 +85,43 @@ function removeToast(id: string) {
 	setState('toasts', (prev) => prev.filter((t) => t.id !== id))
 }
 
+// ── Confirm actions ──────────────────────────────────────
+
+/**
+ * Show an in-app confirmation dialog. Returns a Promise that resolves to
+ * `true` when the user confirms and `false` on cancel / Escape / overlay
+ * click. If another confirm is already open, it is resolved with `false`
+ * before the new one shows — call sites should not assume serialization.
+ */
+function confirm(options: ConfirmOptions): Promise<boolean> {
+	const previous = state.confirmRequest
+	if (previous) {
+		previous.resolve(false)
+	}
+	return new Promise<boolean>((resolve) => {
+		setState('confirmRequest', { ...options, id: crypto.randomUUID(), resolve })
+	})
+}
+
+/** Resolve the active confirm request. Called by ConfirmDialog on user action. */
+function resolveConfirm(confirmed: boolean): void {
+	const req = state.confirmRequest
+	if (!req) return
+	req.resolve(confirmed)
+	setState('confirmRequest', null)
+}
+
 // ── Export ────────────────────────────────────────────────
 
 export const uiStore = {
 	get toasts() {
 		return state.toasts
 	},
+	get confirmRequest(): ConfirmRequest | null {
+		return state.confirmRequest
+	},
 	addToast,
 	removeToast,
+	confirm,
+	resolveConfirm,
 }
