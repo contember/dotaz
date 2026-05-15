@@ -88,7 +88,6 @@ const rpc = BrowserView.defineRPC<DotazRPC>({
 const url = await getMainViewUrl()
 
 const isMac = process.platform === 'darwin'
-const isWindows = process.platform === 'win32'
 
 // Set up native application menu (macOS only).
 // The Edit menu with roles is required for clipboard shortcuts (Cmd+C/V/X/A)
@@ -187,28 +186,74 @@ if (isMac) {
 	})
 }
 
+// ── Window geometry persistence ──────────────────────────
+// Restore the user's last-used window frame so the app feels like a normal
+// desktop app instead of relaunching maximized every time.
+
+const SAVED_FRAME_KEY = 'window.frame'
+
+interface SavedFrame {
+	x: number
+	y: number
+	width: number
+	height: number
+}
+
+function loadSavedFrame(): SavedFrame | null {
+	const raw = appDb.getSetting(SAVED_FRAME_KEY)
+	if (!raw) return null
+	try {
+		const parsed = JSON.parse(raw) as Partial<SavedFrame>
+		if (
+			typeof parsed.x !== 'number'
+			|| typeof parsed.y !== 'number'
+			|| typeof parsed.width !== 'number'
+			|| typeof parsed.height !== 'number'
+			|| !Number.isFinite(parsed.x)
+			|| !Number.isFinite(parsed.y)
+			|| parsed.width < 480
+			|| parsed.height < 320
+			|| parsed.width > 20000
+			|| parsed.height > 20000
+		) {
+			return null
+		}
+		return parsed as SavedFrame
+	} catch {
+		return null
+	}
+}
+
+const DEFAULT_FRAME: SavedFrame = { x: 100, y: 100, width: 1280, height: 800 }
+const initialFrame = loadSavedFrame() ?? DEFAULT_FRAME
+
 const mainWindow = new BrowserWindow({
 	title: 'Dotaz',
 	titleBarStyle: isMac ? 'hiddenInset' : 'default',
 	transparent: false,
 	url,
 	rpc,
-	frame: {
-		width: 1280,
-		height: 800,
-		x: 0,
-		y: 0,
-	},
+	frame: initialFrame,
 })
 
-// Maximize on startup so the window appears on the primary monitor at full size
-// On Windows, the webview doesn't resize correctly on initial maximize,
-// so we delay it briefly to let the window finish initializing.
-if (isWindows) {
-	setTimeout(() => mainWindow.maximize(), 500)
-} else {
-	mainWindow.maximize()
+// Persist the frame on resize / move so it survives restart. Debounced so we
+// don't write to the settings table on every pixel the user drags.
+let frameSaveTimer: ReturnType<typeof setTimeout> | undefined
+function scheduleFrameSave() {
+	if (frameSaveTimer) clearTimeout(frameSaveTimer)
+	frameSaveTimer = setTimeout(() => {
+		frameSaveTimer = undefined
+		try {
+			const frame = mainWindow.getFrame()
+			appDb.setSetting(SAVED_FRAME_KEY, JSON.stringify(frame))
+		} catch {
+			// Best-effort — losing one save is fine, the next resize will retry.
+		}
+	}, 500)
 }
+
+mainWindow.on('resize', scheduleFrameSave)
+mainWindow.on('move', scheduleFrameSave)
 
 // Wire up BE→FE message emitter after window creation
 emitToFrontend = (channel: string, payload: unknown) => {
