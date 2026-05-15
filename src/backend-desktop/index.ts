@@ -88,6 +88,7 @@ const rpc = BrowserView.defineRPC<DotazRPC>({
 const url = await getMainViewUrl()
 
 const isMac = process.platform === 'darwin'
+const isWindows = process.platform === 'win32'
 
 // Set up native application menu (macOS only).
 // The Edit menu with roles is required for clipboard shortcuts (Cmd+C/V/X/A)
@@ -186,9 +187,12 @@ if (isMac) {
 	})
 }
 
-// ── Window geometry persistence ──────────────────────────
-// Restore the user's last-used window frame so the app feels like a normal
-// desktop app instead of relaunching maximized every time.
+// ── Window geometry persistence (macOS only) ─────────────
+// On macOS we restore the user's last frame so the app behaves like a normal
+// desktop app. On Windows/Linux we keep the old "maximize on startup" behavior
+// — the webview there doesn't always lay out correctly with arbitrary initial
+// frames, and the Windows setTimeout works around a separate webview timing
+// bug on first maximize.
 
 const SAVED_FRAME_KEY = 'window.frame'
 
@@ -225,7 +229,7 @@ function loadSavedFrame(): SavedFrame | null {
 }
 
 const DEFAULT_FRAME: SavedFrame = { x: 100, y: 100, width: 1280, height: 800 }
-const initialFrame = loadSavedFrame() ?? DEFAULT_FRAME
+const initialFrame = isMac ? (loadSavedFrame() ?? DEFAULT_FRAME) : DEFAULT_FRAME
 
 const mainWindow = new BrowserWindow({
 	title: 'Dotaz',
@@ -236,24 +240,31 @@ const mainWindow = new BrowserWindow({
 	frame: initialFrame,
 })
 
-// Persist the frame on resize / move so it survives restart. Debounced so we
-// don't write to the settings table on every pixel the user drags.
-let frameSaveTimer: ReturnType<typeof setTimeout> | undefined
-function scheduleFrameSave() {
-	if (frameSaveTimer) clearTimeout(frameSaveTimer)
-	frameSaveTimer = setTimeout(() => {
-		frameSaveTimer = undefined
-		try {
-			const frame = mainWindow.getFrame()
-			appDb.setSetting(SAVED_FRAME_KEY, JSON.stringify(frame))
-		} catch {
-			// Best-effort — losing one save is fine, the next resize will retry.
-		}
-	}, 500)
-}
+if (isMac) {
+	// Persist the frame on resize / move so it survives restart. Debounced so
+	// we don't write to the settings table on every pixel the user drags.
+	let frameSaveTimer: ReturnType<typeof setTimeout> | undefined
+	const scheduleFrameSave = () => {
+		if (frameSaveTimer) clearTimeout(frameSaveTimer)
+		frameSaveTimer = setTimeout(() => {
+			frameSaveTimer = undefined
+			try {
+				const frame = mainWindow.getFrame()
+				appDb.setSetting(SAVED_FRAME_KEY, JSON.stringify(frame))
+			} catch {
+				// Best-effort — losing one save is fine, the next resize will retry.
+			}
+		}, 500)
+	}
 
-mainWindow.on('resize', scheduleFrameSave)
-mainWindow.on('move', scheduleFrameSave)
+	mainWindow.on('resize', scheduleFrameSave)
+	mainWindow.on('move', scheduleFrameSave)
+} else if (isWindows) {
+	// Windows webview doesn't resize correctly on initial maximize; delay briefly.
+	setTimeout(() => mainWindow.maximize(), 500)
+} else {
+	mainWindow.maximize()
+}
 
 // Wire up BE→FE message emitter after window creation
 emitToFrontend = (channel: string, payload: unknown) => {
