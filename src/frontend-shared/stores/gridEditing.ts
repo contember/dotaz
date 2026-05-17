@@ -309,8 +309,12 @@ export function createGridEditingActions(
 	 * are serialised through the connection's dialect — JS arrays become PG
 	 * array literals so the params are wire-ready (Bun.SQL would otherwise
 	 * stringify them as `"a,b"` and PG rejects that as a malformed array).
+	 *
+	 * If `selected` is provided, only changes whose key (`update:N` / `insert:N`
+	 * / `delete:N`) is in the set are included — used by the partial-commit
+	 * flow in the pending-changes dialog.
 	 */
-	function buildDataChanges(tabId: string): DataChange[] {
+	function buildDataChanges(tabId: string, selected?: ReadonlySet<string>): DataChange[] {
 		const tab = ensureTab(tabId)
 		const dialect = connectionsStore.getDialect(tab.connectionId)
 		const colByName = new Map(tab.columns.map((c) => [c.name, c] as const))
@@ -341,6 +345,7 @@ export function createGridEditingActions(
 		}
 
 		for (const [rowIndex, values] of editsByRow) {
+			if (selected && !selected.has(`update:${rowIndex}`)) continue
 			const row = tab.rows[rowIndex]
 			const primaryKeys: Record<string, unknown> = {}
 			for (const pk of pkColumns) {
@@ -359,6 +364,7 @@ export function createGridEditingActions(
 
 		// Collect inserts (new rows)
 		for (const rowIndex of tab.pendingChanges.newRows) {
+			if (selected && !selected.has(`insert:${rowIndex}`)) continue
 			const row = tab.rows[rowIndex]
 			if (!row) continue
 			const values: Record<string, unknown> = {}
@@ -377,6 +383,7 @@ export function createGridEditingActions(
 
 		// Collect deletes
 		for (const rowIndex of tab.pendingChanges.deletedRows) {
+			if (selected && !selected.has(`delete:${rowIndex}`)) continue
 			const row = tab.rows[rowIndex]
 			if (!row) continue
 			const primaryKeys: Record<string, unknown> = {}
@@ -394,9 +401,9 @@ export function createGridEditingActions(
 		return changes
 	}
 
-	async function applyChanges(tabId: string, database?: string) {
+	async function applyChanges(tabId: string, database?: string, selected?: ReadonlySet<string>) {
 		const tab = ensureTab(tabId)
-		const changes = buildDataChanges(tabId)
+		const changes = buildDataChanges(tabId, selected)
 		if (changes.length === 0) return
 
 		const dialect = connectionsStore.getDialect(tab.connectionId)
@@ -412,12 +419,92 @@ export function createGridEditingActions(
 		})
 	}
 
-	function generateSqlPreview(tabId: string): string {
+	function generateSqlPreview(tabId: string, selected?: ReadonlySet<string>): string {
 		const tab = ensureTab(tabId)
-		const changes = buildDataChanges(tabId)
+		const changes = buildDataChanges(tabId, selected)
 		if (changes.length === 0) return ''
 		const dialect = connectionsStore.getDialect(tab.connectionId)
 		return generateChangesPreview(changes, dialect)
+	}
+
+	/**
+	 * Drop tracking for the changes named in `applied` (keyed `update:N` /
+	 * `insert:N` / `delete:N`). When deletes are applied the underlying rows
+	 * are spliced out of the grid and any surviving pending entries are
+	 * renumbered so their indices remain consistent.
+	 */
+	function clearAppliedChanges(tabId: string, applied: ReadonlySet<string>) {
+		const tab = ensureTab(tabId)
+		const pending = tab.pendingChanges
+
+		const appliedDeletes = new Set<number>()
+		for (const ri of pending.deletedRows) {
+			if (applied.has(`delete:${ri}`)) appliedDeletes.add(ri)
+		}
+
+		// Drop applied entries (no renumbering yet)
+		const remainingCellEdits: Record<string, CellChange> = {}
+		for (const [key, edit] of Object.entries(pending.cellEdits)) {
+			const isAppliedUpdate = applied.has(`update:${edit.rowIndex}`) && !pending.newRows.has(edit.rowIndex)
+				&& !pending.deletedRows.has(edit.rowIndex)
+			const isAppliedInsert = applied.has(`insert:${edit.rowIndex}`) && pending.newRows.has(edit.rowIndex)
+			if (isAppliedUpdate || isAppliedInsert) continue
+			remainingCellEdits[key] = edit
+		}
+
+		const remainingNewRows = new Set<number>()
+		for (const ri of pending.newRows) {
+			if (!applied.has(`insert:${ri}`)) remainingNewRows.add(ri)
+		}
+
+		const remainingDeletedRows = new Set<number>()
+		for (const ri of pending.deletedRows) {
+			if (!applied.has(`delete:${ri}`)) remainingDeletedRows.add(ri)
+		}
+
+		if (appliedDeletes.size === 0) {
+			setState('tabs', tabId, 'pendingChanges', {
+				cellEdits: remainingCellEdits,
+				newRows: remainingNewRows,
+				deletedRows: remainingDeletedRows,
+			})
+			return
+		}
+
+		// Splice deleted rows + renumber every surviving rowIndex
+		const newRows = tab.rows.filter((_, i) => !appliedDeletes.has(i))
+		const indexMap = new Map<number, number>()
+		let nextIdx = 0
+		for (let oldIdx = 0; oldIdx < tab.rows.length; oldIdx++) {
+			if (appliedDeletes.has(oldIdx)) continue
+			indexMap.set(oldIdx, nextIdx++)
+		}
+
+		const remappedCellEdits: Record<string, CellChange> = {}
+		for (const edit of Object.values(remainingCellEdits)) {
+			const newRowIdx = indexMap.get(edit.rowIndex)
+			if (newRowIdx == null) continue
+			remappedCellEdits[`${newRowIdx}:${edit.column}`] = { ...edit, rowIndex: newRowIdx }
+		}
+
+		const remappedNewRows = new Set<number>()
+		for (const ri of remainingNewRows) {
+			const mapped = indexMap.get(ri)
+			if (mapped != null) remappedNewRows.add(mapped)
+		}
+
+		const remappedDeletedRows = new Set<number>()
+		for (const ri of remainingDeletedRows) {
+			const mapped = indexMap.get(ri)
+			if (mapped != null) remappedDeletedRows.add(mapped)
+		}
+
+		setState('tabs', tabId, 'rows', newRows)
+		setState('tabs', tabId, 'pendingChanges', {
+			cellEdits: remappedCellEdits,
+			newRows: remappedNewRows,
+			deletedRows: remappedDeletedRows,
+		})
 	}
 
 	function revertChanges(tabId: string) {
@@ -475,6 +562,7 @@ export function createGridEditingActions(
 		generateSqlPreview,
 		revertChanges,
 		clearPendingChanges,
+		clearAppliedChanges,
 		revertRowUpdate,
 		revertNewRow,
 		revertDeletedRow,

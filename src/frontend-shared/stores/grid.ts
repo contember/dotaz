@@ -1107,6 +1107,7 @@ export const gridStore = {
 	generateSqlPreview: editingActions.generateSqlPreview,
 	revertChanges: revertChangesWithUndo,
 	clearPendingChanges: clearPendingChangesWithUndo,
+	clearAppliedChanges: editingActions.clearAppliedChanges,
 	revertRowUpdate: editingActions.revertRowUpdate,
 	revertNewRow: editingActions.revertNewRow,
 	revertDeletedRow: editingActions.revertDeletedRow,

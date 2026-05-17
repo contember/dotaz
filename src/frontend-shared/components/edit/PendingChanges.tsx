@@ -8,7 +8,7 @@ import Pencil from 'lucide-solid/icons/pencil'
 import Plus from 'lucide-solid/icons/plus'
 import RotateCcw from 'lucide-solid/icons/rotate-ccw'
 import X from 'lucide-solid/icons/x'
-import { createSignal, For, type JSX, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, type JSX, Show } from 'solid-js'
 import { friendlyErrorMessage } from '../../lib/rpc-errors'
 import { formatColumnValue } from '../../lib/value-format'
 import { gridStore } from '../../stores/grid'
@@ -30,6 +30,10 @@ interface ChangeItem {
 	description: string
 }
 
+function changeKey(item: { type: ChangeItem['type']; rowIndex: number }): string {
+	return `${item.type}:${item.rowIndex}`
+}
+
 function formatValue(value: unknown, dataType?: DatabaseDataType): string {
 	if (dataType !== undefined) return formatColumnValue(value, dataType)
 	if (isSqlDefault(value)) return 'DEFAULT'
@@ -46,6 +50,9 @@ export default function PendingChanges(props: PendingChangesProps) {
 	const [applying, setApplying] = createSignal(false)
 	const [error, setError] = createSignal<string | null>(null)
 	const [previewSql, setPreviewSql] = createSignal<string | null>(null)
+	// Items the user has explicitly *un*selected — default is "all selected" so the
+	// dialog behaves like the previous version unless the user opts into partial commit.
+	const [deselected, setDeselected] = createSignal<ReadonlySet<string>>(new Set())
 
 	const tab = () => gridStore.getTab(props.tabId)
 
@@ -135,6 +142,38 @@ export default function PendingChanges(props: PendingChangesProps) {
 		}
 	}
 
+	const items = createMemo(() => buildChangeList())
+	const selectedKeys = createMemo(() => {
+		const keys = new Set<string>()
+		const off = deselected()
+		for (const item of items()) {
+			const k = changeKey(item)
+			if (!off.has(k)) keys.add(k)
+		}
+		return keys
+	})
+	const allSelected = () => selectedKeys().size === items().length && items().length > 0
+	const noneSelected = () => selectedKeys().size === 0
+	const isPartial = () => !allSelected() && !noneSelected()
+
+	function toggleItem(item: ChangeItem) {
+		const k = changeKey(item)
+		setDeselected((prev) => {
+			const next = new Set(prev)
+			if (next.has(k)) next.delete(k)
+			else next.add(k)
+			return next
+		})
+	}
+
+	function toggleAll() {
+		if (allSelected()) {
+			setDeselected(new Set<string>(items().map(changeKey)))
+		} else {
+			setDeselected(new Set<string>())
+		}
+	}
+
 	function handleRevertItem(item: ChangeItem) {
 		switch (item.type) {
 			case 'update':
@@ -156,17 +195,33 @@ export default function PendingChanges(props: PendingChangesProps) {
 		props.onClose()
 	}
 
-	async function handleApplyAll() {
+	async function handleApply() {
 		if (!gridStore.hasPendingChanges(props.tabId)) return
+		if (noneSelected()) return
 
 		setApplying(true)
 		setError(null)
 		try {
-			await gridStore.applyChanges(props.tabId, props.database)
-			gridStore.clearPendingChanges(props.tabId)
-			setPreviewSql(null)
-			props.onApplied()
-			props.onClose()
+			const partial = isPartial()
+			const selected = partial ? selectedKeys() : undefined
+			await gridStore.applyChanges(props.tabId, props.database, selected)
+			if (partial) {
+				gridStore.clearAppliedChanges(props.tabId, selectedKeys())
+				setDeselected(new Set<string>())
+				setPreviewSql(null)
+				// Keep dialog open if there are still pending changes; otherwise close
+				if (!gridStore.hasPendingChanges(props.tabId)) {
+					props.onApplied()
+					props.onClose()
+				} else {
+					props.onApplied()
+				}
+			} else {
+				gridStore.clearPendingChanges(props.tabId)
+				setPreviewSql(null)
+				props.onApplied()
+				props.onClose()
+			}
 		} catch (err) {
 			setError(friendlyErrorMessage(err))
 		} finally {
@@ -176,8 +231,9 @@ export default function PendingChanges(props: PendingChangesProps) {
 
 	function handlePreviewSql() {
 		if (!gridStore.hasPendingChanges(props.tabId)) return
+		if (noneSelected()) return
 		try {
-			const sql = gridStore.generateSqlPreview(props.tabId)
+			const sql = gridStore.generateSqlPreview(props.tabId, isPartial() ? selectedKeys() : undefined)
 			setPreviewSql(sql)
 		} catch (err) {
 			setError(err instanceof Error ? err.message : String(err))
@@ -194,28 +250,59 @@ export default function PendingChanges(props: PendingChangesProps) {
 				</Show>
 
 				<div class="pending-changes__list">
-					<For each={buildChangeList()}>
-						{(item) => (
-							<div class={`pending-changes__item pending-changes__item--${item.type}`}>
-								<span class={`pending-changes__item-icon pending-changes__item-icon--${item.type}`}>
-									{typeIcon(item.type)}
-								</span>
-								<span class="pending-changes__item-type">
-									{typeLabel(item.type)}
-								</span>
-								<span class="pending-changes__item-desc" title={item.description}>
-									{item.description}
-								</span>
-								<button
-									class="pending-changes__item-revert"
-									onClick={() => handleRevertItem(item)}
-									disabled={applying()}
-									title="Revert this change"
+					<Show when={items().length > 1}>
+						<label class="pending-changes__select-all">
+							<input
+								type="checkbox"
+								checked={allSelected()}
+								ref={(el) => createEffect(() => {
+									el.indeterminate = isPartial()
+								})}
+								onChange={toggleAll}
+								disabled={applying()}
+							/>
+							<span>{allSelected() ? 'Deselect all' : 'Select all'}</span>
+						</label>
+					</Show>
+					<For each={items()}>
+						{(item) => {
+							const key = changeKey(item)
+							const checked = () => selectedKeys().has(key)
+							return (
+								<label
+									class={`pending-changes__item pending-changes__item--${item.type}`}
+									classList={{ 'pending-changes__item--unchecked': !checked() }}
 								>
-									<X size={14} />
-								</button>
-							</div>
-						)}
+									<input
+										type="checkbox"
+										class="pending-changes__item-check"
+										checked={checked()}
+										onChange={() => toggleItem(item)}
+										disabled={applying()}
+									/>
+									<span class={`pending-changes__item-icon pending-changes__item-icon--${item.type}`}>
+										{typeIcon(item.type)}
+									</span>
+									<span class="pending-changes__item-type">
+										{typeLabel(item.type)}
+									</span>
+									<span class="pending-changes__item-desc" title={item.description}>
+										{item.description}
+									</span>
+									<button
+										class="pending-changes__item-revert"
+										onClick={(e) => {
+											e.preventDefault()
+											handleRevertItem(item)
+										}}
+										disabled={applying()}
+										title="Revert this change"
+									>
+										<X size={14} />
+									</button>
+								</label>
+							)
+						}}
 					</For>
 				</div>
 
@@ -248,18 +335,22 @@ export default function PendingChanges(props: PendingChangesProps) {
 						<button
 							class="pending-changes__btn pending-changes__btn--preview"
 							onClick={handlePreviewSql}
-							disabled={applying()}
+							disabled={applying() || noneSelected()}
 							title="Preview SQL"
 						>
 							<Code size={12} /> Preview SQL
 						</button>
 						<button
 							class="pending-changes__btn pending-changes__btn--apply"
-							onClick={handleApplyAll}
-							disabled={applying()}
-							title="Save all changes"
+							onClick={handleApply}
+							disabled={applying() || noneSelected()}
+							title={isPartial() ? 'Save selected changes' : 'Save all changes'}
 						>
-							<Check size={12} /> {applying() ? 'Saving...' : 'Save'}
+							<Check size={12} /> {applying()
+								? 'Saving...'
+								: isPartial()
+								? `Save Selected (${selectedKeys().size})`
+								: 'Save'}
 						</button>
 					</div>
 				</div>
