@@ -12,7 +12,7 @@ import { commandRegistry } from '../../lib/commands'
 import { createJoinCompletionSource } from '../../lib/join-completion'
 import { MIN_EDITOR_HEIGHT } from '../../lib/layout-constants'
 import { createSqlLinter } from '../../lib/sql-linter'
-import { getNextStatementStart, getPreviousStatementStart } from '../../lib/sql-utils'
+import { getNextStatementStart, getPreviousStatementStart, getStatementAtCursor } from '../../lib/sql-utils'
 import { connectionsStore } from '../../stores/connections'
 import { editorStore } from '../../stores/editor'
 import ContextMenu from '../common/ContextMenu'
@@ -179,6 +179,42 @@ const errorHighlightField = StateField.define<DecorationSet>({
 			}
 		}
 		return value
+	},
+	provide: (f) => EditorView.decorations.from(f),
+})
+
+// ── Current statement highlight ───────────────────────────
+// Shaded line background marks the statement that Ctrl+Shift+Enter
+// would execute. Suppressed when the document contains a single statement
+// (the highlight is just visual noise when there's nothing to disambiguate).
+
+function computeCurrentStatementDecorations(state: EditorState): DecorationSet {
+	const sel = state.selection.main
+	if (sel.from !== sel.to) return Decoration.none
+
+	const text = state.doc.toString()
+	const stmt = getStatementAtCursor(text, sel.from)
+	if (!stmt) return Decoration.none
+	if (text.trim().length === stmt.text.length) return Decoration.none
+
+	const doc = state.doc
+	const lineFrom = doc.lineAt(Math.min(stmt.from, doc.length)).number
+	const lineTo = doc.lineAt(Math.min(stmt.to, doc.length)).number
+	const ranges = []
+	for (let n = lineFrom; n <= lineTo; n++) {
+		const line = doc.line(n)
+		ranges.push(Decoration.line({ class: 'cm-current-statement-line' }).range(line.from))
+	}
+	return Decoration.set(ranges)
+}
+
+const currentStatementField = StateField.define<DecorationSet>({
+	create(state) {
+		return computeCurrentStatementDecorations(state)
+	},
+	update(value, tr) {
+		if (!tr.docChanged && !tr.selection) return value
+		return computeCurrentStatementDecorations(tr.state)
 	},
 	provide: (f) => EditorView.decorations.from(f),
 })
@@ -419,6 +455,7 @@ export default function SqlEditor(props: SqlEditorProps) {
 				updateListener,
 				executedHighlightField,
 				errorHighlightField,
+				currentStatementField,
 				customCompletionExtension,
 				sqlLinterExtension,
 				sqlFoldService,

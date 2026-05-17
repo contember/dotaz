@@ -37,6 +37,13 @@
 	border-bottom: 2px solid rgba(76, 175, 80, 0.5);
 }
 
+/* Subtle line background marking the statement under the cursor —
+   what Ctrl+Shift+Enter / "Run Statement" will execute. */
+.cm-current-statement-line {
+	background-color: rgba(130, 170, 255, 0.06);
+	box-shadow: inset 2px 0 0 rgba(130, 170, 255, 0.55);
+}
+
 /* Error position highlight */
 .cm-error-highlight {
 	background-color: rgba(239, 68, 68, 0.15);
