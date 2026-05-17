@@ -44,6 +44,125 @@
 	box-shadow: inset 2px 0 0 rgba(130, 170, 255, 0.55);
 }
 
+/* ── Quick-doc hover popover ──────────────── */
+
+.sql-quick-doc {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 8px 10px;
+	min-width: 220px;
+	max-width: 440px;
+	max-height: 360px;
+	overflow: auto;
+	font-family: var(--font-mono);
+	font-size: var(--font-size-xs);
+	color: var(--ink);
+}
+
+.sql-quick-doc__header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding-bottom: 4px;
+	border-bottom: 1px solid var(--edge);
+}
+
+.sql-quick-doc__type-badge {
+	font-size: 10px;
+	letter-spacing: 0.5px;
+	color: var(--ink-muted);
+	background: var(--surface-active);
+	padding: 1px 5px;
+	border-radius: var(--radius-sm);
+}
+
+.sql-quick-doc__title {
+	font-weight: 600;
+	color: var(--ink);
+}
+
+.sql-quick-doc__section-label {
+	font-size: 10px;
+	letter-spacing: 0.5px;
+	color: var(--ink-muted);
+	text-transform: uppercase;
+	padding: 4px 0 2px;
+}
+
+.sql-quick-doc__columns {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.sql-quick-doc__col-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.sql-quick-doc__col-name {
+	flex: 1;
+	color: var(--ink);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.sql-quick-doc__col-name--pk {
+	color: var(--warning);
+}
+
+.sql-quick-doc__col-type {
+	color: var(--ink-muted);
+	font-size: 10px;
+}
+
+.sql-quick-doc__col-flag {
+	font-size: 9px;
+	letter-spacing: 0.5px;
+	padding: 0 4px;
+	border-radius: 2px;
+	background: var(--surface-active);
+}
+
+.sql-quick-doc__col-flag--pk {
+	color: var(--warning);
+	background: rgba(245, 158, 11, 0.15);
+}
+
+.sql-quick-doc__col-flag--fk {
+	color: var(--accent);
+	background: rgba(130, 170, 255, 0.12);
+}
+
+.sql-quick-doc__fks {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	border-top: 1px solid var(--edge);
+	padding-top: 4px;
+}
+
+.sql-quick-doc__fk-row {
+	color: var(--ink-secondary);
+	font-size: 10px;
+}
+
+.sql-quick-doc__more {
+	color: var(--ink-muted);
+	font-size: 10px;
+	padding-top: 2px;
+}
+
+.sql-quick-doc__default {
+	color: var(--ink-muted);
+	font-size: 10px;
+	border-top: 1px solid var(--edge);
+	padding-top: 4px;
+}
+
 /* Ctrl/Cmd-hover underline on a resolvable table identifier. */
 .cm-nav-link {
 	text-decoration: underline;

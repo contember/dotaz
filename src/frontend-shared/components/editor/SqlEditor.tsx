@@ -1,7 +1,7 @@
 import { MySQL, PostgreSQL, sql, SQLite } from '@codemirror/lang-sql'
 import { foldService, HighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/language'
 import { Compartment, EditorSelection, EditorState, Prec, StateEffect, StateField } from '@codemirror/state'
-import { Decoration, type DecorationSet, EditorView, keymap, placeholder } from '@codemirror/view'
+import { Decoration, type DecorationSet, EditorView, hoverTooltip, keymap, placeholder } from '@codemirror/view'
 import type { ConnectionType } from '@dotaz/shared/types/connection'
 import { CONNECTION_TYPE_META } from '@dotaz/shared/types/connection'
 import { tags } from '@lezer/highlight'
@@ -14,6 +14,7 @@ import { MIN_EDITOR_HEIGHT } from '../../lib/layout-constants'
 import { getIdentifierAtCursor } from '../../lib/sql-identifier-at'
 import { createSqlLinter } from '../../lib/sql-linter'
 import { resolveIdentifierToTable } from '../../lib/sql-navigation'
+import { renderColumnQuickDoc, renderTableQuickDoc } from '../../lib/sql-quick-doc'
 import { getNextStatementStart, getPreviousStatementStart, getStatementAtCursor } from '../../lib/sql-utils'
 import { connectionsStore } from '../../stores/connections'
 import { editorStore } from '../../stores/editor'
@@ -527,6 +528,44 @@ export default function SqlEditor(props: SqlEditorProps) {
 			},
 		})
 
+		const quickDocHover = hoverTooltip((view, pos) => {
+			const text = view.state.doc.toString()
+			const ident = getIdentifierAtCursor(text, pos)
+			if (!ident) return null
+			const schemaData = connectionsStore.getSchemaData(props.connectionId, props.database)
+			if (!schemaData) return null
+			const resolved = resolveIdentifierToTable(ident, schemaData)
+
+			// If the identifier was qualified (schema.table or table.column), try column-doc first.
+			if (ident.schema && !resolved) {
+				// Could be `table.column` shape — treat the qualifier as a table.
+				const tableResolved = resolveIdentifierToTable(
+					{ name: ident.schema, from: ident.qualifiedFrom, to: ident.qualifiedFrom + ident.schema.length, qualifiedFrom: ident.qualifiedFrom },
+					schemaData,
+				)
+				if (tableResolved) {
+					const dom = renderColumnQuickDoc(tableResolved, ident.name, schemaData)
+					if (dom) {
+						return {
+							pos: ident.from,
+							end: ident.to,
+							above: true,
+							create: () => ({ dom }),
+						}
+					}
+				}
+			}
+
+			if (!resolved) return null
+			const dom = renderTableQuickDoc(resolved, schemaData)
+			return {
+				pos: ident.qualifiedFrom,
+				end: ident.to,
+				above: true,
+				create: () => ({ dom }),
+			}
+		}, { hoverTime: 400 })
+
 		const state = EditorState.create({
 			doc: initialContent,
 			extensions: [
@@ -543,6 +582,7 @@ export default function SqlEditor(props: SqlEditorProps) {
 				errorHighlightField,
 				currentStatementField,
 				hoverLinkField,
+				quickDocHover,
 				customCompletionExtension,
 				sqlLinterExtension,
 				sqlFoldService,
