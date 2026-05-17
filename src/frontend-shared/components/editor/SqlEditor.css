@@ -44,6 +44,14 @@
 	box-shadow: inset 2px 0 0 rgba(130, 170, 255, 0.55);
 }
 
+/* Ctrl/Cmd-hover underline on a resolvable table identifier. */
+.cm-nav-link {
+	text-decoration: underline;
+	text-decoration-color: var(--accent);
+	text-decoration-thickness: 1px;
+	cursor: pointer;
+}
+
 /* Error position highlight */
 .cm-error-highlight {
 	background-color: rgba(239, 68, 68, 0.15);

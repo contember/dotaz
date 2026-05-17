@@ -11,10 +11,13 @@ import { createAliasCompletionSource } from '../../lib/alias-completion'
 import { commandRegistry } from '../../lib/commands'
 import { createJoinCompletionSource } from '../../lib/join-completion'
 import { MIN_EDITOR_HEIGHT } from '../../lib/layout-constants'
+import { getIdentifierAtCursor } from '../../lib/sql-identifier-at'
 import { createSqlLinter } from '../../lib/sql-linter'
+import { resolveIdentifierToTable } from '../../lib/sql-navigation'
 import { getNextStatementStart, getPreviousStatementStart, getStatementAtCursor } from '../../lib/sql-utils'
 import { connectionsStore } from '../../stores/connections'
 import { editorStore } from '../../stores/editor'
+import { tabsStore } from '../../stores/tabs'
 import ContextMenu from '../common/ContextMenu'
 import type { ContextMenuEntry } from '../common/ContextMenu'
 import './SqlEditor.css'
@@ -176,6 +179,31 @@ const errorHighlightField = StateField.define<DecorationSet>({
 					return Decoration.set([mark.range(effect.value.from, effect.value.to)])
 				}
 				return Decoration.none
+			}
+		}
+		return value
+	},
+	provide: (f) => EditorView.decorations.from(f),
+})
+
+// ── Ctrl/Cmd hover link highlight ─────────────────────────
+// When the user holds the platform mod key over an identifier we resolve
+// to a known table, we underline the token so the user knows it's clickable.
+
+const setHoverLink = StateEffect.define<{ from: number; to: number } | null>()
+
+const hoverLinkField = StateField.define<DecorationSet>({
+	create() {
+		return Decoration.none
+	},
+	update(value, tr) {
+		// Clear on doc changes so we never decorate stale offsets
+		if (tr.docChanged) value = Decoration.none
+		for (const effect of tr.effects) {
+			if (effect.is(setHoverLink)) {
+				if (!effect.value) return Decoration.none
+				const mark = Decoration.mark({ class: 'cm-nav-link' })
+				return Decoration.set([mark.range(effect.value.from, effect.value.to)])
 			}
 		}
 		return value
@@ -442,6 +470,63 @@ export default function SqlEditor(props: SqlEditorProps) {
 			},
 		})
 
+		// Ctrl/Cmd-click to navigate to the referenced table; hover to underline.
+		function resolveAtCoords(view: EditorView, x: number, y: number) {
+			const pos = view.posAtCoords({ x, y })
+			if (pos == null) return null
+			const ident = getIdentifierAtCursor(view.state.doc.toString(), pos)
+			if (!ident) return null
+			const schemaData = connectionsStore.getSchemaData(props.connectionId, props.database)
+			const resolved = resolveIdentifierToTable(ident, schemaData)
+			if (!resolved) return null
+			return { ident, resolved }
+		}
+
+		const navOnClick = EditorView.domEventHandlers({
+			mousemove(event: MouseEvent, view: EditorView) {
+				if (!(event.ctrlKey || event.metaKey)) {
+					if (view.state.field(hoverLinkField, false)?.size) {
+						view.dispatch({ effects: setHoverLink.of(null) })
+					}
+					return false
+				}
+				const r = resolveAtCoords(view, event.clientX, event.clientY)
+				view.dispatch({ effects: setHoverLink.of(r ? { from: r.ident.from, to: r.ident.to } : null) })
+				return false
+			},
+			mouseleave(_event: MouseEvent, view: EditorView) {
+				if (view.state.field(hoverLinkField, false)?.size) {
+					view.dispatch({ effects: setHoverLink.of(null) })
+				}
+				return false
+			},
+			keyup(event: KeyboardEvent, view: EditorView) {
+				if (event.key === 'Control' || event.key === 'Meta') {
+					view.dispatch({ effects: setHoverLink.of(null) })
+				}
+				return false
+			},
+			click(event: MouseEvent, view: EditorView) {
+				if (!(event.ctrlKey || event.metaKey)) return false
+				const r = resolveAtCoords(view, event.clientX, event.clientY)
+				if (!r) return false
+				const { resolved } = r
+				const existing = tabsStore.findDefaultTab(props.connectionId, resolved.schema, resolved.table, props.database)
+				if (!existing) {
+					tabsStore.openTab({
+						type: 'data-grid',
+						title: resolved.table,
+						connectionId: props.connectionId,
+						schema: resolved.schema,
+						table: resolved.table,
+						database: props.database,
+					})
+				}
+				event.preventDefault()
+				return true
+			},
+		})
+
 		const state = EditorState.create({
 			doc: initialContent,
 			extensions: [
@@ -450,12 +535,14 @@ export default function SqlEditor(props: SqlEditorProps) {
 				createDarkTheme(),
 				syntaxHighlighting(darkHighlightStyle),
 				altClickCursor,
+				navOnClick,
 				navigationKeymap,
 				executeKeymap,
 				updateListener,
 				executedHighlightField,
 				errorHighlightField,
 				currentStatementField,
+				hoverLinkField,
 				customCompletionExtension,
 				sqlLinterExtension,
 				sqlFoldService,
