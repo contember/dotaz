@@ -32,6 +32,12 @@ interface GridRowProps {
 	onPkClick?: (column: string, anchorEl: HTMLElement) => void
 	onCellBrowseFk?: (column: string) => void
 	rowColor?: string
+	/** Live-mode: per-cell highlight intensity (0..1). */
+	getLiveCellIntensity?: (column: string) => number
+	/** Live-mode: "row is new" highlight intensity (0..1). */
+	liveRowNewIntensity?: number
+	/** Live-mode reactive tick — read inside memos to force recompute. */
+	liveTick?: () => number
 }
 
 function getColumnWidth(col: string, config: Record<string, ColumnConfig>): number {
@@ -60,6 +66,12 @@ export default function GridRow(props: GridRowProps) {
 		return false
 	}
 
+	const liveRowNewIntensity = createMemo(() => {
+		// Touch liveTick so this re-evaluates each tick.
+		props.liveTick?.()
+		return props.liveRowNewIntensity ?? 0
+	})
+
 	return (
 		<div
 			class="grid-row"
@@ -68,11 +80,15 @@ export default function GridRow(props: GridRowProps) {
 				'grid-row--odd': props.index % 2 !== 0,
 				'grid-row--deleted': !!props.isDeleted,
 				'grid-row--new': !!props.isNewRow,
+				'grid-row--live-new': liveRowNewIntensity() > 0,
 			}}
 			data-row-index={props.index}
 			style={{
 				...props.style,
 				...(props.rowColor ? { 'background-color': props.rowColor } : {}),
+				...(liveRowNewIntensity() > 0
+					? { '--live-row-new-intensity': liveRowNewIntensity().toFixed(3) }
+					: {}),
 			}}
 			onMouseDown={handleMouseDown}
 			onDblClick={handleDblClick}
@@ -97,6 +113,11 @@ export default function GridRow(props: GridRowProps) {
 						const info = props.heatmapInfo?.get(col.name)
 						return info ? gridStore.computeHeatmapColor(props.row[col.name], info) : undefined
 					})
+					const liveCellIntensity = createMemo(() => {
+						// Touch liveTick so this re-evaluates each tick.
+						props.liveTick?.()
+						return props.getLiveCellIntensity?.(col.name) ?? 0
+					})
 
 					return (
 						<GridCell
@@ -112,6 +133,7 @@ export default function GridRow(props: GridRowProps) {
 							newRow={props.isNewRow}
 							fkTarget={props.fkMap?.get(col.name)}
 							heatmapColor={heatmapColor()}
+							liveChangeIntensity={liveCellIntensity()}
 							onSave={(value) => props.onCellSave?.(col.name, value)}
 							onCancel={() => props.onCellCancel?.()}
 							onMoveNext={() => props.onCellMoveNext?.(col.name)}

@@ -27,6 +27,27 @@
 	border-left: 2px solid var(--success);
 }
 
+/* ── Live mode: green flash on a newly-arrived row, opacity from --live-row-new-intensity (0..1). */
+.grid-row--live-new {
+	position: relative;
+}
+
+.grid-row--live-new::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	background: rgba(74, 222, 128, 0.35);
+	opacity: var(--live-row-new-intensity, 0);
+	transition: opacity 0.4s ease-out;
+	z-index: 0;
+}
+
+.grid-row--live-new > * {
+	position: relative;
+	z-index: 1;
+}
+
 .grid-row-number {
 	width: 40px;
 	min-width: 40px;

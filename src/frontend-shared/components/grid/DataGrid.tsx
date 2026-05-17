@@ -522,6 +522,9 @@ export default function DataGrid(props: DataGridProps) {
 												fkMap={fkState.map}
 												heatmapInfo={heatmapInfo()}
 												getRowColor={getRowColor}
+												getLiveCellIntensity={(rowIdx, col) => gridStore.getLiveCellIntensity(props.tabId, rowIdx, col)}
+												getLiveRowNewIntensity={(rowIdx) => gridStore.getLiveRowNewIntensity(props.tabId, rowIdx)}
+												liveTick={() => tabState().liveChanges?.tick ?? 0}
 												onFkClick={(rowIndex, column, anchorEl) => sidePanelHandle()?.handleFkClick(rowIndex, column, anchorEl)}
 												onPkClick={(rowIndex, column, anchorEl) => sidePanelHandle()?.handlePkClick(rowIndex, column, anchorEl)}
 												onRowNumberClick={handleRowNumberClick}

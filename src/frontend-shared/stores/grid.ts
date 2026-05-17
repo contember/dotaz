@@ -26,6 +26,17 @@ import { computePinStyles, createGridColumnActions, getOrderedColumns, getVisibl
 import { createDefaultPendingChanges, createGridEditingActions, valuesEqual } from './gridEditing'
 import { createGridFkActions } from './gridFk'
 import { computeHeatmapColor, computeHeatmapStats, createGridHeatmapActions } from './gridHeatmap'
+import {
+	buildRowKey,
+	createGridLiveModeActions,
+	diffByPk,
+	getPkColumns,
+	intensityForAge,
+	type LiveChanges,
+	type LiveModeState,
+	mergeAged,
+	NEW_ROW_SENTINEL,
+} from './gridLiveMode'
 import { createGridSelectionActions } from './gridSelection'
 import type { UndoSnapshot } from './gridUndoRedo'
 import { createGridUndoRedoActions } from './gridUndoRedo'
@@ -57,6 +68,9 @@ export interface ColumnConfig {
 
 export type { CellSelection, NormalizedRange, SelectionSnapshot } from '../lib/grid-selection'
 export { createDefaultSelection, getSelectedColIndices, getSelectedRowIndices, hasFullRowSelection, isCellInSelection } from '../lib/grid-selection'
+
+export type { LiveChanges, LiveIntervalMs, LiveModeState } from './gridLiveMode'
+export { LIVE_INTERVALS } from './gridLiveMode'
 
 function getSelectionSnapshot(
 	tabId: string,
@@ -178,6 +192,8 @@ export interface TabGridState {
 	autoJoins: AutoJoinDef[]
 	undoStack: UndoSnapshot[]
 	redoStack: UndoSnapshot[]
+	liveMode: LiveModeState | null
+	liveChanges: LiveChanges | null
 }
 
 function createDefaultTabState(
@@ -222,6 +238,8 @@ function createDefaultTabState(
 		autoJoins: [],
 		undoStack: [],
 		redoStack: [],
+		liveMode: null,
+		liveChanges: null,
 	}
 }
 
@@ -261,15 +279,18 @@ const editingActions = createGridEditingActions(
 const undoRedoActions = createGridUndoRedoActions(state, setState, ensureTab, getTab)
 
 // fetchData is defined before viewActions since viewActions needs it
-async function fetchData(tabId: string) {
+async function fetchData(tabId: string, opts: { live?: boolean } = {}) {
 	const tab = ensureTab(tabId)
+	const live = opts.live === true
 	const requestId = ++fetchSequence
 	latestFetchId.set(tabId, requestId)
 
 	const fetchStart = Date.now()
-	setState('tabs', tabId, 'loading', true)
-	setState('tabs', tabId, 'totalCount', null)
-	setState('tabs', tabId, 'countLoading', false)
+	if (!live) {
+		setState('tabs', tabId, 'loading', true)
+		setState('tabs', tabId, 'totalCount', null)
+		setState('tabs', tabId, 'countLoading', false)
+	}
 	try {
 		const dialect = connectionsStore.getDialect(tab.connectionId)
 		const hasJoins = tab.autoJoins.length > 0
@@ -410,26 +431,54 @@ async function fetchData(tabId: string) {
 		const rows = dataResults[0]?.rows ?? []
 		const fetchDuration = Date.now() - fetchStart
 
-		setState('tabs', tabId, {
-			columns: gridColumns,
-			rows,
-			totalCount: totalRows,
-			countLoading: false,
-			currentPage: tab.currentPage,
-			loading: false,
-			lastLoadedAt: Date.now(),
-			fetchDuration,
-			selection: createDefaultSelection(),
-			editingCell: null,
-		})
-		undoRedoActions.clearHistory(tabId)
+		if (live) {
+			// Diff against existing rows by PK, then merge into the change ledger
+			// with one tick of aging on prior entries.
+			const pkCols = getPkColumns(gridColumns)
+			const fresh = diffByPk(tab.rows, rows, pkCols, gridColumns)
+			const prev = tab.liveChanges
+			const nextAges = fresh
+				? mergeAged(prev?.cellAges ?? null, fresh)
+				: prev?.cellAges ?? new Map()
+			setState('tabs', tabId, {
+				columns: gridColumns,
+				rows,
+				totalCount: totalRows ?? tab.totalCount,
+				countLoading: false,
+				lastLoadedAt: Date.now(),
+				fetchDuration,
+				liveChanges: {
+					cellAges: nextAges,
+					tick: (prev?.tick ?? 0) + 1,
+				},
+			})
+		} else {
+			setState('tabs', tabId, {
+				columns: gridColumns,
+				rows,
+				totalCount: totalRows,
+				countLoading: false,
+				currentPage: tab.currentPage,
+				loading: false,
+				lastLoadedAt: Date.now(),
+				fetchDuration,
+				selection: createDefaultSelection(),
+				editingCell: null,
+			})
+			undoRedoActions.clearHistory(tabId)
+		}
 	} catch (err) {
 		// Ignore errors from stale requests
 		if (latestFetchId.get(tabId) !== requestId) return
 
-		setState('tabs', tabId, 'loading', false)
-		// Re-throw so the global unhandled rejection handler in AppShell shows a toast
-		throw err
+		if (!live) {
+			setState('tabs', tabId, 'loading', false)
+			// Re-throw so the global unhandled rejection handler in AppShell shows a toast
+			throw err
+		}
+		// Live-mode failures are silent — a transient network blip shouldn't
+		// kill the polling loop. The user can manually disable Live mode if
+		// something is persistently broken.
 	}
 }
 
@@ -440,6 +489,39 @@ const autoJoinActions = createGridAutoJoinActions(
 	createDefaultSelection,
 	fetchData,
 )
+
+const liveModeActions = createGridLiveModeActions(
+	state,
+	setState,
+	getTab,
+	(tabId) => {
+		const tab = getTab(tabId)
+		// Pause silently while the user is mid-edit or has uncommitted changes —
+		// fetching would clobber the diff baseline. The interval keeps running so
+		// polling resumes the moment changes are committed/reverted.
+		if (!tab || tab.editingCell != null || editingActions.hasPendingChanges(tabId)) {
+			return Promise.resolve()
+		}
+		return fetchData(tabId, { live: true })
+	},
+	(tabId) => {
+		const tab = getTab(tabId)
+		if (!tab) return { ok: false, reason: 'Tab not found' }
+		if (editingActions.hasPendingChanges(tabId)) {
+			return { ok: false, reason: 'Commit or revert pending changes first' }
+		}
+		const pkCols = getPkColumns(tab.columns)
+		if (pkCols.length === 0) {
+			return { ok: false, reason: 'Table has no primary key — Live mode requires one to detect changes' }
+		}
+		return { ok: true }
+	},
+)
+
+/** Stops live mode if it's active. Used by mutations that invalidate the diff baseline. */
+function stopLiveModeIfActive(tabId: string) {
+	if (liveModeActions.isActive(tabId)) liveModeActions.disable(tabId)
+}
 
 const viewActions = createGridViewActions(
 	state,
@@ -529,6 +611,7 @@ async function refreshData(tabId: string) {
 
 async function setPage(tabId: string, page: number) {
 	ensureTab(tabId)
+	stopLiveModeIfActive(tabId)
 	setState('tabs', tabId, 'currentPage', page)
 	setState('tabs', tabId, 'selection', createDefaultSelection())
 	await fetchData(tabId)
@@ -536,6 +619,7 @@ async function setPage(tabId: string, page: number) {
 
 async function setPageSize(tabId: string, pageSize: number) {
 	ensureTab(tabId)
+	stopLiveModeIfActive(tabId)
 	setState('tabs', tabId, 'pageSize', pageSize)
 	setState('tabs', tabId, 'currentPage', 1)
 	setState('tabs', tabId, 'selection', createDefaultSelection())
@@ -544,6 +628,7 @@ async function setPageSize(tabId: string, pageSize: number) {
 
 async function toggleSort(tabId: string, column: string, multi = false) {
 	const tab = ensureTab(tabId)
+	stopLiveModeIfActive(tabId)
 	const existing = tab.sort.find((s) => s.column === column)
 	let newSort: SortColumn[]
 
@@ -575,6 +660,7 @@ async function toggleSort(tabId: string, column: string, multi = false) {
 
 async function setFilter(tabId: string, filter: ColumnFilter) {
 	const tab = ensureTab(tabId)
+	stopLiveModeIfActive(tabId)
 	const idx = tab.filters.findIndex((f) => f.column === filter.column)
 	if (idx === -1) {
 		setState('tabs', tabId, 'filters', [...tab.filters, filter])
@@ -588,6 +674,7 @@ async function setFilter(tabId: string, filter: ColumnFilter) {
 
 async function removeFilter(tabId: string, column: string) {
 	const tab = ensureTab(tabId)
+	stopLiveModeIfActive(tabId)
 	setState(
 		'tabs',
 		tabId,
@@ -601,6 +688,7 @@ async function removeFilter(tabId: string, column: string) {
 
 async function setQuickSearch(tabId: string, search: string) {
 	ensureTab(tabId)
+	stopLiveModeIfActive(tabId)
 	setState('tabs', tabId, 'quickSearch', search)
 	setState('tabs', tabId, 'currentPage', 1)
 	setState('tabs', tabId, 'selection', createDefaultSelection())
@@ -609,6 +697,7 @@ async function setQuickSearch(tabId: string, search: string) {
 
 async function setCustomFilter(tabId: string, filter: string) {
 	ensureTab(tabId)
+	stopLiveModeIfActive(tabId)
 	setState('tabs', tabId, 'customFilter', filter)
 	setState('tabs', tabId, 'currentPage', 1)
 	setState('tabs', tabId, 'selection', createDefaultSelection())
@@ -617,6 +706,7 @@ async function setCustomFilter(tabId: string, filter: string) {
 
 async function clearFilters(tabId: string) {
 	ensureTab(tabId)
+	stopLiveModeIfActive(tabId)
 	setState('tabs', tabId, 'filters', [])
 	setState('tabs', tabId, 'customFilter', '')
 	setState('tabs', tabId, 'currentPage', 1)
@@ -746,6 +836,7 @@ function matchesRule(cellValue: unknown, operator: string, ruleValue: unknown): 
 }
 
 function removeTab(tabId: string) {
+	liveModeActions.disposeTab(tabId)
 	latestFetchId.delete(tabId)
 	setState('tabs', tabId, undefined!)
 }
@@ -759,6 +850,49 @@ function getSelectedCellData(
 	const snapshot = getSelectionSnapshot(tabId)
 	if (!snapshot || snapshot.rowCount < 2) return null
 	return { rows: snapshot.rows, columns: snapshot.columns }
+}
+
+// ── Live mode helpers ────────────────────────────────────
+
+/** Intensity (0..1) of the highlight for a given cell, or 0 if no recent change. */
+function getLiveCellIntensity(tabId: string, rowIndex: number, column: string): number {
+	const tab = getTab(tabId)
+	if (!tab?.liveChanges) return 0
+	const row = tab.rows[rowIndex]
+	if (!row) return 0
+	const pkCols = getPkColumns(tab.columns)
+	const key = buildRowKey(row, pkCols)
+	if (key == null) return 0
+	const perCell = tab.liveChanges.cellAges.get(key)
+	if (!perCell) return 0
+	const age = perCell.get(column)
+	if (age == null) return 0
+	return intensityForAge(age)
+}
+
+/** Intensity (0..1) for the "row is new" highlight, or 0 if the row isn't new. */
+function getLiveRowNewIntensity(tabId: string, rowIndex: number): number {
+	const tab = getTab(tabId)
+	if (!tab?.liveChanges) return 0
+	const row = tab.rows[rowIndex]
+	if (!row) return 0
+	const pkCols = getPkColumns(tab.columns)
+	const key = buildRowKey(row, pkCols)
+	if (key == null) return 0
+	const perCell = tab.liveChanges.cellAges.get(key)
+	if (!perCell) return 0
+	const age = perCell.get(NEW_ROW_SENTINEL)
+	if (age == null) return 0
+	return intensityForAge(age)
+}
+
+/** Helper to build a row key from PK columns. Re-exported here for components. */
+function rowKey(tabId: string, rowIndex: number): string | null {
+	const tab = getTab(tabId)
+	if (!tab) return null
+	const row = tab.rows[rowIndex]
+	if (!row) return null
+	return buildRowKey(row, getPkColumns(tab.columns))
 }
 
 // ── Current SQL ──────────────────────────────────────────
@@ -946,6 +1080,15 @@ export const gridStore = {
 	canUndo: undoRedoActions.canUndo,
 	canRedo: undoRedoActions.canRedo,
 	withUndoGroup: undoRedoActions.withUndoGroup,
+
+	// Live mode
+	enableLiveMode: liveModeActions.enable,
+	disableLiveMode: liveModeActions.disable,
+	setLiveModeInterval: liveModeActions.setInterval,
+	isLiveModeActive: liveModeActions.isActive,
+	getLiveCellIntensity,
+	getLiveRowNewIntensity,
+	liveRowKey: rowKey,
 
 	// Editing
 	startEditing: editingActions.startEditing,

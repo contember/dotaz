@@ -25,6 +25,8 @@ interface GridCellProps {
 	pkColumn?: boolean
 	/** Background color for heatmap visualization. */
 	heatmapColor?: string
+	/** Live-mode highlight intensity (0..1), 0 = no highlight. */
+	liveChangeIntensity?: number
 	onSave?: (value: unknown) => void
 	onCancel?: () => void
 	onMoveNext?: () => void
@@ -132,11 +134,15 @@ export default function GridCell(props: GridCellProps) {
 					'grid-cell--focused': !!props.focused,
 					'grid-cell--deleted': !!props.deleted,
 					'grid-cell--new-row': !!props.newRow,
+					'grid-cell--live-changed': (props.liveChangeIntensity ?? 0) > 0,
 				}}
 				style={{
 					width: `${props.width}px`,
 					...props.pinStyle,
 					...(props.heatmapColor ? { 'background-color': props.heatmapColor } : {}),
+					...((props.liveChangeIntensity ?? 0) > 0
+						? { '--live-cell-intensity': (props.liveChangeIntensity ?? 0).toFixed(3) }
+						: {}),
 				}}
 				title={tooltipValue()}
 				data-column={props.column.name}

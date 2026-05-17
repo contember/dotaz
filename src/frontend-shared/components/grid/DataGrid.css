@@ -185,6 +185,54 @@
 	margin: var(--spacing-xs) 0;
 }
 
+/* ── Live mode menu ──────────────────────────────────── */
+
+.data-grid__live-menu {
+	position: relative;
+	flex-shrink: 0;
+	margin-right: var(--spacing-md);
+}
+
+.data-grid__live-menu > .data-grid__toolbar-btn {
+	margin-right: 0;
+}
+
+.data-grid__live-btn--pulse {
+	color: var(--success);
+	border-color: var(--success);
+}
+
+.data-grid__live-btn--pulse svg:first-child {
+	animation: dataGridLivePulse 1.4s ease-in-out infinite;
+}
+
+@keyframes dataGridLivePulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.35; }
+}
+
+.data-grid__live-panel {
+	position: absolute;
+	top: 100%;
+	left: 0;
+	margin-top: 4px;
+	min-width: 180px;
+	background: var(--surface-overlay);
+	border: 1px solid var(--edge-strong);
+	border-radius: var(--radius-md);
+	box-shadow: var(--shadow-popup);
+	z-index: 100;
+	padding: var(--spacing-xs) 0;
+}
+
+.data-grid__live-panel-label {
+	font-size: var(--font-size-xs);
+	color: var(--ink-muted);
+	padding: var(--spacing-xs) var(--spacing-md);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
 /* ── Body (horizontal split: grid + value editor) ────── */
 
 .data-grid__body {

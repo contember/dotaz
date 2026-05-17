@@ -85,6 +85,27 @@
 	border-left: 2px solid var(--success);
 }
 
+/* ── Live mode: yellow flash on a changed cell, opacity from JS via --live-cell-intensity (0..1). */
+.grid-cell--live-changed {
+	position: relative;
+}
+
+.grid-cell--live-changed::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	background: rgba(245, 158, 11, 0.55);
+	opacity: var(--live-cell-intensity, 0);
+	transition: opacity 0.4s ease-out;
+	z-index: 0;
+}
+
+.grid-cell--live-changed > * {
+	position: relative;
+	z-index: 1;
+}
+
 .grid-cell__json-popup {
 	position: absolute;
 	top: 100%;

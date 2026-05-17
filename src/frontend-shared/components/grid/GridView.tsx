@@ -67,6 +67,16 @@ export interface GridViewProps {
 	onFkClick?: (rowIndex: number, column: string, anchor?: HTMLElement) => void
 	onPkClick?: (rowIndex: number, column: string, anchor?: HTMLElement) => void
 
+	/** Live mode: 0..1 highlight intensity per cell (yellow flash). */
+	getLiveCellIntensity?: (rowIndex: number, column: string) => number
+	/** Live mode: 0..1 highlight intensity for "row is new" (green flash). */
+	getLiveRowNewIntensity?: (rowIndex: number) => number
+	/**
+	 * Reactive signal that ticks each time the live-change ledger updates.
+	 * Components read it inside memos so Solid re-evaluates intensity.
+	 */
+	liveTick?: () => number
+
 	/** Returns context menu entries for a right-clicked cell. Return null/undefined for no menu. */
 	getCellContextMenu?: (ctx: { rowIndex: number; column: string }) => ContextMenuEntry[] | null
 	/** Returns context menu entries for a right-clicked column header. */
@@ -299,6 +309,9 @@ function GridViewBody(props: GridViewProps) {
 				onFkClick={props.onFkClick}
 				onPkClick={props.onPkClick}
 				onCellBrowseFk={props.editing?.onBrowseFk}
+				getLiveCellIntensity={props.getLiveCellIntensity}
+				getLiveRowNewIntensity={props.getLiveRowNewIntensity}
+				liveTick={props.liveTick}
 			/>
 
 			<Show when={!props.loading && props.rows.length === 0 && props.emptyState}>

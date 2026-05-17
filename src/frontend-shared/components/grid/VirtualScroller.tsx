@@ -34,6 +34,9 @@ interface VirtualScrollerProps {
 	onPkClick?: (rowIndex: number, column: string, anchorEl?: HTMLElement) => void
 	onCellBrowseFk?: (rowIndex: number, column: string) => void
 	getRowColor?: (rowIndex: number) => string | undefined
+	getLiveCellIntensity?: (rowIndex: number, column: string) => number
+	getLiveRowNewIntensity?: (rowIndex: number) => number
+	liveTick?: () => number
 }
 
 export default function VirtualScroller(props: VirtualScrollerProps) {
@@ -94,6 +97,11 @@ export default function VirtualScroller(props: VirtualScrollerProps) {
 							onPkClick={(col, anchorEl) => props.onPkClick?.(virtualRow.index, col, anchorEl)}
 							onCellBrowseFk={(col) => props.onCellBrowseFk?.(virtualRow.index, col)}
 							rowColor={props.getRowColor?.(virtualRow.index)}
+							getLiveCellIntensity={props.getLiveCellIntensity
+								? (col) => props.getLiveCellIntensity!(virtualRow.index, col)
+								: undefined}
+							liveRowNewIntensity={props.getLiveRowNewIntensity?.(virtualRow.index) ?? 0}
+							liveTick={props.liveTick}
 							style={{
 								position: 'absolute',
 								top: `${virtualRow.start - virtualizer.options.scrollMargin}px`,

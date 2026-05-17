@@ -1,6 +1,7 @@
 import type { ColumnFilter } from '@dotaz/shared/types/grid'
 import type { SavedViewConfig } from '@dotaz/shared/types/rpc'
 import ArrowLeftRight from 'lucide-solid/icons/arrow-left-right'
+import Circle from 'lucide-solid/icons/circle'
 import EllipsisVertical from 'lucide-solid/icons/ellipsis-vertical'
 import Plus from 'lucide-solid/icons/plus'
 import RotateCcw from 'lucide-solid/icons/rotate-ccw'
@@ -9,7 +10,7 @@ import { createSignal, type JSX, onCleanup, Show } from 'solid-js'
 import { useClickOutside } from '../../lib/hooks'
 import { rpc } from '../../lib/rpc'
 import { editorStore } from '../../stores/editor'
-import { gridStore } from '../../stores/grid'
+import { gridStore, LIVE_INTERVALS, type LiveIntervalMs } from '../../stores/grid'
 import { tabsStore } from '../../stores/tabs'
 import { uiStore } from '../../stores/ui'
 import { viewsStore } from '../../stores/views'
@@ -35,11 +36,20 @@ export interface DataGridToolbarProps {
 	onToggleRowColoring: () => void
 }
 
+const DEFAULT_LIVE_INTERVAL: LiveIntervalMs = 5000
+
+function formatInterval(ms: number): string {
+	return ms < 1000 ? `${ms}ms` : `${ms / 1000}s`
+}
+
 export default function DataGridToolbar(props: DataGridToolbarProps) {
 	const [searchInput, setSearchInput] = createSignal('')
 	const [moreMenuOpen, setMoreMenuOpen] = createSignal(false)
+	const [liveMenuOpen, setLiveMenuOpen] = createSignal(false)
 	let moreMenuRef: HTMLDivElement | undefined
 	let moreMenuTriggerRef: HTMLButtonElement | undefined
+	let liveMenuRef: HTMLDivElement | undefined
+	let liveMenuTriggerRef: HTMLButtonElement | undefined
 	let searchDebounceTimer: ReturnType<typeof setTimeout> | undefined
 
 	const tab = () => gridStore.getTab(props.tabId)
@@ -51,12 +61,37 @@ export default function DataGridToolbar(props: DataGridToolbarProps) {
 		return gridStore.isViewModified(props.tabId, config)
 	}
 
+	const liveMode = () => tab()?.liveMode ?? null
+	const hasPk = () => (tab()?.columns ?? []).some((c) => c.isPrimaryKey)
+	const pendingCount = () => gridStore.pendingChangesCount(props.tabId)
+	const liveDisabledReason = (): string | null => {
+		if (!hasPk()) return 'Live mode requires a primary key on the table'
+		if (pendingCount() > 0) return 'Commit or revert pending changes first'
+		return null
+	}
+
 	onCleanup(() => {
 		if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
 	})
 
-	// Close more menu on click outside
+	// Close menus on click outside
 	useClickOutside(() => moreMenuOpen(), () => [moreMenuRef, moreMenuTriggerRef], () => setMoreMenuOpen(false))
+	useClickOutside(() => liveMenuOpen(), () => [liveMenuRef, liveMenuTriggerRef], () => setLiveMenuOpen(false))
+
+	function handleSelectLiveInterval(intervalMs: LiveIntervalMs) {
+		const active = liveMode()
+		if (active) {
+			gridStore.setLiveModeInterval(props.tabId, intervalMs)
+		} else {
+			gridStore.enableLiveMode(props.tabId, intervalMs)
+		}
+		setLiveMenuOpen(false)
+	}
+
+	function handleDisableLive() {
+		gridStore.disableLiveMode(props.tabId)
+		setLiveMenuOpen(false)
+	}
 
 	function handleQuickSearchInput(value: string) {
 		setSearchInput(value)
@@ -241,6 +276,48 @@ export default function DataGridToolbar(props: DataGridToolbarProps) {
 							>
 								<Icon name={tabState().loading ? 'spinner' : 'refresh'} size={12} /> Refresh
 							</button>
+							<div class="data-grid__live-menu">
+								<button
+									ref={liveMenuTriggerRef}
+									class="data-grid__toolbar-btn"
+									classList={{
+										'data-grid__toolbar-btn--active': liveMode() != null,
+										'data-grid__live-btn--pulse': liveMode() != null,
+									}}
+									onClick={() => {
+										if (liveDisabledReason() && !liveMode()) return
+										setLiveMenuOpen(!liveMenuOpen())
+									}}
+									disabled={!!liveDisabledReason() && !liveMode()}
+									title={liveDisabledReason()
+										?? (liveMode() ? `Live · ${formatInterval(liveMode()!.intervalMs)}` : 'Live mode — auto-refresh and highlight changes')}
+								>
+									<Circle size={8} fill={liveMode() ? 'currentColor' : 'none'} />
+									{liveMode() ? `Live · ${formatInterval(liveMode()!.intervalMs)}` : 'Live'}
+								</button>
+								<Show when={liveMenuOpen()}>
+									<div ref={liveMenuRef} class="data-grid__live-panel">
+										<div class="data-grid__live-panel-label">Auto-refresh every</div>
+										{LIVE_INTERVALS.map((ms) => (
+											<button
+												class="data-grid__more-item"
+												classList={{ 'data-grid__more-item--active': liveMode()?.intervalMs === ms }}
+												onClick={() => handleSelectLiveInterval(ms)}
+											>
+												{liveMode()?.intervalMs === ms ? '● ' : '○ '}
+												{formatInterval(ms)}
+												{ms === DEFAULT_LIVE_INTERVAL && !liveMode() ? ' (default)' : ''}
+											</button>
+										))}
+										<Show when={liveMode()}>
+											<div class="data-grid__more-separator" />
+											<button class="data-grid__more-item" onClick={handleDisableLive}>
+												Turn off Live mode
+											</button>
+										</Show>
+									</div>
+								</Show>
+							</div>
 							<div class="data-grid__more-menu">
 								<button
 									ref={moreMenuTriggerRef}
