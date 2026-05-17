@@ -1,12 +1,16 @@
 import { isBinaryType, isBooleanType, isNumericType, isStructuredType, isTimestampType } from '@dotaz/shared/column-types'
 import { isSqlDefault } from '@dotaz/shared/types/database'
 import type { GridColumnDef } from '@dotaz/shared/types/grid'
-import { createEffect, createSignal, onCleanup, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-js'
+import { detectImage, imageToDataUrl } from '../../lib/binary-preview'
 import { formatBinary, formatBoolean, formatNumberWithProfile, formatTimestamp } from '../../lib/cell-formatters'
 import { formatJsonValue } from '../../lib/value-format'
 import { settingsStore } from '../../stores/settings'
 import InlineEditor from '../edit/InlineEditor'
 import './GridCell.css'
+
+/** Skip thumbnailing huge blobs in the grid — they aren't visible at 24px anyway and decoding kills scroll. */
+const MAX_GRID_THUMB_BYTES = 2 * 1024 * 1024
 
 interface GridCellProps {
 	value: unknown
@@ -58,6 +62,14 @@ export default function GridCell(props: GridCellProps) {
 		if (isJson()) return formatJsonValue(props.value)
 		return String(props.value)
 	}
+
+	const imagePreview = createMemo(() => {
+		if (!isBin() || isNull() || isDefault()) return null
+		const detected = detectImage(props.value)
+		if (!detected) return null
+		if (detected.bytes.length > MAX_GRID_THUMB_BYTES) return null
+		return imageToDataUrl(detected)
+	})
 
 	const isFk = () => !!props.fkTarget && !isNull()
 	const isPk = () => !!props.pkColumn && !isNull() && !isDefault() && !isFk()
@@ -149,18 +161,25 @@ export default function GridCell(props: GridCellProps) {
 				onClick={isJson() && !isNull() ? handleJsonClick : undefined}
 			>
 				<Show
-					when={isFk()}
+					when={imagePreview()}
 					fallback={
-						<Show when={isPk()} fallback={displayValue()}>
-							<span class="grid-cell__pk-link" onClick={handlePkClick}>
+						<Show
+							when={isFk()}
+							fallback={
+								<Show when={isPk()} fallback={displayValue()}>
+									<span class="grid-cell__pk-link" onClick={handlePkClick}>
+										{displayValue()}
+									</span>
+								</Show>
+							}
+						>
+							<span class="grid-cell__fk-link" onClick={handleFkClick}>
 								{displayValue()}
 							</span>
 						</Show>
 					}
 				>
-					<span class="grid-cell__fk-link" onClick={handleFkClick}>
-						{displayValue()}
-					</span>
+					{(src) => <img class="grid-cell__image-thumb" src={src()} alt="" loading="lazy" decoding="async" />}
 				</Show>
 
 				<Show when={jsonExpanded()}>

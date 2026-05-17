@@ -1,8 +1,9 @@
-import { getDataTypeLabel, isBooleanType, isStructuredType } from '@dotaz/shared/column-types'
+import { getDataTypeLabel, isBinaryType, isBooleanType, isStructuredType } from '@dotaz/shared/column-types'
 import { isSqlDefault, SQL_DEFAULT } from '@dotaz/shared/types/database'
 import type { GridColumnDef } from '@dotaz/shared/types/grid'
 import X from 'lucide-solid/icons/x'
-import { createEffect, createSignal, on, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, on, Show } from 'solid-js'
+import { detectImage, formatByteSize, imageToDataUrl } from '../../lib/binary-preview'
 import { formatColumnValue, formatColumnValueForEditor, parseJsonColumnInput, tryFormatJson } from '../../lib/value-format'
 import Icon from '../common/Icon'
 import Resizer from '../layout/Resizer'
@@ -30,6 +31,12 @@ export default function ValueEditorPanel(props: ValueEditorPanelProps) {
 	const isJson = () => isStructuredType(props.column.dataType) || tryFormatJson(props.value) !== null
 	const isNull = () => props.value === null || props.value === undefined
 	const isDefault = () => isSqlDefault(props.value)
+	const isBin = () => isBinaryType(props.column.dataType)
+
+	const imagePreview = createMemo(() => {
+		if (isNull() || isDefault() || !isBin()) return null
+		return detectImage(props.value)
+	})
 
 	const formattedValue = () => formatColumnValue(props.value, props.column.dataType, { pretty: true })
 
@@ -165,21 +172,35 @@ export default function ValueEditorPanel(props: ValueEditorPanelProps) {
 						fallback={
 							<div class="value-editor-panel__display-area">
 								<Show
-									when={viewMode() === 'tree' && isJson() && !isNull() && !isDefault()}
+									when={imagePreview()}
 									fallback={
-										<pre
-											class="value-editor-panel__value"
-											classList={{
-												'value-editor-panel__value--null': isNull(),
-												'value-editor-panel__value--json': isJson() && !isNull(),
-												'value-editor-panel__value--wrap': wordWrap(),
-											}}
+										<Show
+											when={viewMode() === 'tree' && isJson() && !isNull() && !isDefault()}
+											fallback={
+												<pre
+													class="value-editor-panel__value"
+													classList={{
+														'value-editor-panel__value--null': isNull(),
+														'value-editor-panel__value--json': isJson() && !isNull(),
+														'value-editor-panel__value--wrap': wordWrap(),
+													}}
+												>
+													{formattedValue()}
+												</pre>
+											}
 										>
-											{formattedValue()}
-										</pre>
+											<JsonTreeView value={props.value} />
+										</Show>
 									}
 								>
-									<JsonTreeView value={props.value} />
+									{(detected) => (
+										<div class="value-editor-panel__image-preview">
+											<img src={imageToDataUrl(detected())} alt="" />
+											<div class="value-editor-panel__image-meta">
+												{detected().mime} &middot; {formatByteSize(detected().bytes.length)}
+											</div>
+										</div>
+									)}
 								</Show>
 								<Show when={!props.readOnly}>
 									<div class="value-editor-panel__edit-actions">

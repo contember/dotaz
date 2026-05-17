@@ -288,6 +288,37 @@
 	background: var(--surface-hover);
 }
 
+/* ── Image preview ────────────────────────── */
+
+.value-editor-panel__image-preview {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: var(--spacing-sm);
+	padding: var(--spacing-md);
+	min-height: 100%;
+	overflow: auto;
+}
+
+.value-editor-panel__image-preview img {
+	max-width: 100%;
+	max-height: calc(100% - 24px);
+	object-fit: contain;
+	background:
+		linear-gradient(45deg, rgba(255, 255, 255, 0.04) 25%, transparent 25%, transparent 75%, rgba(255, 255, 255, 0.04) 75%),
+		linear-gradient(45deg, rgba(255, 255, 255, 0.04) 25%, transparent 25%, transparent 75%, rgba(255, 255, 255, 0.04) 75%);
+	background-size: 16px 16px;
+	background-position: 0 0, 8px 8px;
+	box-shadow: var(--shadow-popup);
+}
+
+.value-editor-panel__image-meta {
+	font-family: var(--font-mono);
+	font-size: 10px;
+	color: var(--ink-muted);
+}
+
 /* ── Footer ───────────────────────────────── */
 
 .value-editor-panel__footer {
