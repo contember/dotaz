@@ -1,6 +1,4 @@
 import { describe, expect, test } from 'bun:test'
-import { DatabaseDataType } from '../src/shared/types/database'
-import type { GridColumnDef } from '../src/shared/types/grid'
 import {
 	buildRowKey,
 	diffByPk,
@@ -10,6 +8,8 @@ import {
 	mergeAged,
 	NEW_ROW_SENTINEL,
 } from '../src/frontend-shared/stores/gridLiveMode'
+import { DatabaseDataType } from '../src/shared/types/database'
+import type { GridColumnDef } from '../src/shared/types/grid'
 
 const cols: GridColumnDef[] = [
 	{ name: 'id', dataType: DatabaseDataType.Integer, nullable: false, isPrimaryKey: true },

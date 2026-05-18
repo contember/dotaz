@@ -255,9 +255,10 @@ export default function PendingChanges(props: PendingChangesProps) {
 							<input
 								type="checkbox"
 								checked={allSelected()}
-								ref={(el) => createEffect(() => {
-									el.indeterminate = isPartial()
-								})}
+								ref={(el) =>
+									createEffect(() => {
+										el.indeterminate = isPartial()
+									})}
 								onChange={toggleAll}
 								disabled={applying()}
 							/>

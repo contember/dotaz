@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import type { SchemaData } from '../src/shared/types/database'
 import { resolveIdentifierToTable } from '../src/frontend-shared/lib/sql-navigation'
+import type { SchemaData } from '../src/shared/types/database'
 
 function makeSchemaData(): SchemaData {
 	return {
