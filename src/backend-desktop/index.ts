@@ -239,21 +239,33 @@ const mainWindow = new BrowserWindow({
 // Persist the frame on resize / move so it survives restart. Debounced so we
 // don't write to the settings table on every pixel the user drags.
 let frameSaveTimer: ReturnType<typeof setTimeout> | undefined
+function persistFrame() {
+	try {
+		const frame = mainWindow.getFrame()
+		appDb.setSetting(SAVED_FRAME_KEY, JSON.stringify(frame))
+	} catch (err) {
+		console.warn('Window frame save failed:', err instanceof Error ? err.message : err)
+	}
+}
 function scheduleFrameSave() {
 	if (frameSaveTimer) clearTimeout(frameSaveTimer)
 	frameSaveTimer = setTimeout(() => {
 		frameSaveTimer = undefined
-		try {
-			const frame = mainWindow.getFrame()
-			appDb.setSetting(SAVED_FRAME_KEY, JSON.stringify(frame))
-		} catch {
-			// Best-effort — losing one save is fine, the next resize will retry.
-		}
+		persistFrame()
 	}, 500)
+}
+function flushFrameSave() {
+	if (!frameSaveTimer) return
+	clearTimeout(frameSaveTimer)
+	frameSaveTimer = undefined
+	persistFrame()
 }
 
 mainWindow.on('resize', scheduleFrameSave)
 mainWindow.on('move', scheduleFrameSave)
+// Flush any pending debounced save before the window goes away so a quick
+// resize-then-quit doesn't lose the last change.
+mainWindow.on('close', flushFrameSave)
 
 // Wire up BE→FE message emitter after window creation
 emitToFrontend = (channel: string, payload: unknown) => {
