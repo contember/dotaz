@@ -903,6 +903,32 @@ describe('AppDatabase', () => {
 			expect((found.config as PostgresConnectionConfig).password).toBe('secret-password')
 		})
 
+		test('listConnections returns empty password when decryption fails (wrong key, no migration)', () => {
+			const otherKey = new Uint8Array(
+				hkdfSync('sha256', 'other-machine-data', 'dotaz-local-salt', 'dotaz-local-key', 32),
+			)
+
+			// Encrypt with one key, then switch to a different key WITHOUT passing the original as legacyKey.
+			// This simulates an install where the machine-derived key changed (e.g. after OS reinstall).
+			appDb.setLocalKey(testKey)
+			const conn = appDb.createConnection({ name: 'Stranded', config: pgConfig })
+
+			appDb.setLocalKey(otherKey)
+
+			// listConnections must not throw — it should fall back to empty password so the user can re-enter it.
+			const list = appDb.listConnections()
+			expect(list).toHaveLength(1)
+			expect((list[0].config as PostgresConnectionConfig).password).toBe('')
+
+			// getConnectionById behaves the same.
+			const found = appDb.getConnectionById(conn.id)!
+			expect((found.config as PostgresConnectionConfig).password).toBe('')
+
+			// Raw DB still has the original ciphertext — data is preserved, not destroyed.
+			const row = appDb.db.prepare('SELECT config FROM connections WHERE id = ?').get(conn.id) as { config: string }
+			expect(isEncryptedPassword(JSON.parse(row.config).password)).toBe(true)
+		})
+
 		test('migration re-encrypts SSH tunnel secrets from a legacy key', () => {
 			const legacyKey = new Uint8Array(
 				hkdfSync('sha256', 'legacy-machine-data', 'dotaz-local-salt', 'dotaz-local-key', 32),
