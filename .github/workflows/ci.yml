@@ -34,6 +34,7 @@ jobs:
   integration:
     runs-on: ubuntu-latest
     needs: check
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -49,6 +50,10 @@ jobs:
         run: |
           shopt -s extglob
           bun test tests/@(pg-*|postgres-*|mysql-*|multi-database|driver-iterate).test.ts
+
+      - name: Show docker-compose logs on failure
+        if: failure()
+        run: docker compose logs --tail=200
 
       - name: Stop docker-compose services
         if: always()
