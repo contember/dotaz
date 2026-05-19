@@ -455,6 +455,14 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 		setContextMenu({ x: e.clientX, y: e.clientY, items })
 	}
 
+	async function loadDemo() {
+		try {
+			await connectionsStore.initializeDemo()
+		} catch (err) {
+			uiStore.addToast('error', err instanceof Error ? err.message : 'Failed to load demo')
+		}
+	}
+
 	/**
 	 * Right-click on the empty sidebar area (or empty state) — offers "Add
 	 * Connection" so the user doesn't have to hunt for the + button. Tree
@@ -469,19 +477,14 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 		const items: ContextMenuEntry[] = [
 			{
 				label: 'Add Connection',
+				icon: () => <Plus size={14} />,
 				action: () => props.onAddConnection(),
 			},
 		]
 		if (connectionsStore.connections.length === 0) {
 			items.push('separator', {
 				label: 'Load Demo Database',
-				action: async () => {
-					try {
-						await connectionsStore.initializeDemo()
-					} catch (err) {
-						uiStore.addToast('error', err instanceof Error ? err.message : 'Failed to load demo')
-					}
-				},
+				action: loadDemo,
 			})
 		}
 		showContextMenu(e, items)
@@ -767,16 +770,7 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 						<button class="connection-tree__empty-cta" onClick={props.onAddConnection}>
 							<Plus size={14} /> Add Connection
 						</button>
-						<button
-							class="connection-tree__empty-demo"
-							onClick={async () => {
-								try {
-									await connectionsStore.initializeDemo()
-								} catch (err) {
-									uiStore.addToast('error', err instanceof Error ? err.message : 'Failed to load demo')
-								}
-							}}
-						>
+						<button class="connection-tree__empty-demo" onClick={loadDemo}>
 							Load Demo Database
 						</button>
 					</div>
