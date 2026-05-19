@@ -7,7 +7,15 @@ import { editorStore } from './stores/editor'
 // production builds. In dev we keep it so we can inspect the DOM. Component-
 // level context menus call e.preventDefault() themselves and render their own
 // menu via the ContextMenu component, so they keep working either way.
+// Inputs and editable surfaces are exempted so users keep the native clipboard
+// menu (cut/copy/paste) where they actually need it.
 function preventNativeContextMenu(e: MouseEvent) {
+	const target = e.target as HTMLElement | null
+	if (target) {
+		if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+			return
+		}
+	}
 	e.preventDefault()
 }
 
