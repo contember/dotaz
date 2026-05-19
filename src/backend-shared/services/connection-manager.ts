@@ -40,12 +40,10 @@ export type SessionDeadListener = (event: SessionDeadEvent) => void | Promise<vo
 // database picker. Used by both listDatabases (active connection) and
 // listDatabasesForConfig (unsaved config in connection dialog).
 const MYSQL_SYSTEM_SCHEMAS = ['mysql', 'information_schema', 'performance_schema', 'sys']
-const MYSQL_LIST_DATABASES_SQL =
-	`SELECT schema_name AS name FROM information_schema.schemata WHERE schema_name NOT IN (${
-		MYSQL_SYSTEM_SCHEMAS.map((s) => `'${s}'`).join(', ')
-	}) ORDER BY schema_name`
-const PG_LIST_DATABASES_SQL =
-	'SELECT datname AS name FROM pg_database WHERE datistemplate = false AND datallowconn = true ORDER BY datname'
+const MYSQL_LIST_DATABASES_SQL = `SELECT schema_name AS name FROM information_schema.schemata WHERE schema_name NOT IN (${
+	MYSQL_SYSTEM_SCHEMAS.map((s) => `'${s}'`).join(', ')
+}) ORDER BY schema_name`
+const PG_LIST_DATABASES_SQL = 'SELECT datname AS name FROM pg_database WHERE datistemplate = false AND datallowconn = true ORDER BY datname'
 
 // ── Health check / reconnect defaults ────────────────────────
 const DEFAULTS = {
