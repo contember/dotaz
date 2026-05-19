@@ -82,7 +82,7 @@ export function createHandlers(adapter: RpcAdapter) {
 			return adapter.listSessions(connectionId)
 		},
 
-		// ── Databases (multi-database PostgreSQL) ────────
+		// ── Databases (multi-database: PostgreSQL + MySQL) ───
 		'databases.list': async ({ connectionId }: { connectionId: string }) => {
 			return adapter.listDatabases(connectionId)
 		},

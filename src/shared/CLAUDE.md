@@ -56,5 +56,5 @@ src/shared/
 - Both sides import from `../../shared/...` (relative paths)
 - Keep types minimal — only what's needed for serialization across the RPC boundary
 - Use `string` for IDs, ISO strings for dates — values must be JSON-serializable
-- Optional `database?: string` parameter on most RPC methods supports multi-database PostgreSQL connections
+- Optional `database?: string` parameter on most RPC methods supports multi-database connections (PostgreSQL, MySQL)
 - **No side effects** — this package must be safe to import from any environment

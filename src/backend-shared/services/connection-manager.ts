@@ -36,6 +36,17 @@ export interface SessionDeadEvent {
 
 export type SessionDeadListener = (event: SessionDeadEvent) => void | Promise<void>
 
+// MySQL/MariaDB system schemas that should never appear in the user-facing
+// database picker. Used by both listDatabases (active connection) and
+// listDatabasesForConfig (unsaved config in connection dialog).
+const MYSQL_SYSTEM_SCHEMAS = ['mysql', 'information_schema', 'performance_schema', 'sys']
+const MYSQL_LIST_DATABASES_SQL =
+	`SELECT schema_name AS name FROM information_schema.schemata WHERE schema_name NOT IN (${
+		MYSQL_SYSTEM_SCHEMAS.map((s) => `'${s}'`).join(', ')
+	}) ORDER BY schema_name`
+const PG_LIST_DATABASES_SQL =
+	'SELECT datname AS name FROM pg_database WHERE datistemplate = false AND datallowconn = true ORDER BY datname'
+
 // ── Health check / reconnect defaults ────────────────────────
 const DEFAULTS = {
 	healthCheckIntervalMs: 30_000,
@@ -221,9 +232,7 @@ export class ConnectionManager {
 
 		const defaultDb = getDefaultDatabase(connInfo.config)
 		const driver = this.getDriver(connectionId, defaultDb)
-		const sql = connInfo.config.type === 'postgresql'
-			? 'SELECT datname AS name FROM pg_database WHERE datistemplate = false AND datallowconn = true ORDER BY datname'
-			: "SELECT schema_name AS name FROM information_schema.schemata WHERE schema_name NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys') ORDER BY schema_name"
+		const sql = connInfo.config.type === 'postgresql' ? PG_LIST_DATABASES_SQL : MYSQL_LIST_DATABASES_SQL
 		const result = await driver.execute(sql)
 
 		const driverMap = this.drivers.get(connectionId)
@@ -429,9 +438,7 @@ export class ConnectionManager {
 			const driver = createDriver(effectiveConfig)
 			try {
 				await driver.connect(effectiveConfig)
-				const sql = effectiveConfig.type === 'postgresql'
-					? 'SELECT datname AS name FROM pg_database WHERE datistemplate = false AND datallowconn = true ORDER BY datname'
-					: "SELECT schema_name AS name FROM information_schema.schemata WHERE schema_name NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys') ORDER BY schema_name"
+				const sql = effectiveConfig.type === 'postgresql' ? PG_LIST_DATABASES_SQL : MYSQL_LIST_DATABASES_SQL
 				const result = await driver.execute(sql)
 				return result.rows.map((row) => row.name as string)
 			} finally {
