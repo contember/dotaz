@@ -3,10 +3,12 @@ import type { ColumnFilter, GridColumnDef } from '@dotaz/shared/types/grid'
 import ChevronDown from 'lucide-solid/icons/chevron-down'
 import ChevronLeft from 'lucide-solid/icons/chevron-left'
 import ChevronUp from 'lucide-solid/icons/chevron-up'
+import Copy from 'lucide-solid/icons/copy'
 import ExternalLink from 'lucide-solid/icons/external-link'
 import Pencil from 'lucide-solid/icons/pencil'
 import X from 'lucide-solid/icons/x'
 import { createEffect, createSignal, For, on, Show } from 'solid-js'
+import { copyToClipboard } from '../../lib/clipboard'
 import { formatColumnValue } from '../../lib/value-format'
 import type { FkBreadcrumb } from '../../stores/grid'
 import Resizer from '../layout/Resizer'
@@ -317,12 +319,28 @@ export default function RowDetailPanel(props: RowDetailPanelProps) {
 												onClick={isFk()
 													? () => handleFkValueClick(col.name, value())
 													: !isNull()
-													? () => setExpandedField((prev) => prev === col.name ? null : col.name)
+													? () => {
+														// Don't toggle when the click was a text selection (drag).
+														if (window.getSelection()?.toString()) return
+														setExpandedField((prev) => prev === col.name ? null : col.name)
+													}
 													: undefined}
 												title={isFk() ? `Go to ${detail.fkLookup().get(col.name)!.table}` : undefined}
 											>
 												{formatColumnValue(value(), col.dataType, { maxLength: 200 })}
 											</span>
+											<Show when={!isNull()}>
+												<button
+													class="row-detail-panel__view-field-copy"
+													title="Copy value"
+													onClick={(e) => {
+														e.stopPropagation()
+														copyToClipboard(formatColumnValue(value(), col.dataType))
+													}}
+												>
+													<Copy size={11} />
+												</button>
+											</Show>
 										</div>
 									)
 								}}

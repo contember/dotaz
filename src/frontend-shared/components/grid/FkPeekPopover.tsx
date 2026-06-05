@@ -1,10 +1,12 @@
 import ChevronLeft from 'lucide-solid/icons/chevron-left'
+import Copy from 'lucide-solid/icons/copy'
 import ExternalLink from 'lucide-solid/icons/external-link'
 import FilterIcon from 'lucide-solid/icons/funnel'
 import FilterXIcon from 'lucide-solid/icons/funnel-x'
 import PanelRightOpen from 'lucide-solid/icons/panel-right-open'
 import X from 'lucide-solid/icons/x'
 import { createEffect, For, onCleanup, Show } from 'solid-js'
+import { copyToClipboard } from '../../lib/clipboard'
 import { buildFkLookup } from '../../lib/fk-utils'
 import { useClickOutside } from '../../lib/hooks'
 import { formatColumnValue } from '../../lib/value-format'
@@ -153,24 +155,33 @@ export default function FkPeekPopover(props: FkPeekPopoverProps) {
 									>
 										{display()}
 									</span>
-									<Show when={props.onFilter}>
-										<span class="fk-peek__field-actions">
+									<span class="fk-peek__field-actions">
+										<Show when={!isNull()}>
 											<button
-												class="fk-peek__filter-btn"
+												class="fk-peek__field-btn"
+												title="Copy value"
+												onClick={() => copyToClipboard(display())}
+											>
+												<Copy size={10} />
+											</button>
+										</Show>
+										<Show when={props.onFilter}>
+											<button
+												class="fk-peek__field-btn"
 												title={`Filter: ${col.name} = ${display()}`}
 												onClick={() => props.onFilter!(col.name, value(), false)}
 											>
 												<FilterIcon size={10} />
 											</button>
 											<button
-												class="fk-peek__filter-btn"
+												class="fk-peek__field-btn"
 												title={`Filter: ${col.name} != ${display()}`}
 												onClick={() => props.onFilter!(col.name, value(), true)}
 											>
 												<FilterXIcon size={10} />
 											</button>
-										</span>
-									</Show>
+										</Show>
+									</span>
 								</div>
 							)
 						}}

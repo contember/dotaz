@@ -231,6 +231,33 @@
 	cursor: pointer;
 	border-radius: var(--radius-sm);
 	padding: 0 2px;
+	user-select: text;
+}
+
+.row-detail-panel__view-field-copy {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	flex-shrink: 0;
+	align-self: flex-start;
+	background: none;
+	border: 1px solid var(--edge);
+	border-radius: var(--radius-sm);
+	color: var(--ink-muted);
+	cursor: pointer;
+	padding: 0;
+	opacity: 0;
+}
+
+.row-detail-panel__view-field:hover .row-detail-panel__view-field-copy {
+	opacity: 1;
+}
+
+.row-detail-panel__view-field-copy:hover {
+	color: var(--ink);
+	background: var(--surface-hover);
 }
 
 .row-detail-panel__view-field-value:hover:not(.row-detail-panel__view-field-value--null) {
