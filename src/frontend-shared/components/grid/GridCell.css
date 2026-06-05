@@ -4,7 +4,10 @@
 	line-height: 32px;
 	overflow: hidden;
 	text-overflow: ellipsis;
-	white-space: nowrap;
+	/* `pre` (not `nowrap`) preserves leading/internal whitespace so values like
+	   EXPLAIN query-plan lines keep their indentation; single-line cells still
+	   truncate with the ellipsis. */
+	white-space: pre;
 	flex-shrink: 0;
 	border-right: 1px solid var(--edge);
 	font-family: var(--font-mono);
