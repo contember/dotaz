@@ -208,7 +208,7 @@ export function createHandlers(adapter: RpcAdapter) {
 			name: string
 			config: SavedViewConfig
 		}) => {
-			if (!name || !name.trim()) {
+			if (!name?.trim()) {
 				throw new Error('View name is required')
 			}
 			if (!connectionId) {
@@ -238,7 +238,7 @@ export function createHandlers(adapter: RpcAdapter) {
 			if (!id) {
 				throw new Error('View id is required')
 			}
-			if (!name || !name.trim()) {
+			if (!name?.trim()) {
 				throw new Error('View name is required')
 			}
 			// Check name uniqueness within the table (excluding this view)
@@ -270,7 +270,7 @@ export function createHandlers(adapter: RpcAdapter) {
 			description?: string
 			sql: string
 		}) => {
-			if (!name || !name.trim()) {
+			if (!name?.trim()) {
 				throw new Error('Bookmark name is required')
 			}
 			return adapter.createBookmark({ connectionId, database, name: name.trim(), description, sql })
@@ -284,7 +284,7 @@ export function createHandlers(adapter: RpcAdapter) {
 			if (!id) {
 				throw new Error('Bookmark id is required')
 			}
-			if (!name || !name.trim()) {
+			if (!name?.trim()) {
 				throw new Error('Bookmark name is required')
 			}
 			return adapter.updateBookmark({ id, name: name.trim(), description, sql })

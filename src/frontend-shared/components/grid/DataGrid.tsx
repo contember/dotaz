@@ -159,7 +159,7 @@ export default function DataGrid(props: DataGridProps) {
 
 	function getRowColor(rowIndex: number): string | undefined {
 		const t = tab()
-		if (!t || !t.rowColoringEnabled || t.rowColorRules.length === 0) return undefined
+		if (!t?.rowColoringEnabled || t.rowColorRules.length === 0) return undefined
 		const row = t.rows[rowIndex]
 		if (!row) return undefined
 		return gridStore.evaluateRowColor(row, t.rowColorRules)

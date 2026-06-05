@@ -772,7 +772,7 @@ export default function DataGridSidePanel(
 					}}
 					onOpenInTab={() => {
 						const peek = tabState()?.fkPeek
-						if (!peek || !peek.rows[0]) return
+						if (!peek?.rows[0]) return
 
 						const row = peek.rows[0]
 						const pkCols = peek.columns.filter((c) => c.isPrimaryKey)

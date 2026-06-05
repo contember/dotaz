@@ -302,7 +302,7 @@ export class IndexedDbAppStateStorage implements AppStateStorage {
 	}
 
 	async saveView(params: { connectionId: string; schemaName: string; tableName: string; name: string; config: SavedViewConfig }): Promise<SavedView> {
-		if (!params.name || !params.name.trim()) {
+		if (!params.name?.trim()) {
 			throw new Error('View name is required')
 		}
 		// Check name uniqueness within the table
@@ -329,7 +329,7 @@ export class IndexedDbAppStateStorage implements AppStateStorage {
 	}
 
 	async updateView(params: { id: string; name: string; config: SavedViewConfig }): Promise<SavedView> {
-		if (!params.name || !params.name.trim()) {
+		if (!params.name?.trim()) {
 			throw new Error('View name is required')
 		}
 		const current = await txOp<SavedView | undefined>(STORES.views, 'readonly', (s) => s.get(params.id))

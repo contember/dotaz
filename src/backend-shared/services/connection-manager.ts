@@ -825,7 +825,7 @@ function createDriver(config: ConnectionConfig): DatabaseDriver {
 }
 
 function validateConfig(config: ConnectionConfig, allowMissingPassword = false): void {
-	if (!config || !config.type) {
+	if (!config?.type) {
 		throw new Error('Connection config must have a type')
 	}
 
