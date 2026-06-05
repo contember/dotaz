@@ -186,6 +186,8 @@ export interface TabGridState {
 	transposed: boolean
 	valueEditorOpen: boolean
 	valueEditorWidth: number
+	sidePanelOpen: boolean
+	sidePanelWidth: number
 	heatmapColumns: Record<string, HeatmapMode>
 	rowColorRules: RowColorRule[]
 	rowColoringEnabled: boolean
@@ -232,6 +234,8 @@ function createDefaultTabState(
 		transposed: false,
 		valueEditorOpen: false,
 		valueEditorWidth: 350,
+		sidePanelOpen: false,
+		sidePanelWidth: 420,
 		heatmapColumns: {},
 		rowColorRules: [],
 		rowColoringEnabled: true,
@@ -770,6 +774,21 @@ function setValueEditorWidth(tabId: string, width: number) {
 	)
 }
 
+function setSidePanelOpen(tabId: string, open: boolean) {
+	ensureTab(tabId)
+	setState('tabs', tabId, 'sidePanelOpen', open)
+}
+
+function setSidePanelWidth(tabId: string, width: number) {
+	ensureTab(tabId)
+	setState(
+		'tabs',
+		tabId,
+		'sidePanelWidth',
+		Math.min(1200, Math.max(250, width)),
+	)
+}
+
 // ── Row coloring ─────────────────────────────────────────
 
 function setRowColorRules(tabId: string, rules: RowColorRule[]) {
@@ -1039,6 +1058,10 @@ export const gridStore = {
 	// Value editor
 	toggleValueEditor,
 	setValueEditorWidth,
+
+	// Side panel (row-detail / value / selection / FK panel container)
+	setSidePanelOpen,
+	setSidePanelWidth,
 
 	// FK peek popover
 	openFkPeek: fkActions.openFkPeek,

@@ -2,7 +2,7 @@ import { generateUpdate, serializeValueForDialect } from '@dotaz/shared/sql'
 import type { ForeignKeyInfo } from '@dotaz/shared/types/database'
 import type { ColumnFilter, GridColumnDef } from '@dotaz/shared/types/grid'
 import type { UpdateChange } from '@dotaz/shared/types/rpc'
-import { createEffect, createMemo, createSignal, Show } from 'solid-js'
+import { createEffect, createMemo, Show } from 'solid-js'
 import { rpc } from '../../lib/rpc'
 import { connectionsStore } from '../../stores/connections'
 import type { FkTarget } from '../../stores/grid'
@@ -49,10 +49,15 @@ export default function DataGridSidePanel(
 		ref?: (handle: DataGridSidePanelHandle) => void
 	},
 ) {
-	const [sidePanelOpen, setSidePanelOpen] = createSignal(false)
-	const [sidePanelWidth, setSidePanelWidth] = createSignal(420)
-
 	const tab = () => gridStore.getTab(props.tabId)
+
+	// Open/closed state and width live in the per-tab grid store (not local
+	// signals) so they survive tab switches — the DataGrid component is keyed
+	// by active tab in AppShell and gets destroyed/recreated on every switch.
+	const sidePanelOpen = () => tab()?.sidePanelOpen ?? false
+	const setSidePanelOpen = (open: boolean) => gridStore.setSidePanelOpen(props.tabId, open)
+	const sidePanelWidth = () => tab()?.sidePanelWidth ?? 420
+	const setSidePanelWidth = (width: number) => gridStore.setSidePanelWidth(props.tabId, width)
 
 	function getColumnIndex(column: string): number {
 		return props.visibleColumns().findIndex((col) => col.name === column)
@@ -693,7 +698,7 @@ export default function DataGridSidePanel(
 				<SidePanelContent
 					mode={mode}
 					width={sidePanelWidth()}
-					onResize={(delta) => setSidePanelWidth((w) => Math.min(1200, Math.max(250, w - delta)))}
+					onResize={(delta) => setSidePanelWidth(sidePanelWidth() - delta)}
 					onClose={closeSidePanel}
 					fkPanel={buildFkPanelProps}
 					rowDetail={buildRowDetailProps}
