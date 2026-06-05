@@ -1,0 +1,81 @@
+.prompt-dialog-overlay {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.5);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 1100;
+	animation: dialog-fade-in 0.15s ease-out;
+}
+
+.prompt-dialog {
+	background: var(--surface-overlay);
+	border: 1px solid var(--edge-strong);
+	border-radius: var(--radius-lg);
+	box-shadow: var(--shadow-overlay);
+	min-width: 420px;
+	max-width: 520px;
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-sm);
+	padding: var(--spacing-xl);
+	padding-bottom: var(--spacing-lg);
+	animation: dialog-scale-in 0.2s ease-out;
+}
+
+.prompt-dialog__title {
+	font-size: 17px;
+	font-weight: 600;
+	color: var(--ink);
+	line-height: 1.3;
+}
+
+.prompt-dialog__message {
+	color: var(--ink-secondary);
+	line-height: 1.5;
+	white-space: pre-wrap;
+}
+
+.prompt-dialog__field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-xs);
+	margin-top: var(--spacing-xs);
+}
+
+.prompt-dialog__label {
+	font-size: var(--font-size-xs);
+	color: var(--ink-secondary);
+}
+
+.prompt-dialog__input {
+	width: 100%;
+	box-sizing: border-box;
+	border: 1px solid var(--edge);
+	border-radius: var(--radius-sm);
+	background: var(--surface);
+	color: var(--ink);
+	font-size: var(--font-size-sm);
+	font-family: var(--font-ui);
+	padding: var(--spacing-xs) var(--spacing-sm);
+	height: 30px;
+	outline: none;
+	transition: border-color 0.15s;
+}
+
+.prompt-dialog__input:focus {
+	border-color: var(--accent);
+}
+
+.prompt-dialog__error {
+	color: var(--error);
+	font-size: var(--font-size-xs);
+}
+
+.prompt-dialog__actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: var(--spacing-sm);
+	margin-top: var(--spacing-md);
+}

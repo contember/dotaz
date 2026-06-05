@@ -87,6 +87,44 @@ function gridConfigToSettings(config: GridConfig): Record<string, string> {
 	}
 }
 
+// ── Connections list config ───────────────────────────────
+
+export type ConnectionSortMode = 'manual' | 'name' | 'type' | 'status'
+
+export interface ConnectionsConfig {
+	sort: ConnectionSortMode
+	/** Manual ordering — connection ids in display order. Ids not present sort last. */
+	order: string[]
+}
+
+const DEFAULT_CONNECTIONS_CONFIG: ConnectionsConfig = { sort: 'manual', order: [] }
+
+const CONNECTION_SORT_MODES: readonly ConnectionSortMode[] = ['manual', 'name', 'type', 'status']
+
+function isConnectionSortMode(v: string | undefined): v is ConnectionSortMode {
+	return CONNECTION_SORT_MODES.includes(v as ConnectionSortMode)
+}
+
+function settingsToConnectionsConfig(settings: Record<string, string>): ConnectionsConfig {
+	const sort = settings['connections.sort']
+	let order: string[] = []
+	try {
+		const raw = settings['connections.order']
+		if (raw) {
+			const parsed = JSON.parse(raw)
+			if (Array.isArray(parsed)) {
+				order = parsed.filter((x): x is string => typeof x === 'string')
+			}
+		}
+	} catch {
+		order = []
+	}
+	return {
+		sort: isConnectionSortMode(sort) ? sort : DEFAULT_CONNECTIONS_CONFIG.sort,
+		order,
+	}
+}
+
 // ── Theme application ─────────────────────────────────────
 
 function applyTheme(theme: ColorTheme) {
@@ -106,6 +144,7 @@ interface SettingsState {
 	consoleConfig: ConsoleConfig
 	appearanceConfig: AppearanceConfig
 	gridConfig: GridConfig
+	connectionsConfig: ConnectionsConfig
 	loaded: boolean
 }
 
@@ -116,6 +155,7 @@ const [state, setState] = createStore<SettingsState>({
 	consoleConfig: { ...DEFAULT_CONSOLE_CONFIG },
 	appearanceConfig: { ...DEFAULT_APPEARANCE_CONFIG },
 	gridConfig: { ...DEFAULT_GRID_CONFIG },
+	connectionsConfig: { ...DEFAULT_CONNECTIONS_CONFIG },
 	loaded: false,
 })
 
@@ -127,6 +167,7 @@ async function loadSettings() {
 		setState('sessionConfig', settingsToSessionConfig(all))
 		setState('consoleConfig', settingsToConsoleConfig(all))
 		setState('gridConfig', settingsToGridConfig(all))
+		setState('connectionsConfig', settingsToConnectionsConfig(all))
 		const appearance = settingsToAppearanceConfig(all)
 		setState('appearanceConfig', appearance)
 		applyTheme(appearance.colorTheme)
@@ -210,6 +251,24 @@ async function saveAppearanceConfig(config: AppearanceConfig) {
 	}
 }
 
+async function setConnectionSort(mode: ConnectionSortMode) {
+	setState('connectionsConfig', 'sort', mode)
+	try {
+		await rpc.settings.set({ key: 'connections.sort', value: mode })
+	} catch (err) {
+		uiStore.addToast('error', `Failed to save sort order: ${err instanceof Error ? err.message : String(err)}`)
+	}
+}
+
+async function setConnectionOrder(order: string[]) {
+	setState('connectionsConfig', 'order', order)
+	try {
+		await rpc.settings.set({ key: 'connections.order', value: JSON.stringify(order) })
+	} catch (err) {
+		uiStore.addToast('error', `Failed to save connection order: ${err instanceof Error ? err.message : String(err)}`)
+	}
+}
+
 export const settingsStore = {
 	get formatProfile() {
 		return state.formatProfile
@@ -229,6 +288,9 @@ export const settingsStore = {
 	get gridConfig() {
 		return state.gridConfig
 	},
+	get connectionsConfig() {
+		return state.connectionsConfig
+	},
 	get loaded() {
 		return state.loaded
 	},
@@ -239,5 +301,7 @@ export const settingsStore = {
 	saveConsoleConfig,
 	saveAppearanceConfig,
 	saveGridConfig,
+	setConnectionSort,
+	setConnectionOrder,
 	applyTheme,
 }

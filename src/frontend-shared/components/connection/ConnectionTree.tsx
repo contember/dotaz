@@ -2,21 +2,25 @@ import type { ConnectionInfo, ConnectionState, ConnectionType } from '@dotaz/sha
 import { CONNECTION_TYPE_META, getDefaultDatabase } from '@dotaz/shared/types/connection'
 import type { SchemaInfo, TableInfo } from '@dotaz/shared/types/database'
 import type { SavedView } from '@dotaz/shared/types/rpc'
+import ArrowDownUp from 'lucide-solid/icons/arrow-down-up'
 import Bookmark from 'lucide-solid/icons/bookmark'
 import Database from 'lucide-solid/icons/database'
 import Eye from 'lucide-solid/icons/eye'
 import Folder from 'lucide-solid/icons/folder'
 import FolderOpen from 'lucide-solid/icons/folder-open'
+import FolderPlus from 'lucide-solid/icons/folder-plus'
 import Lock from 'lucide-solid/icons/lock'
 import Plus from 'lucide-solid/icons/plus'
 import SquareTerminal from 'lucide-solid/icons/square-terminal'
 import Table from 'lucide-solid/icons/table'
 import { siMysql, siPostgresql, siSqlite } from 'simple-icons'
-import { createMemo, createSignal, For, type JSX, onCleanup, onMount, Show } from 'solid-js'
+import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, onMount, Show } from 'solid-js'
 import type { SchemaTree } from '../../stores/connections'
 import { connectionsStore } from '../../stores/connections'
 import { editorStore } from '../../stores/editor'
 import { gridStore } from '../../stores/grid'
+import type { ConnectionSortMode } from '../../stores/settings'
+import { settingsStore } from '../../stores/settings'
 import { tabsStore } from '../../stores/tabs'
 import { uiStore } from '../../stores/ui'
 import { viewsStore } from '../../stores/views'
@@ -39,6 +43,29 @@ const STATUS_COLORS: Record<ConnectionState, string | undefined> = {
 	reconnecting: 'var(--warning)',
 	error: 'var(--error)',
 	disconnected: undefined,
+}
+
+/** Sort rank for "Database type" mode. */
+const TYPE_SORT_RANK: Record<ConnectionType, number> = {
+	postgresql: 0,
+	mysql: 1,
+	sqlite: 2,
+}
+
+/** Sort rank for "Connection status" mode (connected first). */
+const STATUS_SORT_RANK: Record<ConnectionState, number> = {
+	connected: 0,
+	connecting: 1,
+	reconnecting: 1,
+	disconnected: 2,
+	error: 3,
+}
+
+const SORT_MODE_LABELS: Record<ConnectionSortMode, string> = {
+	manual: 'Manual (drag to reorder)',
+	name: 'Name (A–Z)',
+	type: 'Database type',
+	status: 'Connection status',
 }
 
 function SimpleIcon(props: { icon: typeof siPostgresql; size?: number }) {
@@ -71,9 +98,30 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 	const [expandedDatabases, setExpandedDatabases] = createSignal<Set<string>>(new Set())
 	const [expandedSchemas, setExpandedSchemas] = createSignal<Set<string>>(new Set())
 	const [expandedTables, setExpandedTables] = createSignal<Set<string>>(new Set())
-	const [expandedFolders, setExpandedFolders] = createSignal<Set<string>>(new Set())
+	// Folders are expanded by default; we only track the ones explicitly collapsed.
+	const [collapsedFolders, setCollapsedFolders] = createSignal<Set<string>>(new Set())
 	const [contextMenu, setContextMenu] = createSignal<ContextMenuState | null>(null)
 	const [dragOverFolder, setDragOverFolder] = createSignal<string | null | undefined>(undefined)
+	const [draggingId, setDraggingId] = createSignal<string | null>(null)
+	const [dropIndicator, setDropIndicator] = createSignal<{ id: string; pos: 'before' | 'after' } | null>(null)
+	// Empty groups created via the "New group" button. They have no connections
+	// yet, so they aren't derivable from connection records — they live here until
+	// a connection is dropped in (then the real groupName persists them) or the app
+	// reloads (then they vanish, by design).
+	const [pendingGroups, setPendingGroups] = createSignal<string[]>([])
+
+	// Drop empty groups from the pending list once a real connection backs them.
+	createEffect(() => {
+		const realGroups = new Set(
+			connectionsStore.connections
+				.map((c) => c.groupName)
+				.filter((g): g is string => !!g),
+		)
+		setPendingGroups((prev) => {
+			const next = prev.filter((g) => !realGroups.has(g))
+			return next.length === prev.length ? prev : next
+		})
+	})
 
 	// ── Navigator filter ─────────────────────────────────
 	const [filterInput, setFilterInput] = createSignal('')
@@ -265,17 +313,27 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 	// ── Folder management ─────────────────────────────────
 
 	function isFolderExpanded(name: string): boolean {
-		return expandedFolders().has(name)
+		return !collapsedFolders().has(name)
 	}
 
 	function toggleFolder(name: string) {
-		setExpandedFolders((prev) => {
+		setCollapsedFolders((prev) => {
 			const next = new Set(prev)
 			if (next.has(name)) {
 				next.delete(name)
 			} else {
 				next.add(name)
 			}
+			return next
+		})
+	}
+
+	/** Ensure a folder is expanded (used after dropping a connection into it). */
+	function expandFolder(name: string) {
+		setCollapsedFolders((prev) => {
+			if (!prev.has(name)) return prev
+			const next = new Set(prev)
+			next.delete(name)
 			return next
 		})
 	}
@@ -299,7 +357,56 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 	/** Check if any connection has matching tables — for empty state */
 	const hasFilterResults = () => visibleConnectionsRaw().length > 0
 
-	/** Group connections by folder. Returns { folders, ungrouped }. */
+	// ── Sorting ───────────────────────────────────────────
+
+	/** Manual order array, normalised to current connections (missing ids appended). */
+	function normalizedOrder(): string[] {
+		const saved = settingsStore.connectionsConfig.order
+		const ids = connectionsStore.connections.map((c) => c.id)
+		const idSet = new Set(ids)
+		const result = saved.filter((id) => idSet.has(id))
+		for (const id of ids) {
+			if (!result.includes(id)) result.push(id)
+		}
+		return result
+	}
+
+	/** Sort a list of connections by the active sort mode. */
+	function sortConnections(conns: ConnectionInfo[]): ConnectionInfo[] {
+		const mode = settingsStore.connectionsConfig.sort
+		if (mode === 'manual') {
+			const order = normalizedOrder()
+			const rank = (id: string) => {
+				const i = order.indexOf(id)
+				return i === -1 ? Number.MAX_SAFE_INTEGER : i
+			}
+			return conns
+				.map((c, i) => ({ c, i }))
+				.sort((a, b) => rank(a.c.id) - rank(b.c.id) || a.i - b.i)
+				.map((x) => x.c)
+		}
+		return [...conns].sort((a, b) => {
+			if (mode === 'name') return a.name.localeCompare(b.name)
+			if (mode === 'type') {
+				const d = (TYPE_SORT_RANK[a.config.type] ?? 9) - (TYPE_SORT_RANK[b.config.type] ?? 9)
+				return d !== 0 ? d : a.name.localeCompare(b.name)
+			}
+			// status
+			const d = (STATUS_SORT_RANK[a.state] ?? 9) - (STATUS_SORT_RANK[b.state] ?? 9)
+			return d !== 0 ? d : a.name.localeCompare(b.name)
+		})
+	}
+
+	/** All known group names — real (from connections) plus pending empty ones. */
+	const allGroupNames = (): string[] => {
+		const set = new Set<string>(pendingGroups())
+		for (const c of connectionsStore.connections) {
+			if (c.groupName) set.add(c.groupName)
+		}
+		return Array.from(set)
+	}
+
+	/** Group connections by folder, sorted. Returns { folders, ungrouped }. */
 	const groupedConnections = createMemo(() => {
 		const conns = isFiltering() ? visibleConnectionsRaw() : connectionsStore.connections
 		const folders = new Map<string, ConnectionInfo[]>()
@@ -318,27 +425,92 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 			}
 		}
 
-		const sortedFolders = Array.from(folders.entries()).sort(([a], [b]) => a.localeCompare(b))
-		return { folders: sortedFolders, ungrouped }
+		// Surface pending empty groups as folders (skip while filtering — nothing to match).
+		if (!isFiltering()) {
+			for (const g of pendingGroups()) {
+				if (!folders.has(g)) folders.set(g, [])
+			}
+		}
+
+		const sortedFolders = Array.from(folders.entries())
+			.map(([name, arr]) => [name, sortConnections(arr)] as [string, ConnectionInfo[]])
+			.sort(([a], [b]) => a.localeCompare(b))
+		return { folders: sortedFolders, ungrouped: sortConnections(ungrouped) }
 	})
 
-	const hasAnyFolders = createMemo(() => {
-		return connectionsStore.connections.some((c) => c.groupName)
-	})
+	async function handleNewGroup() {
+		const name = await uiStore.prompt({
+			title: 'New group',
+			label: 'Group name',
+			placeholder: 'e.g. Production',
+			confirmLabel: 'Create',
+			validate: (v) => {
+				if (!v.trim()) return 'Group name is required'
+				if (allGroupNames().includes(v.trim())) return 'A group with this name already exists'
+				return null
+			},
+		})
+		if (name) {
+			setPendingGroups((prev) => (prev.includes(name) ? prev : [...prev, name]))
+		}
+	}
 
-	function folderMenuItems(folderName: string): ContextMenuEntry[] {
-		return [
+	function sortMenuItems(): ContextMenuEntry[] {
+		const current = settingsStore.connectionsConfig.sort
+		const modes: ConnectionSortMode[] = ['manual', 'name', 'type', 'status']
+		const items: ContextMenuEntry[] = [{ type: 'label', label: 'Sort connections by' }]
+		for (const mode of modes) {
+			items.push({
+				label: `${current === mode ? '✓ ' : '   '}${SORT_MODE_LABELS[mode]}`,
+				action: () => settingsStore.setConnectionSort(mode),
+			})
+		}
+		return items
+	}
+
+	function folderMenuItems(folderName: string, isEmpty: boolean): ContextMenuEntry[] {
+		const items: ContextMenuEntry[] = [
 			{
 				label: 'Rename Group',
-				action: () => {
-					const newName = window.prompt('Rename group:', folderName)
-					if (newName?.trim() && newName.trim() !== folderName) {
-						connectionsStore.renameConnectionGroup(folderName, newName.trim())
+				action: async () => {
+					const newName = await uiStore.prompt({
+						title: 'Rename group',
+						label: 'Group name',
+						initialValue: folderName,
+						confirmLabel: 'Rename',
+						validate: (v) => {
+							if (!v.trim()) return 'Group name is required'
+							if (v.trim() !== folderName && allGroupNames().includes(v.trim())) {
+								return 'A group with this name already exists'
+							}
+							return null
+						},
+					})
+					if (!newName || newName === folderName) return
+					// Carry collapse state over to the new name.
+					setCollapsedFolders((prev) => {
+						if (!prev.has(folderName)) return prev
+						const next = new Set(prev)
+						next.delete(folderName)
+						next.add(newName)
+						return next
+					})
+					if (pendingGroups().includes(folderName)) {
+						setPendingGroups((prev) => prev.map((g) => (g === folderName ? newName : g)))
+					} else {
+						connectionsStore.renameConnectionGroup(folderName, newName)
 					}
 				},
 			},
-			'separator',
-			{
+		]
+
+		if (isEmpty) {
+			items.push('separator', {
+				label: 'Delete Empty Group',
+				action: () => setPendingGroups((prev) => prev.filter((g) => g !== folderName)),
+			})
+		} else {
+			items.push('separator', {
 				label: 'Ungroup All',
 				action: async () => {
 					const confirmed = await uiStore.confirm({
@@ -350,8 +522,10 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 						connectionsStore.deleteConnectionGroup(folderName)
 					}
 				},
-			},
-		]
+			})
+		}
+
+		return items
 	}
 
 	// ── Drag and drop ─────────────────────────────────────
@@ -359,6 +533,13 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 	function handleConnectionDragStart(e: DragEvent, conn: ConnectionInfo) {
 		e.dataTransfer?.setData('text/x-connection-id', conn.id)
 		e.dataTransfer!.effectAllowed = 'move'
+		setDraggingId(conn.id)
+	}
+
+	function handleConnectionDragEnd() {
+		setDraggingId(null)
+		setDropIndicator(null)
+		setDragOverFolder(undefined)
 	}
 
 	function handleFolderDragOver(e: DragEvent, folderName: string | null) {
@@ -366,6 +547,8 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 			e.preventDefault()
 			e.dataTransfer.dropEffect = 'move'
 			setDragOverFolder(folderName)
+			// Folder/ungrouped highlight and the reorder indicator are mutually exclusive.
+			setDropIndicator(null)
 		}
 	}
 
@@ -379,6 +562,61 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 		const connectionId = e.dataTransfer?.getData('text/x-connection-id')
 		if (connectionId) {
 			connectionsStore.setConnectionGroup(connectionId, folderName)
+			if (folderName) expandFolder(folderName)
+		}
+		setDropIndicator(null)
+		setDraggingId(null)
+	}
+
+	/** Drag over a connection row — show a before/after reorder indicator. */
+	function handleConnectionDragOver(e: DragEvent, conn: ConnectionInfo) {
+		if (!e.dataTransfer?.types.includes('text/x-connection-id')) return
+		e.preventDefault()
+		e.stopPropagation()
+		e.dataTransfer.dropEffect = 'move'
+		setDragOverFolder(undefined)
+		if (draggingId() === conn.id) {
+			setDropIndicator(null)
+			return
+		}
+		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+		const pos: 'before' | 'after' = e.clientY - rect.top < rect.height / 2 ? 'before' : 'after'
+		setDropIndicator({ id: conn.id, pos })
+	}
+
+	function handleConnectionDrop(e: DragEvent, conn: ConnectionInfo) {
+		const draggedId = e.dataTransfer?.getData('text/x-connection-id')
+		if (!draggedId) return
+		e.preventDefault()
+		e.stopPropagation()
+		const indicator = dropIndicator()
+		const pos = indicator?.id === conn.id ? indicator.pos : 'before'
+
+		// Adopt the target's group (handles dragging across folders / out of one).
+		const dragged = connectionsStore.connections.find((c) => c.id === draggedId)
+		const targetGroup = conn.groupName ?? null
+		if (dragged && (dragged.groupName ?? null) !== targetGroup) {
+			connectionsStore.setConnectionGroup(draggedId, targetGroup)
+		}
+		if (draggedId !== conn.id) {
+			reorderConnection(draggedId, conn.id, pos)
+		}
+
+		setDropIndicator(null)
+		setDraggingId(null)
+		setDragOverFolder(undefined)
+	}
+
+	/** Move `draggedId` before/after `targetId` in the manual order, switching to manual sort. */
+	function reorderConnection(draggedId: string, targetId: string, pos: 'before' | 'after') {
+		const order = normalizedOrder().filter((id) => id !== draggedId)
+		const targetIdx = order.indexOf(targetId)
+		if (targetIdx === -1) return
+		order.splice(pos === 'after' ? targetIdx + 1 : targetIdx, 0, draggedId)
+		settingsStore.setConnectionOrder(order)
+		if (settingsStore.connectionsConfig.sort !== 'manual') {
+			settingsStore.setConnectionSort('manual')
+			uiStore.addToast('info', 'Sorting switched to manual.')
 		}
 	}
 
@@ -499,6 +737,7 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 		onManageDatabases: (conn) => props.onManageDatabases?.(conn),
 		handleTableClick,
 		handleViewClick,
+		getGroupNames: () => allGroupNames(),
 	}
 
 	// ── Hover action builders ────────────────────────────
@@ -626,8 +865,17 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 		return (
 			<>
 				<div
+					class="connection-drag-item"
+					classList={{
+						'connection-drag-item--dragging': draggingId() === conn.id,
+						'connection-drag-item--drop-before': dropIndicator()?.id === conn.id && dropIndicator()?.pos === 'before',
+						'connection-drag-item--drop-after': dropIndicator()?.id === conn.id && dropIndicator()?.pos === 'after',
+					}}
 					draggable={true}
 					onDragStart={(e) => handleConnectionDragStart(e, conn)}
+					onDragEnd={handleConnectionDragEnd}
+					onDragOver={(e) => handleConnectionDragOver(e, conn)}
+					onDrop={(e) => handleConnectionDrop(e, conn)}
 				>
 					<ConnectionTreeItem
 						label={conn.name}
@@ -699,27 +947,13 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 	function renderConnectionList() {
 		const grouped = groupedConnections()
 
-		// If no folders exist, render flat list
-		if (!hasAnyFolders() && !isFiltering()) {
-			return (
-				<div
-					onDragOver={(e) => handleFolderDragOver(e, null)}
-					onDragLeave={handleFolderDragLeave}
-					onDrop={(e) => handleFolderDrop(e, null)}
-				>
-					<For each={visibleConnectionsRaw()}>
-						{(conn) => renderConnectionItem(conn, 0)}
-					</For>
-				</div>
-			)
-		}
-
 		return (
 			<>
 				{/* Folders */}
 				<For each={grouped.folders}>
 					{([folderName, connections]) => {
 						const folderExp = () => isFiltering() || isFolderExpanded(folderName)
+						const isEmpty = () => connections.length === 0
 
 						return (
 							<div
@@ -734,31 +968,42 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 									type="folder"
 									icon={folderExp() ? <FolderOpen size={14} /> : <Folder size={14} />}
 									expanded={folderExp()}
-									hasChildren={connections.length > 0}
+									hasChildren={true}
 									onToggle={() => toggleFolder(folderName)}
 									onClick={() => toggleFolder(folderName)}
-									onContextMenu={(e) => showContextMenu(e, folderMenuItems(folderName))}
+									onContextMenu={(e) => showContextMenu(e, folderMenuItems(folderName, isEmpty()))}
 								/>
 								<Show when={folderExp()}>
-									<For each={connections}>
-										{(conn) => renderConnectionItem(conn, 1)}
-									</For>
+									<Show
+										when={!isEmpty()}
+										fallback={<div class="connection-tree__folder-empty">Drop a connection here</div>}
+									>
+										<For each={connections}>
+											{(conn) => renderConnectionItem(conn, 1)}
+										</For>
+									</Show>
 								</Show>
 							</div>
 						)
 					}}
 				</For>
 
-				{/* Ungrouped connections */}
+				{/* Ungrouped connections (also the "remove from group" drop target) */}
 				<div
+					classList={{
+						'tree-item--drag-over': dragOverFolder() === null,
+						'connection-tree__ungrouped--drop-zone': !!draggingId() && grouped.folders.length > 0,
+					}}
 					onDragOver={(e) => handleFolderDragOver(e, null)}
 					onDragLeave={handleFolderDragLeave}
 					onDrop={(e) => handleFolderDrop(e, null)}
-					classList={{ 'tree-item--drag-over': dragOverFolder() === null }}
 				>
 					<For each={grouped.ungrouped}>
 						{(conn) => renderConnectionItem(conn, 0)}
 					</For>
+					<Show when={!!draggingId() && grouped.folders.length > 0 && grouped.ungrouped.length === 0}>
+						<div class="connection-tree__folder-empty">Drop here to remove from group</div>
+					</Show>
 				</div>
 			</>
 		)
@@ -780,6 +1025,25 @@ export default function ConnectionTree(props: ConnectionTreeProps) {
 					</div>
 				}
 			>
+				{/* ── Toolbar ────────────────────────────────── */}
+				<div class="connection-tree__toolbar">
+					<button
+						class="connection-tree__tool-btn"
+						onClick={handleNewGroup}
+						title="Create a new group"
+					>
+						<FolderPlus size={13} />
+						<span>New group</span>
+					</button>
+					<button
+						class="connection-tree__tool-btn connection-tree__tool-btn--icon"
+						onClick={(e) => showContextMenu(e, sortMenuItems())}
+						title={`Sort: ${SORT_MODE_LABELS[settingsStore.connectionsConfig.sort]}`}
+					>
+						<ArrowDownUp size={13} />
+					</button>
+				</div>
+
 				{/* ── Filter input ───────────────────────────── */}
 				<div
 					class="connection-tree__filter"

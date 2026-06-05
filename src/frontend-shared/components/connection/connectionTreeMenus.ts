@@ -14,6 +14,8 @@ export interface TreeMenuCallbacks {
 	onManageDatabases?: (conn: ConnectionInfo) => void
 	handleTableClick: (connectionId: string, schema: string, table: string, database?: string) => void
 	handleViewClick: (connectionId: string, schema: string, table: string, view: SavedView, database?: string) => void
+	/** All known group names, including empty groups not yet backed by a connection. */
+	getGroupNames?: () => string[]
 }
 
 export function connectionMenuItems(conn: ConnectionInfo, callbacks: TreeMenuCallbacks): ContextMenuEntry[] {
@@ -96,29 +98,43 @@ export function connectionMenuItems(conn: ConnectionInfo, callbacks: TreeMenuCal
 	)
 
 	if (!conn.serverManaged) {
-		items.push(
-			'separator',
-			{
-				label: 'Move to Group...',
-				action: () => {
-					const existingGroups = Array.from(
-						new Set(
-							connectionsStore.connections
-								.map((c) => c.groupName)
-								.filter((g): g is string => !!g && g !== conn.groupName),
-						),
-					).sort()
+		const knownGroups = callbacks.getGroupNames?.()
+			?? connectionsStore.connections.map((c) => c.groupName).filter((g): g is string => !!g)
+		const otherGroups = Array.from(new Set(knownGroups))
+			.filter((g) => g !== conn.groupName)
+			.sort((a, b) => a.localeCompare(b))
 
-					const options = existingGroups.length > 0
-						? `Existing groups: ${existingGroups.join(', ')}\n\nEnter group name (or leave empty to remove from group):`
-						: 'Enter group name:'
+		items.push('separator', { type: 'label', label: 'Move to group' })
 
-					const name = window.prompt(options, conn.groupName ?? '')
-					if (name !== null) {
-						connectionsStore.setConnectionGroup(conn.id, name.trim() || null)
-					}
-				},
+		for (const group of otherGroups) {
+			items.push({
+				label: group,
+				action: () => connectionsStore.setConnectionGroup(conn.id, group),
+			})
+		}
+
+		items.push({
+			label: 'New group…',
+			action: async () => {
+				const name = await uiStore.prompt({
+					title: 'New group',
+					label: 'Group name',
+					placeholder: 'e.g. Production',
+					confirmLabel: 'Create',
+					validate: (v) => (v.trim() ? null : 'Group name is required'),
+				})
+				if (name) connectionsStore.setConnectionGroup(conn.id, name)
 			},
+		})
+
+		if (conn.groupName) {
+			items.push({
+				label: 'Remove from group',
+				action: () => connectionsStore.setConnectionGroup(conn.id, null),
+			})
+		}
+
+		items.push(
 			'separator',
 			{
 				label: 'Edit',
@@ -280,12 +296,18 @@ export function viewMenuItems(connectionId: string, view: SavedView, callbacks: 
 		{
 			label: 'Rename',
 			action: async () => {
-				const newName = window.prompt('Rename view:', view.name)
-				if (newName?.trim() && newName.trim() !== view.name) {
+				const newName = await uiStore.prompt({
+					title: 'Rename view',
+					label: 'View name',
+					initialValue: view.name,
+					confirmLabel: 'Rename',
+					validate: (v) => (v.trim() ? null : 'View name is required'),
+				})
+				if (newName && newName !== view.name) {
 					try {
 						await rpc.views.update({
 							id: view.id,
-							name: newName.trim(),
+							name: newName,
 							config: view.config,
 						})
 						await viewsStore.refreshViews(connectionId)

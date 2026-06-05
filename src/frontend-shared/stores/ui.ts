@@ -34,11 +34,36 @@ interface ConfirmRequest extends ConfirmOptions {
 	resolve: (confirmed: boolean) => void
 }
 
+// ── Prompt dialog types ──────────────────────────────────
+
+export interface PromptOptions {
+	title: string
+	/** Optional explanatory text shown above the input. */
+	message?: string
+	/** Label rendered next to the input. */
+	label?: string
+	/** Pre-filled value (also selected on open). */
+	initialValue?: string
+	placeholder?: string
+	/** Defaults to "OK". */
+	confirmLabel?: string
+	/** Defaults to "Cancel". */
+	cancelLabel?: string
+	/** Return an error string to block submission, or null when the value is valid. */
+	validate?: (value: string) => string | null
+}
+
+interface PromptRequest extends PromptOptions {
+	id: string
+	resolve: (value: string | null) => void
+}
+
 // ── Store state ──────────────────────────────────────────
 
 interface UIState {
 	toasts: Toast[]
 	confirmRequest: ConfirmRequest | null
+	promptRequest: PromptRequest | null
 }
 
 const DEFAULT_DURATION = 5000
@@ -46,6 +71,7 @@ const DEFAULT_DURATION = 5000
 const [state, setState] = createStore<UIState>({
 	toasts: [],
 	confirmRequest: null,
+	promptRequest: null,
 })
 
 /** Maps toast ID to its auto-dismiss timer, so we can cancel on manual dismiss. */
@@ -111,6 +137,33 @@ function resolveConfirm(confirmed: boolean): void {
 	setState('confirmRequest', null)
 }
 
+// ── Prompt actions ───────────────────────────────────────
+
+/**
+ * Show an in-app text input dialog. Returns a Promise that resolves to the
+ * entered (trimmed) string when confirmed, or `null` on cancel / Escape /
+ * overlay click. Replaces `window.prompt`, which the Electrobun system webview
+ * does not implement. If another prompt is already open, it is resolved with
+ * `null` before the new one shows.
+ */
+function prompt(options: PromptOptions): Promise<string | null> {
+	const previous = state.promptRequest
+	if (previous) {
+		previous.resolve(null)
+	}
+	return new Promise<string | null>((resolve) => {
+		setState('promptRequest', { ...options, id: crypto.randomUUID(), resolve })
+	})
+}
+
+/** Resolve the active prompt request. Called by PromptDialog on user action. */
+function resolvePrompt(value: string | null): void {
+	const req = state.promptRequest
+	if (!req) return
+	req.resolve(value)
+	setState('promptRequest', null)
+}
+
 // ── Export ────────────────────────────────────────────────
 
 export const uiStore = {
@@ -120,8 +173,13 @@ export const uiStore = {
 	get confirmRequest(): ConfirmRequest | null {
 		return state.confirmRequest
 	},
+	get promptRequest(): PromptRequest | null {
+		return state.promptRequest
+	},
 	addToast,
 	removeToast,
 	confirm,
 	resolveConfirm,
+	prompt,
+	resolvePrompt,
 }

@@ -28,6 +28,7 @@ import CommandPalette from '../common/CommandPalette'
 import ConfirmDialog from '../common/ConfirmDialog'
 import DemoWarningDialog from '../common/DemoWarningDialog'
 import KeyboardShortcutsDialog from '../common/KeyboardShortcutsDialog'
+import PromptDialog from '../common/PromptDialog'
 import type { SettingsSection } from '../common/SettingsDialog'
 import SettingsDialog from '../common/SettingsDialog'
 import TabSwitcher from '../common/TabSwitcher'
@@ -760,6 +761,7 @@ export default function AppShell() {
 			/>
 
 			<ConfirmDialog />
+			<PromptDialog />
 			<ToastContainer />
 		</div>
 	)
