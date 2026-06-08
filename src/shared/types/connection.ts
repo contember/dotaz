@@ -30,11 +30,31 @@ export interface PostgresConnectionConfig {
 	ssl?: SSLMode
 	sshTunnel?: SshTunnelConfig
 	activeDatabases?: string[]
+	/**
+	 * Optional SQL run at the start of every backend session and re-applied after the
+	 * internal DISCARD ALL reset. Use to establish session context that data access
+	 * depends on, e.g. `SET app.current_shop = 'acme'` for RLS, `SET search_path`, roles.
+	 *
+	 * Stored as plain config metadata (like host/database/user), not via the encrypted
+	 * secrets path that password/SSH use. Route it through `ConnectionSecrets` if it ever
+	 * needs to carry credentials.
+	 */
+	initSql?: string
 }
 
 export interface SqliteConnectionConfig {
 	type: 'sqlite'
 	path: string
+	/**
+	 * Optional SQL run once on every physical connection right after the built-in
+	 * `PRAGMA journal_mode`/`foreign_keys` setup (the main connection and the separate
+	 * read connection used by iterate). SQLite has no connection pooling/reset, so this
+	 * is plain per-connection setup. Use for PRAGMAs (`PRAGMA busy_timeout = 5000`,
+	 * `PRAGMA case_sensitive_like = ON`), `ATTACH DATABASE`, or loading extensions.
+	 *
+	 * Stored as plain config metadata (like path), not via the encrypted secrets path.
+	 */
+	initSql?: string
 }
 
 export interface MysqlConnectionConfig {
@@ -46,6 +66,17 @@ export interface MysqlConnectionConfig {
 	password: string
 	ssl?: boolean
 	activeDatabases?: string[]
+	/**
+	 * Optional SQL run at the start of every backend session and re-applied after the
+	 * internal RESET CONNECTION reset. Use to establish session context that data access
+	 * or behavior depends on, e.g. `SET SESSION time_zone = '+00:00'`, `SET ROLE`, or
+	 * `SET SESSION sql_mode = '...'`.
+	 *
+	 * Stored as plain config metadata (like host/database/user), not via the encrypted
+	 * secrets path that password uses. Route it through `ConnectionSecrets` if it ever
+	 * needs to carry credentials.
+	 */
+	initSql?: string
 }
 
 export type ConnectionConfig = PostgresConnectionConfig | SqliteConnectionConfig | MysqlConnectionConfig
