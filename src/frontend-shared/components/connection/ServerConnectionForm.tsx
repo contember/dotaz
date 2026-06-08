@@ -11,6 +11,7 @@ export interface ServerConnectionFields {
 	user: string
 	password: string
 	ssl: string
+	initSql: string
 }
 
 interface ServerConnectionFormProps {
@@ -149,6 +150,24 @@ export default function ServerConnectionForm(props: ServerConnectionFormProps) {
 					options={SSL_MODES.map((mode) => ({ value: mode, label: mode }))}
 				/>
 			</div>
+
+			<Show when={props.type === 'postgresql'}>
+				<div class="conn-dialog__field">
+					<label class="conn-dialog__label">Session setup SQL</label>
+					<textarea
+						class="conn-dialog__input conn-dialog__textarea"
+						value={props.fields.initSql}
+						onInput={(e) => props.onFieldChange('initSql', e.currentTarget.value)}
+						placeholder="SET app.current_shop = 'acme';"
+						rows={3}
+						spellcheck={false}
+					/>
+					<span class="conn-dialog__hint">
+						Runs at the start of every session and after each connection reset. Useful for RLS (<code>SET app.current_shop = 'acme'</code>),{' '}
+						<code>search_path</code>, or roles.
+					</span>
+				</div>
+			</Show>
 
 			<Show when={storage.passConfigOnConnect}>
 				<div class="conn-dialog__field conn-dialog__field--inline">

@@ -30,6 +30,16 @@ export interface PostgresConnectionConfig {
 	ssl?: SSLMode
 	sshTunnel?: SshTunnelConfig
 	activeDatabases?: string[]
+	/**
+	 * Optional SQL run at the start of every backend session and re-applied after the
+	 * internal DISCARD ALL reset. Use to establish session context that data access
+	 * depends on, e.g. `SET app.current_shop = 'acme'` for RLS, `SET search_path`, roles.
+	 *
+	 * Stored as plain config metadata (like host/database/user), not via the encrypted
+	 * secrets path that password/SSH use. Route it through `ConnectionSecrets` if it ever
+	 * needs to carry credentials.
+	 */
+	initSql?: string
 }
 
 export interface SqliteConnectionConfig {

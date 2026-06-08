@@ -176,7 +176,7 @@ export class MysqlDriver implements DatabaseDriver {
 		if (this.sessions.has(sessionId)) {
 			throw new Error(`Session "${sessionId}" already exists`)
 		}
-		const conn = this.pool!.createConnection()
+		const conn = await this.pool!.createConnection()
 		this.sessions.set(sessionId, { conn, txActive: false, iterating: false, activeQueries: new Set() })
 	}
 
@@ -471,7 +471,7 @@ export class MysqlDriver implements DatabaseDriver {
 		this.ensureConnected()
 		const session = this.resolveSession(sessionId)
 		if (session?.txActive) throw new Error('Cannot iterate on a session with an active transaction')
-		const conn = session ? session.conn : this.pool!.acquireConnection()
+		const conn = session ? session.conn : await this.pool!.acquireConnection()
 		const ownConn = !session
 		if (session) {
 			session.txActive = true
@@ -547,7 +547,7 @@ export class MysqlDriver implements DatabaseDriver {
 			}
 			this.defaultSessionPending = true
 			try {
-				const conn = this.pool!.acquireConnection()
+				const conn = await this.pool!.acquireConnection()
 				try {
 					await conn.unsafe('START TRANSACTION')
 				} catch (err) {

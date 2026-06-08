@@ -19,6 +19,12 @@ export class ConnectionPool {
 	constructor(
 		private readonly url: string,
 		private readonly resetFn?: (conn: SQL) => Promise<void>,
+		/**
+		 * Optional session-setup callback run after every physical connection is
+		 * established (and re-applied after `resetFn` on release). Lets callers
+		 * re-establish session state that DISCARD ALL would otherwise wipe.
+		 */
+		private readonly initFn?: (conn: SQL) => Promise<void>,
 	) {}
 
 	/** Create the system connection and verify connectivity. */
@@ -26,6 +32,7 @@ export class ConnectionPool {
 		this.systemConn = this.createSql()
 		this.connections.add(this.systemConn)
 		await this.systemConn.unsafe('SELECT 1')
+		if (this.initFn) await this.initFn(this.systemConn)
 	}
 
 	/** The persistent system connection for ping, schema loading, ad-hoc queries. */
@@ -37,9 +44,18 @@ export class ConnectionPool {
 	}
 
 	/** Create a new dedicated connection for pinned sessions. */
-	createConnection(): SQL {
+	async createConnection(): Promise<SQL> {
 		const conn = this.createSql()
 		this.connections.add(conn)
+		// Establish the (lazy) connection and apply session setup before first use.
+		if (this.initFn) {
+			try {
+				await this.initFn(conn)
+			} catch (err) {
+				await this.destroyConnection(conn)
+				throw err
+			}
+		}
 		return conn
 	}
 
@@ -47,8 +63,9 @@ export class ConnectionPool {
 	 * Acquire a connection for temporary use (iterate, default tx).
 	 * Reuses an idle connection if available, otherwise creates a new one.
 	 */
-	acquireConnection(): SQL {
+	async acquireConnection(): Promise<SQL> {
 		if (this.idleConn) {
+			// Idle connections were already initialized on release.
 			const conn = this.idleConn
 			this.idleConn = null
 			this.clearIdleTimer()
@@ -63,9 +80,11 @@ export class ConnectionPool {
 	 */
 	async releaseConnection(conn: SQL): Promise<void> {
 		if (!this.idleConn) {
-			if (this.resetFn) {
+			if (this.resetFn || this.initFn) {
 				try {
-					await this.resetFn(conn)
+					// Reset leaked state, then re-establish session setup.
+					if (this.resetFn) await this.resetFn(conn)
+					if (this.initFn) await this.initFn(conn)
 				} catch {
 					await this.destroyConnection(conn)
 					return
@@ -99,10 +118,21 @@ export class ConnectionPool {
 			try {
 				await this.systemConn.close()
 			} catch { /* already dead */ }
+			this.systemConn = null
 		}
-		this.systemConn = this.createSql()
-		this.connections.add(this.systemConn)
-		await this.systemConn.unsafe('SELECT 1')
+		// Build into a local first; only publish as systemConn once it is fully
+		// initialized, so a failed init never leaves a live but un-setup connection
+		// that would silently serve unscoped data.
+		const conn = this.createSql()
+		this.connections.add(conn)
+		try {
+			await conn.unsafe('SELECT 1')
+			if (this.initFn) await this.initFn(conn)
+		} catch (err) {
+			await this.destroyConnection(conn)
+			throw err
+		}
+		this.systemConn = conn
 	}
 
 	/** Close everything — system conn + all tracked connections. */

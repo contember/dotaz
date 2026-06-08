@@ -28,6 +28,7 @@ function defaultPgFields() {
 		user: '',
 		password: '',
 		ssl: 'prefer' as SSLMode,
+		initSql: '',
 	}
 }
 
@@ -75,7 +76,7 @@ function parseConnectionString(input: string): { fields: ReturnType<typeof defau
 		const sslmode = url.searchParams.get('sslmode')
 		const ssl: SSLMode = sslmode && SSL_MODES.includes(sslmode as SSLMode) ? sslmode as SSLMode : 'prefer'
 		const name = user && host && database ? `${user}@${host}/${database}` : ''
-		return { fields: { name, host, port, database, user, password, ssl }, type }
+		return { fields: { name, host, port, database, user, password, ssl, initSql: '' }, type }
 	} catch {
 		return null
 	}
@@ -136,6 +137,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 						user: conn.config.user,
 						password: conn.config.password,
 						ssl,
+						initSql: conn.config.type === 'postgresql' ? (conn.config.initSql ?? '') : '',
 					}),
 				)
 				// Load SSH tunnel config if present
@@ -219,6 +221,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 				password: f.password,
 				ssl: f.ssl,
 				sshTunnel,
+				initSql: f.initSql.trim() || undefined,
 			}
 		} else {
 			return {

@@ -159,11 +159,21 @@ export class PostgresDriver implements DatabaseDriver {
 		const url = `postgres://${encodeURIComponent(config.user)}:${encodeURIComponent(config.password)}@${config.host}:${config.port}/${
 			encodeURIComponent(config.database)
 		}?${params}`
-		this.pool = new ConnectionPool(url, (conn) => conn.unsafe('DISCARD ALL'))
+		const initSql = config.initSql?.trim()
+		const initFn = initSql
+			? async (conn: SQL) => {
+				await conn.unsafe(initSql)
+			}
+			: undefined
+		this.pool = new ConnectionPool(url, (conn) => conn.unsafe('DISCARD ALL'), initFn)
 		try {
 			await this.pool.connect()
 		} catch (err) {
+			// Close any socket opened before the failure (e.g. SELECT 1 succeeded but
+			// initSql threw) so a bad initSql doesn't leak a connection per attempt.
+			const failed = this.pool
 			this.pool = null
+			await failed.disconnectAll().catch(() => {})
 			throw err instanceof DatabaseError ? err : mapPostgresError(err)
 		}
 		this.connected = true
@@ -195,7 +205,7 @@ export class PostgresDriver implements DatabaseDriver {
 		if (this.sessions.has(sessionId)) {
 			throw new Error(`Session "${sessionId}" already exists`)
 		}
-		const conn = this.pool!.createConnection()
+		const conn = await this.pool!.createConnection()
 		this.sessions.set(sessionId, { conn, txActive: false, txAborted: false, iterating: false, activeQueries: new Set() })
 	}
 
@@ -652,7 +662,7 @@ export class PostgresDriver implements DatabaseDriver {
 			}
 			this.defaultSessionPending = true
 			try {
-				const conn = this.pool!.acquireConnection()
+				const conn = await this.pool!.acquireConnection()
 				try {
 					await conn.unsafe('BEGIN')
 				} catch (err) {
@@ -781,7 +791,7 @@ export class PostgresDriver implements DatabaseDriver {
 		if (sessionId && !session) throw new Error(`Session "${sessionId}" not found`)
 		if (session?.txActive) throw new Error('Cannot iterate on a session with an active transaction')
 
-		const conn = session ? session.conn : this.pool!.acquireConnection()
+		const conn = session ? session.conn : await this.pool!.acquireConnection()
 		const ownConn = !session // we own the connection if not using a session
 		if (session) {
 			session.txActive = true

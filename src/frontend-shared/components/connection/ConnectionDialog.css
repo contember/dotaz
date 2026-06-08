@@ -95,6 +95,13 @@
 	border-color: var(--error);
 }
 
+.conn-dialog__textarea {
+	font-family: var(--font-mono);
+	min-height: 4.5em;
+	resize: vertical;
+	line-height: 1.4;
+}
+
 .conn-dialog__url-input {
 	font-family: var(--font-mono);
 	font-size: var(--font-size-sm);
