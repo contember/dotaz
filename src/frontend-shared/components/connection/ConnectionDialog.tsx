@@ -36,6 +36,7 @@ function defaultSqliteFields() {
 	return {
 		name: '',
 		path: '',
+		initSql: '',
 	}
 }
 
@@ -137,7 +138,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 						user: conn.config.user,
 						password: conn.config.password,
 						ssl,
-						initSql: conn.config.type === 'postgresql' ? (conn.config.initSql ?? '') : '',
+						initSql: conn.config.type === 'postgresql' || conn.config.type === 'mysql' ? (conn.config.initSql ?? '') : '',
 					}),
 				)
 				// Load SSH tunnel config if present
@@ -164,6 +165,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 					reconcile({
 						name: conn.name,
 						path: conn.config.path,
+						initSql: conn.config.type === 'sqlite' ? (conn.config.initSql ?? '') : '',
 					}),
 				)
 				setSsh(reconcile({ ...defaultSshFields(), expanded: false }))
@@ -197,6 +199,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 					user: f.user,
 					password: f.password,
 					ssl: f.ssl !== 'disable',
+					initSql: f.initSql.trim() || undefined,
 				}
 			}
 			const sshTunnel: SshTunnelConfig | undefined = ssh.enabled
@@ -227,6 +230,7 @@ export default function ConnectionDialog(props: ConnectionDialogProps) {
 			return {
 				type: 'sqlite',
 				path: conn.sqliteFields.path,
+				initSql: conn.sqliteFields.initSql.trim() || undefined,
 			}
 		}
 	}

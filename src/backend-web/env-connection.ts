@@ -77,6 +77,9 @@ export function parseEnvConnection(): EnvConnection | null {
 		const user = decodeURIComponent(parsed.username || 'root')
 		const password = decodeURIComponent(parsed.password || '')
 
+		// MySQL has no libpq-style `?options=`, so only DOTAZ_INIT_SQL applies here.
+		const initSql = process.env.DOTAZ_INIT_SQL?.trim() || undefined
+
 		return {
 			name: `${host}/${database}`,
 			config: {
@@ -86,6 +89,7 @@ export function parseEnvConnection(): EnvConnection | null {
 				database,
 				user,
 				password,
+				initSql,
 			},
 		}
 	}

@@ -1,3 +1,4 @@
+import { splitStatements } from '@dotaz/shared/sql/statements'
 import type { ConnectionConfig } from '@dotaz/shared/types/connection'
 import { DatabaseDataType } from '@dotaz/shared/types/database'
 import type {
@@ -81,19 +82,32 @@ export class SqliteDriver implements DatabaseDriver {
 	private iterating = false
 	/** Separate read-only connection used by iterate() so it doesn't block the main connection. */
 	private iterateDb: SQL | null = null
+	/** Optional setup SQL re-applied to every physical connection (main + iterate). */
+	private initSql: string | null = null
 
 	async connect(config: ConnectionConfig): Promise<void> {
 		if (config.type !== 'sqlite') {
 			throw new Error('SqliteDriver requires a sqlite connection config')
 		}
+		const initSql = config.initSql?.trim() || null
 		try {
 			this.db = new SQL(`sqlite:${config.path}`)
 			this.dbPath = config.path
 			await this.db.unsafe('PRAGMA journal_mode = WAL')
 			await this.db.unsafe('PRAGMA foreign_keys = ON')
+			this.initSql = initSql
+			await this.applyInitSql(this.db)
 		} catch (err) {
+			// Close the socket opened before the failure (e.g. a bad initSql) so a failed
+			// connect never leaves a live handle behind.
+			if (this.db) {
+				try {
+					await this.db.close()
+				} catch { /* already dead */ }
+			}
 			this.db = null
 			this.dbPath = null
+			this.initSql = null
 			throw err instanceof DatabaseError ? err : mapSqliteError(err)
 		}
 		this.connected = true
@@ -111,6 +125,7 @@ export class SqliteDriver implements DatabaseDriver {
 			await this.db.close()
 			this.db = null
 			this.dbPath = null
+			this.initSql = null
 			this.txActive = false
 			this.txOwnerSession = null
 			this.sessionIds.clear()
@@ -346,7 +361,7 @@ export class SqliteDriver implements DatabaseDriver {
 		// concurrent readers). In-memory databases can't share across
 		// connections, so they must fall back to the main connection.
 		const useMainConn = this.dbPath === ':memory:'
-		const readConn = useMainConn ? this.db! : this.getIterateDb()
+		const readConn = useMainConn ? this.db! : await this.getIterateDb()
 		if (useMainConn) {
 			this.ensureSessionCanExecute(sessionId)
 			if (this.txActive) throw new Error('Cannot iterate with an active transaction')
@@ -392,11 +407,34 @@ export class SqliteDriver implements DatabaseDriver {
 	}
 
 	/** Lazily open a separate read-only connection for iterate(). */
-	private getIterateDb(): SQL {
+	private async getIterateDb(): Promise<SQL> {
 		if (!this.iterateDb) {
-			this.iterateDb = new SQL(`sqlite:${this.dbPath}`)
+			const conn = new SQL(`sqlite:${this.dbPath}`)
+			try {
+				await this.applyInitSql(conn)
+			} catch (err) {
+				try {
+					await conn.close()
+				} catch { /* already dead */ }
+				throw err instanceof DatabaseError ? err : mapSqliteError(err)
+			}
+			this.iterateDb = conn
 		}
 		return this.iterateDb
+	}
+
+	/**
+	 * Apply the configured setup SQL to a connection, one statement at a time.
+	 *
+	 * SQLite's driver stops a multi-statement `unsafe()` call at the first
+	 * result-returning statement (e.g. `PRAGMA busy_timeout = N` returns the new
+	 * value), silently skipping the rest — so each statement must run on its own.
+	 */
+	private async applyInitSql(conn: SQL): Promise<void> {
+		if (!this.initSql) return
+		for (const stmt of splitStatements(this.initSql)) {
+			await conn.unsafe(stmt)
+		}
 	}
 
 	async importBatch(

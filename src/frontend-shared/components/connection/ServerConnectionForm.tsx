@@ -151,20 +151,29 @@ export default function ServerConnectionForm(props: ServerConnectionFormProps) {
 				/>
 			</div>
 
-			<Show when={props.type === 'postgresql'}>
+			<Show when={props.type === 'postgresql' || props.type === 'mysql'}>
 				<div class="conn-dialog__field">
 					<label class="conn-dialog__label">Session setup SQL</label>
 					<textarea
 						class="conn-dialog__input conn-dialog__textarea"
 						value={props.fields.initSql}
 						onInput={(e) => props.onFieldChange('initSql', e.currentTarget.value)}
-						placeholder="SET app.current_shop = 'acme';"
+						placeholder={props.type === 'mysql' ? "SET SESSION time_zone = '+00:00';" : "SET app.current_shop = 'acme';"}
 						rows={3}
 						spellcheck={false}
 					/>
 					<span class="conn-dialog__hint">
-						Runs at the start of every session and after each connection reset. Useful for RLS (<code>SET app.current_shop = 'acme'</code>),{' '}
-						<code>search_path</code>, or roles.
+						Runs at the start of every session and after each connection reset.{' '}
+						<Show
+							when={props.type === 'mysql'}
+							fallback={
+								<>
+									Useful for RLS (<code>SET app.current_shop = 'acme'</code>), <code>search_path</code>, or roles.
+								</>
+							}
+						>
+							Useful for <code>SET SESSION time_zone</code>, <code>SET ROLE</code>, or <code>sql_mode</code>.
+						</Show>
 					</span>
 				</div>
 			</Show>

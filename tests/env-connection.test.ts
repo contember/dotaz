@@ -77,6 +77,20 @@ describe('parseEnvConnection', () => {
 		})
 	})
 
+	test('sets mysql initSql from DOTAZ_INIT_SQL', () => {
+		process.env.DATABASE_URL = 'mysql://root:secret@host/db'
+		process.env.DOTAZ_INIT_SQL = "SET SESSION time_zone = '+00:00'"
+		expect(parseEnvConnection()!.config).toMatchObject({
+			type: 'mysql',
+			initSql: "SET SESSION time_zone = '+00:00'",
+		})
+	})
+
+	test('does not translate libpq ?options= for mysql', () => {
+		process.env.DATABASE_URL = 'mysql://root:secret@host/db?options=-c%20app.current_shop%3Dacme'
+		expect((parseEnvConnection()!.config as { initSql?: string }).initSql).toBeUndefined()
+	})
+
 	test('uses default port when not specified (PostgreSQL)', () => {
 		process.env.DATABASE_URL = 'postgresql://user:pass@host/db'
 		const result = parseEnvConnection()

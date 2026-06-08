@@ -142,11 +142,21 @@ export class MysqlDriver implements DatabaseDriver {
 		const url = `mysql://${encodeURIComponent(config.user)}:${encodeURIComponent(config.password)}@${config.host}:${config.port}/${
 			encodeURIComponent(config.database)
 		}`
-		this.pool = new ConnectionPool(url, (conn) => conn.unsafe('RESET CONNECTION'))
+		const initSql = config.initSql?.trim()
+		const initFn = initSql
+			? async (conn: SQL) => {
+				await conn.unsafe(initSql)
+			}
+			: undefined
+		this.pool = new ConnectionPool(url, (conn) => conn.unsafe('RESET CONNECTION'), initFn)
 		try {
 			await this.pool.connect()
 		} catch (err) {
+			// Close any socket opened before the failure (e.g. SELECT 1 succeeded but
+			// initSql threw) so a bad initSql doesn't leak a connection per attempt.
+			const failed = this.pool
 			this.pool = null
+			await failed.disconnectAll().catch(() => {})
 			throw err instanceof DatabaseError ? err : mapMysqlError(err)
 		}
 		this.connected = true
