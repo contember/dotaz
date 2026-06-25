@@ -138,13 +138,20 @@ async function activateDatabase(connectionId: string, database: string) {
 	// Update local config so reconnect sees the new database
 	const idx = state.connections.findIndex((c) => c.id === connectionId)
 	if (idx >= 0) {
-		const config = state.connections[idx].config
+		const conn = state.connections[idx]
+		const config = conn.config
 		if (CONNECTION_TYPE_META[config.type].supportsMultiDatabase) {
 			const current = (config as MultiDbConfig).activeDatabases ?? []
 			if (!current.includes(database)) {
 				const next = [...current, database]
 				setState('connections', idx, 'config', { ...config, activeDatabases: next } as MultiDbConfig)
-				await storage.updateConnectionActiveDatabases(connectionId, next)
+				// Server-managed connections (e.g. from DATABASE_URL) live only in the
+				// backend, never in local storage — the backend persists their active
+				// databases itself. Skip the local write, which would throw
+				// "Connection not found".
+				if (!conn.serverManaged) {
+					await storage.updateConnectionActiveDatabases(connectionId, next)
+				}
 			}
 		}
 	}
@@ -159,12 +166,16 @@ async function deactivateDatabase(connectionId: string, database: string) {
 	// Update local config so reconnect doesn't restore this database
 	const idx = state.connections.findIndex((c) => c.id === connectionId)
 	if (idx >= 0) {
-		const config = state.connections[idx].config
+		const conn = state.connections[idx]
+		const config = conn.config
 		if (CONNECTION_TYPE_META[config.type].supportsMultiDatabase) {
 			const filtered = ((config as MultiDbConfig).activeDatabases ?? []).filter((db: string) => db !== database)
 			const next = filtered.length > 0 ? filtered : undefined
 			setState('connections', idx, 'config', { ...config, activeDatabases: next } as MultiDbConfig)
-			await storage.updateConnectionActiveDatabases(connectionId, next)
+			// Server-managed connections aren't in local storage (see activateDatabase).
+			if (!conn.serverManaged) {
+				await storage.updateConnectionActiveDatabases(connectionId, next)
+			}
 		}
 	}
 
