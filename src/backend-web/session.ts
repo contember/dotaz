@@ -35,6 +35,14 @@ export interface Session {
 const envConnection = parseEnvConnection()
 const sessions = new Map<string, Session>()
 
+// Databases the user toggled on (Manage Databases…) for the DATABASE_URL
+// connection, remembered across sessions. Each session gets a fresh in-memory
+// app DB and the env connection is recreated from DATABASE_URL on every
+// WebSocket, so without this the extra databases vanish on page reload.
+// Process-scoped: shared by all sessions of the single shared env connection,
+// and reset when the server restarts.
+const envActiveDatabases = new Set<string>()
+
 export function getSessions(): Map<string, Session> {
 	return sessions
 }
@@ -64,9 +72,14 @@ export function createSession(
 
 	// Auto-create env connection if DATABASE_URL is set
 	if (envConnection) {
+		// Restore databases toggled on in an earlier session so they survive a
+		// page reload — the fire-and-forget auto-connect below reconnects them.
+		const config = envActiveDatabases.size > 0
+			? { ...envConnection.config, activeDatabases: [...envActiveDatabases] }
+			: envConnection.config
 		appDb.createConnectionWithId(ENV_CONNECTION_ID, {
 			name: envConnection.name,
-			config: envConnection.config,
+			config,
 		})
 		serverManagedIds.add(ENV_CONNECTION_ID)
 
@@ -75,6 +88,21 @@ export function createSession(
 		;(handlers as Record<string, unknown>)['connections.list'] = () => {
 			const list = originalList()
 			return list.map(conn => serverManagedIds.has(conn.id) ? { ...conn, serverManaged: true } : conn)
+		}
+
+		// Remember activate/deactivate on the env connection across sessions so a
+		// reload restores the same set of databases (see envActiveDatabases).
+		const originalActivate = handlers['databases.activate']
+		;(handlers as Record<string, unknown>)['databases.activate'] = async (params: { connectionId: string; database: string }) => {
+			const result = await originalActivate(params)
+			if (params.connectionId === ENV_CONNECTION_ID) envActiveDatabases.add(params.database)
+			return result
+		}
+		const originalDeactivate = handlers['databases.deactivate']
+		;(handlers as Record<string, unknown>)['databases.deactivate'] = async (params: { connectionId: string; database: string }) => {
+			const result = await originalDeactivate(params)
+			if (params.connectionId === ENV_CONNECTION_ID) envActiveDatabases.delete(params.database)
+			return result
 		}
 	}
 
