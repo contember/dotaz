@@ -120,6 +120,7 @@ export default function TransposedGrid(props: TransposedGridProps) {
 											column={col}
 											width={DEFAULT_COLUMN_WIDTH}
 											editing={isEditing()}
+											initialEditValue={isEditing() ? props.editingCell?.initialValue : undefined}
 											changed={isChanged()}
 											deleted={props.isRowDeleted?.(rowIdx())}
 											newRow={props.isRowNew?.(rowIdx())}

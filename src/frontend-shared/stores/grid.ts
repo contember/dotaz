@@ -91,6 +91,7 @@ export interface FocusedCell {
 export interface EditingCell {
 	row: number
 	column: string
+	initialValue?: unknown
 }
 
 /** A pending cell-level change, keyed by "rowIndex:columnName". */

@@ -295,10 +295,10 @@ export default function DataGrid(props: DataGridProps) {
 		return {
 			editingCell: tab()?.editingCell ?? null,
 			isEditable: () => !isReadOnly(),
-			onStart: (rowIdx, col) => {
+			onStart: (rowIdx, col, initialValue) => {
 				if (isReadOnly()) return
 				if (gridStore.isRowDeleted(props.tabId, rowIdx)) return
-				gridStore.startEditing(props.tabId, rowIdx, col)
+				gridStore.startEditing(props.tabId, rowIdx, col, initialValue)
 			},
 			onSave: cellEdit.handleCellSave,
 			onCancel: cellEdit.handleCellCancel,

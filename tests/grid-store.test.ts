@@ -181,7 +181,7 @@ describe('grid store', () => {
 	describe('per-tab isolation', () => {
 		test('each tab has independent state', async () => {
 			// Use custom impl that returns different data per connectionId.
-			mockQueryExecute.mockImplementation((params: any) => {
+			mockQueryExecute.mockImplementation((params: { connectionId: string }) => {
 				if (params.connectionId === 'conn-1') return Promise.resolve(makeQueryResult([{ id: 1, name: 'Alice' }]))
 				return Promise.resolve(makeQueryResult([{ id: 100, name: 'Zara' }]))
 			})
@@ -519,7 +519,7 @@ describe('grid store', () => {
 		})
 
 		test('buildClipboardTsv copies single cell with NULL as empty string', async () => {
-			mockQueryExecute.mockImplementation((params: any) => {
+			mockQueryExecute.mockImplementation((params: { sql: string }) => {
 				if (params.sql.trimStart().toUpperCase().startsWith('SELECT COUNT(')) {
 					return Promise.resolve(makeQueryResult([{ count: 1 }]))
 				}
@@ -642,6 +642,15 @@ describe('grid store', () => {
 			expect(tab.editingCell).toEqual({ row: 0, column: 'name' })
 		})
 
+		test('startEditing can seed an initial editor value', async () => {
+			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
+
+			gridStore.startEditing('tab-1', 0, 'name', 'a')
+
+			const tab = gridStore.getTab('tab-1')!
+			expect(tab.editingCell).toEqual({ row: 0, column: 'name', initialValue: 'a' })
+		})
+
 		test('stopEditing clears editingCell', async () => {
 			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
 
@@ -674,6 +683,26 @@ describe('grid store', () => {
 
 			gridStore.setCellValue('tab-1', 0, 'name', 'Alice')
 			expect(gridStore.isCellChanged('tab-1', 0, 'name')).toBe(false)
+		})
+
+		test('setCellValue treats missing nullable values as NULL when reverting', async () => {
+			mockQueryExecute.mockImplementation((params: any) => {
+				if (params.sql.trimStart().toUpperCase().startsWith('SELECT COUNT(')) {
+					return Promise.resolve(makeQueryResult([{ count: 1 }]))
+				}
+				return Promise.resolve(makeQueryResult([{ id: 1 }]))
+			})
+			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
+
+			gridStore.setCellValue('tab-1', 0, 'name', 'Updated')
+			expect(gridStore.isCellChanged('tab-1', 0, 'name')).toBe(true)
+
+			gridStore.setCellValue('tab-1', 0, 'name', null)
+
+			const tab = gridStore.getTab('tab-1')!
+			expect(tab.rows[0].name).toBeNull()
+			expect(gridStore.isCellChanged('tab-1', 0, 'name')).toBe(false)
+			expect(gridStore.hasPendingChanges('tab-1')).toBe(false)
 		})
 
 		test('isCellChanged returns correct state', async () => {

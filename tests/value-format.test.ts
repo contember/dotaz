@@ -180,7 +180,7 @@ describe('valuesEqual — change detection', () => {
 
 	test('null/undefined comparisons', () => {
 		expect(valuesEqual(null, null)).toBe(true)
-		expect(valuesEqual(null, undefined)).toBe(false)
+		expect(valuesEqual(null, undefined)).toBe(true)
 		expect(valuesEqual(null, ['a'])).toBe(false)
 	})
 

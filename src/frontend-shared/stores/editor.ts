@@ -773,9 +773,9 @@ function computeResultEditability(tabId: string, sql: string, results: QueryResu
 
 // ── Result editing actions ────────────────────────────────
 
-function startResultEditing(tabId: string, resultIndex: number, row: number, column: string) {
+function startResultEditing(tabId: string, resultIndex: number, row: number, column: string, initialValue?: unknown) {
 	ensureTab(tabId)
-	setState('tabs', tabId, 'resultEditingCell', { row, column })
+	setState('tabs', tabId, 'resultEditingCell', initialValue === undefined ? { row, column } : { row, column, initialValue })
 	setState('tabs', tabId, 'resultEditingIndex', resultIndex)
 }
 

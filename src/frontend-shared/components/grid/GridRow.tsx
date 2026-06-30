@@ -126,6 +126,7 @@ export default function GridRow(props: GridRowProps) {
 							width={getColumnWidth(col.name, props.columnConfig)}
 							pinStyle={props.pinStyles.get(col.name)}
 							editing={isEditing()}
+							initialEditValue={isEditing() ? props.editingCell?.initialValue : undefined}
 							changed={isChanged()}
 							selected={isSelected()}
 							focused={isFocused()}

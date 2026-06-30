@@ -30,7 +30,7 @@ export interface GridViewEditing {
 	editingCell: EditingCell | null
 	/** Whether a given column accepts edits. Defaults to true if omitted. */
 	isEditable?: (column: string) => boolean
-	onStart: (rowIndex: number, column: string) => void
+	onStart: (rowIndex: number, column: string, initialValue?: unknown) => void
 	onSave: (rowIndex: number, column: string, value: unknown) => void
 	onCancel: () => void
 	onMoveNext: (rowIndex: number, column: string) => void

@@ -22,6 +22,7 @@ function createDefaultPendingChanges(): PendingChanges {
  */
 function valuesEqual(a: unknown, b: unknown): boolean {
 	if (a === b) return true
+	if (a == null && b == null) return true
 	if (a == null || b == null) return false
 	if (typeof a !== 'object' || typeof b !== 'object') return false
 	try {
@@ -41,9 +42,9 @@ export function createGridEditingActions(
 	getVisibleColumns: (tab: TabGridState) => import('@dotaz/shared/types/grid').GridColumnDef[],
 	clearSelection: (tabId: string) => void,
 ) {
-	function startEditing(tabId: string, row: number, column: string) {
+	function startEditing(tabId: string, row: number, column: string, initialValue?: unknown) {
 		ensureTab(tabId)
-		setState('tabs', tabId, 'editingCell', { row, column })
+		setState('tabs', tabId, 'editingCell', initialValue === undefined ? { row, column } : { row, column, initialValue })
 	}
 
 	function stopEditing(tabId: string) {

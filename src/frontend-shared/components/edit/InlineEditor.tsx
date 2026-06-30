@@ -11,6 +11,7 @@ import './InlineEditor.css'
 
 interface InlineEditorProps {
 	value: unknown
+	initialValue?: unknown
 	column: GridColumnDef
 	width: number
 	onSave: (value: unknown) => void
@@ -75,10 +76,11 @@ function tryQuickValueShortcut(
 }
 
 export default function InlineEditor(props: InlineEditorProps) {
+	const editorValue = () => props.initialValue !== undefined ? props.initialValue : props.value
 	const [isNull, setIsNull] = createSignal(
-		props.value === null || props.value === undefined,
+		editorValue() === null || editorValue() === undefined,
 	)
-	const [isDefault, setIsDefault] = createSignal(isSqlDefault(props.value))
+	const [isDefault, setIsDefault] = createSignal(isSqlDefault(editorValue()))
 	let inputRef: HTMLInputElement | HTMLTextAreaElement | undefined
 	let cancelled = false
 
@@ -99,7 +101,10 @@ export default function InlineEditor(props: InlineEditorProps) {
 				inputRef.style.height = `${Math.min(inputRef.scrollHeight, 240)}px`
 			}
 			inputRef.focus()
-			if ('select' in inputRef) {
+			if (props.initialValue !== undefined && 'setSelectionRange' in inputRef) {
+				const end = inputRef.value.length
+				inputRef.setSelectionRange(end, end)
+			} else if ('select' in inputRef) {
 				inputRef.select()
 			}
 		}
@@ -184,16 +189,40 @@ export default function InlineEditor(props: InlineEditorProps) {
 		props.onSave(checked)
 	}
 
+	function booleanChecked(): boolean {
+		const value = editorValue()
+		if (typeof value === 'boolean') return value
+		if (typeof value === 'number') return value !== 0
+		if (typeof value === 'string') {
+			const lower = value.toLowerCase()
+			if (lower === 'true' || lower === '1' || lower === 't') return true
+			if (lower === 'false' || lower === '0' || lower === 'f') return false
+		}
+		return !!value
+	}
+
 	function handleSetNull() {
 		setIsNull(true)
 		setIsDefault(false)
 		props.onSave(null)
 	}
 
+	function markUserInput() {
+		setIsNull(false)
+		setIsDefault(false)
+	}
+
+	function resizeTextArea() {
+		if (!(inputRef instanceof HTMLTextAreaElement)) return
+		inputRef.style.height = 'auto'
+		inputRef.style.height = `${Math.min(inputRef.scrollHeight, isJson() ? 240 : 120)}px`
+	}
+
 	// Date formatting for input[type=date]/input[type=datetime-local]
 	function dateInputValue(): string {
-		if (isNull() || isDefault() || props.value === null || props.value === undefined) return ''
-		const str = String(props.value)
+		const value = editorValue()
+		if (isNull() || isDefault() || value === null || value === undefined) return ''
+		const str = String(value)
 		if (dataType() === DatabaseDataType.Date) {
 			// Return YYYY-MM-DD
 			return str.substring(0, 10)
@@ -238,7 +267,7 @@ export default function InlineEditor(props: InlineEditorProps) {
 						inputRef = el
 					}}
 					type="checkbox"
-					checked={!!props.value && !isNull() && !isDefault()}
+					checked={booleanChecked() && !isNull() && !isDefault()}
 					onChange={handleCheckboxChange}
 				/>
 				{props.column.nullable && (
@@ -271,6 +300,7 @@ export default function InlineEditor(props: InlineEditorProps) {
 					onChange={(v) => {
 						setDateValue(v)
 						setIsNull(v === '')
+						setIsDefault(false)
 					}}
 					mode={dataType().toLowerCase() === 'date' ? 'date' : 'datetime'}
 					onBlur={() => save()}
@@ -307,7 +337,8 @@ export default function InlineEditor(props: InlineEditorProps) {
 					}}
 					type="text"
 					inputMode="numeric"
-					value={isNull() || isDefault() ? '' : valueToString(props.value)}
+					value={isNull() || isDefault() ? '' : valueToString(editorValue())}
+					onInput={markUserInput}
 					onBlur={() => save()}
 				/>
 				{props.column.nullable && (
@@ -340,13 +371,12 @@ export default function InlineEditor(props: InlineEditorProps) {
 					ref={(el) => {
 						inputRef = el
 					}}
-					value={isNull() || isDefault() ? '' : valueToString(props.value)}
+					value={isNull() || isDefault() ? '' : valueToString(editorValue())}
 					onBlur={() => save()}
 					rows={1}
-					onInput={(e) => {
-						const el = e.target as HTMLTextAreaElement
-						el.style.height = 'auto'
-						el.style.height = `${Math.min(el.scrollHeight, 120)}px`
+					onInput={() => {
+						markUserInput()
+						resizeTextArea()
 					}}
 				/>
 				{props.column.nullable && (
@@ -379,13 +409,12 @@ export default function InlineEditor(props: InlineEditorProps) {
 					ref={(el) => {
 						inputRef = el
 					}}
-					value={isNull() || isDefault() ? '' : formatColumnValueForEditor(props.value, dataType())}
+					value={isNull() || isDefault() ? '' : formatColumnValueForEditor(editorValue(), dataType())}
 					onBlur={() => save()}
-					onInput={(e) => {
+					onInput={() => {
+						markUserInput()
 						if (jsonError() !== null) setJsonError(null)
-						const el = e.target as HTMLTextAreaElement
-						el.style.height = 'auto'
-						el.style.height = `${Math.min(el.scrollHeight, 240)}px`
+						resizeTextArea()
 					}}
 					rows={1}
 					spellcheck={false}
@@ -421,7 +450,8 @@ export default function InlineEditor(props: InlineEditorProps) {
 					inputRef = el
 				}}
 				type="text"
-				value={isNull() || isDefault() ? '' : valueToString(props.value)}
+				value={isNull() || isDefault() ? '' : valueToString(editorValue())}
+				onInput={markUserInput}
 				onBlur={() => save()}
 			/>
 			{props.column.nullable && (

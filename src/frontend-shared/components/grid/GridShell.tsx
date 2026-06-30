@@ -3,8 +3,9 @@ import Copy from 'lucide-solid/icons/copy'
 import Rows3 from 'lucide-solid/icons/rows-3'
 import { createContext, createSignal, type JSX, Show, useContext } from 'solid-js'
 import { buildClipboardTsv, formatCellForClipboard } from '../../lib/grid-clipboard'
+import { resolvePrintableEditAction } from '../../lib/grid-editing-shortcuts'
 import { applyExtendFocus, applyMoveFocus, applySelectAll, applySelectCell, type CellSelection } from '../../lib/grid-selection'
-import { isEditableTarget } from '../../lib/keyboard'
+import { hasModifier, isEditableTarget } from '../../lib/keyboard'
 import type { ContextMenuEntry } from '../common/ContextMenu'
 import ContextMenu from '../common/ContextMenu'
 import type { GridViewEditing } from './GridView'
@@ -133,6 +134,22 @@ export default function GridShell(props: GridShellProps) {
 		}
 		if (ed?.editingCell) {
 			// Inline editor owns most keys while open
+			return
+		}
+		if (ed && sel.focusedCell && e.key.length === 1 && !hasModifier(e)) {
+			const column = props.columns[sel.focusedCell.col]
+			if (!column) return
+			if (ed.isEditable && !ed.isEditable(column.name)) return
+			if (ed.isRowDeleted?.(sel.focusedCell.row)) return
+			const action = resolvePrintableEditAction(e.key, column)
+			if (action.type === 'ignore') return
+			e.preventDefault()
+			e.stopPropagation()
+			if (action.type === 'save') {
+				ed.onSave(sel.focusedCell.row, column.name, action.value)
+			} else {
+				ed.onStart(sel.focusedCell.row, column.name, action.initialValue)
+			}
 			return
 		}
 

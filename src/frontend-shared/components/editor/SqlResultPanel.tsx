@@ -476,9 +476,9 @@ function ResultGrid(props: ResultGridProps) {
 		editorStore.stopResultEditing(props.tabId)
 	}
 
-	function handleStartEdit(rowIndex: number, column: string) {
+	function handleStartEdit(rowIndex: number, column: string, initialValue?: unknown) {
 		if (!editableColumnSet().has(column)) return
-		editorStore.startResultEditing(props.tabId, props.resultIndex, rowIndex, column)
+		editorStore.startResultEditing(props.tabId, props.resultIndex, rowIndex, column, initialValue)
 	}
 
 	function handleCellMoveNext(rowIndex: number, currentColumn: string) {

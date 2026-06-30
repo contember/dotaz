@@ -18,6 +18,7 @@ interface GridCellProps {
 	width: number
 	pinStyle?: Record<string, string>
 	editing?: boolean
+	initialEditValue?: unknown
 	changed?: boolean
 	selected?: boolean
 	focused?: boolean
@@ -119,6 +120,7 @@ export default function GridCell(props: GridCellProps) {
 			fallback={
 				<InlineEditor
 					value={props.value}
+					initialValue={props.initialEditValue}
 					column={props.column}
 					width={props.width}
 					onSave={props.onSave!}
