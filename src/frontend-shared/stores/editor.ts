@@ -4,11 +4,13 @@ import type { ExplainResult, QueryEditability, QueryResult } from '@dotaz/shared
 import type { DataChange } from '@dotaz/shared/types/rpc'
 import { createSignal } from 'solid-js'
 import { createStore } from 'solid-js/store'
+import { reconcileCellEdit } from '../lib/cell-edit-reconciliation'
 import { buildDataChanges } from '../lib/data-changes'
 import { analyzeResultEditability } from '../lib/query-editability'
 import { friendlyErrorMessage, messages, rpc } from '../lib/rpc'
 import { getStatementAtCursor } from '../lib/sql-utils'
 import { storage } from '../lib/storage'
+import { replaceRecordContents } from '../lib/store-records'
 import { createTabHelpers } from '../lib/tab-store-helpers'
 import { scheduleWorkspaceSave } from '../lib/workspace'
 import { connectionsStore } from './connections'
@@ -129,6 +131,25 @@ function createDefaultEditorState(connectionId: string, database?: string): TabE
 
 function createDefaultResultPendingChanges(): ResultPendingChanges {
 	return { cellEdits: {} }
+}
+
+function replaceResultPendingChanges(tabId: string, resultIndex: number, pendingChanges: ResultPendingChanges) {
+	replaceResultCellEdits(tabId, resultIndex, pendingChanges.cellEdits)
+}
+
+function replaceResultCellEdits(tabId: string, resultIndex: number, cellEdits: Record<string, CellChange>) {
+	const tab = getTab(tabId)
+	if (!tab?.resultPendingChanges[resultIndex]) {
+		setState('tabs', tabId, 'resultPendingChanges', resultIndex, { cellEdits: {} })
+	}
+	setState(
+		'tabs',
+		tabId,
+		'resultPendingChanges',
+		resultIndex,
+		'cellEdits',
+		(edits) => replaceRecordContents(edits, cellEdits),
+	)
 }
 
 // ── Store ─────────────────────────────────────────────────
@@ -792,29 +813,32 @@ function setResultCellValue(tabId: string, resultIndex: number, rowIndex: number
 	const key = `${rowIndex}:${column}`
 	const pending = tab.resultPendingChanges[resultIndex] ?? createDefaultResultPendingChanges()
 	const existing = pending.cellEdits[key]
-	const oldValue = existing ? existing.oldValue : tab.results[resultIndex]?.rows[rowIndex]?.[column]
+	const result = reconcileCellEdit({
+		rowIndex,
+		column,
+		currentValue: tab.results[resultIndex]?.rows[rowIndex]?.[column],
+		existingEdit: existing,
+		newValue,
+	})
 
-	if (oldValue === newValue) {
+	if (result.type === 'noop') return
+
+	if (result.type === 'revert') {
 		// Reverting to original: remove the edit
 		const next = { ...pending.cellEdits }
 		delete next[key]
 		if (!tab.resultPendingChanges[resultIndex]) {
-			setState('tabs', tabId, 'resultPendingChanges', resultIndex, { cellEdits: next })
+			replaceResultPendingChanges(tabId, resultIndex, { cellEdits: next })
 		} else {
-			setState('tabs', tabId, 'resultPendingChanges', resultIndex, 'cellEdits', next)
+			replaceResultCellEdits(tabId, resultIndex, next)
 		}
 	} else {
 		if (!tab.resultPendingChanges[resultIndex]) {
-			setState('tabs', tabId, 'resultPendingChanges', resultIndex, {
-				cellEdits: { [key]: { rowIndex, column, oldValue, newValue } },
+			replaceResultPendingChanges(tabId, resultIndex, {
+				cellEdits: { [key]: result.edit },
 			})
 		} else {
-			setState('tabs', tabId, 'resultPendingChanges', resultIndex, 'cellEdits', key, {
-				rowIndex,
-				column,
-				oldValue,
-				newValue,
-			})
+			setState('tabs', tabId, 'resultPendingChanges', resultIndex, 'cellEdits', key, result.edit)
 		}
 	}
 
@@ -913,13 +937,13 @@ function revertResultChanges(tabId: string, resultIndex: number) {
 		setState('tabs', tabId, 'resultRows', resultIndex, edit.rowIndex, edit.column, edit.oldValue)
 	}
 
-	setState('tabs', tabId, 'resultPendingChanges', resultIndex, createDefaultResultPendingChanges())
+	replaceResultPendingChanges(tabId, resultIndex, createDefaultResultPendingChanges())
 	setState('tabs', tabId, 'resultEditingCell', null)
 }
 
 function clearResultPendingChanges(tabId: string, resultIndex: number) {
 	ensureTab(tabId)
-	setState('tabs', tabId, 'resultPendingChanges', resultIndex, createDefaultResultPendingChanges())
+	replaceResultPendingChanges(tabId, resultIndex, createDefaultResultPendingChanges())
 	setState('tabs', tabId, 'resultEditingCell', null)
 }
 
@@ -935,7 +959,7 @@ function revertResultRowUpdate(tabId: string, resultIndex: number, rowIndex: num
 			delete edits[key]
 		}
 	}
-	setState('tabs', tabId, 'resultPendingChanges', resultIndex, 'cellEdits', edits)
+	replaceResultCellEdits(tabId, resultIndex, edits)
 }
 
 // ── Extracted module actions ──────────────────────────────

@@ -91,6 +91,7 @@ export default function InlineEditor(props: InlineEditorProps) {
 	const isText = () => isTextType(dataType())
 	const isJson = () => isStructuredType(dataType())
 	const [jsonError, setJsonError] = createSignal<string | null>(null)
+	const [inputValue, setInputValue] = createSignal(initialInputValue())
 
 	const [dateValue, setDateValue] = createSignal(dateInputValue())
 
@@ -130,21 +131,19 @@ export default function InlineEditor(props: InlineEditorProps) {
 			props.onSave(parsed)
 			return true
 		}
-		if (inputRef) {
-			if (isJson()) {
-				const result = parseJsonColumnInput(inputRef.value, props.column.nullable)
-				if (!result.ok) {
-					setJsonError(result.error)
-					inputRef.focus()
-					return false
-				}
-				setJsonError(null)
-				props.onSave(result.value)
-				return true
+		if (isJson()) {
+			const result = parseJsonColumnInput(inputValue(), props.column.nullable)
+			if (!result.ok) {
+				setJsonError(result.error)
+				inputRef?.focus()
+				return false
 			}
-			const parsed = parseValue(inputRef.value, props.column)
-			props.onSave(parsed)
+			setJsonError(null)
+			props.onSave(result.value)
+			return true
 		}
+		const parsed = parseValue(inputValue(), props.column)
+		props.onSave(parsed)
 		return true
 	}
 
@@ -204,12 +203,20 @@ export default function InlineEditor(props: InlineEditorProps) {
 	function handleSetNull() {
 		setIsNull(true)
 		setIsDefault(false)
+		setInputValue('')
 		props.onSave(null)
 	}
 
 	function markUserInput() {
 		setIsNull(false)
 		setIsDefault(false)
+	}
+
+	function initialInputValue(): string {
+		const value = editorValue()
+		if (value === null || value === undefined || isSqlDefault(value)) return ''
+		if (isJson()) return formatColumnValueForEditor(value, dataType())
+		return valueToString(value)
 	}
 
 	function resizeTextArea() {
@@ -337,8 +344,11 @@ export default function InlineEditor(props: InlineEditorProps) {
 					}}
 					type="text"
 					inputMode="numeric"
-					value={isNull() || isDefault() ? '' : valueToString(editorValue())}
-					onInput={markUserInput}
+					value={inputValue()}
+					onInput={(e) => {
+						setInputValue(e.currentTarget.value)
+						markUserInput()
+					}}
 					onBlur={() => save()}
 				/>
 				{props.column.nullable && (
@@ -371,10 +381,11 @@ export default function InlineEditor(props: InlineEditorProps) {
 					ref={(el) => {
 						inputRef = el
 					}}
-					value={isNull() || isDefault() ? '' : valueToString(editorValue())}
+					value={inputValue()}
 					onBlur={() => save()}
 					rows={1}
-					onInput={() => {
+					onInput={(e) => {
+						setInputValue(e.currentTarget.value)
 						markUserInput()
 						resizeTextArea()
 					}}
@@ -409,9 +420,10 @@ export default function InlineEditor(props: InlineEditorProps) {
 					ref={(el) => {
 						inputRef = el
 					}}
-					value={isNull() || isDefault() ? '' : formatColumnValueForEditor(editorValue(), dataType())}
+					value={inputValue()}
 					onBlur={() => save()}
-					onInput={() => {
+					onInput={(e) => {
+						setInputValue(e.currentTarget.value)
 						markUserInput()
 						if (jsonError() !== null) setJsonError(null)
 						resizeTextArea()
@@ -450,8 +462,11 @@ export default function InlineEditor(props: InlineEditorProps) {
 					inputRef = el
 				}}
 				type="text"
-				value={isNull() || isDefault() ? '' : valueToString(editorValue())}
-				onInput={markUserInput}
+				value={inputValue()}
+				onInput={(e) => {
+					setInputValue(e.currentTarget.value)
+					markUserInput()
+				}}
 				onBlur={() => save()}
 			/>
 			{props.column.nullable && (

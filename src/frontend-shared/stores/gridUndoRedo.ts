@@ -1,4 +1,5 @@
 import type { SetStoreFunction } from 'solid-js/store'
+import { replaceRecordContents } from '../lib/store-records'
 import type { GridStoreState, PendingChanges, TabGridState } from './grid'
 
 const MAX_UNDO_STACK = 50
@@ -26,6 +27,22 @@ function captureSnapshot(tab: TabGridState): UndoSnapshot {
 	}
 }
 
+function restorePendingChanges(
+	setState: SetStoreFunction<GridStoreState>,
+	tabId: string,
+	pendingChanges: PendingChanges,
+) {
+	setState(
+		'tabs',
+		tabId,
+		'pendingChanges',
+		'cellEdits',
+		(edits) => replaceRecordContents(edits, pendingChanges.cellEdits),
+	)
+	setState('tabs', tabId, 'pendingChanges', 'newRows', pendingChanges.newRows)
+	setState('tabs', tabId, 'pendingChanges', 'deletedRows', pendingChanges.deletedRows)
+}
+
 export function createGridUndoRedoActions(
 	_state: GridStoreState,
 	setState: SetStoreFunction<GridStoreState>,
@@ -48,8 +65,9 @@ export function createGridUndoRedoActions(
 	}
 
 	function restoreSnapshot(tabId: string, snapshot: UndoSnapshot) {
+		const tab = getTab(tabId)
 		setState('tabs', tabId, 'rows', snapshot.rows.map((r) => ({ ...r })))
-		setState('tabs', tabId, 'pendingChanges', clonePendingChanges(snapshot.pendingChanges))
+		if (tab) restorePendingChanges(setState, tabId, clonePendingChanges(snapshot.pendingChanges))
 		setState('tabs', tabId, 'editingCell', null)
 	}
 

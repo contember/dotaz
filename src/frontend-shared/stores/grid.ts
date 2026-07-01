@@ -4,6 +4,7 @@ import type { ForeignKeyInfo } from '@dotaz/shared/types/database'
 import type { AutoJoinDef, ColumnFilter, GridColumnDef, SortColumn } from '@dotaz/shared/types/grid'
 import type { RowColorRule } from '@dotaz/shared/types/rpc'
 import { createStore } from 'solid-js/store'
+import { reconcileCellEdit } from '../lib/cell-edit-reconciliation'
 import {
 	type AdvancedCopyOptions,
 	buildAdvancedCopyText as libBuildAdvancedCopyText,
@@ -23,7 +24,7 @@ import { createTabHelpers } from '../lib/tab-store-helpers'
 import { connectionsStore } from './connections'
 import { createGridAutoJoinActions } from './gridAutoJoin'
 import { computePinStyles, createGridColumnActions, getOrderedColumns, getVisibleColumns } from './gridColumns'
-import { createDefaultPendingChanges, createGridEditingActions, valuesEqual } from './gridEditing'
+import { createDefaultPendingChanges, createGridEditingActions } from './gridEditing'
 import { createGridFkActions } from './gridFk'
 import { computeHeatmapColor, computeHeatmapStats, createGridHeatmapActions } from './gridHeatmap'
 import {
@@ -966,9 +967,14 @@ function deleteSelectedRows(tabId: string) {
 function setCellValueWithUndo(tabId: string, rowIndex: number, column: string, newValue: unknown) {
 	const tab = getTab(tabId)
 	if (tab) {
-		// Skip snapshot if value isn't actually changing
-		const currentValue = tab.rows[rowIndex]?.[column]
-		if (valuesEqual(currentValue, newValue)) return
+		const result = reconcileCellEdit({
+			rowIndex,
+			column,
+			currentValue: tab.rows[rowIndex]?.[column],
+			existingEdit: tab.pendingChanges.cellEdits[`${rowIndex}:${column}`],
+			newValue,
+		})
+		if (result.type === 'noop') return
 	}
 	undoRedoActions.pushSnapshot(tabId)
 	editingActions.setCellValue(tabId, rowIndex, column, newValue)

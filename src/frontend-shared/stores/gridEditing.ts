@@ -2,7 +2,9 @@ import { generateChangesPreview, generateChangeSql, serializeValueForDialect } f
 import type { GridColumnDef } from '@dotaz/shared/types/grid'
 import type { DataChange } from '@dotaz/shared/types/rpc'
 import type { SetStoreFunction } from 'solid-js/store'
+import { reconcileCellEdit, valuesEqual } from '../lib/cell-edit-reconciliation'
 import { rpc } from '../lib/rpc'
+import { replaceRecordContents } from '../lib/store-records'
 import { connectionsStore } from './connections'
 import type { CellChange, GridStoreState, PendingChanges, TabGridState } from './grid'
 import { sessionStore } from './session'
@@ -15,21 +17,28 @@ function createDefaultPendingChanges(): PendingChanges {
 	}
 }
 
-/**
- * Equality check tolerant of object identity changes — JSON columns come back from
- * the DB as parsed JS values; re-parsing user input creates a new instance with
- * the same content, which a `===` check would mis-flag as a modification.
- */
-function valuesEqual(a: unknown, b: unknown): boolean {
-	if (a === b) return true
-	if (a == null && b == null) return true
-	if (a == null || b == null) return false
-	if (typeof a !== 'object' || typeof b !== 'object') return false
-	try {
-		return JSON.stringify(a) === JSON.stringify(b)
-	} catch {
-		return false
-	}
+function replaceCellEdits(
+	setState: SetStoreFunction<GridStoreState>,
+	tabId: string,
+	cellEdits: Record<string, CellChange>,
+) {
+	setState(
+		'tabs',
+		tabId,
+		'pendingChanges',
+		'cellEdits',
+		(edits) => replaceRecordContents(edits, cellEdits),
+	)
+}
+
+function replacePendingChanges(
+	setState: SetStoreFunction<GridStoreState>,
+	tabId: string,
+	pendingChanges: PendingChanges,
+) {
+	replaceCellEdits(setState, tabId, pendingChanges.cellEdits)
+	setState('tabs', tabId, 'pendingChanges', 'newRows', pendingChanges.newRows)
+	setState('tabs', tabId, 'pendingChanges', 'deletedRows', pendingChanges.deletedRows)
 }
 
 export { createDefaultPendingChanges, valuesEqual }
@@ -57,28 +66,31 @@ export function createGridEditingActions(
 		rowIndex: number,
 		column: string,
 		newValue: unknown,
-	) {
+	): boolean {
 		const tab = ensureTab(tabId)
 		const key = `${rowIndex}:${column}`
 		const existing = tab.pendingChanges.cellEdits[key]
-		const oldValue = existing ? existing.oldValue : tab.rows[rowIndex]?.[column]
+		const result = reconcileCellEdit({
+			rowIndex,
+			column,
+			currentValue: tab.rows[rowIndex]?.[column],
+			existingEdit: existing,
+			newValue,
+		})
 
-		// If reverting to original value, remove the edit
-		if (valuesEqual(oldValue, newValue)) {
+		if (result.type === 'noop') return false
+
+		if (result.type === 'revert') {
 			const next = { ...tab.pendingChanges.cellEdits }
 			delete next[key]
-			setState('tabs', tabId, 'pendingChanges', 'cellEdits', next)
+			replaceCellEdits(setState, tabId, next)
 		} else {
-			setState('tabs', tabId, 'pendingChanges', 'cellEdits', key, {
-				rowIndex,
-				column,
-				oldValue,
-				newValue,
-			})
+			setState('tabs', tabId, 'pendingChanges', 'cellEdits', key, result.edit)
 		}
 
 		// Also update the actual row data for display
 		setState('tabs', tabId, 'rows', rowIndex, column, newValue)
+		return true
 	}
 
 	function addNewRow(tabId: string): number {
@@ -143,7 +155,7 @@ export function createGridEditingActions(
 				newEdits[`${edit.rowIndex}:${edit.column}`] = edit
 			}
 		}
-		setState('tabs', tabId, 'pendingChanges', 'cellEdits', newEdits)
+		replaceCellEdits(setState, tabId, newEdits)
 
 		// Adjust newRows
 		const newNewRows = new Set<number>()
@@ -185,7 +197,7 @@ export function createGridEditingActions(
 				for (const key of Object.keys(edits)) {
 					if (key.startsWith(`${idx}:`)) delete edits[key]
 				}
-				setState('tabs', tabId, 'pendingChanges', 'cellEdits', edits)
+				replaceCellEdits(setState, tabId, edits)
 
 				// Remove from newRows
 				const nextNew = new Set(tab.pendingChanges.newRows)
@@ -248,7 +260,7 @@ export function createGridEditingActions(
 				delete edits[key]
 			}
 		}
-		setState('tabs', tabId, 'pendingChanges', 'cellEdits', edits)
+		replaceCellEdits(setState, tabId, edits)
 	}
 
 	/** Revert a new row (undo INSERT). */
@@ -260,7 +272,7 @@ export function createGridEditingActions(
 		for (const key of Object.keys(edits)) {
 			if (key.startsWith(`${rowIndex}:`)) delete edits[key]
 		}
-		setState('tabs', tabId, 'pendingChanges', 'cellEdits', edits)
+		replaceCellEdits(setState, tabId, edits)
 
 		// Remove from newRows
 		const nextNew = new Set(tab.pendingChanges.newRows)
@@ -464,7 +476,7 @@ export function createGridEditingActions(
 		}
 
 		if (appliedDeletes.size === 0) {
-			setState('tabs', tabId, 'pendingChanges', {
+			replacePendingChanges(setState, tabId, {
 				cellEdits: remainingCellEdits,
 				newRows: remainingNewRows,
 				deletedRows: remainingDeletedRows,
@@ -501,7 +513,7 @@ export function createGridEditingActions(
 		}
 
 		setState('tabs', tabId, 'rows', newRows)
-		setState('tabs', tabId, 'pendingChanges', {
+		replacePendingChanges(setState, tabId, {
 			cellEdits: remappedCellEdits,
 			newRows: remappedNewRows,
 			deletedRows: remappedDeletedRows,
@@ -535,14 +547,14 @@ export function createGridEditingActions(
 		}
 
 		// Clear all pending changes
-		setState('tabs', tabId, 'pendingChanges', createDefaultPendingChanges())
+		replacePendingChanges(setState, tabId, createDefaultPendingChanges())
 		setState('tabs', tabId, 'editingCell', null)
 	}
 
 	/** Clear pending changes tracking without reverting cell values (used after successful apply). */
 	function clearPendingChanges(tabId: string) {
 		ensureTab(tabId)
-		setState('tabs', tabId, 'pendingChanges', createDefaultPendingChanges())
+		replacePendingChanges(setState, tabId, createDefaultPendingChanges())
 		setState('tabs', tabId, 'editingCell', null)
 	}
 

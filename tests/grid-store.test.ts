@@ -13,32 +13,43 @@ mock.module('solid-js/store', () => ({
 	createStore: (initial: any) => {
 		storeState = structuredClone(initial)
 
+		const isPlainObject = (value: any) =>
+			typeof value === 'object'
+			&& value !== null
+			&& !Array.isArray(value)
+			&& !(value instanceof Set)
+
+		const resolveValue = (current: any, value: any) => {
+			if (typeof value === 'function') {
+				const next = value(current)
+				if (isPlainObject(next) && isPlainObject(current)) return { ...current, ...next }
+				return next
+			}
+			if (isPlainObject(value) && isPlainObject(current)) return { ...current, ...value }
+			return value
+		}
+
 		const setStore = (...args: any[]) => {
 			if (args.length === 3) {
 				// setState("tabs", tabId, value) or setState("tabs", tabId, undefined)
 				const [key, subKey, value] = args
 				if (value === undefined) {
 					delete storeState[key][subKey]
-				} else if (typeof value === 'object' && value !== null && !(value instanceof Set)) {
-					// Merge object into existing
-					storeState[key][subKey] = { ...storeState[key]?.[subKey], ...value }
 				} else {
 					if (!storeState[key]) storeState[key] = {}
-					storeState[key][subKey] = value
+					storeState[key][subKey] = resolveValue(storeState[key][subKey], value)
 				}
 			} else if (args.length === 4) {
 				// setState("tabs", tabId, "field", value)
 				const [key, subKey, field, value] = args
-				if (typeof value === 'function') {
-					storeState[key][subKey][field] = value(storeState[key][subKey][field])
-				} else {
-					storeState[key][subKey][field] = value
-				}
+				if (value === undefined) delete storeState[key][subKey][field]
+				else storeState[key][subKey][field] = resolveValue(storeState[key][subKey][field], value)
 			} else if (args.length === 5) {
 				// setState("tabs", tabId, "nested", "subField", value)
 				const [key, subKey, field, subField, value] = args
 				if (!storeState[key][subKey][field]) storeState[key][subKey][field] = {}
-				storeState[key][subKey][field][subField] = value
+				if (value === undefined) delete storeState[key][subKey][field][subField]
+				else storeState[key][subKey][field][subField] = resolveValue(storeState[key][subKey][field][subField], value)
 			} else if (args.length === 6) {
 				// setState("tabs", tabId, "nested", index/key, "subField", value)
 				const [key, subKey, field, index, subField, value] = args
@@ -47,7 +58,8 @@ mock.module('solid-js/store', () => ({
 					storeState[key][subKey][field][index] = {}
 				}
 				if (typeof storeState[key][subKey][field][index] === 'object' && storeState[key][subKey][field][index] !== null) {
-					storeState[key][subKey][field][index][subField] = value
+					if (value === undefined) delete storeState[key][subKey][field][index][subField]
+					else storeState[key][subKey][field][index][subField] = resolveValue(storeState[key][subKey][field][index][subField], value)
 				}
 			}
 		}
@@ -703,6 +715,54 @@ describe('grid store', () => {
 			expect(tab.rows[0].name).toBeNull()
 			expect(gridStore.isCellChanged('tab-1', 0, 'name')).toBe(false)
 			expect(gridStore.hasPendingChanges('tab-1')).toBe(false)
+		})
+
+		test('setCellValue clears pending edit even when the displayed value already matches', async () => {
+			mockQueryExecute.mockImplementation((params: { sql: string }) => {
+				if (params.sql.trimStart().toUpperCase().startsWith('SELECT COUNT(')) {
+					return Promise.resolve(makeQueryResult([{ count: 1 }]))
+				}
+				return Promise.resolve(makeQueryResult([{ id: 1, name: null }]))
+			})
+			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
+
+			gridStore.setCellValue('tab-1', 0, 'name', 1)
+			expect(gridStore.isCellChanged('tab-1', 0, 'name')).toBe(true)
+
+			// Regression fixture: the row display can already be NULL while the
+			// pending ledger still contains the previous edit.
+			storeState.tabs['tab-1'].rows[0].name = null
+
+			gridStore.setCellValue('tab-1', 0, 'name', null)
+
+			expect(gridStore.getTab('tab-1')!.rows[0].name).toBeNull()
+			expect(gridStore.isCellChanged('tab-1', 0, 'name')).toBe(false)
+			expect(gridStore.hasPendingChanges('tab-1')).toBe(false)
+		})
+
+		test('setCellValue ignores saving the same pending value again', async () => {
+			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
+
+			gridStore.setCellValue('tab-1', 0, 'name', 'Updated')
+			const tabAfterFirstEdit = gridStore.getTab('tab-1')!
+			expect(tabAfterFirstEdit.undoStack).toHaveLength(1)
+			expect(tabAfterFirstEdit.pendingChanges.cellEdits['0:name']).toEqual({
+				rowIndex: 0,
+				column: 'name',
+				oldValue: 'Alice',
+				newValue: 'Updated',
+			})
+
+			gridStore.setCellValue('tab-1', 0, 'name', 'Updated')
+
+			const tabAfterSameEdit = gridStore.getTab('tab-1')!
+			expect(tabAfterSameEdit.undoStack).toHaveLength(1)
+			expect(tabAfterSameEdit.pendingChanges.cellEdits['0:name']).toEqual({
+				rowIndex: 0,
+				column: 'name',
+				oldValue: 'Alice',
+				newValue: 'Updated',
+			})
 		})
 
 		test('isCellChanged returns correct state', async () => {
