@@ -1,0 +1,215 @@
+.connection-inspector-dialog {
+	width: min(980px, calc(100vw - 48px));
+	max-width: none;
+}
+
+.connection-inspector-dialog .dialog__body {
+	padding: 0;
+}
+
+.connection-inspector {
+	display: flex;
+	flex-direction: column;
+	min-height: 260px;
+	max-height: min(680px, calc(100vh - 140px));
+	color: var(--ink);
+}
+
+.connection-inspector__toolbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--spacing-md);
+	padding: var(--spacing-sm) var(--spacing-md);
+	border-bottom: 1px solid var(--edge);
+	background: var(--surface-raised);
+	flex-shrink: 0;
+}
+
+.connection-inspector__metrics {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-lg);
+	color: var(--ink-secondary);
+	font-size: var(--font-size-sm);
+	min-width: 0;
+}
+
+.connection-inspector__metrics strong {
+	color: var(--ink);
+	font-family: var(--font-mono);
+	font-weight: 600;
+}
+
+.connection-inspector__icon-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	border: 1px solid var(--edge);
+	border-radius: var(--radius-sm);
+	background: transparent;
+	color: var(--ink-secondary);
+	cursor: pointer;
+	flex-shrink: 0;
+}
+
+.connection-inspector__icon-btn:hover:not(:disabled) {
+	background: var(--surface-hover);
+	color: var(--ink);
+}
+
+.connection-inspector__icon-btn:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+.connection-inspector__icon-btn--danger:hover:not(:disabled) {
+	border-color: rgba(239, 68, 68, 0.45);
+	background: rgba(239, 68, 68, 0.12);
+	color: var(--error);
+}
+
+.connection-inspector__error {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-sm);
+	padding: var(--spacing-sm) var(--spacing-md);
+	border-bottom: 1px solid var(--edge);
+	color: var(--error);
+	font-size: var(--font-size-sm);
+	background: rgba(239, 68, 68, 0.08);
+}
+
+.connection-inspector__empty {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--spacing-sm);
+	min-height: 220px;
+	color: var(--ink-muted);
+	font-size: var(--font-size-sm);
+}
+
+.connection-inspector__table-wrap {
+	overflow: auto;
+	min-height: 0;
+}
+
+.connection-inspector__table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: var(--font-size-sm);
+}
+
+.connection-inspector__table th,
+.connection-inspector__table td {
+	padding: 7px var(--spacing-sm);
+	border-bottom: 1px solid var(--edge);
+	text-align: left;
+	vertical-align: middle;
+	white-space: nowrap;
+}
+
+.connection-inspector__table th {
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	background: var(--surface-overlay);
+	color: var(--ink-muted);
+	font-weight: 600;
+}
+
+.connection-inspector__table tbody tr:hover {
+	background: var(--surface-hover);
+}
+
+.connection-inspector__connection {
+	max-width: 180px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: var(--ink);
+}
+
+.connection-inspector__database {
+	max-width: 220px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: var(--ink-secondary);
+}
+
+.connection-inspector__handle {
+	display: inline-block;
+	max-width: 110px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	vertical-align: middle;
+	color: var(--ink);
+	font-family: var(--font-mono);
+	font-size: var(--font-size-xs);
+	background: var(--surface-inset);
+	border: 1px solid var(--edge);
+	border-radius: var(--radius-sm);
+	padding: 2px 5px;
+}
+
+.connection-inspector__session-label {
+	margin-left: var(--spacing-xs);
+	color: var(--ink-muted);
+	font-size: var(--font-size-xs);
+}
+
+.connection-inspector__state {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 54px;
+	height: 20px;
+	padding: 0 6px;
+	border: 1px solid var(--edge);
+	border-radius: var(--radius-sm);
+	font-family: var(--font-mono);
+	font-size: 10px;
+	line-height: 18px;
+}
+
+.connection-inspector__state--idle {
+	color: var(--ink-secondary);
+	background: var(--surface-inset);
+}
+
+.connection-inspector__state--active {
+	color: var(--info);
+	background: rgba(96, 165, 250, 0.10);
+	border-color: rgba(96, 165, 250, 0.25);
+}
+
+.connection-inspector__state--transaction {
+	color: var(--warning);
+	background: rgba(245, 158, 11, 0.10);
+	border-color: rgba(245, 158, 11, 0.30);
+}
+
+.connection-inspector__number,
+.connection-inspector__time {
+	color: var(--ink-secondary);
+	font-family: var(--font-mono);
+	font-size: var(--font-size-xs);
+}
+
+.connection-inspector__actions {
+	width: 34px;
+	text-align: right;
+}
+
+@media (max-width: 760px) {
+	.connection-inspector-dialog {
+		width: calc(100vw - 24px);
+	}
+
+	.connection-inspector__metrics {
+		gap: var(--spacing-sm);
+		flex-wrap: wrap;
+	}
+}

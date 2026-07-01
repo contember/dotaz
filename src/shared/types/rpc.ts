@@ -1,3 +1,4 @@
+import type { ConnectionType } from './connection'
 import type { ColumnFilter, FilterOperator, SortColumn } from './grid'
 
 // ---- Session types ----
@@ -10,6 +11,41 @@ export interface SessionInfo {
 	inTransaction: boolean
 	txAborted: boolean
 	createdAt: number
+}
+
+// ---- Open connection handle diagnostics ----
+
+export type ConnectionHandleRole =
+	| 'system'
+	| 'idle'
+	| 'temporary'
+	| 'session'
+	| 'default-transaction'
+	| 'sqlite-main'
+	| 'sqlite-iterate'
+
+export type ConnectionHandleState = 'idle' | 'active' | 'transaction'
+
+export interface DriverConnectionHandleInfo {
+	handleId: string
+	role: ConnectionHandleRole
+	state: ConnectionHandleState
+	label?: string
+	sessionId?: string
+	createdAt: number
+	lastUsedAt: number
+	activeQueryCount: number
+	inTransaction: boolean
+	txAborted: boolean
+	iterating: boolean
+	canTerminate: boolean
+}
+
+export interface ConnectionHandleInfo extends DriverConnectionHandleInfo {
+	connectionId: string
+	connectionName: string
+	database: string
+	driverType: ConnectionType
 }
 
 // ---- Domain types used by handlers and adapters ----

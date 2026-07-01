@@ -70,6 +70,12 @@ export function createHandlers(adapter: RpcAdapter) {
 		'connections.disconnect': async ({ connectionId }: { connectionId: string }) => {
 			await adapter.disconnect(connectionId)
 		},
+		'connections.listOpenHandles': () => {
+			return adapter.listConnectionHandles()
+		},
+		'connections.terminateHandle': async ({ connectionId, database, handleId }: { connectionId: string; database?: string; handleId: string }) => {
+			await adapter.terminateConnectionHandle(connectionId, database, handleId)
+		},
 
 		// ── Sessions ─────────────────────────────────────
 		'session.create': async ({ connectionId, database }: { connectionId: string; database?: string }) => {

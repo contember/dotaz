@@ -1,6 +1,7 @@
-import type { ConnectionConfig } from '@dotaz/shared/types/connection'
+import type { ConnectionConfig, ConnectionType } from '@dotaz/shared/types/connection'
 import type { SchemaData } from '@dotaz/shared/types/database'
 import type { QueryResult } from '@dotaz/shared/types/query'
+import type { DriverConnectionHandleInfo } from '@dotaz/shared/types/rpc'
 import type { DatabaseDriver } from './driver'
 
 /**
@@ -27,10 +28,10 @@ export class LoggingDriver implements DatabaseDriver {
 		}
 	}
 
-	async execute(sql: string, params?: unknown[], sessionId?: string): Promise<QueryResult> {
+	async execute(sql: string, params?: unknown[], sessionId?: string, poolQueryKey?: symbol): Promise<QueryResult> {
 		const start = performance.now()
 		try {
-			const result = await this.inner.execute(sql, params, sessionId)
+			const result = await this.inner.execute(sql, params, sessionId, poolQueryKey)
 			this.log(sql, params, Math.round(performance.now() - start))
 			return result
 		} catch (err) {
@@ -87,8 +88,8 @@ export class LoggingDriver implements DatabaseDriver {
 	getSessionIds(): string[] {
 		return this.inner.getSessionIds()
 	}
-	cancel(sessionId?: string): Promise<void> {
-		return this.inner.cancel(sessionId)
+	cancel(sessionId?: string, poolQueryKey?: symbol): Promise<void> {
+		return this.inner.cancel(sessionId, poolQueryKey)
 	}
 	ping(): Promise<void> {
 		return this.inner.ping()
@@ -124,8 +125,14 @@ export class LoggingDriver implements DatabaseDriver {
 	isIterating(sessionId?: string): boolean {
 		return this.inner.isIterating(sessionId)
 	}
-	getDriverType(): 'postgresql' | 'sqlite' | 'mysql' {
-		return (this.inner as any).getDriverType()
+	getDriverType(): ConnectionType {
+		return this.inner.getDriverType()
+	}
+	listConnectionHandles(): DriverConnectionHandleInfo[] {
+		return this.inner.listConnectionHandles()
+	}
+	terminateConnectionHandle(handleId: string): Promise<void> {
+		return this.inner.terminateConnectionHandle(handleId)
 	}
 	quoteIdentifier(name: string): string {
 		return this.inner.quoteIdentifier(name)

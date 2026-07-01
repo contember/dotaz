@@ -7,7 +7,7 @@ import { importFromStream, importPreviewFromStream } from '@dotaz/backend-shared
 import { searchDatabase } from '@dotaz/backend-shared/services/search-service'
 import { formatSql } from '@dotaz/backend-shared/services/sql-formatter'
 import { splitStatements } from '@dotaz/shared/sql/statements'
-import type { ConnectionConfig, ConnectionInfo } from '@dotaz/shared/types/connection'
+import { type ConnectionConfig, type ConnectionInfo, getDefaultDatabase } from '@dotaz/shared/types/connection'
 import type { DatabaseInfo } from '@dotaz/shared/types/database'
 import type { ExportOptions, ExportPreviewRequest, ExportRawPreviewRequest, ExportRawPreviewResponse, ExportResult } from '@dotaz/shared/types/export'
 import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from '@dotaz/shared/types/import'
@@ -15,6 +15,7 @@ import type { ExplainNode, ExplainResult, QueryHistoryEntry, QueryHistoryStatus,
 import type {
 	AiGenerateSqlParams,
 	AiGenerateSqlResult,
+	ConnectionHandleInfo,
 	HistoryListParams,
 	QueryBookmark,
 	SavedView,
@@ -121,6 +122,28 @@ export class DemoAdapter implements RpcAdapter {
 			connectionId,
 			state: 'disconnected',
 		})
+	}
+
+	listConnectionHandles(): ConnectionHandleInfo[] {
+		const handles: ConnectionHandleInfo[] = []
+		for (const connection of this.state.listConnections()) {
+			if (!this.connectedSet.has(connection.id)) continue
+			for (const handle of this.driver.listConnectionHandles()) {
+				handles.push({
+					...handle,
+					connectionId: connection.id,
+					connectionName: connection.name,
+					database: getDefaultDatabase(connection.config),
+					driverType: this.driver.getDriverType(),
+				})
+			}
+		}
+		return handles
+	}
+
+	async terminateConnectionHandle(connectionId: string, _database: string | undefined, handleId: string): Promise<void> {
+		const driver = this.getConnectedDriver(connectionId)
+		await driver.terminateConnectionHandle(handleId)
 	}
 
 	// ── Sessions (no-op in demo — single WASM connection) ──

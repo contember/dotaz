@@ -11,6 +11,7 @@ import type {
 	TableInfo,
 } from '@dotaz/shared/types/database'
 import type { QueryResult, QueryResultColumn } from '@dotaz/shared/types/query'
+import type { DriverConnectionHandleInfo } from '@dotaz/shared/types/rpc'
 
 /** Map SQLite type affinity strings to DatabaseDataType. */
 function mapWasmSqliteDataType(type: string): DatabaseDataType {
@@ -38,6 +39,9 @@ export class WasmSqliteDriver implements DatabaseDriver {
 	private connected = false
 	private txActive = false
 	private sessionIds = new Set<string>()
+	private handleId = 'wasm-sqlite-1'
+	private handleCreatedAt = Date.now()
+	private handleLastUsedAt = this.handleCreatedAt
 
 	constructor(private db: any) {
 		this.connected = true
@@ -72,6 +76,7 @@ export class WasmSqliteDriver implements DatabaseDriver {
 
 	async execute(sql: string, params?: unknown[], _sessionId?: string): Promise<QueryResult> {
 		this.ensureConnected()
+		this.markUsed()
 		const start = performance.now()
 
 		try {
@@ -114,11 +119,13 @@ export class WasmSqliteDriver implements DatabaseDriver {
 
 	async ping(): Promise<void> {
 		this.ensureConnected()
+		this.markUsed()
 		this.db.exec('SELECT 1')
 	}
 
 	async loadSchema(_sessionId?: string): Promise<SchemaData> {
 		this.ensureConnected()
+		this.markUsed()
 
 		const schemas = await this.getSchemas()
 		const schemaName = schemas[0].name
@@ -275,6 +282,7 @@ export class WasmSqliteDriver implements DatabaseDriver {
 		_sessionId?: string,
 	): AsyncGenerator<Record<string, unknown>[]> {
 		this.ensureConnected()
+		this.markUsed()
 		let offset = 0
 		while (true) {
 			if (signal?.aborted) {
@@ -321,18 +329,21 @@ export class WasmSqliteDriver implements DatabaseDriver {
 
 	async beginTransaction(_sessionId?: string): Promise<void> {
 		this.ensureConnected()
+		this.markUsed()
 		this.db.exec('BEGIN')
 		this.txActive = true
 	}
 
 	async commit(_sessionId?: string): Promise<void> {
 		this.ensureConnected()
+		this.markUsed()
 		this.db.exec('COMMIT')
 		this.txActive = false
 	}
 
 	async rollback(_sessionId?: string): Promise<void> {
 		this.ensureConnected()
+		this.markUsed()
 		this.db.exec('ROLLBACK')
 		this.txActive = false
 	}
@@ -351,6 +362,30 @@ export class WasmSqliteDriver implements DatabaseDriver {
 
 	getDriverType(): 'postgresql' | 'sqlite' {
 		return 'sqlite'
+	}
+
+	listConnectionHandles(): DriverConnectionHandleInfo[] {
+		if (!this.connected) return []
+		return [{
+			handleId: this.handleId,
+			role: 'sqlite-main',
+			state: this.txActive ? 'transaction' : 'idle',
+			label: 'WASM SQLite',
+			createdAt: this.handleCreatedAt,
+			lastUsedAt: this.handleLastUsedAt,
+			activeQueryCount: 0,
+			inTransaction: this.txActive,
+			txAborted: false,
+			iterating: false,
+			canTerminate: false,
+		}]
+	}
+
+	async terminateConnectionHandle(handleId: string): Promise<void> {
+		if (handleId !== this.handleId) {
+			throw new Error(`Connection handle not found: ${handleId}`)
+		}
+		throw new Error('WASM SQLite handle cannot be terminated in demo mode')
 	}
 
 	quoteIdentifier(name: string): string {
@@ -374,5 +409,9 @@ export class WasmSqliteDriver implements DatabaseDriver {
 		if (!this.connected) {
 			throw new Error('Not connected. Call connect() first.')
 		}
+	}
+
+	private markUsed(): void {
+		this.handleLastUsedAt = Date.now()
 	}
 }

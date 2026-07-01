@@ -41,6 +41,8 @@ function createMockDriver() {
 		beginTransaction: async () => {},
 		commit: async () => {},
 		getDriverType: () => 'postgresql' as const,
+		listConnectionHandles: () => [],
+		terminateConnectionHandle: async () => {},
 	}
 }
 

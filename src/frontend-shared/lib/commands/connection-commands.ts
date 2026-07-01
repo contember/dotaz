@@ -57,4 +57,11 @@ export function registerConnectionCommands(actions: AppCommandActions): void {
 			actions.setModal({ type: 'search', connId: conn?.id })
 		},
 	})
+
+	commandRegistry.register({
+		id: 'open-connection-inspector',
+		label: 'Inspect Open Connections',
+		category: 'Connection',
+		handler: () => actions.setModal({ type: 'connection-inspector' }),
+	})
 }

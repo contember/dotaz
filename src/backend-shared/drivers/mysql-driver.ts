@@ -3,8 +3,9 @@ import { DatabaseDataType } from '@dotaz/shared/types/database'
 import type { SchemaData, SchemaInfo, TableInfo } from '@dotaz/shared/types/database'
 import { DatabaseError } from '@dotaz/shared/types/errors'
 import type { QueryResult, QueryResultColumn } from '@dotaz/shared/types/query'
+import type { DriverConnectionHandleInfo } from '@dotaz/shared/types/rpc'
 import type { SQL } from 'bun'
-import { ConnectionPool } from '../db/connection-pool'
+import { ConnectionPool, type PoolConnectionSnapshot } from '../db/connection-pool'
 import type { DatabaseDriver } from '../db/driver'
 import { mapMysqlError } from '../db/error-mapping'
 import { getAffectedRowCount } from '../db/result-utils'
@@ -68,6 +69,11 @@ interface SessionState {
 	txActive: boolean
 	iterating: boolean
 	activeQueries: Set<ReturnType<SQL['unsafe']>>
+}
+
+interface SessionEntry {
+	sessionId: string
+	session: SessionState
 }
 
 /** Internal session ID used for backward-compatible beginTransaction() without sessionId */
@@ -195,6 +201,9 @@ export class MysqlDriver implements DatabaseDriver {
 		if (!session) return // idempotent — already released or never existed
 		this.sessions.delete(sessionId)
 		await safeCloseConnection(session.conn, { rollback: true })
+		if (this.pool) {
+			await this.pool.destroyConnection(session.conn)
+		}
 	}
 
 	getSessionIds(): string[] {
@@ -644,6 +653,25 @@ export class MysqlDriver implements DatabaseDriver {
 		return 'mysql'
 	}
 
+	listConnectionHandles(): DriverConnectionHandleInfo[] {
+		if (!this.pool) return []
+		return this.pool.snapshot().map((snapshot) => this.describePoolConnection(snapshot))
+	}
+
+	async terminateConnectionHandle(handleId: string): Promise<void> {
+		this.ensureConnected()
+		const sessionEntry = this.findSessionByHandleId(handleId)
+		if (sessionEntry) {
+			await this.cancel(sessionEntry.sessionId)
+			await this.releaseSession(sessionEntry.sessionId)
+			return
+		}
+		const terminated = await this.pool!.terminateConnection(handleId)
+		if (!terminated) {
+			throw new Error(`Connection handle not found: ${handleId}`)
+		}
+	}
+
 	quoteIdentifier(name: string): string {
 		return `\`${name.replace(/`/g, '``')}\``
 	}
@@ -664,6 +692,59 @@ export class MysqlDriver implements DatabaseDriver {
 		if (!this.pool || !this.connected) {
 			throw new Error('Not connected. Call connect() first.')
 		}
+	}
+
+	private describePoolConnection(snapshot: PoolConnectionSnapshot): DriverConnectionHandleInfo {
+		const sessionEntry = this.findSessionByHandleId(snapshot.handleId)
+		if (sessionEntry) {
+			const session = sessionEntry.session
+			const isDefaultSession = sessionEntry.sessionId === DEFAULT_SESSION
+			const state: DriverConnectionHandleInfo['state'] = session.txActive
+				? 'transaction'
+				: (session.iterating || session.activeQueries.size > 0 ? 'active' : 'idle')
+			return {
+				handleId: snapshot.handleId,
+				role: isDefaultSession ? 'default-transaction' : 'session',
+				state,
+				label: isDefaultSession ? 'Default transaction' : undefined,
+				sessionId: isDefaultSession ? undefined : sessionEntry.sessionId,
+				createdAt: snapshot.createdAt,
+				lastUsedAt: snapshot.lastUsedAt,
+				activeQueryCount: session.activeQueries.size,
+				inTransaction: session.txActive,
+				txAborted: false,
+				iterating: session.iterating,
+				canTerminate: true,
+			}
+		}
+
+		const role: DriverConnectionHandleInfo['role'] = snapshot.role === 'system'
+			? 'system'
+			: (snapshot.role === 'idle' ? 'idle' : 'temporary')
+		const activeQueryCount = snapshot.role === 'system' ? this.poolActiveQueries.size : 0
+		const state: DriverConnectionHandleInfo['state'] = activeQueryCount > 0 || snapshot.role === 'leased' ? 'active' : 'idle'
+		return {
+			handleId: snapshot.handleId,
+			role,
+			state,
+			createdAt: snapshot.createdAt,
+			lastUsedAt: snapshot.lastUsedAt,
+			activeQueryCount,
+			inTransaction: false,
+			txAborted: false,
+			iterating: snapshot.role === 'leased',
+			canTerminate: true,
+		}
+	}
+
+	private findSessionByHandleId(handleId: string): SessionEntry | undefined {
+		if (!this.pool) return undefined
+		for (const [sessionId, session] of this.sessions) {
+			if (this.pool.getConnectionId(session.conn) === handleId) {
+				return { sessionId, session }
+			}
+		}
+		return undefined
 	}
 
 	private resolveSession(sessionId?: string): SessionState | undefined {

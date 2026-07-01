@@ -2,6 +2,7 @@ import type { SqlDialect } from '@dotaz/shared/sql/dialect'
 import type { ConnectionConfig } from '@dotaz/shared/types/connection'
 import type { SchemaData } from '@dotaz/shared/types/database'
 import type { QueryResult } from '@dotaz/shared/types/query'
+import type { DriverConnectionHandleInfo } from '@dotaz/shared/types/rpc'
 
 export interface DatabaseDriver extends SqlDialect {
 	// Lifecycle
@@ -48,4 +49,8 @@ export interface DatabaseDriver extends SqlDialect {
 	inTransaction(sessionId?: string): boolean
 	isTxAborted(sessionId?: string): boolean
 	isIterating(sessionId?: string): boolean
+
+	// Diagnostics
+	listConnectionHandles(): DriverConnectionHandleInfo[]
+	terminateConnectionHandle(handleId: string): Promise<void>
 }

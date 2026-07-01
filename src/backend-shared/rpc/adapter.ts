@@ -6,6 +6,7 @@ import type { QueryHistoryEntry, QueryResult } from '@dotaz/shared/types/query'
 import type {
 	AiGenerateSqlParams,
 	AiGenerateSqlResult,
+	ConnectionHandleInfo,
 	HistoryListParams,
 	OpenDialogParams,
 	QueryBookmark,
@@ -40,6 +41,8 @@ export interface RpcAdapter {
 		params?: { config?: ConnectionConfig; encryptedSecrets?: string; name?: string; encryptedConfig?: string },
 	): Promise<void>
 	disconnect(connectionId: string): Promise<void>
+	listConnectionHandles(): ConnectionHandleInfo[]
+	terminateConnectionHandle(connectionId: string, database: string | undefined, handleId: string): Promise<void>
 
 	// ── Sessions ──────────────────────────────────────────
 	createSession(connectionId: string, database?: string): Promise<SessionInfo>

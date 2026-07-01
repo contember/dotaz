@@ -12,6 +12,7 @@ import type {
 } from '@dotaz/shared/types/database'
 import { DatabaseError } from '@dotaz/shared/types/errors'
 import type { QueryResult, QueryResultColumn } from '@dotaz/shared/types/query'
+import type { DriverConnectionHandleInfo } from '@dotaz/shared/types/rpc'
 import { SQL } from 'bun'
 import type { DatabaseDriver } from '../db/driver'
 import { mapSqliteError } from '../db/error-mapping'
@@ -82,8 +83,16 @@ export class SqliteDriver implements DatabaseDriver {
 	private iterating = false
 	/** Separate read-only connection used by iterate() so it doesn't block the main connection. */
 	private iterateDb: SQL | null = null
+	private iterateActive = false
 	/** Optional setup SQL re-applied to every physical connection (main + iterate). */
 	private initSql: string | null = null
+	private mainHandleId: string | null = null
+	private mainCreatedAt = 0
+	private mainLastUsedAt = 0
+	private iterateHandleId: string | null = null
+	private iterateCreatedAt = 0
+	private iterateLastUsedAt = 0
+	private nextHandleNumber = 1
 
 	async connect(config: ConnectionConfig): Promise<void> {
 		if (config.type !== 'sqlite') {
@@ -93,6 +102,7 @@ export class SqliteDriver implements DatabaseDriver {
 		try {
 			this.db = new SQL(`sqlite:${config.path}`)
 			this.dbPath = config.path
+			this.resetMainHandle()
 			await this.db.unsafe('PRAGMA journal_mode = WAL')
 			await this.db.unsafe('PRAGMA foreign_keys = ON')
 			this.initSql = initSql
@@ -108,6 +118,9 @@ export class SqliteDriver implements DatabaseDriver {
 			this.db = null
 			this.dbPath = null
 			this.initSql = null
+			this.mainHandleId = null
+			this.mainCreatedAt = 0
+			this.mainLastUsedAt = 0
 			throw err instanceof DatabaseError ? err : mapSqliteError(err)
 		}
 		this.connected = true
@@ -120,12 +133,19 @@ export class SqliteDriver implements DatabaseDriver {
 				await this.iterateDb.close()
 			} catch { /* best effort */ }
 			this.iterateDb = null
+			this.iterateHandleId = null
+			this.iterateCreatedAt = 0
+			this.iterateLastUsedAt = 0
+			this.iterateActive = false
 		}
 		if (this.db) {
 			await this.db.close()
 			this.db = null
 			this.dbPath = null
 			this.initSql = null
+			this.mainHandleId = null
+			this.mainCreatedAt = 0
+			this.mainLastUsedAt = 0
 			this.txActive = false
 			this.txOwnerSession = null
 			this.sessionIds.clear()
@@ -158,6 +178,7 @@ export class SqliteDriver implements DatabaseDriver {
 	async execute(sql: string, params?: unknown[], sessionId?: string): Promise<QueryResult> {
 		this.ensureConnected()
 		this.ensureSessionCanExecute(sessionId)
+		this.markMainUsed()
 		const start = performance.now()
 		try {
 			const result = await this.db!.unsafe(sql, params ?? [])
@@ -200,6 +221,7 @@ export class SqliteDriver implements DatabaseDriver {
 
 	async loadSchema(_sessionId?: string): Promise<SchemaData> {
 		this.ensureConnected()
+		this.markMainUsed()
 
 		const schemas = await this.getSchemas()
 		const schemaName = schemas[0].name
@@ -345,6 +367,7 @@ export class SqliteDriver implements DatabaseDriver {
 
 	async ping(): Promise<void> {
 		this.ensureConnected()
+		this.markMainUsed()
 		await this.db!.unsafe('SELECT 1')
 	}
 
@@ -363,11 +386,15 @@ export class SqliteDriver implements DatabaseDriver {
 		const useMainConn = this.dbPath === ':memory:'
 		const readConn = useMainConn ? this.db! : await this.getIterateDb()
 		if (useMainConn) {
+			this.markMainUsed()
 			this.ensureSessionCanExecute(sessionId)
 			if (this.txActive) throw new Error('Cannot iterate with an active transaction')
 			this.txActive = true
 			this.txOwnerSession = sessionId ?? null
 			this.iterating = true
+		} else {
+			this.iterateActive = true
+			this.markIterateUsed()
 		}
 		await readConn.unsafe('BEGIN')
 		let committed = false
@@ -402,6 +429,9 @@ export class SqliteDriver implements DatabaseDriver {
 				this.iterating = false
 				this.txActive = false
 				this.txOwnerSession = null
+			} else {
+				this.iterateActive = false
+				this.markIterateUsed()
 			}
 		}
 	}
@@ -419,6 +449,7 @@ export class SqliteDriver implements DatabaseDriver {
 				throw err instanceof DatabaseError ? err : mapSqliteError(err)
 			}
 			this.iterateDb = conn
+			this.resetIterateHandle()
 		}
 		return this.iterateDb
 	}
@@ -463,6 +494,7 @@ export class SqliteDriver implements DatabaseDriver {
 
 	async beginTransaction(sessionId?: string): Promise<void> {
 		this.ensureConnected()
+		this.markMainUsed()
 		if (this.txActive) {
 			throw new Error(
 				sessionId && this.txOwnerSession !== sessionId
@@ -479,6 +511,7 @@ export class SqliteDriver implements DatabaseDriver {
 		this.ensureConnected()
 		this.ensureSessionOwnsTx(sessionId)
 		if (this.iterating) throw new Error('Cannot commit during active iteration')
+		this.markMainUsed()
 		await this.db!.unsafe('COMMIT')
 		this.txActive = false
 		this.txOwnerSession = null
@@ -488,6 +521,7 @@ export class SqliteDriver implements DatabaseDriver {
 		this.ensureConnected()
 		this.ensureSessionOwnsTx(sessionId)
 		if (this.iterating) throw new Error('Cannot rollback during active iteration')
+		this.markMainUsed()
 		try {
 			await this.db!.unsafe('ROLLBACK')
 		} finally {
@@ -513,6 +547,62 @@ export class SqliteDriver implements DatabaseDriver {
 
 	getDriverType(): 'sqlite' {
 		return 'sqlite'
+	}
+
+	listConnectionHandles(): DriverConnectionHandleInfo[] {
+		if (!this.connected || !this.db || !this.mainHandleId) return []
+		const mainState: DriverConnectionHandleInfo['state'] = this.txActive
+			? 'transaction'
+			: (this.iterating ? 'active' : 'idle')
+		const handles: DriverConnectionHandleInfo[] = [{
+			handleId: this.mainHandleId,
+			role: 'sqlite-main',
+			state: mainState,
+			createdAt: this.mainCreatedAt,
+			lastUsedAt: this.mainLastUsedAt,
+			activeQueryCount: 0,
+			inTransaction: this.txActive,
+			txAborted: false,
+			iterating: this.iterating,
+			canTerminate: true,
+		}]
+
+		if (this.iterateDb && this.iterateHandleId) {
+			handles.push({
+				handleId: this.iterateHandleId,
+				role: 'sqlite-iterate',
+				state: this.iterateActive ? 'active' : 'idle',
+				createdAt: this.iterateCreatedAt,
+				lastUsedAt: this.iterateLastUsedAt,
+				activeQueryCount: this.iterateActive ? 1 : 0,
+				inTransaction: this.iterateActive,
+				txAborted: false,
+				iterating: this.iterateActive,
+				canTerminate: true,
+			})
+		}
+
+		return handles
+	}
+
+	async terminateConnectionHandle(handleId: string): Promise<void> {
+		this.ensureConnected()
+		if (this.mainHandleId === handleId) {
+			await this.reopenMainConnection()
+			return
+		}
+		if (this.iterateHandleId === handleId && this.iterateDb) {
+			try {
+				await this.iterateDb.close()
+			} catch { /* already dead */ }
+			this.iterateDb = null
+			this.iterateHandleId = null
+			this.iterateCreatedAt = 0
+			this.iterateLastUsedAt = 0
+			this.iterateActive = false
+			return
+		}
+		throw new Error(`Connection handle not found: ${handleId}`)
 	}
 
 	quoteIdentifier(name: string): string {
@@ -572,5 +662,59 @@ export class SqliteDriver implements DatabaseDriver {
 		if (!this.db || !this.connected) {
 			throw new Error('Not connected. Call connect() first.')
 		}
+	}
+
+	private async reopenMainConnection(): Promise<void> {
+		const dbPath = this.dbPath
+		if (!dbPath) throw new Error('SQLite path is not available')
+		if (this.db) {
+			try {
+				await this.db.close()
+			} catch { /* already dead */ }
+		}
+		const conn = new SQL(`sqlite:${dbPath}`)
+		try {
+			await conn.unsafe('PRAGMA journal_mode = WAL')
+			await conn.unsafe('PRAGMA foreign_keys = ON')
+			await this.applyInitSql(conn)
+		} catch (err) {
+			try {
+				await conn.close()
+			} catch { /* already dead */ }
+			throw err instanceof DatabaseError ? err : mapSqliteError(err)
+		}
+		this.db = conn
+		this.txActive = false
+		this.txOwnerSession = null
+		this.iterating = false
+		this.resetMainHandle()
+	}
+
+	private resetMainHandle(): void {
+		const now = Date.now()
+		this.mainHandleId = this.createHandleId()
+		this.mainCreatedAt = now
+		this.mainLastUsedAt = now
+	}
+
+	private resetIterateHandle(): void {
+		const now = Date.now()
+		this.iterateHandleId = this.createHandleId()
+		this.iterateCreatedAt = now
+		this.iterateLastUsedAt = now
+	}
+
+	private createHandleId(): string {
+		const id = `sqlite-${this.nextHandleNumber}`
+		this.nextHandleNumber += 1
+		return id
+	}
+
+	private markMainUsed(): void {
+		this.mainLastUsedAt = Date.now()
+	}
+
+	private markIterateUsed(): void {
+		this.iterateLastUsedAt = Date.now()
 	}
 }

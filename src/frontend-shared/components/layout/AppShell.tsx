@@ -40,6 +40,7 @@ import ConnectionDialog from '../connection/ConnectionDialog'
 import ConnectionTree from '../connection/ConnectionTree'
 import DatabasePicker from '../connection/DatabasePicker'
 import PasswordDialog from '../connection/PasswordDialog'
+import ConnectionInspectorDialog from '../diagnostics/ConnectionInspectorDialog'
 import RowDetailTab from '../edit/RowDetailTab'
 import AiPrompt from '../editor/AiPrompt'
 import DestructiveQueryDialog from '../editor/DestructiveQueryDialog'
@@ -89,6 +90,7 @@ type AppModal =
 	| { type: 'tx-warning'; tabId: string; context: 'close' | 'disconnect'; connId: string }
 	| { type: 'keyboard-shortcuts' }
 	| { type: 'demo-warning' }
+	| { type: 'connection-inspector' }
 
 export default function AppShell() {
 	const [sidebarWidth, setSidebarWidth] = createSignal(DEFAULT_WIDTH)
@@ -757,6 +759,11 @@ export default function AppShell() {
 
 			<DemoWarningDialog
 				open={modal()?.type === 'demo-warning'}
+				onClose={() => setModal(null)}
+			/>
+
+			<ConnectionInspectorDialog
+				open={modal()?.type === 'connection-inspector'}
 				onClose={() => setModal(null)}
 			/>
 

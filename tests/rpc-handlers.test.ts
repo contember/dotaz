@@ -118,6 +118,32 @@ describe('RPC Handlers', () => {
 			expect(listAfterDisconnect[0].state).toBe('disconnected')
 		})
 
+		test('connections.listOpenHandles shows and terminates SQLite handle', async () => {
+			const conn = handlers['connections.create']({
+				name: 'SQLite Handles',
+				config: sqliteConfig,
+			})
+			await handlers['connections.connect']({ connectionId: conn.id })
+
+			const handles = handlers['connections.listOpenHandles']()
+			expect(handles).toHaveLength(1)
+			expect(handles[0].connectionId).toBe(conn.id)
+			expect(handles[0].connectionName).toBe('SQLite Handles')
+			expect(handles[0].role).toBe('sqlite-main')
+
+			const firstHandleId = handles[0].handleId
+			await handlers['connections.terminateHandle']({
+				connectionId: conn.id,
+				database: handles[0].database,
+				handleId: firstHandleId,
+			})
+
+			const afterTerminate = handlers['connections.listOpenHandles']()
+			expect(afterTerminate).toHaveLength(1)
+			expect(afterTerminate[0].handleId).not.toBe(firstHandleId)
+			expect(afterTerminate[0].role).toBe('sqlite-main')
+		})
+
 		test('connections.connect throws for unknown id', async () => {
 			await expect(
 				handlers['connections.connect']({ connectionId: 'nonexistent' }),

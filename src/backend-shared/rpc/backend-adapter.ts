@@ -7,6 +7,7 @@ import type { QueryHistoryEntry, QueryResult } from '@dotaz/shared/types/query'
 import type {
 	AiGenerateSqlParams,
 	AiGenerateSqlResult,
+	ConnectionHandleInfo,
 	HistoryListParams,
 	OpenDialogParams,
 	SaveDialogParams,
@@ -145,6 +146,40 @@ export class BackendAdapter implements RpcAdapter {
 
 	async disconnect(connectionId: string): Promise<void> {
 		await this.cm.disconnect(connectionId)
+	}
+
+	listConnectionHandles(): ConnectionHandleInfo[] {
+		const handles = this.cm.listConnectionHandles()
+		if (!this.sessionManager) return handles
+
+		const sessions = new Map<string, SessionInfo>()
+		for (const connection of this.cm.listConnections()) {
+			for (const session of this.sessionManager.listSessions(connection.id)) {
+				sessions.set(session.sessionId, session)
+			}
+		}
+
+		return handles.map((handle) => {
+			if (!handle.sessionId) return handle
+			const session = sessions.get(handle.sessionId)
+			if (!session) return handle
+			return { ...handle, label: session.label }
+		})
+	}
+
+	async terminateConnectionHandle(connectionId: string, database: string | undefined, handleId: string): Promise<void> {
+		const handle = this.listConnectionHandles().find(
+			(candidate) =>
+				candidate.connectionId === connectionId && (database === undefined || candidate.database === database) && candidate.handleId === handleId,
+		)
+
+		if (handle?.sessionId && this.sessionManager) {
+			await this.sessionManager.destroySession(handle.sessionId)
+			this.emitMessage?.('session.changed', { connectionId, sessions: this.sessionManager.listSessions(connectionId) })
+			return
+		}
+
+		await this.cm.terminateConnectionHandle(connectionId, database, handleId)
 	}
 
 	// ── Sessions ──────────────────────────────────────────

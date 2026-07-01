@@ -11,6 +11,7 @@ type MultiDbConfig = PostgresConnectionConfig | MysqlConnectionConfig
 import type { DatabaseInfo } from '@dotaz/shared/types/database'
 import type { DatabaseErrorCode } from '@dotaz/shared/types/errors'
 import { DatabaseError } from '@dotaz/shared/types/errors'
+import type { ConnectionHandleInfo } from '@dotaz/shared/types/rpc'
 import type { DatabaseDriver } from '../db/driver'
 import { LoggingDriver } from '../db/logging-driver'
 import { MysqlDriver } from '../drivers/mysql-driver'
@@ -218,6 +219,31 @@ export class ConnectionManager {
 
 	getConnectionState(connectionId: string): ConnectionState {
 		return this.states.get(connectionId)?.state ?? 'disconnected'
+	}
+
+	listConnectionHandles(): ConnectionHandleInfo[] {
+		const handles: ConnectionHandleInfo[] = []
+		for (const [connectionId, driverMap] of this.drivers) {
+			const connInfo = this.appDb.getConnectionById(connectionId)
+			const connectionName = connInfo?.name ?? connectionId
+			for (const [database, driver] of driverMap) {
+				for (const handle of driver.listConnectionHandles()) {
+					handles.push({
+						...handle,
+						connectionId,
+						connectionName,
+						database,
+						driverType: driver.getDriverType(),
+					})
+				}
+			}
+		}
+		return handles
+	}
+
+	async terminateConnectionHandle(connectionId: string, database: string | undefined, handleId: string): Promise<void> {
+		const driver = this.getDriver(connectionId, database)
+		await driver.terminateConnectionHandle(handleId)
 	}
 
 	// ── Multi-database management ────────────────────────────
