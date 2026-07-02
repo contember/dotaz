@@ -104,6 +104,19 @@ describe('session execute', () => {
 		expect(result.rows.length).toBe(3)
 	})
 
+	test('concurrent execute without sessionId uses separate pool connections', async () => {
+		const [first, second] = await Promise.all([
+			driver.execute('SELECT pg_backend_pid() AS pid, pg_sleep(0.2)'),
+			driver.execute('SELECT pg_backend_pid() AS pid, pg_sleep(0.2)'),
+		])
+
+		const firstPid = first.rows[0]?.pid
+		const secondPid = second.rows[0]?.pid
+		expect(typeof firstPid).toBe('number')
+		expect(typeof secondPid).toBe('number')
+		expect(firstPid).not.toBe(secondPid)
+	})
+
 	test('execute with unknown sessionId throws', async () => {
 		await expect(
 			driver.execute('SELECT 1', [], 'nonexistent'),

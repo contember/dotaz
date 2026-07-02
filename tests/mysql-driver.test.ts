@@ -121,6 +121,19 @@ describe('MysqlDriver execute', () => {
 		expect(result.rows[0].name).toBe('Alice')
 	})
 
+	test('concurrent SELECT without sessionId uses separate pool connections', async () => {
+		const [first, second] = await Promise.all([
+			driver.execute('SELECT CONNECTION_ID() AS connection_id, SLEEP(0.2)'),
+			driver.execute('SELECT CONNECTION_ID() AS connection_id, SLEEP(0.2)'),
+		])
+
+		const firstId = first.rows[0]?.connection_id
+		const secondId = second.rows[0]?.connection_id
+		expect(typeof firstId).toBe('number')
+		expect(typeof secondId).toBe('number')
+		expect(firstId).not.toBe(secondId)
+	})
+
 	test('INSERT returns affectedRows', async () => {
 		await driver.reserveSession('insert-s')
 		try {

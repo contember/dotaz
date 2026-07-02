@@ -213,7 +213,8 @@ export class MysqlDriver implements DatabaseDriver {
 	async execute(sql: string, params?: unknown[], sessionId?: string, poolQueryKey?: symbol): Promise<QueryResult> {
 		this.ensureConnected()
 		const session = this.resolveSession(sessionId)
-		const conn = session ? session.conn : this.pool!.getSystemConnection()
+		const conn = session ? session.conn : await this.pool!.acquireConnection()
+		const releaseConn = !session
 		const start = performance.now()
 		const query = conn.unsafe(sql, params ?? [])
 		const effectiveQueryKey = session ? undefined : (poolQueryKey ?? Symbol())
@@ -253,6 +254,9 @@ export class MysqlDriver implements DatabaseDriver {
 				session.activeQueries.delete(query)
 			} else {
 				this.poolActiveQueries.delete(effectiveQueryKey!)
+				if (releaseConn) {
+					await this.pool!.releaseConnection(conn)
+				}
 			}
 		}
 	}

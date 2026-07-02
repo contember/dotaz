@@ -95,6 +95,17 @@ interface SessionEntry {
 	session: SessionState
 }
 
+async function resetPostgresConnection(conn: SQL): Promise<void> {
+	// Avoid DISCARD ALL: it deallocates prepared statements cached by Bun.SQL.
+	await conn.unsafe('RESET ALL')
+	await conn.unsafe('RESET ROLE')
+	await conn.unsafe('RESET SESSION AUTHORIZATION')
+	await conn.unsafe('UNLISTEN *')
+	await conn.unsafe('SELECT pg_advisory_unlock_all()')
+	await conn.unsafe('DISCARD SEQUENCES')
+	await conn.unsafe('DISCARD TEMP')
+}
+
 /** Internal session ID used for backward-compatible beginTransaction() without sessionId */
 const DEFAULT_SESSION = '__default__'
 
@@ -171,7 +182,7 @@ export class PostgresDriver implements DatabaseDriver {
 				await conn.unsafe(initSql)
 			}
 			: undefined
-		this.pool = new ConnectionPool(url, (conn) => conn.unsafe('DISCARD ALL'), initFn)
+		this.pool = new ConnectionPool(url, resetPostgresConnection, initFn)
 		try {
 			await this.pool.connect()
 		} catch (err) {
@@ -234,7 +245,8 @@ export class PostgresDriver implements DatabaseDriver {
 	async execute(sql: string, params?: unknown[], sessionId?: string, poolQueryKey?: symbol): Promise<QueryResult> {
 		this.ensureConnected()
 		const session = this.resolveSession(sessionId)
-		const conn = session ? session.conn : this.pool!.getSystemConnection()
+		const conn = session ? session.conn : await this.pool!.acquireConnection()
+		const releaseConn = !session
 		const start = performance.now()
 		const query = conn.unsafe(sql, params ?? [])
 		const effectiveQueryKey = session ? undefined : (poolQueryKey ?? Symbol())
@@ -278,6 +290,9 @@ export class PostgresDriver implements DatabaseDriver {
 				session.activeQueries.delete(query)
 			} else {
 				this.poolActiveQueries.delete(effectiveQueryKey!)
+				if (releaseConn) {
+					await this.pool!.releaseConnection(conn)
+				}
 			}
 		}
 	}

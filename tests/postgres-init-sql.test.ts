@@ -2,7 +2,7 @@
  * Tests for per-connection session-setup SQL (`initSql`) on PostgresDriver.
  *
  * Proves that initSql establishes session context (RLS GUC) and — crucially —
- * survives the pool's DISCARD ALL reset across reused connections, so table
+ * survives the pool's session reset across reused connections, so table
  * browsing / export / pinned sessions all stay correctly scoped.
  *
  * Requires docker-compose PG container:
@@ -94,10 +94,10 @@ describe('PostgresDriver initSql (RLS by GUC)', () => {
 		expect(result.rows).toHaveLength(2)
 	})
 
-	test('survives DISCARD ALL across the acquire/release (iterate/export) path', async () => {
-		// First iterate acquires a fresh connection, then releases it (DISCARD ALL + re-init).
+	test('survives session reset across the acquire/release (iterate/export) path', async () => {
+		// First iterate acquires a fresh connection, then releases it (reset + re-init).
 		// Second iterate reuses that reset connection — if init were not re-applied after
-		// DISCARD ALL, it would return zero rows.
+		// reset, it would return zero rows.
 		for (let pass = 0; pass < 2; pass++) {
 			const seen: string[] = []
 			for await (const batch of driver.iterate(SELECT_ALL, [], 1)) {
