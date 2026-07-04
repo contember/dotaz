@@ -506,7 +506,7 @@ describe('MySQL placeholder generation', () => {
 		]
 		const result = buildQuickSearchClause(columns, 'test', driver)
 		expect(result.sql).toBe(
-			'(CAST(`name` AS TEXT) LIKE ? OR CAST(`description` AS TEXT) LIKE ?)',
+			'(CAST(`name` AS CHAR) LIKE ? OR CAST(`description` AS CHAR) LIKE ?)',
 		)
 		expect(result.params).toEqual(['%test%', '%test%'])
 	})

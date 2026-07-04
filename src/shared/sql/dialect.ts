@@ -12,3 +12,8 @@ export interface SqlDialect {
 	/** Return the SQL placeholder for a 1-based parameter index (e.g. "$1" or "?"). */
 	placeholder(index: number): string
 }
+
+export function castExpressionToText(expression: string, dialect: SqlDialect): string {
+	const targetType = dialect.getDriverType() === 'mysql' ? 'CHAR' : 'TEXT'
+	return `CAST(${expression} AS ${targetType})`
+}

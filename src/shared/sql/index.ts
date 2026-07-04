@@ -19,6 +19,7 @@ export {
 	parseJoinedColumn,
 } from './builders'
 export type { SqlDialect } from './dialect'
+export { castExpressionToText } from './dialect'
 export { MysqlDialect, PostgresDialect, SqliteDialect } from './dialects'
 export type { QueryEditabilityReason, SelectAnalysisResult, SelectSourceInfo } from './editability'
 export { analyzeSelectSource } from './editability'

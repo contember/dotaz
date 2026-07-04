@@ -1,6 +1,7 @@
 import { DatabaseDataType, isSqlDefault } from '../types/database'
 import type { AutoJoinDef, ColumnFilter, SortColumn } from '../types/grid'
 import type { DataChange, DeleteChange, InsertChange, UpdateChange } from '../types/rpc'
+import { castExpressionToText } from './dialect'
 import type { SqlDialect } from './dialect'
 
 // ── Auto-join helpers ──────────────────────────────────────
@@ -42,7 +43,7 @@ export interface GeneratedStatement {
 	params: unknown[]
 }
 
-/** Returns true if the column data type is searchable with CAST(... AS TEXT) LIKE. */
+/** Returns true if the column data type can be searched through a text cast. */
 function isSearchableType(dataType: DatabaseDataType): boolean {
 	// Exclude binary types that can't meaningfully be cast to text
 	return dataType !== DatabaseDataType.Binary
@@ -80,7 +81,7 @@ export function buildQuickSearchClause(
 	for (const col of searchable) {
 		paramIndex++
 		const quoted = columnResolver ? columnResolver(col.name) : dialect.quoteIdentifier(col.name)
-		conditions.push(`CAST(${quoted} AS TEXT) ${likeOp} ${dialect.placeholder(paramIndex)}`)
+		conditions.push(`${castExpressionToText(quoted, dialect)} ${likeOp} ${dialect.placeholder(paramIndex)}`)
 		params.push(pattern)
 	}
 

@@ -3,11 +3,168 @@
  *
  * Run: bun test tests/search-service.test.ts
  */
+import type { DatabaseDriver } from '@dotaz/backend-shared/db/driver'
 import { SqliteDriver } from '@dotaz/backend-shared/drivers/sqlite-driver'
 import { searchDatabase } from '@dotaz/backend-shared/services/search-service'
+import type { ConnectionConfig } from '@dotaz/shared/types/connection'
+import type { SchemaData } from '@dotaz/shared/types/database'
+import { DatabaseDataType } from '@dotaz/shared/types/database'
+import type { QueryResult } from '@dotaz/shared/types/query'
+import type { DriverConnectionHandleInfo } from '@dotaz/shared/types/rpc'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 let driver: SqliteDriver
+
+class CapturingMysqlSearchDriver implements DatabaseDriver {
+	readonly executedSql: string[] = []
+	readonly executedParams: unknown[][] = []
+
+	connect(_config: ConnectionConfig): Promise<void> {
+		return Promise.resolve()
+	}
+
+	disconnect(): Promise<void> {
+		return Promise.resolve()
+	}
+
+	isConnected(): boolean {
+		return true
+	}
+
+	reserveSession(_sessionId: string): Promise<void> {
+		return Promise.resolve()
+	}
+
+	releaseSession(_sessionId: string): Promise<void> {
+		return Promise.resolve()
+	}
+
+	getSessionIds(): string[] {
+		return []
+	}
+
+	execute(sql: string, params?: unknown[]): Promise<QueryResult> {
+		this.executedSql.push(sql)
+		this.executedParams.push(params ?? [])
+		return Promise.resolve({
+			columns: [],
+			rows: [],
+			rowCount: 0,
+			durationMs: 0,
+		})
+	}
+
+	cancel(_sessionId?: string, _poolQueryKey?: symbol): Promise<void> {
+		return Promise.resolve()
+	}
+
+	async *iterate(): AsyncGenerator<Record<string, unknown>[]> {}
+
+	importBatch(
+		_qualifiedTable: string,
+		_columns: string[],
+		_rows: Record<string, unknown>[],
+		_sessionId?: string,
+	): Promise<number> {
+		return Promise.resolve(0)
+	}
+
+	loadSchema(_sessionId?: string): Promise<SchemaData> {
+		return Promise.resolve({
+			schemas: [{ name: 'app' }],
+			tables: {
+				app: [{ schema: 'app', name: 'users', type: 'table' }],
+			},
+			columns: {
+				'app.users': [
+					{
+						name: 'name',
+						dataType: DatabaseDataType.Varchar,
+						nullable: false,
+						defaultValue: null,
+						isPrimaryKey: false,
+						isAutoIncrement: false,
+					},
+					{
+						name: 'age',
+						dataType: DatabaseDataType.Integer,
+						nullable: true,
+						defaultValue: null,
+						isPrimaryKey: false,
+						isAutoIncrement: false,
+					},
+					{
+						name: 'avatar',
+						dataType: DatabaseDataType.Binary,
+						nullable: true,
+						defaultValue: null,
+						isPrimaryKey: false,
+						isAutoIncrement: false,
+					},
+				],
+			},
+			indexes: {},
+			foreignKeys: {},
+			referencingForeignKeys: {},
+		})
+	}
+
+	ping(): Promise<void> {
+		return Promise.resolve()
+	}
+
+	beginTransaction(_sessionId?: string): Promise<void> {
+		return Promise.resolve()
+	}
+
+	commit(_sessionId?: string): Promise<void> {
+		return Promise.resolve()
+	}
+
+	rollback(_sessionId?: string): Promise<void> {
+		return Promise.resolve()
+	}
+
+	inTransaction(_sessionId?: string): boolean {
+		return false
+	}
+
+	isTxAborted(_sessionId?: string): boolean {
+		return false
+	}
+
+	isIterating(_sessionId?: string): boolean {
+		return false
+	}
+
+	listConnectionHandles(): DriverConnectionHandleInfo[] {
+		return []
+	}
+
+	terminateConnectionHandle(_handleId: string): Promise<void> {
+		return Promise.resolve()
+	}
+
+	quoteIdentifier(name: string): string {
+		return `\`${name.replace(/`/g, '``')}\``
+	}
+
+	qualifyTable(schema: string, table: string): string {
+		return `${this.quoteIdentifier(schema)}.${this.quoteIdentifier(table)}`
+	}
+
+	emptyInsertSql(qualifiedTable: string): string {
+		return `INSERT INTO ${qualifiedTable} () VALUES ()`
+	}
+
+	getDriverType(): 'mysql' {
+		return 'mysql'
+	}
+
+	placeholder(_index: number): string {
+		return '?'
+	}
+}
 
 async function seedTestData(d: SqliteDriver) {
 	await d.execute(`
@@ -215,5 +372,25 @@ describe('searchDatabase', () => {
 		)
 
 		expect(result.elapsedMs).toBeGreaterThanOrEqual(0)
+	})
+
+	test('generates MySQL-compatible text casts', async () => {
+		const mysqlDriver = new CapturingMysqlSearchDriver()
+
+		await searchDatabase(
+			mysqlDriver,
+			{
+				searchTerm: 'Alice',
+				scope: 'database',
+				resultsPerTable: 5,
+			},
+			() => {},
+			() => false,
+		)
+
+		expect(mysqlDriver.executedSql).toEqual([
+			'SELECT * FROM `app`.`users` WHERE CAST(`name` AS CHAR) LIKE ? OR CAST(`age` AS CHAR) LIKE ? LIMIT ?',
+		])
+		expect(mysqlDriver.executedParams).toEqual([['%Alice%', '%Alice%', 5]])
 	})
 })

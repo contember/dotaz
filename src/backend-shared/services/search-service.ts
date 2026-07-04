@@ -1,3 +1,4 @@
+import { castExpressionToText } from '@dotaz/shared/sql/dialect'
 import type { ColumnInfo, TableInfo } from '@dotaz/shared/types/database'
 import { DatabaseDataType } from '@dotaz/shared/types/database'
 import type { SearchMatch } from '@dotaz/shared/types/rpc'
@@ -19,7 +20,7 @@ export interface SearchDatabaseResult {
 	elapsedMs: number
 }
 
-/** Returns true if the column data type is searchable with CAST(... AS TEXT) LIKE. */
+/** Returns true if the column data type can be searched through a text cast. */
 function isSearchableColumn(col: ColumnInfo): boolean {
 	return col.dataType !== DatabaseDataType.Binary
 }
@@ -82,7 +83,7 @@ export async function searchDatabase(
 		for (const col of searchable) {
 			paramIndex++
 			const quoted = driver.quoteIdentifier(col.name)
-			conditions.push(`CAST(${quoted} AS TEXT) ${likeOp} ${driver.placeholder(paramIndex)}`)
+			conditions.push(`${castExpressionToText(quoted, driver)} ${likeOp} ${driver.placeholder(paramIndex)}`)
 			params.push(`%${opts.searchTerm}%`)
 		}
 
