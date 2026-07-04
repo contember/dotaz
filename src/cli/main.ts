@@ -5,6 +5,7 @@
 import { secrets } from 'bun'
 import { randomBytes } from 'node:crypto'
 import { resolve } from 'node:path'
+import { hasExplicitEncryptionKey, validateEncryptionKeyStartup } from './startup'
 
 const SERVICE = 'dev.dotaz.server'
 const KEY_NAME = 'encryption-key'
@@ -38,8 +39,14 @@ Options:
 	}
 }
 
-// Resolve encryption key: env > OS keychain > auto-generate and persist
-if (!process.env.DOTAZ_ENCRYPTION_KEY) {
+const encryptionKeyError = validateEncryptionKeyStartup(host, process.env.DOTAZ_ENCRYPTION_KEY)
+if (encryptionKeyError) {
+	console.error(encryptionKeyError)
+	process.exit(1)
+}
+
+// Loopback mode may use keychain fallback; public binds require an explicit stable key.
+if (!hasExplicitEncryptionKey(process.env.DOTAZ_ENCRYPTION_KEY)) {
 	let key = await secrets.get({ service: SERVICE, name: KEY_NAME })
 
 	if (!key) {

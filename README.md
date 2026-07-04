@@ -72,7 +72,7 @@ Options: `--port <port>` (default: 6401), `--host <host>` (default: localhost), 
 Access control depends on how the server is bound:
 
 - **Loopback (default)** — no token needed. The server validates the `Host` header (DNS-rebinding protection) and rejects cross-site browser requests via `Sec-Fetch-Site`/`Origin` checks.
-- **Non-loopback (e.g. `--host 0.0.0.0`)** — token auth is required. Set `DOTAZ_RPC_TOKEN` (or `--rpc-token`), or let the server generate one and print it on startup. Open the app once with `?rpcToken=<token>` — the browser receives a persistent HttpOnly cookie and the token is stripped from the URL.
+- **Non-loopback (e.g. `--host 0.0.0.0`)** — `DOTAZ_ENCRYPTION_KEY` is required so saved credentials remain decryptable across restarts. Token auth is also required: set `DOTAZ_RPC_TOKEN` (or `--rpc-token`), or let the server generate one and print it on startup. Open the app once with `?rpcToken=<token>` — the browser receives a persistent HttpOnly cookie and the token is stripped from the URL.
 - **Behind a reverse proxy** — if the proxy rewrites the `Host` header, allow the public origin with `DOTAZ_ALLOWED_ORIGINS` (comma-separated), and optionally pin accepted `Host` headers with `DOTAZ_ALLOWED_HOSTS`.
 
 ### Docker
