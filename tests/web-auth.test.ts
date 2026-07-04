@@ -190,6 +190,76 @@ describe('web RPC auth', () => {
 		expect(response.status).toBe(401)
 		expect(await response.json()).toEqual({ error: 'RPC authentication required' })
 	})
+
+	test('loopback bind with non-loopback allowed host generates a token and requires it', () => {
+		const config = createWebAuthConfig('localhost', { DOTAZ_ALLOWED_HOSTS: 'public.example.com' })
+		expect(config.token).toMatch(/^[a-f0-9]{64}$/)
+		expect(config.tokenGenerated).toBe(true)
+		// Host layer stays loopback-only unless the public host is presented
+		expect(config.requireLoopbackHost).toBe(true)
+
+		const req = new Request('http://public.example.com/rpc', {
+			headers: {
+				host: 'public.example.com',
+				origin: 'http://public.example.com',
+			},
+		})
+
+		expect(authorizeApiRequest(req, config)).toEqual({
+			ok: false,
+			status: 401,
+			reason: 'RPC authentication required',
+		})
+	})
+
+	test('loopback bind with non-loopback allowed origin generates a token', () => {
+		const config = createWebAuthConfig('localhost', { DOTAZ_ALLOWED_ORIGINS: 'https://dotaz.example' })
+		expect(config.token).toMatch(/^[a-f0-9]{64}$/)
+		expect(config.tokenGenerated).toBe(true)
+	})
+
+	test('loopback bind with only loopback allowed origin still skips the token', () => {
+		const config = createWebAuthConfig('localhost', { DOTAZ_ALLOWED_ORIGINS: 'http://localhost:6402' })
+		expect(config.token).toBeNull()
+		expect(config.tokenGenerated).toBe(false)
+	})
+
+	test('plain loopback bind with no allowed hosts skips the token', () => {
+		const config = createWebAuthConfig('localhost', {})
+		expect(config.token).toBeNull()
+		expect(config.tokenGenerated).toBe(false)
+	})
+
+	test('token redirect collapses protocol-relative paths to stay same-origin', () => {
+		const config = createWebAuthConfig('0.0.0.0', { DOTAZ_RPC_TOKEN: 'secret-token' })
+		const url = new URL('http://dotaz.example//evil.com/?rpcToken=secret-token')
+		const req = new Request(url, { headers: { host: 'dotaz.example' } })
+
+		const response = createTokenRedirectResponse(req, url, config)
+
+		expect(response.status).toBe(302)
+		const location = response.headers.get('location')
+		expect(location).toBe('/evil.com/')
+		// Must not begin with "//" (browsers treat that as a protocol-relative redirect)
+		expect(location?.startsWith('//')).toBe(false)
+	})
+
+	test('allowed host with a port matches a request carrying that port', () => {
+		const config = createWebAuthConfig('0.0.0.0', {
+			DOTAZ_ALLOWED_HOSTS: 'db.example.com:8080',
+			DOTAZ_RPC_TOKEN: 'secret-token',
+		})
+		const req = new Request('http://db.example.com:8080/rpc', {
+			headers: {
+				cookie: `${RPC_COOKIE_NAME}=secret-token`,
+				host: 'db.example.com:8080',
+				origin: 'http://db.example.com:8080',
+			},
+		})
+
+		expect(isAllowedHost(req, config)).toBe(true)
+		expect(authorizeApiRequest(req, config)).toEqual({ ok: true })
+	})
 })
 
 function restoreEnv(name: string, value: string | undefined): void {

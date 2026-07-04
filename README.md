@@ -73,7 +73,7 @@ Access control depends on how the server is bound:
 
 - **Loopback (default)** — no token needed. The server validates the `Host` header (DNS-rebinding protection) and rejects cross-site browser requests via `Sec-Fetch-Site`/`Origin` checks.
 - **Non-loopback (e.g. `--host 0.0.0.0`)** — `DOTAZ_ENCRYPTION_KEY` is required so saved credentials remain decryptable across restarts. Token auth is also required: set `DOTAZ_RPC_TOKEN` (or `--rpc-token`), or let the server generate one and print it on startup. Open the app once with `?rpcToken=<token>` — the browser receives a persistent HttpOnly cookie and the token is stripped from the URL.
-- **Behind a reverse proxy** — if the proxy rewrites the `Host` header, allow the public origin with `DOTAZ_ALLOWED_ORIGINS` (comma-separated), and optionally pin accepted `Host` headers with `DOTAZ_ALLOWED_HOSTS`.
+- **Behind a reverse proxy** — keep the loopback bind (default) and allow the public origin with `DOTAZ_ALLOWED_ORIGINS` (comma-separated), optionally pinning accepted `Host` headers with `DOTAZ_ALLOWED_HOSTS`. Configuring a non-loopback host/origin marks the server as publicly exposed, so token auth still applies: set `DOTAZ_RPC_TOKEN` or let the server generate one and print it on startup, then open the app once with `?rpcToken=<token>`.
 
 ### Docker
 

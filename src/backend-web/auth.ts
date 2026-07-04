@@ -1,8 +1,9 @@
 // Request security for web mode, three independent layers:
 //  1. Host validation — on loopback binds the Host header must itself be loopback (DNS-rebinding defense)
 //  2. Browser isolation — Sec-Fetch-Site + Origin checks reject cross-site requests (CSRF/WS-hijack defense)
-//  3. Token auth — required for non-loopback binds; delivered once via ?rpcToken= and stored in an HttpOnly cookie
-// Loopback binds skip layer 3 entirely: layers 1+2 already block every browser-based attack,
+//  3. Token auth — required when publicly reachable (non-loopback bind, or a loopback bind exposed via a
+//     non-loopback allowed host/origin); delivered once via ?rpcToken= and stored in an HttpOnly cookie
+// A purely local loopback bind skips layer 3: layers 1+2 already block every browser-based attack,
 // and a local process can reach the port either way.
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
@@ -34,9 +35,21 @@ export function createWebAuthConfig(
 ): WebAuthConfig {
 	const configuredToken = env.DOTAZ_RPC_TOKEN?.trim() || null
 	const loopbackBind = isLoopbackHost(bindHost)
+
+	// Normalize allowed hosts exactly like the request hostname (lowercase + strip port/brackets),
+	// so entries with a port or IPv6 brackets still match.
+	const allowedHosts = parseList(env.DOTAZ_ALLOWED_HOSTS, (value) => hostnameFromHostHeader(value.toLowerCase()))
+	const allowedOrigins = parseList(env.DOTAZ_ALLOWED_ORIGINS, normalizeOrigin)
+
+	// A loopback bind fronted by a reverse proxy is signalled by a non-loopback allowed host/origin —
+	// treat that as intentional external exposure so token auth still applies.
+	const externallyExposed = someHost(allowedHosts, (host) => !isLoopbackHost(host))
+		|| someHost(allowedOrigins, (origin) => !isOriginLoopback(origin))
+	const publiclyReachable = !loopbackBind || externallyExposed
+
 	let token = configuredToken
 	let tokenGenerated = false
-	if (!token && !loopbackBind) {
+	if (!token && publiclyReachable) {
 		token = randomBytes(32).toString('hex')
 		tokenGenerated = true
 	}
@@ -45,8 +58,23 @@ export function createWebAuthConfig(
 		token,
 		tokenGenerated,
 		requireLoopbackHost: loopbackBind,
-		allowedHosts: parseList(env.DOTAZ_ALLOWED_HOSTS, (value) => value.toLowerCase()),
-		allowedOrigins: parseList(env.DOTAZ_ALLOWED_ORIGINS, normalizeOrigin),
+		allowedHosts,
+		allowedOrigins,
+	}
+}
+
+function someHost(set: Set<string>, predicate: (value: string) => boolean): boolean {
+	for (const value of set) {
+		if (predicate(value)) return true
+	}
+	return false
+}
+
+function isOriginLoopback(origin: string): boolean {
+	try {
+		return isLoopbackHost(new URL(origin).hostname)
+	} catch {
+		return false // unparseable origin — treat as external exposure (safer)
 	}
 }
 
@@ -87,10 +115,12 @@ export function createTokenRedirectResponse(req: Request, url: URL, config: WebA
 
 	const redirectUrl = new URL(url)
 	redirectUrl.searchParams.delete('rpcToken')
+	// Collapse leading slashes so the path can't become "//host" (protocol-relative → open redirect)
+	const safePath = redirectUrl.pathname.replace(/^\/+/, '/')
 	return new Response(null, {
 		status: 302,
 		headers: {
-			Location: `${redirectUrl.pathname}${redirectUrl.search}`,
+			Location: `${safePath}${redirectUrl.search}`,
 			'Set-Cookie': createAuthCookie(req, config.token),
 		},
 	})
