@@ -28,7 +28,6 @@ jobs:
       - name: Parse version from tag
         id: version
         run: |
-          TAG="${{ env.TAG }}"
           VERSION="${TAG#v}"
           BASE_VERSION="${VERSION%%-*}"
           MAJOR="${BASE_VERSION%%.*}"
@@ -220,7 +219,7 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=raw,value=${{ needs.prepare.outputs.version }}
-            type=raw,value=${{ needs.prepare.outputs.major-minor }}
+            type=raw,value=${{ needs.prepare.outputs.major-minor }},enable=${{ needs.prepare.outputs.is-prerelease == 'false' }}
             type=raw,value=latest,enable=${{ needs.prepare.outputs.is-prerelease == 'false' }}
 
       - name: Build and push
