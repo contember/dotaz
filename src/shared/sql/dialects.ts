@@ -1,9 +1,15 @@
 import type { ConnectionType } from '../types/connection'
 import type { SqlDialect } from './dialect'
 
+// ANSI/standard double-quote identifier quoting (Postgres, SQLite, and the
+// dialect-less export fallback). MySQL uses backticks — see MysqlDialect.
+export function ansiQuoteIdentifier(name: string): string {
+	return `"${name.replace(/"/g, '""')}"`
+}
+
 export class PostgresDialect implements SqlDialect {
 	quoteIdentifier(name: string): string {
-		return `"${name.replace(/"/g, '""')}"`
+		return ansiQuoteIdentifier(name)
 	}
 
 	qualifyTable(schema: string, table: string): string {
@@ -25,7 +31,7 @@ export class PostgresDialect implements SqlDialect {
 
 export class SqliteDialect implements SqlDialect {
 	quoteIdentifier(name: string): string {
-		return `"${name.replace(/"/g, '""')}"`
+		return ansiQuoteIdentifier(name)
 	}
 
 	qualifyTable(schema: string, table: string): string {

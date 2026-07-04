@@ -1,4 +1,4 @@
-import { collectAllColumns, createFormatter } from '@dotaz/shared/export/formatters'
+import { collectAllColumns, createFormatter, mergeKeyColumns } from '@dotaz/shared/export/formatters'
 import type { Formatter } from '@dotaz/shared/export/formatters'
 import { buildJoinClause, buildOrderByClause, buildWhereClause, createColumnResolver } from '@dotaz/shared/sql/builders'
 import type { CsvDelimiter, CsvEncoding, ExportFormat } from '@dotaz/shared/types/export'
@@ -230,14 +230,7 @@ function getExportSelectColumns(params: ExportParams): string[] | undefined {
 	if (params.format !== 'sql_update' || !params.columns || params.columns.length === 0 || !params.keyColumns) {
 		return params.columns
 	}
-
-	const columns = [...params.columns]
-	for (const keyColumn of params.keyColumns) {
-		if (!columns.includes(keyColumn)) {
-			columns.push(keyColumn)
-		}
-	}
-	return columns
+	return mergeKeyColumns(params.columns, params.keyColumns)
 }
 
 function createExportFormatter(params: ExportParams, driver: DatabaseDriver): Formatter {

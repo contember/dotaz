@@ -1,3 +1,4 @@
+import { ansiQuoteIdentifier } from '../sql/dialects'
 import type { CsvDelimiter, ExportFormat } from '../types/export'
 
 // ── Helpers ────────────────────────────────────────────────
@@ -14,6 +15,19 @@ export function collectAllColumns(rows: Record<string, unknown>[]): string[] {
 		}
 	}
 	return columns
+}
+
+// SQL UPDATE needs every key column in the SELECT list; append any that the
+// caller's column set is missing. Shared by the backend export, the shared
+// formatAll, and the export dialog so all three agree on the column set.
+export function mergeKeyColumns(columns: string[], keyColumns: string[] | undefined): string[] {
+	const result = [...columns]
+	for (const keyColumn of keyColumns ?? []) {
+		if (!result.includes(keyColumn)) {
+			result.push(keyColumn)
+		}
+	}
+	return result
 }
 
 function formatCsvValue(value: unknown): string {
@@ -65,10 +79,6 @@ function xmlSafeTag(name: string): string {
 	return tag
 }
 
-function quoteSqlIdentifier(name: string): string {
-	return `"${name.replace(/"/g, '""')}"`
-}
-
 function qualifyTableName(
 	schema: string,
 	table: string,
@@ -99,7 +109,7 @@ export interface FormatterParams {
 }
 
 export function createFormatter(params: FormatterParams): Formatter {
-	const quoteIdentifier = params.quoteIdentifier ?? quoteSqlIdentifier
+	const quoteIdentifier = params.quoteIdentifier ?? ansiQuoteIdentifier
 	const tableName = params.qualifiedTableName ?? qualifyTableName(params.schema, params.table, quoteIdentifier)
 	switch (params.format) {
 		case 'csv':
@@ -441,14 +451,10 @@ export function formatAll(
 ): string {
 	if (rows.length === 0) return ''
 
-	const effectiveColumns = columns.length > 0 ? [...columns] : collectAllColumns(rows)
-	if (params.format === 'sql_update') {
-		for (const keyColumn of params.keyColumns ?? []) {
-			if (!effectiveColumns.includes(keyColumn)) {
-				effectiveColumns.push(keyColumn)
-			}
-		}
-	}
+	const baseColumns = columns.length > 0 ? columns : collectAllColumns(rows)
+	const effectiveColumns = params.format === 'sql_update'
+		? mergeKeyColumns(baseColumns, params.keyColumns)
+		: [...baseColumns]
 
 	// For formats that derive columns from rows, we need to ensure the column order
 	// matches what was passed. We do this by reordering row keys.

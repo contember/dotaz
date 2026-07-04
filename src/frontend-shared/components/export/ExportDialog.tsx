@@ -1,4 +1,4 @@
-import { formatAll } from '@dotaz/shared/export/formatters'
+import { formatAll, mergeKeyColumns } from '@dotaz/shared/export/formatters'
 import type { CsvDelimiter, CsvEncoding, ExportFormat, ExportPreviewRequest } from '@dotaz/shared/types/export'
 import type { AutoJoinDef, ColumnFilter, SortColumn } from '@dotaz/shared/types/grid'
 import ClipboardCopy from 'lucide-solid/icons/clipboard-copy'
@@ -15,6 +15,7 @@ import { transport } from '../../lib/transport'
 import { formatFileSize, formatNumber } from '../../lib/value-format'
 import { connectionsStore } from '../../stores/connections'
 import { gridStore } from '../../stores/grid'
+import { getPkColumns } from '../../stores/gridLiveMode'
 import Dialog from '../common/Dialog'
 import Select from '../common/Select'
 import './ExportDialog.css'
@@ -117,7 +118,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 		if (props.rowsSource) return []
 		const t = tab()
 		if (!t) return []
-		return t.columns.filter((c) => c.isPrimaryKey).map((c) => c.name)
+		return getPkColumns(t.columns)
 	}
 
 	const getExportKeyColumns = (): string[] | undefined => {
@@ -259,14 +260,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 	function includeSqlUpdateKeyColumns(columns: string[] | undefined): string[] | undefined {
 		const keyColumns = getExportKeyColumns()
 		if (!keyColumns || !columns) return columns
-
-		const result = [...columns]
-		for (const keyColumn of keyColumns) {
-			if (!result.includes(keyColumn)) {
-				result.push(keyColumn)
-			}
-		}
-		return result
+		return mergeKeyColumns(columns, keyColumns)
 	}
 
 	function getPreviewFormatOptions(): PreviewFormatOptions | undefined {
