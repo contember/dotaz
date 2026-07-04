@@ -72,6 +72,7 @@ export function createSession(
 	const { handlers, sessionManager } = createHandlers(connectionManager, queryExecutor, appDb, undefined, {
 		encryption,
 		emitMessage,
+		allowServerFileAccess: false,
 	})
 
 	const serverManagedIds = new Set<string>()

@@ -16,6 +16,7 @@ import { ENV_CONNECTION_ID } from '@dotaz/backend-web/env-connection'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 const ENCRYPTION_KEY = 'test-encryption-key-for-unit-tests'
+const SERVER_FILE_ACCESS_ERROR = 'Server file access is not available in this runtime'
 let originalDatabaseUrl: string | undefined
 
 function mockWs(): { send: (data: string) => void; messages: string[] } {
@@ -175,6 +176,61 @@ describe('Session lifecycle', () => {
 		// Session is registered in the global map
 		expect(getSessions().has(session.id)).toBe(true)
 		expect(getSessions().get(session.id)).toBe(session)
+	})
+
+	test('createSession rejects direct RPC server file paths', async () => {
+		const ws = mockWs()
+		const session = createSession(ws, ENCRYPTION_KEY)
+
+		expect(typeof session.handlers['export.exportData']).toBe('function')
+		expect(typeof session.handlers['import.importData']).toBe('function')
+		expect(typeof session.handlers['import.preview']).toBe('function')
+
+		await expect(session.handlers['export.exportData']({
+			connectionId: 'missing',
+			schema: 'public',
+			table: 'users',
+			format: 'csv',
+			filePath: '/tmp/dotaz-export.csv',
+		})).rejects.toThrow(SERVER_FILE_ACCESS_ERROR)
+
+		await expect(session.handlers['import.importData']({
+			connectionId: 'missing',
+			schema: 'public',
+			table: 'users',
+			format: 'csv',
+			filePath: '/tmp/dotaz-import.csv',
+			mappings: [],
+		})).rejects.toThrow(SERVER_FILE_ACCESS_ERROR)
+
+		await expect(session.handlers['import.preview']({
+			connectionId: 'missing',
+			schema: 'public',
+			table: 'users',
+			format: 'csv',
+			filePath: '/tmp/dotaz-preview.csv',
+		})).rejects.toThrow(SERVER_FILE_ACCESS_ERROR)
+
+		await destroySession(session)
+	})
+
+	test('createSession still allows import preview file content', async () => {
+		const ws = mockWs()
+		const session = createSession(ws, ENCRYPTION_KEY)
+
+		const result = await session.handlers['import.preview']({
+			connectionId: 'missing',
+			schema: 'public',
+			table: 'users',
+			format: 'json',
+			fileContent: '[{"id":1,"name":"Alice"}]',
+		})
+
+		expect(result.fileColumns).toEqual(['id', 'name'])
+		expect(result.rows).toEqual([{ id: 1, name: 'Alice' }])
+		expect(result.totalRows).toBe(1)
+
+		await destroySession(session)
 	})
 
 	test('createSession generates unique IDs', () => {

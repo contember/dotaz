@@ -44,6 +44,7 @@ export interface BackendAdapterOptions {
 	sessionManager?: SessionManager
 	demoDbSourcePath?: string
 	demoDbTargetPath?: string
+	allowServerFileAccess?: boolean
 }
 
 export class BackendAdapter implements RpcAdapter {
@@ -54,6 +55,7 @@ export class BackendAdapter implements RpcAdapter {
 	private sessionManager?: SessionManager
 	private demoDbSourcePath?: string
 	private demoDbTargetPath?: string
+	private allowServerFileAccess: boolean
 
 	constructor(
 		private cm: ConnectionManager,
@@ -68,6 +70,7 @@ export class BackendAdapter implements RpcAdapter {
 		this.sessionManager = opts?.sessionManager
 		this.demoDbSourcePath = opts?.demoDbSourcePath
 		this.demoDbTargetPath = opts?.demoDbTargetPath
+		this.allowServerFileAccess = opts?.allowServerFileAccess ?? true
 	}
 
 	// ── Connections ────────────────────────────────────────
@@ -492,8 +495,10 @@ export class BackendAdapter implements RpcAdapter {
 	// ── Export ────────────────────────────────────────────
 
 	async exportData(opts: ExportOptions): Promise<ExportResult> {
+		const filePath = opts.filePath
+		this.rejectServerFileAccess(filePath)
 		const driver = this.cm.getDriver(opts.connectionId, opts.database)
-		if (!opts.filePath) throw new Error('Export requires a file path')
+		if (!filePath) throw new Error('Export requires a file path')
 		const onProgress = this.emitMessage
 			? (rowCount: number) => this.emitMessage!('export.progress', { rowCount })
 			: undefined
@@ -514,11 +519,11 @@ export class BackendAdapter implements RpcAdapter {
 				limit: opts.limit,
 				autoJoins: opts.autoJoins,
 			},
-			opts.filePath,
+			filePath,
 			undefined,
 			onProgress,
 		)
-		return { ...result, filePath: opts.filePath }
+		return { ...result, filePath }
 	}
 
 	async exportPreview(req: ExportPreviewRequest): Promise<string> {
@@ -553,6 +558,7 @@ export class BackendAdapter implements RpcAdapter {
 	// ── Import ────────────────────────────────────────────
 
 	async importData(opts: ImportOptions): Promise<ImportResult> {
+		this.rejectServerFileAccess(opts.filePath)
 		const driver = this.cm.getDriver(opts.connectionId, opts.database)
 		const stream = this.resolveImportStream(opts.filePath, opts.fileContent)
 		const onProgress = this.emitMessage
@@ -576,6 +582,7 @@ export class BackendAdapter implements RpcAdapter {
 	}
 
 	async importPreview(req: ImportPreviewRequest): Promise<ImportPreviewResult> {
+		this.rejectServerFileAccess(req.filePath)
 		const stream = this.resolveImportPreviewStream(req.filePath, req.fileContent)
 		const result = await importPreviewFromStream(stream, {
 			format: req.format,
@@ -590,6 +597,12 @@ export class BackendAdapter implements RpcAdapter {
 			} catch { /* ignore */ }
 		}
 		return result
+	}
+
+	private rejectServerFileAccess(filePath?: string): void {
+		if (!this.allowServerFileAccess && filePath !== undefined) {
+			throw new Error('Server file access is not available in this runtime')
+		}
 	}
 
 	private resolveImportStream(filePath?: string, fileContent?: string): ReadableStream<Uint8Array> {

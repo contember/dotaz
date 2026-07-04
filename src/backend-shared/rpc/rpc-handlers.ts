@@ -11,6 +11,7 @@ export interface HandlerOptions {
 	emitMessage?: (channel: string, payload: unknown) => void
 	demoDbSourcePath?: string
 	demoDbTargetPath?: string
+	allowServerFileAccess?: boolean
 }
 
 function requireAppDb(appDb: AppDatabase | undefined): AppDatabase {
@@ -37,6 +38,7 @@ export function createHandlers(
 		sessionManager,
 		demoDbSourcePath: opts?.demoDbSourcePath,
 		demoDbTargetPath: opts?.demoDbTargetPath,
+		allowServerFileAccess: opts?.allowServerFileAccess,
 	})
 	return { handlers: createSharedHandlers(adapter), sessionManager, adapter }
 }
