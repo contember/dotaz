@@ -19,6 +19,8 @@ export interface ExportOptions {
 	filePath?: string
 	/** Column names to export (undefined = all) */
 	columns?: string[]
+	/** Key column names for SQL UPDATE WHERE clauses */
+	keyColumns?: string[]
 	/** Include column headers (CSV only, default true) */
 	includeHeaders?: boolean
 	/** CSV delimiter (default: comma) */
@@ -49,6 +51,8 @@ export interface ExportPreviewRequest {
 	limit: number
 	/** Column names to preview (undefined = all) */
 	columns?: string[]
+	/** Key column names for SQL UPDATE WHERE clauses */
+	keyColumns?: string[]
 	/** CSV delimiter (default: comma) */
 	delimiter?: CsvDelimiter
 	/** Active filters to apply */

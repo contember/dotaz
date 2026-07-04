@@ -8,9 +8,11 @@ import { createEffect, createMemo, createSignal, For, Show } from 'solid-js'
 import { createStore, reconcile } from 'solid-js/store'
 import { getCapabilities } from '../../lib/capabilities'
 import { formatPreview } from '../../lib/export-formatters'
+import type { PreviewFormatOptions } from '../../lib/export-formatters'
 import { rpc } from '../../lib/rpc'
 import { transport } from '../../lib/transport'
 import { formatFileSize, formatNumber } from '../../lib/value-format'
+import { connectionsStore } from '../../stores/connections'
 import { gridStore } from '../../stores/grid'
 import Dialog from '../common/Dialog'
 import Select from '../common/Select'
@@ -97,19 +99,6 @@ export default function ExportDialog(props: ExportDialogProps) {
 	const [phase, setPhase] = createSignal<ExportPhase>({ status: 'idle' })
 	const isRowsSource = () => !!props.rowsSource
 
-	const preview = createMemo(() =>
-		formatPreview(
-			previewData.rows,
-			previewData.columns,
-			options.format,
-			options.delimiter,
-			options.includeHeaders,
-			options.batchSize,
-			props.schema ?? '',
-			props.table ?? (props.rowsSource?.defaultName?.replace(/\.[^.]+$/, '') ?? 'result'),
-		)
-	)
-
 	const caps = () => getCapabilities()
 	const tab = () => (props.tabId ? gridStore.getTab(props.tabId) : undefined)
 
@@ -120,10 +109,27 @@ export default function ExportDialog(props: ExportDialogProps) {
 	}
 
 	const hasPrimaryKey = () => {
-		const t = tab()
-		if (!t) return false
-		return t.columns.some((c) => c.isPrimaryKey)
+		return getSqlUpdateKeyColumns().length > 0
 	}
+
+	const getSqlUpdateKeyColumns = (): string[] => {
+		if (props.rowsSource) return []
+		const t = tab()
+		if (!t) return []
+		return t.columns.filter((c) => c.isPrimaryKey).map((c) => c.name)
+	}
+
+	const getExportKeyColumns = (): string[] | undefined => {
+		if (options.format !== 'sql_update') return undefined
+		const keyColumns = getSqlUpdateKeyColumns()
+		return keyColumns.length > 0 ? keyColumns : undefined
+	}
+
+	const isFormatDisabled = (format: ExportFormat): boolean => {
+		return format === 'sql_update' && getSqlUpdateKeyColumns().length === 0
+	}
+
+	const isCurrentFormatUnavailable = () => isFormatDisabled(options.format)
 
 	const selectedRowCount = () => {
 		if (!props.tabId) return 0
@@ -160,6 +166,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 			delimiter: options.delimiter,
 			includeHeaders: options.includeHeaders,
 			batchSize: options.batchSize,
+			keyColumns: getExportKeyColumns(),
 		})
 	}
 
@@ -234,14 +241,60 @@ export default function ExportDialog(props: ExportDialogProps) {
 	}
 
 	function getExportColumns(): string[] | undefined {
-		if (options.scope === 'selected') return selectedColumnNames()
+		let columns: string[] | undefined
+		if (options.scope === 'selected') {
+			columns = selectedColumnNames()
+			return includeSqlUpdateKeyColumns(columns)
+		}
 		// When autoJoins are active, pass explicit column names so joined columns are included
 		const t = tab()
 		if (t && t.autoJoins.length > 0) {
-			return t.columns.map((c) => c.name)
+			columns = t.columns.map((c) => c.name)
+			return includeSqlUpdateKeyColumns(columns)
 		}
-		return undefined
+		return includeSqlUpdateKeyColumns(undefined)
 	}
+
+	function includeSqlUpdateKeyColumns(columns: string[] | undefined): string[] | undefined {
+		const keyColumns = getExportKeyColumns()
+		if (!keyColumns || !columns) return columns
+
+		const result = [...columns]
+		for (const keyColumn of keyColumns) {
+			if (!result.includes(keyColumn)) {
+				result.push(keyColumn)
+			}
+		}
+		return result
+	}
+
+	function getPreviewFormatOptions(): PreviewFormatOptions | undefined {
+		const keyColumns = getExportKeyColumns()
+		if (!props.connectionId || !props.schema || !props.table || props.rowsSource) {
+			return keyColumns ? { keyColumns } : undefined
+		}
+
+		const dialect = connectionsStore.getDialect(props.connectionId)
+		return {
+			qualifiedTableName: dialect.qualifyTable(props.schema, props.table),
+			quoteIdentifier: (name) => dialect.quoteIdentifier(name),
+			keyColumns,
+		}
+	}
+
+	const preview = createMemo(() =>
+		formatPreview(
+			previewData.rows,
+			previewData.columns,
+			options.format,
+			options.delimiter,
+			options.includeHeaders,
+			options.batchSize,
+			props.schema ?? '',
+			props.table ?? (props.rowsSource?.defaultName?.replace(/\.[^.]+$/, '') ?? 'result'),
+			getPreviewFormatOptions(),
+		)
+	)
 
 	async function loadPreview() {
 		setPreviewData({ rows: null, columns: [], loading: true })
@@ -327,6 +380,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 				format: options.format,
 				filePath: exportFilePath ?? defaultName,
 				columns: getExportColumns(),
+				keyColumns: getExportKeyColumns(),
 				delimiter: options.format === 'csv' ? options.delimiter : undefined,
 				encoding: options.format === 'csv' ? options.encoding : undefined,
 				utf8Bom: options.format === 'csv' && options.encoding === 'utf-8' ? options.utf8Bom : undefined,
@@ -396,6 +450,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 					table: props.table!,
 					format: options.format,
 					columns: getExportColumns(),
+					keyColumns: getExportKeyColumns(),
 					delimiter: options.format === 'csv' ? options.delimiter : undefined,
 					encoding: options.format === 'csv' ? options.encoding : undefined,
 					utf8Bom: options.format === 'csv' && options.encoding === 'utf-8'
@@ -455,6 +510,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 					format: options.format,
 					limit: Number.MAX_SAFE_INTEGER,
 					columns: getExportColumns(),
+					keyColumns: getExportKeyColumns(),
 					delimiter: options.format === 'csv' ? options.delimiter : undefined,
 					filters: getExportFilters(),
 					sort: getExportSort(),
@@ -495,7 +551,10 @@ export default function ExportDialog(props: ExportDialogProps) {
 									classList={{
 										'export-dialog__format-btn--active': options.format === fmt,
 									}}
-									onClick={() => setOptions('format', fmt)}
+									disabled={isFormatDisabled(fmt)}
+									onClick={() => {
+										if (!isFormatDisabled(fmt)) setOptions('format', fmt)
+									}}
 								>
 									{label}
 								</button>
@@ -634,7 +693,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 						<div class="export-dialog__section">
 							<label class="export-dialog__label">Options</label>
 							<p class="export-dialog__note">
-								First column used as the primary key in the WHERE clause.
+								Primary key columns are used in the WHERE clause.
 							</p>
 						</div>
 					</Show>
@@ -647,7 +706,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 						<button
 							class="export-dialog__preview-btn"
 							onClick={loadPreview}
-							disabled={previewData.loading}
+							disabled={previewData.loading || isCurrentFormatUnavailable()}
 						>
 							<Eye size={12} /> {previewData.loading ? 'Loading...' : 'Load Preview'}
 						</button>
@@ -718,7 +777,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 					<button
 						class="btn btn--secondary"
 						onClick={handleCopyToClipboard}
-						disabled={phase().status === 'copying' || isExporting()}
+						disabled={phase().status === 'copying' || isExporting() || isCurrentFormatUnavailable()}
 					>
 						<ClipboardCopy size={14} /> {phase().status === 'copying'
 							? 'Copying...'
@@ -729,7 +788,7 @@ export default function ExportDialog(props: ExportDialogProps) {
 					<button
 						class="btn btn--primary"
 						onClick={handleExport}
-						disabled={isExporting()}
+						disabled={isExporting() || isCurrentFormatUnavailable()}
 					>
 						<Download size={14} /> {isExporting() ? 'Exporting...' : 'Export'}
 					</button>

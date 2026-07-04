@@ -65,8 +65,17 @@ function xmlSafeTag(name: string): string {
 	return tag
 }
 
-function qualifyTableName(schema: string, table: string): string {
-	return `"${schema.replace(/"/g, '""')}"."${table.replace(/"/g, '""')}"`
+function quoteSqlIdentifier(name: string): string {
+	return `"${name.replace(/"/g, '""')}"`
+}
+
+function qualifyTableName(
+	schema: string,
+	table: string,
+	quoteIdentifier: (name: string) => string,
+): string {
+	if (!schema) return quoteIdentifier(table)
+	return `${quoteIdentifier(schema)}.${quoteIdentifier(table)}`
 }
 
 // ── Formatter interface ────────────────────────────────────
@@ -85,21 +94,27 @@ export interface FormatterParams {
 	includeHeaders?: boolean
 	batchSize?: number
 	qualifiedTableName?: string
+	quoteIdentifier?: (name: string) => string
+	keyColumns?: string[]
 }
 
 export function createFormatter(params: FormatterParams): Formatter {
-	const tableName = params.qualifiedTableName ?? qualifyTableName(params.schema, params.table)
+	const quoteIdentifier = params.quoteIdentifier ?? quoteSqlIdentifier
+	const tableName = params.qualifiedTableName ?? qualifyTableName(params.schema, params.table, quoteIdentifier)
 	switch (params.format) {
 		case 'csv':
 			return new CsvFormatter(params.delimiter ?? ',', params.includeHeaders ?? true)
 		case 'json':
 			return new JsonFormatter()
 		case 'sql':
-			return new SqlInsertFormatter(tableName, params.batchSize ?? 100)
+			return new SqlInsertFormatter(tableName, params.batchSize ?? 100, quoteIdentifier)
 		case 'markdown':
 			return new MarkdownFormatter()
 		case 'sql_update':
-			return new SqlUpdateFormatter(tableName)
+			if (!params.keyColumns || params.keyColumns.length === 0) {
+				throw new Error('SQL UPDATE export requires key columns')
+			}
+			return new SqlUpdateFormatter(tableName, quoteIdentifier, params.keyColumns)
 		case 'html':
 			return new HtmlFormatter()
 		case 'xml':
@@ -188,6 +203,7 @@ class SqlInsertFormatter implements Formatter {
 	constructor(
 		private tableName: string,
 		private batchSize: number,
+		private quoteIdentifier: (name: string) => string,
 	) {}
 
 	preamble(): string {
@@ -201,7 +217,7 @@ class SqlInsertFormatter implements Formatter {
 			this.columns = collectAllColumns(rows)
 		}
 		const columns = this.columns
-		const quotedCols = columns.map((c) => `"${c.replace(/"/g, '""')}"`)
+		const quotedCols = columns.map((c) => this.quoteIdentifier(c))
 		const colList = quotedCols.join(', ')
 
 		const statements: string[] = []
@@ -267,7 +283,11 @@ class MarkdownFormatter implements Formatter {
 class SqlUpdateFormatter implements Formatter {
 	private columns: string[] | null = null
 
-	constructor(private tableName: string) {}
+	constructor(
+		private tableName: string,
+		private quoteIdentifier: (name: string) => string,
+		private keyColumns: string[],
+	) {}
 
 	preamble(): string {
 		return ''
@@ -281,18 +301,29 @@ class SqlUpdateFormatter implements Formatter {
 		}
 		const columns = this.columns
 
-		const pkColumn = columns[0]
-		const setCols = columns.slice(1)
+		const keyColumnSet = new Set(this.keyColumns)
+		const setCols = columns.filter((col) => !keyColumnSet.has(col))
 
 		const statements: string[] = []
 
 		for (const row of rows) {
 			if (setCols.length === 0) continue
 
+			for (const keyColumn of this.keyColumns) {
+				if (!Object.hasOwn(row, keyColumn)) {
+					throw new Error(`SQL UPDATE export key column "${keyColumn}" is missing from exported rows`)
+				}
+				if (row[keyColumn] === null || row[keyColumn] === undefined) {
+					throw new Error(`SQL UPDATE export key column "${keyColumn}" has no value`)
+				}
+			}
+
 			const setClause = setCols
-				.map((col) => `"${col.replace(/"/g, '""')}" = ${formatSqlValue(row[col])}`)
+				.map((col) => `${this.quoteIdentifier(col)} = ${formatSqlValue(row[col])}`)
 				.join(', ')
-			const whereClause = `"${pkColumn.replace(/"/g, '""')}" = ${formatSqlValue(row[pkColumn])}`
+			const whereClause = this.keyColumns
+				.map((col) => `${this.quoteIdentifier(col)} = ${formatSqlValue(row[col])}`)
+				.join(' AND ')
 
 			statements.push(
 				`UPDATE ${this.tableName} SET ${setClause} WHERE ${whereClause};\n`,
@@ -410,7 +441,14 @@ export function formatAll(
 ): string {
 	if (rows.length === 0) return ''
 
-	const effectiveColumns = columns.length > 0 ? columns : collectAllColumns(rows)
+	const effectiveColumns = columns.length > 0 ? [...columns] : collectAllColumns(rows)
+	if (params.format === 'sql_update') {
+		for (const keyColumn of params.keyColumns ?? []) {
+			if (!effectiveColumns.includes(keyColumn)) {
+				effectiveColumns.push(keyColumn)
+			}
+		}
+	}
 
 	// For formats that derive columns from rows, we need to ensure the column order
 	// matches what was passed. We do this by reordering row keys.

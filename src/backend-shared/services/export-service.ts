@@ -13,6 +13,7 @@ export interface ExportParams {
 	table: string
 	format: ExportFormat
 	columns?: string[]
+	keyColumns?: string[]
 	includeHeaders?: boolean
 	delimiter?: CsvDelimiter
 	encoding?: CsvEncoding
@@ -181,6 +182,7 @@ export function buildExportSelectQuery(
 ): { sql: string; params: unknown[] } {
 	const autoJoins = params.autoJoins
 	const hasJoins = autoJoins && autoJoins.length > 0
+	const selectedColumns = getExportSelectColumns(params)
 
 	const from = driver.qualifyTable(params.schema, params.table)
 	const resolver = hasJoins ? createColumnResolver(autoJoins, driver) : undefined
@@ -193,8 +195,8 @@ export function buildExportSelectQuery(
 
 		// Build select list — for joins we need explicit column aliases
 		let selectList = 't0.*'
-		if (params.columns && params.columns.length > 0) {
-			selectList = params.columns.map((c) => {
+		if (selectedColumns && selectedColumns.length > 0) {
+			selectList = selectedColumns.map((c) => {
 				if (c.includes('.')) {
 					return `${resolver!(c)} AS ${driver.quoteIdentifier(c)}`
 				}
@@ -208,8 +210,8 @@ export function buildExportSelectQuery(
 		return { sql: parts.join(' '), params: [...where.params] }
 	}
 
-	const columnList = params.columns && params.columns.length > 0
-		? params.columns.map((c) => driver.quoteIdentifier(c)).join(', ')
+	const columnList = selectedColumns && selectedColumns.length > 0
+		? selectedColumns.map((c) => driver.quoteIdentifier(c)).join(', ')
 		: '*'
 
 	const parts = [`SELECT ${columnList} FROM ${from}`]
@@ -224,6 +226,20 @@ export function buildExportSelectQuery(
 
 // ── Helpers ────────────────────────────────────────────────
 
+function getExportSelectColumns(params: ExportParams): string[] | undefined {
+	if (params.format !== 'sql_update' || !params.columns || params.columns.length === 0 || !params.keyColumns) {
+		return params.columns
+	}
+
+	const columns = [...params.columns]
+	for (const keyColumn of params.keyColumns) {
+		if (!columns.includes(keyColumn)) {
+			columns.push(keyColumn)
+		}
+	}
+	return columns
+}
+
 function createExportFormatter(params: ExportParams, driver: DatabaseDriver): Formatter {
 	return createFormatter({
 		format: params.format,
@@ -233,6 +249,8 @@ function createExportFormatter(params: ExportParams, driver: DatabaseDriver): Fo
 		includeHeaders: params.includeHeaders,
 		batchSize: params.batchSize,
 		qualifiedTableName: driver.qualifyTable(params.schema, params.table),
+		quoteIdentifier: (name) => driver.quoteIdentifier(name),
+		keyColumns: params.keyColumns,
 	})
 }
 

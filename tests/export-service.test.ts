@@ -1,6 +1,7 @@
 import type { DatabaseDriver } from '@dotaz/backend-shared/db/driver'
 import { buildExportSelectQuery, exportPreview, exportToFile, exportToStream } from '@dotaz/backend-shared/services/export-service'
 import type { ExportParams, ExportWriter } from '@dotaz/backend-shared/services/export-service'
+import { formatAll } from '@dotaz/shared/export/formatters'
 import { DatabaseDataType } from '@dotaz/shared/types/database'
 import type { QueryResult } from '@dotaz/shared/types/query'
 import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test'
@@ -21,9 +22,11 @@ function makeResult(rows: Record<string, unknown>[]): QueryResult {
  */
 function mockDriver(
 	rows: Record<string, unknown>[],
-	type: 'postgresql' | 'sqlite' = 'postgresql',
+	type: 'postgresql' | 'sqlite' | 'mysql' = 'postgresql',
 ): DatabaseDriver {
-	const quoteIdentifier = (name: string) => `"${name.replace(/"/g, '""')}"`
+	const quoteIdentifier = type === 'mysql'
+		? (name: string) => `\`${name.replace(/`/g, '``')}\``
+		: (name: string) => `"${name.replace(/"/g, '""')}"`
 	return {
 		execute: mock(async () => makeResult(rows)),
 		iterate: mock(async function*(_sql: string, _params?: unknown[], _batchSize?: number, _signal?: AbortSignal) {
@@ -45,9 +48,11 @@ function mockDriver(
  */
 function mockDriverMultiBatch(
 	batches: Record<string, unknown>[][],
-	type: 'postgresql' | 'sqlite' = 'postgresql',
+	type: 'postgresql' | 'sqlite' | 'mysql' = 'postgresql',
 ): DatabaseDriver {
-	const quoteIdentifier = (name: string) => `"${name.replace(/"/g, '""')}"`
+	const quoteIdentifier = type === 'mysql'
+		? (name: string) => `\`${name.replace(/`/g, '``')}\``
+		: (name: string) => `"${name.replace(/"/g, '""')}"`
 	return {
 		execute: mock(async () => makeResult(batches.flat())),
 		iterate: mock(async function*(_sql: string, _params?: unknown[], _batchSize?: number, _signal?: AbortSignal) {
@@ -266,8 +271,11 @@ describe('exportToStream', () => {
 		for (const format of formats) {
 			const driver = mockDriver(sampleRows)
 			const writer = createBufferWriter()
+			const params = format === 'sql_update'
+				? { ...baseParams, format, keyColumns: ['id'] }
+				: { ...baseParams, format }
 
-			const result = await exportToStream(driver, { ...baseParams, format }, writer)
+			const result = await exportToStream(driver, params, writer)
 			const content = collectString(writer)
 
 			expect(result.rowCount).toBe(3)
@@ -606,6 +614,17 @@ describe('SQL INSERT export', () => {
 		expect(content).toContain('INSERT INTO "users"')
 		expect(content).not.toContain('"main"')
 	})
+
+	test('uses MySQL identifier quoting', async () => {
+		const rows = [{ id: 1, 'display name': 'Alice' }]
+		const driver = mockDriver(rows, 'mysql')
+		const filePath = join(tmpDir, 'test.sql')
+
+		await exportToFile(driver, { ...baseParams, format: 'sql', schema: 'app', table: 'users' }, filePath)
+
+		const content = await Bun.file(filePath).text()
+		expect(content).toContain('INSERT INTO `app`.`users` (`id`, `display name`) VALUES')
+	})
 })
 
 // ── Preview ────────────────────────────────────────────────
@@ -847,11 +866,11 @@ describe('Markdown export', () => {
 // ── SQL UPDATE Export ──────────────────────────────────────
 
 describe('SQL UPDATE export', () => {
-	test('generates UPDATE statements with first column as PK', async () => {
+	test('generates UPDATE statements with explicit key columns', async () => {
 		const driver = mockDriver(sampleRows)
 		const filePath = join(tmpDir, 'test.sql')
 
-		const result = await exportToFile(driver, { ...baseParams, format: 'sql_update' }, filePath)
+		const result = await exportToFile(driver, { ...baseParams, format: 'sql_update', keyColumns: ['id'] }, filePath)
 
 		expect(result.rowCount).toBe(3)
 		const content = await Bun.file(filePath).text()
@@ -860,12 +879,83 @@ describe('SQL UPDATE export', () => {
 		expect(content).toContain('UPDATE "public"."users" SET "name" = \'Charlie\', "age" = NULL WHERE "id" = 3;')
 	})
 
+	test('does not guess the first exported column as the key', async () => {
+		const rows = [{ name: 'Alice', id: 1, age: 30 }]
+		const driver = mockDriver(rows)
+		const filePath = join(tmpDir, 'test.sql')
+
+		await exportToFile(driver, { ...baseParams, format: 'sql_update', keyColumns: ['id'] }, filePath)
+
+		const content = await Bun.file(filePath).text()
+		expect(content).toContain('UPDATE "public"."users" SET "name" = \'Alice\', "age" = 30 WHERE "id" = 1;')
+		expect(content).not.toContain('WHERE "name"')
+	})
+
+	test('supports composite key columns', async () => {
+		const rows = [{ tenant_id: 10, id: 1, name: 'Alice' }]
+		const driver = mockDriver(rows)
+		const filePath = join(tmpDir, 'test.sql')
+
+		await exportToFile(driver, {
+			...baseParams,
+			format: 'sql_update',
+			keyColumns: ['tenant_id', 'id'],
+		}, filePath)
+
+		const content = await Bun.file(filePath).text()
+		expect(content).toContain('UPDATE "public"."users" SET "name" = \'Alice\' WHERE "tenant_id" = 10 AND "id" = 1;')
+	})
+
+	test('includes key columns in selected-column SELECT queries', () => {
+		const driver = mockDriver(sampleRows)
+		const { sql } = buildExportSelectQuery({
+			...baseParams,
+			format: 'sql_update',
+			columns: ['name'],
+			keyColumns: ['id'],
+		}, driver)
+
+		expect(sql).toContain('SELECT "name", "id" FROM "public"."users"')
+	})
+
+	test('formatAll keeps key columns even when not listed in display columns', () => {
+		const content = formatAll(
+			[{ id: 1, name: 'Alice' }],
+			['name'],
+			{
+				format: 'sql_update',
+				schema: 'public',
+				table: 'users',
+				keyColumns: ['id'],
+			},
+		)
+
+		expect(content).toContain('UPDATE "public"."users" SET "name" = \'Alice\' WHERE "id" = 1;')
+	})
+
+	test('fails safely without key columns', async () => {
+		const driver = mockDriver(sampleRows)
+		const filePath = join(tmpDir, 'test.sql')
+
+		await expect(exportToFile(driver, { ...baseParams, format: 'sql_update' }, filePath))
+			.rejects.toThrow('SQL UPDATE export requires key columns')
+	})
+
+	test('fails safely when key values are missing from exported rows', async () => {
+		const rows = [{ name: 'Alice' }]
+		const driver = mockDriver(rows)
+		const filePath = join(tmpDir, 'test.sql')
+
+		await expect(exportToFile(driver, { ...baseParams, format: 'sql_update', keyColumns: ['id'] }, filePath))
+			.rejects.toThrow('SQL UPDATE export key column "id" is missing from exported rows')
+	})
+
 	test('escapes single quotes in values', async () => {
 		const rows = [{ id: 1, name: "O'Brien" }]
 		const driver = mockDriver(rows)
 		const filePath = join(tmpDir, 'test.sql')
 
-		await exportToFile(driver, { ...baseParams, format: 'sql_update' }, filePath)
+		await exportToFile(driver, { ...baseParams, format: 'sql_update', keyColumns: ['id'] }, filePath)
 
 		const content = await Bun.file(filePath).text()
 		expect(content).toContain("'O''Brien'")
@@ -875,16 +965,33 @@ describe('SQL UPDATE export', () => {
 		const driver = mockDriver(sampleRows, 'sqlite')
 		const filePath = join(tmpDir, 'test.sql')
 
-		await exportToFile(driver, { ...baseParams, format: 'sql_update', schema: 'main' }, filePath)
+		await exportToFile(driver, { ...baseParams, format: 'sql_update', schema: 'main', keyColumns: ['id'] }, filePath)
 
 		const content = await Bun.file(filePath).text()
 		expect(content).toContain('UPDATE "users" SET')
 		expect(content).not.toContain('"main"')
 	})
 
+	test('uses MySQL identifier quoting', async () => {
+		const rows = [{ id: 1, 'display name': 'Alice' }]
+		const driver = mockDriver(rows, 'mysql')
+		const filePath = join(tmpDir, 'test.sql')
+
+		await exportToFile(driver, {
+			...baseParams,
+			format: 'sql_update',
+			schema: 'app',
+			table: 'users',
+			keyColumns: ['id'],
+		}, filePath)
+
+		const content = await Bun.file(filePath).text()
+		expect(content).toContain("UPDATE `app`.`users` SET `display name` = 'Alice' WHERE `id` = 1;")
+	})
+
 	test('preview returns SQL UPDATE', async () => {
 		const driver = mockDriver(sampleRows)
-		const content = await exportPreview(driver, { ...baseParams, format: 'sql_update', limit: 10 })
+		const content = await exportPreview(driver, { ...baseParams, format: 'sql_update', limit: 10, keyColumns: ['id'] })
 
 		expect(content).toContain('UPDATE')
 		expect(content).toContain('SET')
