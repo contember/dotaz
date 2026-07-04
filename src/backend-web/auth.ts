@@ -1,36 +1,115 @@
+// Request security for web mode, three independent layers:
+//  1. Host validation — on loopback binds the Host header must itself be loopback (DNS-rebinding defense)
+//  2. Browser isolation — Sec-Fetch-Site + Origin checks reject cross-site requests (CSRF/WS-hijack defense)
+//  3. Token auth — required for non-loopback binds; delivered once via ?rpcToken= and stored in an HttpOnly cookie
+// Loopback binds skip layer 3 entirely: layers 1+2 already block every browser-based attack,
+// and a local process can reach the port either way.
+
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
+
 export const RPC_COOKIE_NAME = 'dotaz_rpc_token'
 
-export interface RpcAuthConfig {
-	token: string
-	exposeToken: boolean
-	cookieName: string
+// Persistent so the ?rpcToken= link is needed once per browser, not once per browser restart
+const COOKIE_MAX_AGE_SECONDS = 365 * 24 * 60 * 60
+
+export interface WebAuthConfig {
+	token: string | null
+	tokenGenerated: boolean
+	requireLoopbackHost: boolean
+	allowedHosts: Set<string>
+	allowedOrigins: Set<string>
 }
+
+export type AuthFailure = { ok: false; status: 401 | 403; reason: string }
+export type AuthResult = { ok: true } | AuthFailure
 
 export function isLoopbackHost(host: string): boolean {
 	const normalized = host.trim().toLowerCase().replace(/^\[/, '').replace(/\]$/, '')
-	return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1'
+	return normalized === 'localhost' || normalized === '::1' || /^127(\.\d{1,3}){3}$/.test(normalized)
 }
 
-export function createRpcAuthConfig(host: string, configuredToken = process.env.DOTAZ_RPC_TOKEN): RpcAuthConfig {
-	const token = configuredToken?.trim()
-	if (!token && !isLoopbackHost(host)) {
-		throw new Error('DOTAZ_RPC_TOKEN is required when DOTAZ_HOST is not loopback')
+export function createWebAuthConfig(
+	bindHost: string,
+	env: Record<string, string | undefined> = process.env,
+): WebAuthConfig {
+	const configuredToken = env.DOTAZ_RPC_TOKEN?.trim() || null
+	const loopbackBind = isLoopbackHost(bindHost)
+	let token = configuredToken
+	let tokenGenerated = false
+	if (!token && !loopbackBind) {
+		token = randomBytes(32).toString('hex')
+		tokenGenerated = true
 	}
 
 	return {
-		token: token ?? crypto.randomUUID(),
-		exposeToken: !token,
-		cookieName: RPC_COOKIE_NAME,
+		token,
+		tokenGenerated,
+		requireLoopbackHost: loopbackBind,
+		allowedHosts: parseList(env.DOTAZ_ALLOWED_HOSTS, (value) => value.toLowerCase()),
+		allowedOrigins: parseList(env.DOTAZ_ALLOWED_ORIGINS, normalizeOrigin),
 	}
 }
 
-export function createRpcAuthCookie(req: Request, config: RpcAuthConfig): string {
-	const url = new URL(req.url)
+// Applied to every route (including static files) — a rebound page must not reach the server at all
+export function isAllowedHost(req: Request, config: WebAuthConfig): boolean {
+	const hostname = hostnameFromHostHeader(requestHost(req))
+	if (config.requireLoopbackHost) {
+		return isLoopbackHost(hostname) || config.allowedHosts.has(hostname)
+	}
+	if (config.allowedHosts.size > 0) {
+		return config.allowedHosts.has(hostname)
+	}
+	return true
+}
+
+export function authorizeApiRequest(req: Request, config: WebAuthConfig): AuthResult {
+	if (!isAllowedHost(req, config)) {
+		return { ok: false, status: 403, reason: 'Host not allowed' }
+	}
+	if (!isAllowedFetchSite(req)) {
+		return { ok: false, status: 403, reason: 'Cross-site requests are not allowed' }
+	}
+	if (!isAllowedOrigin(req, config)) {
+		return { ok: false, status: 403, reason: 'Origin not allowed' }
+	}
+	if (config.token !== null && !tokenMatches(getRequestToken(req), config.token)) {
+		return { ok: false, status: 401, reason: 'RPC authentication required' }
+	}
+	return { ok: true }
+}
+
+// Possession of the token is the authorization here — the link is legitimately opened
+// cross-site (chat, email), so only the Host layer applies on top of the token match.
+export function createTokenRedirectResponse(req: Request, url: URL, config: WebAuthConfig): Response {
+	if (config.token === null || !tokenMatches(url.searchParams.get('rpcToken'), config.token)) {
+		return new Response('Invalid rpcToken', { status: 401 })
+	}
+
+	const redirectUrl = new URL(url)
+	redirectUrl.searchParams.delete('rpcToken')
+	return new Response(null, {
+		status: 302,
+		headers: {
+			Location: `${redirectUrl.pathname}${redirectUrl.search}`,
+			'Set-Cookie': createAuthCookie(req, config.token),
+		},
+	})
+}
+
+export function failureResponse(failure: AuthFailure, format: 'json' | 'text'): Response {
+	if (format === 'json') {
+		return Response.json({ error: failure.reason }, { status: failure.status })
+	}
+	return new Response(failure.reason, { status: failure.status })
+}
+
+function createAuthCookie(req: Request, token: string): string {
 	const forwardedProto = req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim()
-	const secure = url.protocol === 'https:' || forwardedProto === 'https'
+	const secure = new URL(req.url).protocol === 'https:' || forwardedProto === 'https'
 	const parts = [
-		`${config.cookieName}=${encodeURIComponent(config.token)}`,
+		`${RPC_COOKIE_NAME}=${encodeURIComponent(token)}`,
 		'Path=/',
+		`Max-Age=${COOKIE_MAX_AGE_SECONDS}`,
 		'HttpOnly',
 		'SameSite=Strict',
 	]
@@ -38,10 +117,39 @@ export function createRpcAuthCookie(req: Request, config: RpcAuthConfig): string
 	return parts.join('; ')
 }
 
-export function getRequestRpcToken(req: Request, config: RpcAuthConfig): string | null {
-	const cookieToken = getCookieValue(req, config.cookieName)
+// Forbidden header — browsers set it, attacker JS cannot. Absent on non-browser
+// clients and pre-2023 Safari; the Origin and token layers still apply there.
+function isAllowedFetchSite(req: Request): boolean {
+	const site = req.headers.get('sec-fetch-site')
+	return site === null || site === 'same-origin' || site === 'none'
+}
+
+function isAllowedOrigin(req: Request, config: WebAuthConfig): boolean {
+	const origin = req.headers.get('origin')
+	// Absent on non-browser clients and same-origin GETs — CSRF does not apply to either
+	if (origin === null) return true
+	if (config.allowedOrigins.has(origin)) return true
+
+	let originUrl: URL
+	try {
+		originUrl = new URL(origin)
+	} catch {
+		return false // includes the opaque "null" origin
+	}
+
+	const host = requestHost(req)
+	// Scheme intentionally ignored: an https-terminating reverse proxy forwards plain http upstream
+	if (originUrl.host === host) return true
+
+	// Loopback page talking to a loopback-addressed server, e.g. Vite dev on another port
+	return isLoopbackHost(originUrl.hostname) && isLoopbackHost(hostnameFromHostHeader(host))
+}
+
+function getRequestToken(req: Request): string | null {
+	const cookieToken = getCookieValue(req, RPC_COOKIE_NAME)
 	if (cookieToken) return cookieToken
 
+	// Bearer supports non-browser clients (scripts, health checks)
 	const authorization = req.headers.get('authorization')?.trim()
 	const bearerPrefix = 'bearer '
 	if (authorization?.toLowerCase().startsWith(bearerPrefix)) {
@@ -49,71 +157,14 @@ export function getRequestRpcToken(req: Request, config: RpcAuthConfig): string 
 		if (token) return token
 	}
 
-	const headerToken = req.headers.get('x-dotaz-rpc-token')?.trim()
-	return headerToken || null
+	return null
 }
 
-export function getProvisioningRpcToken(req: Request, url: URL, config: RpcAuthConfig): string | null {
-	return getRequestRpcToken(req, config) ?? url.searchParams.get('rpcToken')?.trim() ?? null
-}
-
-export function isRpcRequestAuthorized(req: Request, url: URL, config: RpcAuthConfig): boolean {
-	return isAllowedOrigin(req, url) && getRequestRpcToken(req, config) === config.token
-}
-
-export function canProvisionRpcCookie(req: Request, url: URL, config: RpcAuthConfig): boolean {
-	if (!isAllowedOrigin(req, url)) return false
-	if (config.exposeToken) return true
-	return getProvisioningRpcToken(req, url, config) === config.token
-}
-
-export function createBootstrapResponse(req: Request, url: URL, config: RpcAuthConfig): Response {
-	if (!canProvisionRpcCookie(req, url, config)) {
-		return unauthorizedJsonResponse('RPC authentication required')
-	}
-
-	return new Response(JSON.stringify({ ok: true }), {
-		headers: {
-			'Content-Type': 'application/json',
-			'Set-Cookie': createRpcAuthCookie(req, config),
-		},
-	})
-}
-
-export function createTokenRedirectResponse(req: Request, url: URL, config: RpcAuthConfig): Response {
-	if (!canProvisionRpcCookie(req, url, config)) {
-		return unauthorizedTextResponse('RPC authentication failed')
-	}
-
-	const redirectUrl = new URL(url)
-	redirectUrl.searchParams.delete('rpcToken')
-	const location = `${redirectUrl.pathname}${redirectUrl.search}${redirectUrl.hash}`
-	return new Response(null, {
-		status: 302,
-		headers: {
-			Location: location,
-			'Set-Cookie': createRpcAuthCookie(req, config),
-		},
-	})
-}
-
-export function withRpcAuthCookie(req: Request, config: RpcAuthConfig, headers: HeadersInit = {}): Headers {
-	const result = new Headers(headers)
-	if (canProvisionRpcCookie(req, new URL(req.url), config)) {
-		result.set('Set-Cookie', createRpcAuthCookie(req, config))
-	}
-	return result
-}
-
-export function unauthorizedJsonResponse(message = 'Unauthorized'): Response {
-	return new Response(JSON.stringify({ error: message }), {
-		status: 401,
-		headers: { 'Content-Type': 'application/json' },
-	})
-}
-
-export function unauthorizedTextResponse(message = 'Unauthorized'): Response {
-	return new Response(message, { status: 401 })
+function tokenMatches(provided: string | null, expected: string): boolean {
+	if (!provided) return false
+	const a = Uint8Array.from(createHash('sha256').update(provided).digest())
+	const b = Uint8Array.from(createHash('sha256').update(expected).digest())
+	return timingSafeEqual(a, b)
 }
 
 function getCookieValue(req: Request, name: string): string | null {
@@ -135,47 +186,32 @@ function getCookieValue(req: Request, name: string): string | null {
 	return null
 }
 
-function isAllowedOrigin(req: Request, url: URL): boolean {
-	const origin = req.headers.get('origin')
-	if (!origin) return true
-
-	const allowedOrigins = new Set<string>()
-	allowedOrigins.add(requestOrigin(req, url))
-
-	const configured = process.env.DOTAZ_ALLOWED_ORIGINS
-	if (configured) {
-		for (const item of configured.split(',')) {
-			const value = item.trim()
-			if (value) allowedOrigins.add(value)
-		}
-	}
-
-	if (isLoopbackRequest(req, url)) {
-		allowedOrigins.add('http://localhost:6402')
-		allowedOrigins.add('http://127.0.0.1:6402')
-		allowedOrigins.add('http://[::1]:6402')
-	}
-
-	return allowedOrigins.has(origin)
-}
-
-function requestOrigin(req: Request, url: URL): string {
-	const host = req.headers.get('host') ?? url.host
-	const forwardedProto = req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim()
-	const protocol = forwardedProto || url.protocol.replace(/:$/, '')
-	return `${protocol}://${host}`
-}
-
-function isLoopbackRequest(req: Request, url: URL): boolean {
-	const host = req.headers.get('host') ?? url.host
-	return isLoopbackHost(url.hostname) || isLoopbackHost(hostnameFromHostHeader(host))
+function requestHost(req: Request): string {
+	return (req.headers.get('host') ?? new URL(req.url).host).trim().toLowerCase()
 }
 
 function hostnameFromHostHeader(host: string): string {
-	const trimmed = host.trim()
-	if (trimmed.startsWith('[')) {
-		const end = trimmed.indexOf(']')
-		return end === -1 ? trimmed : trimmed.slice(1, end)
+	if (host.startsWith('[')) {
+		const end = host.indexOf(']')
+		return end === -1 ? host : host.slice(1, end)
 	}
-	return trimmed.split(':')[0] ?? trimmed
+	return host.split(':')[0] ?? host
+}
+
+function parseList(value: string | undefined, normalize: (item: string) => string): Set<string> {
+	const result = new Set<string>()
+	if (!value) return result
+	for (const item of value.split(',')) {
+		const trimmed = item.trim()
+		if (trimmed) result.add(normalize(trimmed))
+	}
+	return result
+}
+
+function normalizeOrigin(value: string): string {
+	try {
+		return new URL(value).origin
+	} catch {
+		return value
+	}
 }

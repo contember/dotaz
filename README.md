@@ -67,9 +67,13 @@ Run as a web server accessible from your browser — no desktop app needed:
 bunx @dotaz/server
 ```
 
-Options: `--port <port>` (default: 6401), `--host <host>` (default: localhost)
+Options: `--port <port>` (default: 6401), `--host <host>` (default: localhost), `--rpc-token <token>`
 
-When binding to a non-loopback host such as `0.0.0.0`, set `DOTAZ_RPC_TOKEN` and open the app once with `?rpcToken=<token>` so the browser can receive its HttpOnly RPC cookie.
+Access control depends on how the server is bound:
+
+- **Loopback (default)** — no token needed. The server validates the `Host` header (DNS-rebinding protection) and rejects cross-site browser requests via `Sec-Fetch-Site`/`Origin` checks.
+- **Non-loopback (e.g. `--host 0.0.0.0`)** — token auth is required. Set `DOTAZ_RPC_TOKEN` (or `--rpc-token`), or let the server generate one and print it on startup. Open the app once with `?rpcToken=<token>` — the browser receives a persistent HttpOnly cookie and the token is stripped from the URL.
+- **Behind a reverse proxy** — if the proxy rewrites the `Host` header, allow the public origin with `DOTAZ_ALLOWED_ORIGINS` (comma-separated), and optionally pin accepted `Host` headers with `DOTAZ_ALLOWED_HOSTS`.
 
 ### Docker
 
@@ -82,7 +86,7 @@ docker run -p 6401:6401 \
 ```
 
 `DOTAZ_ENCRYPTION_KEY` is required — it encrypts saved database credentials in the browser. Use any random string (e.g. `openssl rand -hex 32`).
-Open `http://localhost:6401/?rpcToken=$TOKEN` on first use. If the browser origin differs from the server origin, set `DOTAZ_ALLOWED_ORIGINS` to a comma-separated allowlist.
+Open `http://localhost:6401/?rpcToken=$TOKEN` on first use. If you omit `DOTAZ_RPC_TOKEN`, a token is generated per run and printed to the container logs.
 
 ## Development
 

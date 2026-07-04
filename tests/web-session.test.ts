@@ -1,5 +1,6 @@
 import type { ExportParams } from '@dotaz/backend-shared/services/export-service'
 import type { ImportStreamParams } from '@dotaz/backend-shared/services/import-service'
+import { ENV_CONNECTION_ID } from '@dotaz/backend-web/env-connection'
 import {
 	cleanupExpiredTokens,
 	consumeStreamToken,
@@ -12,7 +13,6 @@ import {
 	releaseStream,
 	TOKEN_EXPIRY_MS,
 } from '@dotaz/backend-web/session'
-import { ENV_CONNECTION_ID } from '@dotaz/backend-web/env-connection'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 const ENCRYPTION_KEY = 'test-encryption-key-for-unit-tests'

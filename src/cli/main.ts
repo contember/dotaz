@@ -22,13 +22,17 @@ for (let i = 0; i < args.length; i++) {
 	} else if ((arg === '--host' || arg === '-H') && args[i + 1]) {
 		host = args[i + 1]
 		i++
+	} else if (arg === '--rpc-token' && args[i + 1]) {
+		process.env.DOTAZ_RPC_TOKEN = args[i + 1]
+		i++
 	} else if (arg === '--help') {
 		console.log(`Usage: dotaz [options]
 
 Options:
-  -p, --port <port>  Port to listen on (default: 6401)
-  -H, --host <host>  Host to bind to (default: localhost)
-  --help             Show this help message
+  -p, --port <port>    Port to listen on (default: 6401)
+  -H, --host <host>    Host to bind to (default: localhost)
+  --rpc-token <token>  Access token for non-loopback binds (default: generated per run)
+  --help               Show this help message
 `)
 		process.exit(0)
 	}

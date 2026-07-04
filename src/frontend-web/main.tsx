@@ -23,10 +23,17 @@ async function bootstrapRpcAuth(): Promise<BootstrapResult> {
 			return { ok: true }
 		}
 
-		if (response.status === 401 || response.status === 403) {
+		if (response.status === 401) {
 			return {
 				ok: false,
-				message: 'Access to Dotaz is not authorized. Refresh the page and try again.',
+				message: 'This server requires an access token. Open Dotaz once using the ?rpcToken=… link printed by the server on startup.',
+			}
+		}
+
+		if (response.status === 403) {
+			return {
+				ok: false,
+				message: 'The server rejected this request (host/origin check). If Dotaz runs behind a proxy, check DOTAZ_ALLOWED_ORIGINS.',
 			}
 		}
 
