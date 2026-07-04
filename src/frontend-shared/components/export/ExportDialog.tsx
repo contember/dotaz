@@ -10,6 +10,7 @@ import { getCapabilities } from '../../lib/capabilities'
 import { formatPreview } from '../../lib/export-formatters'
 import type { PreviewFormatOptions } from '../../lib/export-formatters'
 import { rpc } from '../../lib/rpc'
+import { friendlyErrorMessage } from '../../lib/rpc-errors'
 import { transport } from '../../lib/transport'
 import { formatFileSize, formatNumber } from '../../lib/value-format'
 import { connectionsStore } from '../../stores/connections'
@@ -282,19 +283,28 @@ export default function ExportDialog(props: ExportDialogProps) {
 		}
 	}
 
-	const preview = createMemo(() =>
-		formatPreview(
-			previewData.rows,
-			previewData.columns,
-			options.format,
-			options.delimiter,
-			options.includeHeaders,
-			options.batchSize,
-			props.schema ?? '',
-			props.table ?? (props.rowsSource?.defaultName?.replace(/\.[^.]+$/, '') ?? 'result'),
-			getPreviewFormatOptions(),
-		)
-	)
+	// Formatting can throw (e.g. SQL UPDATE preview when the loaded rows lack a
+	// key column); surface it as a message instead of an uncaught render error.
+	const preview = createMemo((): { content: string; error: string | null } => {
+		try {
+			return {
+				content: formatPreview(
+					previewData.rows,
+					previewData.columns,
+					options.format,
+					options.delimiter,
+					options.includeHeaders,
+					options.batchSize,
+					props.schema ?? '',
+					props.table ?? (props.rowsSource?.defaultName?.replace(/\.[^.]+$/, '') ?? 'result'),
+					getPreviewFormatOptions(),
+				),
+				error: null,
+			}
+		} catch (err) {
+			return { content: '', error: friendlyErrorMessage(err) }
+		}
+	})
 
 	async function loadPreview() {
 		setPreviewData({ rows: null, columns: [], loading: true })
@@ -716,8 +726,11 @@ export default function ExportDialog(props: ExportDialogProps) {
 							Loading preview...
 						</div>
 					</Show>
-					<Show when={!previewData.loading && !!preview()}>
-						<pre class="export-dialog__preview">{preview()}</pre>
+					<Show when={!previewData.loading && !!preview().content}>
+						<pre class="export-dialog__preview">{preview().content}</pre>
+					</Show>
+					<Show when={!previewData.loading && preview().error}>
+						<div class="export-dialog__preview export-dialog__preview--error">{preview().error}</div>
 					</Show>
 					<Show when={!previewData.loading && previewData.rows === null}>
 						<div class="export-dialog__preview--empty">

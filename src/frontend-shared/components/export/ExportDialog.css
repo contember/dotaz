@@ -202,6 +202,12 @@
 	white-space: normal;
 }
 
+.export-dialog__preview--error {
+	color: var(--error);
+	font-family: inherit;
+	white-space: normal;
+}
+
 .export-dialog__preview--empty {
 	padding: var(--spacing-md);
 	background: var(--surface);
