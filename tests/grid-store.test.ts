@@ -1140,4 +1140,69 @@ describe('grid store', () => {
 			expect(gridStore.hasPendingChanges('tab-1')).toBe(false)
 		})
 	})
+
+	describe('clearAppliedChanges (partial apply)', () => {
+		test('bakes committed UPDATE value into base rows while other edits stay pending', async () => {
+			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
+
+			// Edit two different rows; only the first is committed below.
+			gridStore.setCellValue('tab-1', 0, 'name', 'CommittedAlice')
+			gridStore.setCellValue('tab-1', 1, 'name', 'PendingBob')
+
+			// Regression fixture: force the base row back to its pre-edit value so the
+			// test observes that clearAppliedChanges (not the incidental setCellValue
+			// write) is what materialises the committed value — matching the bug where
+			// tab.rows still holds pre-edit data because no refetch can run.
+			storeState.tabs['tab-1'].rows[0].name = 'Alice'
+
+			// Partial apply: commit only row 0's update.
+			const applied = new Set<string>(['update:0'])
+			await gridStore.applyChanges('tab-1', undefined, applied)
+			gridStore.clearAppliedChanges('tab-1', applied)
+
+			const tab = gridStore.getTab('tab-1')!
+
+			// Committed cell shows the new value and is no longer tracked as changed.
+			expect(tab.rows[0].name).toBe('CommittedAlice')
+			expect(gridStore.isCellChanged('tab-1', 0, 'name')).toBe(false)
+			expect(tab.pendingChanges.cellEdits['0:name']).toBeUndefined()
+
+			// The other edit remains pending and untouched.
+			expect(tab.rows[1].name).toBe('PendingBob')
+			expect(gridStore.isCellChanged('tab-1', 1, 'name')).toBe(true)
+			expect(tab.pendingChanges.cellEdits['1:name']).toEqual({
+				rowIndex: 1,
+				column: 'name',
+				oldValue: 'Bob',
+				newValue: 'PendingBob',
+			})
+			expect(gridStore.hasPendingChanges('tab-1')).toBe(true)
+		})
+
+		test('bakes UPDATE value before splicing an applied DELETE in the same commit', async () => {
+			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
+
+			// Update row 0 (Alice) and delete row 1 (Bob) in one commit; Charlie (row 2)
+			// survives and renumbers to index 1.
+			gridStore.setCellValue('tab-1', 0, 'name', 'CommittedAlice')
+			gridStore.selectFullRow('tab-1', 1, 2)
+			gridStore.deleteSelectedRows('tab-1')
+
+			// Same regression fixture as above.
+			storeState.tabs['tab-1'].rows[0].name = 'Alice'
+
+			const applied = new Set<string>(['update:0', 'delete:1'])
+			await gridStore.applyChanges('tab-1', undefined, applied)
+			gridStore.clearAppliedChanges('tab-1', applied)
+
+			const tab = gridStore.getTab('tab-1')!
+
+			// Bob is spliced out; the updated row keeps its committed value and Charlie
+			// renumbers down to index 1.
+			expect(tab.rows).toHaveLength(2)
+			expect(tab.rows[0].name).toBe('CommittedAlice')
+			expect(tab.rows[1].name).toBe('Charlie')
+			expect(gridStore.hasPendingChanges('tab-1')).toBe(false)
+		})
+	})
 })

@@ -455,14 +455,28 @@ export function createGridEditingActions(
 			if (applied.has(`delete:${ri}`)) appliedDeletes.add(ri)
 		}
 
-		// Drop applied entries (no renumbering yet)
+		// Drop applied entries (no renumbering yet). Applied UPDATE cells are baked
+		// into the base rows below so committed values survive without a refetch
+		// (a refetch is blocked while other edits stay pending).
 		const remainingCellEdits: Record<string, CellChange> = {}
+		const appliedUpdateEdits: CellChange[] = []
 		for (const [key, edit] of Object.entries(pending.cellEdits)) {
 			const isAppliedUpdate = applied.has(`update:${edit.rowIndex}`) && !pending.newRows.has(edit.rowIndex)
 				&& !pending.deletedRows.has(edit.rowIndex)
 			const isAppliedInsert = applied.has(`insert:${edit.rowIndex}`) && pending.newRows.has(edit.rowIndex)
-			if (isAppliedUpdate || isAppliedInsert) continue
+			if (isAppliedUpdate) {
+				appliedUpdateEdits.push(edit)
+				continue
+			}
+			if (isAppliedInsert) continue
 			remainingCellEdits[key] = edit
+		}
+
+		// Materialise committed UPDATE values into the base rows before any delete
+		// splice, so the indices still line up with tab.rows. Applied INSERT rows are
+		// already materialised in tab.rows and are intentionally left in place.
+		for (const edit of appliedUpdateEdits) {
+			setState('tabs', tabId, 'rows', edit.rowIndex, edit.column, edit.newValue)
 		}
 
 		const remainingNewRows = new Set<number>()
