@@ -1422,6 +1422,41 @@ describe('QueryExecutor pool transaction-control rejection', () => {
 		expect(results[0].error).toContain('require a session')
 	})
 
+	test('rejects ABORT (Postgres ROLLBACK synonym) without sessionId', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		const results = await executor.executeQuery('conn-1', 'ABORT')
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toContain('require a session')
+	})
+
+	test('allows COMMIT PREPARED without sessionId (two-phase, pool-safe)', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		const results = await executor.executeQuery('conn-1', "COMMIT PREPARED 'tx1'")
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toBeUndefined()
+		expect(driver.execute).toHaveBeenCalled()
+	})
+
+	test('allows ROLLBACK PREPARED without sessionId (two-phase, pool-safe)', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		const results = await executor.executeQuery('conn-1', "ROLLBACK PREPARED 'tx1'")
+
+		expect(results).toHaveLength(1)
+		expect(results[0].error).toBeUndefined()
+		expect(driver.execute).toHaveBeenCalled()
+	})
+
 	test('allows regular statements without sessionId', async () => {
 		const driver = makeMockDriver()
 		const cm = makeMockConnectionManager(driver)

@@ -119,7 +119,12 @@ interface RunningQuery {
 function isTopLevelTransactionControl(statement: string): boolean {
 	const normalized = stripLiteralsAndComments(statement).replace(/\s+/g, ' ').trim().toUpperCase()
 
-	return /^(BEGIN|START TRANSACTION|COMMIT|END|ROLLBACK)\b/.test(normalized) && !/^ROLLBACK TO\b/.test(normalized)
+	// ABORT is Postgres' synonym for ROLLBACK and poisons the pool the same way.
+	// ROLLBACK TO (savepoint) and COMMIT/ROLLBACK PREPARED (two-phase, finalizing a
+	// tx from another session) don't start or leave a dangling tx, so they're pool-safe.
+	return /^(BEGIN|START TRANSACTION|COMMIT|END|ROLLBACK|ABORT)\b/.test(normalized)
+		&& !/^ROLLBACK TO\b/.test(normalized)
+		&& !/^(COMMIT|ROLLBACK) PREPARED\b/.test(normalized)
 }
 
 export class QueryExecutor {
