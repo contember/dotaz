@@ -80,12 +80,14 @@ export class BackendAdapter implements RpcAdapter {
 	}
 
 	createConnection(params: { name: string; config: ConnectionConfig; readOnly?: boolean; color?: string; groupName?: string }): ConnectionInfo {
+		this.rejectServerSqliteConfig(params.config)
 		return this.cm.createConnection(params)
 	}
 
 	updateConnection(
 		params: { id: string; name: string; config: ConnectionConfig; readOnly?: boolean; color?: string; groupName?: string },
 	): ConnectionInfo {
+		this.rejectServerSqliteConfig(params.config)
 		return this.cm.updateConnection(params)
 	}
 
@@ -114,6 +116,7 @@ export class BackendAdapter implements RpcAdapter {
 	}
 
 	async testConnection(config: ConnectionConfig): Promise<{ success: boolean; error?: string }> {
+		this.rejectServerSqliteConfig(config)
 		return this.cm.testConnection(config)
 	}
 
@@ -135,6 +138,8 @@ export class BackendAdapter implements RpcAdapter {
 				fullConfig = JSON.parse(await this.encryption.decrypt(params.encryptedConfig)) as ConnectionConfig
 			}
 			if (fullConfig) {
+				// Client-supplied config: block SQLite server-path access in web mode.
+				this.rejectServerSqliteConfig(fullConfig)
 				const existing = this.appDb.getConnectionById(connectionId)
 				const resolvedName = params?.name ?? existing?.name ?? connectionId
 				if (!existing) {
@@ -221,6 +226,7 @@ export class BackendAdapter implements RpcAdapter {
 	}
 
 	async listDatabasesForConfig(config: ConnectionConfig): Promise<string[]> {
+		this.rejectServerSqliteConfig(config)
 		return this.cm.listDatabasesForConfig(config)
 	}
 
@@ -604,6 +610,15 @@ export class BackendAdapter implements RpcAdapter {
 	private rejectServerFileAccess(filePath?: string): void {
 		if (!this.allowServerFileAccess && filePath !== undefined) {
 			throw new Error('Server file access is not available in this runtime')
+		}
+	}
+
+	// A client-supplied SQLite config points at a path on the SERVER's filesystem,
+	// so treat it exactly like any other server file access request. Only guards
+	// configs passed as method arguments — never the stored/server-managed config.
+	private rejectServerSqliteConfig(config?: ConnectionConfig): void {
+		if (config?.type === 'sqlite') {
+			this.rejectServerFileAccess(config.path)
 		}
 	}
 
