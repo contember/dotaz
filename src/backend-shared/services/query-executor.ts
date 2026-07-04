@@ -1,4 +1,4 @@
-import { parseErrorPosition, splitStatements } from '@dotaz/shared/sql/statements'
+import { parseErrorPosition, splitStatements, stripLiteralsAndComments } from '@dotaz/shared/sql/statements'
 import { DatabaseError } from '@dotaz/shared/types/errors'
 import type { ExplainNode, ExplainResult, QueryResult } from '@dotaz/shared/types/query'
 import type { TransactionLogEntry, TransactionLogStatus } from '@dotaz/shared/types/rpc'
@@ -116,6 +116,12 @@ interface RunningQuery {
 	poolQueryKey?: symbol
 }
 
+function isTopLevelTransactionControl(statement: string): boolean {
+	const normalized = stripLiteralsAndComments(statement).replace(/\s+/g, ' ').trim().toUpperCase()
+
+	return /^(BEGIN|START TRANSACTION|COMMIT|END|ROLLBACK)\b/.test(normalized) && !/^ROLLBACK TO\b/.test(normalized)
+}
+
 export class QueryExecutor {
 	private connectionManager: ConnectionManager
 	private runningQueries = new Map<string, RunningQuery>()
@@ -154,17 +160,14 @@ export class QueryExecutor {
 		// Reject transaction-control statements without a session — running
 		// BEGIN/COMMIT/ROLLBACK on the pool sends each to a different connection,
 		// giving false transactional semantics and poisoning the pool.
-		if (!sessionId && statements.length === 1) {
-			const upper = statements[0].trim().toUpperCase()
-			if (/^(BEGIN|START\s+TRANSACTION|COMMIT|END|ROLLBACK)\b/.test(upper) && !/^ROLLBACK\s+TO\b/.test(upper)) {
-				return [{
-					columns: [],
-					rows: [],
-					rowCount: 0,
-					durationMs: 0,
-					error: 'Transaction control statements (BEGIN, COMMIT, ROLLBACK) require a session. Open a session tab to use manual transactions.',
-				}]
-			}
+		if (!sessionId && statements.some(isTopLevelTransactionControl)) {
+			return [{
+				columns: [],
+				rows: [],
+				rowCount: 0,
+				durationMs: 0,
+				error: 'Transaction control statements (BEGIN, COMMIT, ROLLBACK) require a session. Open a session tab to use manual transactions.',
+			}]
 		}
 
 		const runWithSession = async (effectiveSessionId: string | undefined) => {

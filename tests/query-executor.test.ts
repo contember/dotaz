@@ -1276,6 +1276,15 @@ describe('QueryExecutor session affinity', () => {
 // ── QueryExecutor — pool transaction-control rejection ───
 
 describe('QueryExecutor pool transaction-control rejection', () => {
+	const transactionControlBatchCases: Array<{ name: string; sql: string }> = [
+		{ name: 'BEGIN', sql: 'SELECT 1; BEGIN; SELECT 2' },
+		{ name: 'START TRANSACTION', sql: 'SELECT 1; START TRANSACTION; SELECT 2' },
+		{ name: 'COMMIT', sql: 'SELECT 1; COMMIT; SELECT 2' },
+		{ name: 'END', sql: 'SELECT 1; END; SELECT 2' },
+		{ name: 'ROLLBACK', sql: 'SELECT 1; ROLLBACK; SELECT 2' },
+		{ name: 'BEGIN after a leading comment', sql: 'SELECT 1; -- comment\nBEGIN; SELECT 2' },
+	]
+
 	test('rejects BEGIN without sessionId', async () => {
 		const driver = makeMockDriver()
 		const cm = makeMockConnectionManager(driver)
@@ -1323,6 +1332,22 @@ describe('QueryExecutor pool transaction-control rejection', () => {
 		expect(results[0].error).toContain('require a session')
 	})
 
+	for (const { name, sql } of transactionControlBatchCases) {
+		test(`rejects ${name} in no-session batch before reserving ephemeral session`, async () => {
+			const driver = makeMockDriver()
+			const cm = makeMockConnectionManager(driver)
+			const executor = new QueryExecutor(cm)
+
+			const results = await executor.executeQuery('conn-1', sql)
+
+			expect(results).toHaveLength(1)
+			expect(results[0].error).toContain('require a session')
+			expect(driver.execute).not.toHaveBeenCalled()
+			expect(driver.reserveSession).not.toHaveBeenCalled()
+			expect(driver.releaseSession).not.toHaveBeenCalled()
+		})
+	}
+
 	test('rejects START TRANSACTION without sessionId', async () => {
 		const driver = makeMockDriver()
 		const cm = makeMockConnectionManager(driver)
@@ -1346,6 +1371,20 @@ describe('QueryExecutor pool transaction-control rejection', () => {
 		expect(driver.execute).toHaveBeenCalled()
 	})
 
+	test('allows transaction-control batch with sessionId', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		const results = await executor.executeQuery('conn-1', 'BEGIN; SELECT 1; COMMIT', undefined, undefined, undefined, undefined, 'my-session')
+
+		expect(results).toHaveLength(3)
+		expect(results.every((result) => result.error === undefined)).toBe(true)
+		expect(driver.reserveSession).not.toHaveBeenCalled()
+		expect(driver.releaseSession).not.toHaveBeenCalled()
+		expect(driver.execute).toHaveBeenCalledTimes(3)
+	})
+
 	test('allows ROLLBACK TO without sessionId (savepoint, not tx control)', async () => {
 		const driver = makeMockDriver()
 		const cm = makeMockConnectionManager(driver)
@@ -1356,6 +1395,20 @@ describe('QueryExecutor pool transaction-control rejection', () => {
 		expect(results).toHaveLength(1)
 		expect(results[0].error).toBeUndefined()
 		expect(driver.execute).toHaveBeenCalled()
+	})
+
+	test('allows ROLLBACK TO in no-session batch', async () => {
+		const driver = makeMockDriver()
+		const cm = makeMockConnectionManager(driver)
+		const executor = new QueryExecutor(cm)
+
+		const results = await executor.executeQuery('conn-1', 'ROLLBACK TO my_savepoint; SELECT 1')
+
+		expect(results).toHaveLength(2)
+		expect(results.every((result) => result.error === undefined)).toBe(true)
+		expect(driver.reserveSession).toHaveBeenCalledTimes(1)
+		expect(driver.releaseSession).toHaveBeenCalledTimes(1)
+		expect(driver.execute).toHaveBeenCalledTimes(2)
 	})
 
 	test('case-insensitive rejection', async () => {
