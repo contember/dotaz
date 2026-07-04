@@ -11,6 +11,15 @@ import { DatabaseError } from '@dotaz/shared/types/errors'
 import type { ExportFormat } from '@dotaz/shared/types/export'
 import { resolve } from 'node:path'
 import {
+	createBootstrapResponse,
+	createRpcAuthConfig,
+	createTokenRedirectResponse,
+	isRpcRequestAuthorized,
+	unauthorizedJsonResponse,
+	unauthorizedTextResponse,
+	withRpcAuthCookie,
+} from './auth'
+import {
 	cleanupExpiredTokens,
 	consumeStreamToken,
 	createSession,
@@ -26,6 +35,14 @@ import {
 const PORT = Number(process.env.DOTAZ_PORT) || 6401
 const HOST = process.env.DOTAZ_HOST || 'localhost'
 const DIST_DIR = process.env.DOTAZ_DIST_DIR || resolve(import.meta.dir, '../../dist')
+
+let RPC_AUTH: ReturnType<typeof createRpcAuthConfig>
+try {
+	RPC_AUTH = createRpcAuthConfig(HOST)
+} catch (err) {
+	console.error(err instanceof Error ? err.message : String(err))
+	process.exit(1)
+}
 
 const ENCRYPTION_KEY = process.env.DOTAZ_ENCRYPTION_KEY
 if (!ENCRYPTION_KEY) {
@@ -72,6 +89,11 @@ const FORMAT_EXTENSIONS: Record<ExportFormat, string> = {
 	sql_update: 'sql',
 	html: 'html',
 	xml: 'xml',
+}
+
+async function serveIndexHtml(req: Request, file: Blob): Promise<Response> {
+	const headers = withRpcAuthCookie(req, RPC_AUTH, { 'Content-Type': 'text/html' })
+	return new Response(await file.text(), { headers })
 }
 
 // ── HTTP stream endpoints ──────────────────────────────────
@@ -236,8 +258,19 @@ const server = Bun.serve<Session>({
 	async fetch(req, server) {
 		const url = new URL(req.url)
 
+		if (url.pathname === '/api/bootstrap' && req.method === 'GET') {
+			return createBootstrapResponse(req, url, RPC_AUTH)
+		}
+
+		if (req.method === 'GET' && url.searchParams.has('rpcToken')) {
+			return createTokenRedirectResponse(req, url, RPC_AUTH)
+		}
+
 		// Upgrade WebSocket requests at /rpc
 		if (url.pathname === '/rpc') {
+			if (!isRpcRequestAuthorized(req, url, RPC_AUTH)) {
+				return unauthorizedTextResponse('RPC authentication required')
+			}
 			// Pass an empty data object; real session is created in open()
 			if (server.upgrade(req, { data: {} as Session })) {
 				return undefined as any
@@ -248,16 +281,25 @@ const server = Bun.serve<Session>({
 		// ── Stream endpoints ──────────────────────────────
 		const exportMatch = url.pathname.match(/^\/api\/stream\/export\/([a-f0-9-]+)$/)
 		if (exportMatch && req.method === 'GET') {
+			if (!isRpcRequestAuthorized(req, url, RPC_AUTH)) {
+				return unauthorizedJsonResponse('RPC authentication required')
+			}
 			return handleExportStream(req, exportMatch[1])
 		}
 
 		const importMatch = url.pathname.match(/^\/api\/stream\/import\/([a-f0-9-]+)$/)
 		if (importMatch && req.method === 'POST') {
+			if (!isRpcRequestAuthorized(req, url, RPC_AUTH)) {
+				return unauthorizedJsonResponse('RPC authentication required')
+			}
 			return handleImportStream(req, importMatch[1])
 		}
 
 		// ── Menu action endpoint (Electron → frontend) ──
 		if (url.pathname === '/api/menu-action' && req.method === 'POST') {
+			if (!isRpcRequestAuthorized(req, url, RPC_AUTH)) {
+				return unauthorizedJsonResponse('RPC authentication required')
+			}
 			try {
 				const body = await req.json() as { action?: string }
 				const action = body?.action
@@ -294,6 +336,9 @@ const server = Bun.serve<Session>({
 		// Try exact file first
 		let file = Bun.file(filePath)
 		if (await file.exists()) {
+			if (url.pathname === '/' || url.pathname === '/index.html') {
+				return serveIndexHtml(req, file)
+			}
 			return new Response(file)
 		}
 
@@ -301,9 +346,7 @@ const server = Bun.serve<Session>({
 		filePath = resolve(DIST_DIR, 'index.html')
 		file = Bun.file(filePath)
 		if (await file.exists()) {
-			return new Response(file, {
-				headers: { 'Content-Type': 'text/html' },
-			})
+			return serveIndexHtml(req, file)
 		}
 
 		return new Response('Not found', { status: 404 })

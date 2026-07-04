@@ -1,6 +1,8 @@
 import { resolve } from 'node:path'
-import { defineConfig } from 'vite'
+import { defineConfig, type UserConfig } from 'vite'
 import solid from 'vite-plugin-solid'
+
+const demoWorker: NonNullable<UserConfig['worker']> = { format: 'es' }
 
 export default defineConfig(({ mode }) => {
 	const isWeb = mode === 'web'
@@ -23,7 +25,10 @@ export default defineConfig(({ mode }) => {
 			port: isDemo ? 6403 : isWeb ? 6402 : 6400,
 			strictPort: true,
 			proxy: isWeb
-				? { '/rpc': { target: 'ws://localhost:6401', ws: true } }
+				? {
+					'/api': { target: 'http://localhost:6401' },
+					'/rpc': { target: 'ws://localhost:6401', ws: true },
+				}
 				: undefined,
 			headers: isDemo
 				? {
@@ -35,8 +40,6 @@ export default defineConfig(({ mode }) => {
 		optimizeDeps: isDemo
 			? { exclude: ['@sqlite.org/sqlite-wasm'] }
 			: undefined,
-		worker: isDemo
-			? { format: 'es' as const }
-			: undefined,
+		worker: isDemo ? demoWorker : undefined,
 	}
 })

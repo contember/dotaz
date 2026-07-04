@@ -69,13 +69,20 @@ bunx @dotaz/server
 
 Options: `--port <port>` (default: 6401), `--host <host>` (default: localhost)
 
+When binding to a non-loopback host such as `0.0.0.0`, set `DOTAZ_RPC_TOKEN` and open the app once with `?rpcToken=<token>` so the browser can receive its HttpOnly RPC cookie.
+
 ### Docker
 
 ```sh
-docker run -p 6401:6401 -e DOTAZ_ENCRYPTION_KEY=<your-secret> ghcr.io/contember/dotaz
+TOKEN=$(openssl rand -hex 32)
+docker run -p 6401:6401 \
+  -e DOTAZ_ENCRYPTION_KEY=<your-secret> \
+  -e DOTAZ_RPC_TOKEN="$TOKEN" \
+  ghcr.io/contember/dotaz
 ```
 
 `DOTAZ_ENCRYPTION_KEY` is required — it encrypts saved database credentials in the browser. Use any random string (e.g. `openssl rand -hex 32`).
+Open `http://localhost:6401/?rpcToken=$TOKEN` on first use. If the browser origin differs from the server origin, set `DOTAZ_ALLOWED_ORIGINS` to a comma-separated allowlist.
 
 ## Development
 
