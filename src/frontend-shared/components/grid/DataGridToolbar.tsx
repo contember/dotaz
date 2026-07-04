@@ -69,6 +69,9 @@ export default function DataGridToolbar(props: DataGridToolbarProps) {
 		if (pendingCount() > 0) return 'Commit or revert pending changes first'
 		return null
 	}
+	// Requery is blocked while edits are pending; disabling the search input keeps
+	// its text in sync with the applied filter instead of throwing on requery.
+	const requeryBlockedReason = (): string | null => pendingCount() > 0 ? 'Commit or revert pending changes first' : null
 
 	onCleanup(() => {
 		if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
@@ -97,11 +100,17 @@ export default function DataGridToolbar(props: DataGridToolbarProps) {
 		setSearchInput(value)
 		if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
 		searchDebounceTimer = setTimeout(() => {
+			// Edits may have appeared during the debounce; skip and resync the box.
+			if (requeryBlockedReason()) {
+				setSearchInput(tab()?.quickSearch ?? '')
+				return
+			}
 			gridStore.setQuickSearch(props.tabId, value)
 		}, 300)
 	}
 
 	function handleClearQuickSearch() {
+		if (requeryBlockedReason()) return
 		setSearchInput('')
 		if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
 		gridStore.setQuickSearch(props.tabId, '')
@@ -209,6 +218,8 @@ export default function DataGridToolbar(props: DataGridToolbarProps) {
 									class="data-grid__quick-search-input"
 									placeholder="Search..."
 									value={searchInput()}
+									disabled={requeryBlockedReason() !== null}
+									title={requeryBlockedReason() ?? undefined}
 									onInput={(e) => handleQuickSearchInput(e.currentTarget.value)}
 									onKeyDown={(e) => {
 										if (e.key === 'Escape' && searchInput()) {
@@ -222,6 +233,7 @@ export default function DataGridToolbar(props: DataGridToolbarProps) {
 									<button
 										class="data-grid__quick-search-clear"
 										onClick={handleClearQuickSearch}
+										disabled={requeryBlockedReason() !== null}
 										title="Clear search"
 									>
 										<Icon name="close" size={10} />
