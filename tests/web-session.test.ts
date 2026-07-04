@@ -12,9 +12,11 @@ import {
 	releaseStream,
 	TOKEN_EXPIRY_MS,
 } from '@dotaz/backend-web/session'
+import { ENV_CONNECTION_ID } from '@dotaz/backend-web/env-connection'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 const ENCRYPTION_KEY = 'test-encryption-key-for-unit-tests'
+let originalDatabaseUrl: string | undefined
 
 function mockWs(): { send: (data: string) => void; messages: string[] } {
 	const messages: string[] = []
@@ -36,6 +38,8 @@ function dummyImportParams(): ImportStreamParams {
 
 // Clean up sessions and tokens between tests
 beforeEach(() => {
+	originalDatabaseUrl = process.env.DATABASE_URL
+	delete process.env.DATABASE_URL
 	for (const [, s] of getSessions()) {
 		if (s.ttlTimer) clearTimeout(s.ttlTimer)
 	}
@@ -49,6 +53,11 @@ afterEach(() => {
 	}
 	getSessions().clear()
 	getStreamTokens().clear()
+	if (originalDatabaseUrl !== undefined) {
+		process.env.DATABASE_URL = originalDatabaseUrl
+	} else {
+		delete process.env.DATABASE_URL
+	}
 })
 
 // ── Token registry ─────────────────────────────────────────
@@ -174,6 +183,26 @@ describe('Session lifecycle', () => {
 		const s1 = createSession(ws1, ENCRYPTION_KEY)
 		const s2 = createSession(ws2, ENCRYPTION_KEY)
 		expect(s1.id).not.toBe(s2.id)
+	})
+
+	test('connections.list redacts DATABASE_URL password for server-managed connection', async () => {
+		process.env.DATABASE_URL = 'postgresql://env_user:super-secret@127.0.0.1:1/env_db'
+		const ws = mockWs()
+		const session = createSession(ws, ENCRYPTION_KEY)
+
+		const listed = session.handlers['connections.list']().find(conn => conn.id === ENV_CONNECTION_ID)
+		if (!listed) throw new Error('Expected DATABASE_URL connection to be listed')
+		if (listed.config.type !== 'postgresql') throw new Error('Expected PostgreSQL DATABASE_URL connection')
+
+		expect(listed.serverManaged).toBe(true)
+		expect(listed.config.password).toBe('')
+
+		const stored = session.appDb.getConnectionById(ENV_CONNECTION_ID)
+		if (!stored) throw new Error('Expected DATABASE_URL connection to be stored internally')
+		if (stored.config.type !== 'postgresql') throw new Error('Expected stored DATABASE_URL connection to be PostgreSQL')
+		expect(stored.config.password).toBe('super-secret')
+
+		await destroySession(session)
 	})
 
 	test('destroySession removes session from map', async () => {

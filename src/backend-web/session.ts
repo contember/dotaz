@@ -10,6 +10,8 @@ import type { ImportStreamParams } from '@dotaz/backend-shared/services/import-s
 import { QueryExecutor } from '@dotaz/backend-shared/services/query-executor'
 import type { SessionManager } from '@dotaz/backend-shared/services/session-manager'
 import { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
+import { stripSecrets } from '@dotaz/shared/types/connection'
+import type { ConnectionInfo } from '@dotaz/shared/types/connection'
 import { ENV_CONNECTION_ID, parseEnvConnection } from './env-connection'
 
 export const SESSION_TTL_MS = 5 * 60 * 1000 // 5 minutes
@@ -32,7 +34,6 @@ export interface Session {
 	ttlTimer: ReturnType<typeof setTimeout> | null
 }
 
-const envConnection = parseEnvConnection()
 const sessions = new Map<string, Session>()
 
 // Databases the user toggled on (Manage Databases…) for the DATABASE_URL
@@ -42,6 +43,11 @@ const sessions = new Map<string, Session>()
 // Process-scoped: shared by all sessions of the single shared env connection,
 // and reset when the server restarts.
 const envActiveDatabases = new Set<string>()
+
+function exposeConnection(conn: ConnectionInfo, serverManagedIds: Set<string>): ConnectionInfo {
+	if (!serverManagedIds.has(conn.id)) return conn
+	return { ...conn, config: stripSecrets(conn.config), serverManaged: true }
+}
 
 export function getSessions(): Map<string, Session> {
 	return sessions
@@ -69,6 +75,7 @@ export function createSession(
 	})
 
 	const serverManagedIds = new Set<string>()
+	const envConnection = parseEnvConnection()
 
 	// Auto-create env connection if DATABASE_URL is set
 	if (envConnection) {
@@ -87,7 +94,7 @@ export function createSession(
 		const originalList = handlers['connections.list']
 		;(handlers as Record<string, unknown>)['connections.list'] = () => {
 			const list = originalList()
-			return list.map(conn => serverManagedIds.has(conn.id) ? { ...conn, serverManaged: true } : conn)
+			return list.map(conn => exposeConnection(conn, serverManagedIds))
 		}
 
 		// Remember activate/deactivate on the env connection across sessions so a
