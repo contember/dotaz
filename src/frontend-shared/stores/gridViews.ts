@@ -11,6 +11,7 @@ export function createGridViewActions(
 	getVisibleColumns: (tab: TabGridState) => GridColumnDef[],
 	createDefaultSelection: () => CellSelection,
 	fetchData: (tabId: string) => Promise<void>,
+	assertCanRequery: (tabId: string) => void,
 ) {
 	function setActiveView(
 		tabId: string,
@@ -24,6 +25,7 @@ export function createGridViewActions(
 
 	async function applyViewConfig(tabId: string, config: SavedViewConfig) {
 		const tab = ensureTab(tabId)
+		assertCanRequery(tabId)
 
 		setState('tabs', tabId, 'autoJoins', config.autoJoins ?? [])
 		setState('tabs', tabId, 'sort', config.sort ?? [])
@@ -54,6 +56,7 @@ export function createGridViewActions(
 
 	async function resetToDefault(tabId: string) {
 		ensureTab(tabId)
+		assertCanRequery(tabId)
 		setState('tabs', tabId, 'autoJoins', [])
 		setState('tabs', tabId, 'sort', [])
 		setState('tabs', tabId, 'filters', [])

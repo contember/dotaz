@@ -83,6 +83,7 @@ const defaultRows = [
 	{ id: 3, name: 'Charlie' },
 ]
 const defaultTotalRows = 50
+const pendingChangesMessage = 'Commit or revert pending changes first'
 
 function makeQueryResult(rows: Record<string, unknown>[], rowCount?: number) {
 	return [{ columns: [], rows, rowCount: rowCount ?? rows.length }]
@@ -403,6 +404,145 @@ describe('grid store', () => {
 			expect(tab.filters).toEqual([
 				{ column: 'name', operator: 'eq', value: 'Alice' },
 			])
+		})
+	})
+
+	describe('pending changes requery guard', () => {
+		test('refreshData rejects without fetching or changing rows', async () => {
+			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
+			gridStore.setCellValue('tab-1', 0, 'name', 'Updated')
+			const rowsBefore = gridStore.getTab('tab-1')!.rows.map((row) => ({ ...row }))
+
+			await expect(gridStore.refreshData('tab-1')).rejects.toThrow(pendingChangesMessage)
+
+			const tab = gridStore.getTab('tab-1')!
+			expect(mockQueryExecute).toHaveBeenCalledTimes(1)
+			expect(tab.rows).toEqual(rowsBefore)
+			expect(tab.pendingChanges.cellEdits['0:name']).toEqual({
+				rowIndex: 0,
+				column: 'name',
+				oldValue: 'Alice',
+				newValue: 'Updated',
+			})
+		})
+
+		test('refreshData does not apply in-flight results after pending changes appear', async () => {
+			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
+			const deferred: { resolve?: (result: ReturnType<typeof makeQueryResult>) => void } = {}
+			mockQueryExecute.mockImplementation(() =>
+				new Promise<ReturnType<typeof makeQueryResult>>((resolve) => {
+					deferred.resolve = resolve
+				})
+			)
+
+			const refresh = gridStore.refreshData('tab-1')
+			gridStore.setCellValue('tab-1', 0, 'name', 'Updated')
+			const rowsBefore = gridStore.getTab('tab-1')!.rows.map((row) => ({ ...row }))
+
+			if (!deferred.resolve) throw new Error('Expected pending refresh query')
+			deferred.resolve(makeQueryResult([{ id: 99, name: 'Fetched' }]))
+
+			await expect(refresh).rejects.toThrow(pendingChangesMessage)
+
+			const tab = gridStore.getTab('tab-1')!
+			expect(tab.loading).toBe(false)
+			expect(tab.rows).toEqual(rowsBefore)
+			expect(tab.pendingChanges.cellEdits['0:name']).toEqual({
+				rowIndex: 0,
+				column: 'name',
+				oldValue: 'Alice',
+				newValue: 'Updated',
+			})
+		})
+
+		test('setPage rejects without fetching or changing page or rows', async () => {
+			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
+			gridStore.setCellValue('tab-1', 0, 'name', 'Updated')
+			const rowsBefore = gridStore.getTab('tab-1')!.rows.map((row) => ({ ...row }))
+
+			await expect(gridStore.setPage('tab-1', 2)).rejects.toThrow(pendingChangesMessage)
+
+			const tab = gridStore.getTab('tab-1')!
+			expect(mockQueryExecute).toHaveBeenCalledTimes(1)
+			expect(tab.currentPage).toBe(1)
+			expect(tab.rows).toEqual(rowsBefore)
+		})
+
+		test('toggleSort rejects without fetching or changing sort or rows', async () => {
+			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
+			gridStore.setCellValue('tab-1', 0, 'name', 'Updated')
+			const rowsBefore = gridStore.getTab('tab-1')!.rows.map((row) => ({ ...row }))
+
+			await expect(gridStore.toggleSort('tab-1', 'name')).rejects.toThrow(pendingChangesMessage)
+
+			const tab = gridStore.getTab('tab-1')!
+			expect(mockQueryExecute).toHaveBeenCalledTimes(1)
+			expect(tab.sort).toEqual([])
+			expect(tab.rows).toEqual(rowsBefore)
+		})
+
+		test('setFilter rejects without fetching or changing filters or rows', async () => {
+			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
+			gridStore.setCellValue('tab-1', 0, 'name', 'Updated')
+			const rowsBefore = gridStore.getTab('tab-1')!.rows.map((row) => ({ ...row }))
+
+			await expect(gridStore.setFilter('tab-1', {
+				column: 'name',
+				operator: 'eq',
+				value: 'Alice',
+			})).rejects.toThrow(pendingChangesMessage)
+
+			const tab = gridStore.getTab('tab-1')!
+			expect(mockQueryExecute).toHaveBeenCalledTimes(1)
+			expect(tab.filters).toEqual([])
+			expect(tab.rows).toEqual(rowsBefore)
+		})
+
+		test('setQuickSearch rejects without fetching or changing search or rows', async () => {
+			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
+			gridStore.setCellValue('tab-1', 0, 'name', 'Updated')
+			const rowsBefore = gridStore.getTab('tab-1')!.rows.map((row) => ({ ...row }))
+
+			await expect(gridStore.setQuickSearch('tab-1', 'alice')).rejects.toThrow(pendingChangesMessage)
+
+			const tab = gridStore.getTab('tab-1')!
+			expect(mockQueryExecute).toHaveBeenCalledTimes(1)
+			expect(tab.quickSearch).toBe('')
+			expect(tab.rows).toEqual(rowsBefore)
+		})
+
+		test('applyViewConfig rejects without fetching or changing view state or rows', async () => {
+			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
+			gridStore.setCellValue('tab-1', 0, 'name', 'Updated')
+			const rowsBefore = gridStore.getTab('tab-1')!.rows.map((row) => ({ ...row }))
+
+			await expect(gridStore.applyViewConfig('tab-1', {
+				sort: [{ column: 'name', direction: 'asc' }],
+				filters: [{ column: 'name', operator: 'eq', value: 'Alice' }],
+				customFilter: 'id > 1',
+				columns: ['name'],
+			})).rejects.toThrow(pendingChangesMessage)
+
+			const tab = gridStore.getTab('tab-1')!
+			expect(mockQueryExecute).toHaveBeenCalledTimes(1)
+			expect(tab.sort).toEqual([])
+			expect(tab.filters).toEqual([])
+			expect(tab.customFilter).toBe('')
+			expect(tab.columnOrder).toEqual([])
+			expect(tab.rows).toEqual(rowsBefore)
+		})
+
+		test('addAutoJoin rejects without fetching or changing joins or rows', async () => {
+			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
+			gridStore.setCellValue('tab-1', 0, 'name', 'Updated')
+			const rowsBefore = gridStore.getTab('tab-1')!.rows.map((row) => ({ ...row }))
+
+			await expect(gridStore.addAutoJoin('tab-1', 'id')).rejects.toThrow(pendingChangesMessage)
+
+			const tab = gridStore.getTab('tab-1')!
+			expect(mockQueryExecute).toHaveBeenCalledTimes(1)
+			expect(tab.autoJoins).toEqual([])
+			expect(tab.rows).toEqual(rowsBefore)
 		})
 	})
 

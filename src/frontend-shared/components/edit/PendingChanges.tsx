@@ -213,8 +213,6 @@ export default function PendingChanges(props: PendingChangesProps) {
 				if (!gridStore.hasPendingChanges(props.tabId)) {
 					props.onApplied()
 					props.onClose()
-				} else {
-					props.onApplied()
 				}
 			} else {
 				gridStore.clearPendingChanges(props.tabId)

@@ -259,6 +259,8 @@ const [state, setState] = createStore<GridStoreState>({
 	tabs: {},
 })
 
+const PENDING_CHANGES_REQUERY_MESSAGE = 'Commit or revert pending changes first'
+
 // ── Internal helpers ─────────────────────────────────────
 
 /** Tracks the latest fetch request ID per tab to prevent stale responses. */
@@ -284,10 +286,18 @@ const editingActions = createGridEditingActions(
 
 const undoRedoActions = createGridUndoRedoActions(state, setState, ensureTab, getTab)
 
+function assertCanRequery(tabId: string) {
+	if (editingActions.hasPendingChanges(tabId)) {
+		throw new Error(PENDING_CHANGES_REQUERY_MESSAGE)
+	}
+}
+
 // fetchData is defined before viewActions since viewActions needs it
 async function fetchData(tabId: string, opts: { live?: boolean } = {}) {
 	const tab = ensureTab(tabId)
 	const live = opts.live === true
+	if (!live) assertCanRequery(tabId)
+
 	const requestId = ++fetchSequence
 	latestFetchId.set(tabId, requestId)
 
@@ -433,6 +443,9 @@ async function fetchData(tabId: string, opts: { live?: boolean } = {}) {
 
 		// Ignore stale responses — a newer request has been issued
 		if (latestFetchId.get(tabId) !== requestId) return
+		if (!live && editingActions.hasPendingChanges(tabId)) {
+			throw new Error(PENDING_CHANGES_REQUERY_MESSAGE)
+		}
 
 		const rows = dataResults[0]?.rows ?? []
 		const fetchDuration = Date.now() - fetchStart
@@ -494,6 +507,7 @@ const autoJoinActions = createGridAutoJoinActions(
 	ensureTab,
 	createDefaultSelection,
 	fetchData,
+	assertCanRequery,
 )
 
 const liveModeActions = createGridLiveModeActions(
@@ -514,7 +528,7 @@ const liveModeActions = createGridLiveModeActions(
 		const tab = getTab(tabId)
 		if (!tab) return { ok: false, reason: 'Tab not found' }
 		if (editingActions.hasPendingChanges(tabId)) {
-			return { ok: false, reason: 'Commit or revert pending changes first' }
+			return { ok: false, reason: PENDING_CHANGES_REQUERY_MESSAGE }
 		}
 		const pkCols = getPkColumns(tab.columns)
 		if (pkCols.length === 0) {
@@ -537,6 +551,7 @@ const viewActions = createGridViewActions(
 	getVisibleColumns,
 	createDefaultSelection,
 	fetchData,
+	assertCanRequery,
 )
 
 // ── Data fetching & pagination ───────────────────────────
@@ -612,11 +627,13 @@ async function loadTableData(
 
 async function refreshData(tabId: string) {
 	ensureTab(tabId)
+	assertCanRequery(tabId)
 	await fetchData(tabId)
 }
 
 async function setPage(tabId: string, page: number) {
 	ensureTab(tabId)
+	assertCanRequery(tabId)
 	stopLiveModeIfActive(tabId)
 	setState('tabs', tabId, 'currentPage', page)
 	setState('tabs', tabId, 'selection', createDefaultSelection())
@@ -625,6 +642,7 @@ async function setPage(tabId: string, page: number) {
 
 async function setPageSize(tabId: string, pageSize: number) {
 	ensureTab(tabId)
+	assertCanRequery(tabId)
 	stopLiveModeIfActive(tabId)
 	setState('tabs', tabId, 'pageSize', pageSize)
 	setState('tabs', tabId, 'currentPage', 1)
@@ -634,6 +652,7 @@ async function setPageSize(tabId: string, pageSize: number) {
 
 async function toggleSort(tabId: string, column: string, multi = false) {
 	const tab = ensureTab(tabId)
+	assertCanRequery(tabId)
 	stopLiveModeIfActive(tabId)
 	const existing = tab.sort.find((s) => s.column === column)
 	let newSort: SortColumn[]
@@ -666,6 +685,7 @@ async function toggleSort(tabId: string, column: string, multi = false) {
 
 async function setFilter(tabId: string, filter: ColumnFilter) {
 	const tab = ensureTab(tabId)
+	assertCanRequery(tabId)
 	stopLiveModeIfActive(tabId)
 	const idx = tab.filters.findIndex((f) => f.column === filter.column)
 	if (idx === -1) {
@@ -680,6 +700,7 @@ async function setFilter(tabId: string, filter: ColumnFilter) {
 
 async function removeFilter(tabId: string, column: string) {
 	const tab = ensureTab(tabId)
+	assertCanRequery(tabId)
 	stopLiveModeIfActive(tabId)
 	setState(
 		'tabs',
@@ -694,6 +715,7 @@ async function removeFilter(tabId: string, column: string) {
 
 async function setQuickSearch(tabId: string, search: string) {
 	ensureTab(tabId)
+	assertCanRequery(tabId)
 	stopLiveModeIfActive(tabId)
 	setState('tabs', tabId, 'quickSearch', search)
 	setState('tabs', tabId, 'currentPage', 1)
@@ -703,6 +725,7 @@ async function setQuickSearch(tabId: string, search: string) {
 
 async function setCustomFilter(tabId: string, filter: string) {
 	ensureTab(tabId)
+	assertCanRequery(tabId)
 	stopLiveModeIfActive(tabId)
 	setState('tabs', tabId, 'customFilter', filter)
 	setState('tabs', tabId, 'currentPage', 1)
@@ -712,6 +735,7 @@ async function setCustomFilter(tabId: string, filter: string) {
 
 async function clearFilters(tabId: string) {
 	ensureTab(tabId)
+	assertCanRequery(tabId)
 	stopLiveModeIfActive(tabId)
 	setState('tabs', tabId, 'filters', [])
 	setState('tabs', tabId, 'customFilter', '')

@@ -10,9 +10,11 @@ export function createGridAutoJoinActions(
 	ensureTab: (tabId: string) => TabGridState,
 	createDefaultSelection: () => CellSelection,
 	fetchData: (tabId: string) => Promise<void>,
+	assertCanRequery: (tabId: string) => void,
 ) {
 	async function addAutoJoin(tabId: string, fkColumn: string) {
 		const tab = ensureTab(tabId)
+		assertCanRequery(tabId)
 
 		// Check not already joined
 		if (tab.autoJoins.some((j) => j.fkColumn === fkColumn)) return
@@ -62,6 +64,7 @@ export function createGridAutoJoinActions(
 
 	async function removeAutoJoin(tabId: string, fkColumn: string) {
 		const tab = ensureTab(tabId)
+		assertCanRequery(tabId)
 		const joinToRemove = tab.autoJoins.find((j) => j.fkColumn === fkColumn)
 		if (!joinToRemove) return
 
@@ -95,6 +98,7 @@ export function createGridAutoJoinActions(
 
 	async function removeAllAutoJoins(tabId: string) {
 		const tab = ensureTab(tabId)
+		assertCanRequery(tabId)
 		if (tab.autoJoins.length === 0) return
 
 		// Clean up all joined column references
