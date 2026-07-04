@@ -12,7 +12,9 @@ import {
 	maybeDestroySession,
 	releaseStream,
 	TOKEN_EXPIRY_MS,
+	wrapConnectionResult,
 } from '@dotaz/backend-web/session'
+import type { ConnectionInfo } from '@dotaz/shared/types/connection'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 const ENCRYPTION_KEY = 'test-encryption-key-for-unit-tests'
@@ -427,5 +429,152 @@ describe('releaseStream', () => {
 		await releaseStream(session)
 		expect(session.activeStreams).toBe(0)
 		expect(getSessions().has(session.id)).toBe(false)
+	})
+})
+
+// ── Server-managed connection redaction ────────────────────
+
+const ENV_DATABASE_URL = 'postgresql://env_user:super-secret@127.0.0.1:1/env_db'
+
+function makeServerConnInfo(id: string, password: string): ConnectionInfo {
+	return {
+		id,
+		name: 'srv',
+		config: { type: 'postgresql', host: 'db.example', port: 5432, database: 'app', user: 'app', password },
+		state: 'disconnected',
+		createdAt: '2020-01-01T00:00:00.000Z',
+		updatedAt: '2020-01-01T00:00:00.000Z',
+	}
+}
+
+describe('Server-managed connection redaction', () => {
+	test('connections.setReadOnly redacts DATABASE_URL password and keeps the stored secret', async () => {
+		process.env.DATABASE_URL = ENV_DATABASE_URL
+		const ws = mockWs()
+		const session = createSession(ws, ENCRYPTION_KEY)
+
+		const result = session.handlers['connections.setReadOnly']({ id: ENV_CONNECTION_ID, readOnly: true })
+		if (result.config.type !== 'postgresql') throw new Error('Expected PostgreSQL connection')
+		expect(result.serverManaged).toBe(true)
+		expect(result.readOnly).toBe(true)
+		expect(result.config.password).toBe('')
+
+		// The real secret must remain in the in-memory appDb for auto-reconnect.
+		const stored = session.appDb.getConnectionById(ENV_CONNECTION_ID)
+		if (!stored || stored.config.type !== 'postgresql') throw new Error('Expected stored PostgreSQL connection')
+		expect(stored.config.password).toBe('super-secret')
+
+		await destroySession(session)
+	})
+
+	test('connections.setGroup redacts DATABASE_URL password and keeps the stored secret', async () => {
+		process.env.DATABASE_URL = ENV_DATABASE_URL
+		const ws = mockWs()
+		const session = createSession(ws, ENCRYPTION_KEY)
+
+		const result = session.handlers['connections.setGroup']({ id: ENV_CONNECTION_ID, groupName: 'prod' })
+		if (result.config.type !== 'postgresql') throw new Error('Expected PostgreSQL connection')
+		expect(result.serverManaged).toBe(true)
+		expect(result.groupName).toBe('prod')
+		expect(result.config.password).toBe('')
+
+		const stored = session.appDb.getConnectionById(ENV_CONNECTION_ID)
+		if (!stored || stored.config.type !== 'postgresql') throw new Error('Expected stored PostgreSQL connection')
+		expect(stored.config.password).toBe('super-secret')
+
+		await destroySession(session)
+	})
+
+	test('connections.update rejects the server-managed connection and does not wipe the secret', async () => {
+		process.env.DATABASE_URL = ENV_DATABASE_URL
+		const ws = mockWs()
+		const session = createSession(ws, ENCRYPTION_KEY)
+
+		expect(() =>
+			session.handlers['connections.update']({
+				id: ENV_CONNECTION_ID,
+				name: 'reconfigured',
+				// The client only holds the stripped config (password '').
+				config: { type: 'postgresql', host: '127.0.0.1', port: 1, database: 'env_db', user: 'env_user', password: '' },
+			})
+		).toThrow('Server-managed connections cannot be reconfigured')
+
+		// Stored secret untouched — the update never reached the appDb.
+		const stored = session.appDb.getConnectionById(ENV_CONNECTION_ID)
+		if (!stored || stored.config.type !== 'postgresql') throw new Error('Expected stored PostgreSQL connection')
+		expect(stored.config.password).toBe('super-secret')
+
+		await destroySession(session)
+	})
+
+	test('connection handlers keep the config for a non-server-managed connection', async () => {
+		// DATABASE_URL is set so the redaction wrappers are installed, but a
+		// user-created connection is not server-managed and must pass through intact.
+		process.env.DATABASE_URL = ENV_DATABASE_URL
+		const ws = mockWs()
+		const session = createSession(ws, ENCRYPTION_KEY)
+
+		const created = session.handlers['connections.create']({
+			name: 'user-conn',
+			config: { type: 'postgresql', host: 'db.example', port: 5432, database: 'app', user: 'app', password: 'user-secret' },
+		})
+		if (created.config.type !== 'postgresql') throw new Error('Expected PostgreSQL connection')
+		expect(created.serverManaged).toBeFalsy()
+		expect(created.config.password).toBe('user-secret')
+
+		const id = created.id
+
+		const ro = session.handlers['connections.setReadOnly']({ id, readOnly: true })
+		if (ro.config.type !== 'postgresql') throw new Error('Expected PostgreSQL connection')
+		expect(ro.serverManaged).toBeFalsy()
+		expect(ro.config.password).toBe('user-secret')
+
+		const grp = session.handlers['connections.setGroup']({ id, groupName: 'team' })
+		if (grp.config.type !== 'postgresql') throw new Error('Expected PostgreSQL connection')
+		expect(grp.config.password).toBe('user-secret')
+
+		const updated = session.handlers['connections.update']({
+			id,
+			name: 'user-conn-2',
+			config: { type: 'postgresql', host: 'db.example', port: 5432, database: 'app', user: 'app', password: 'user-secret-2' },
+		})
+		if (updated.config.type !== 'postgresql') throw new Error('Expected PostgreSQL connection')
+		expect(updated.serverManaged).toBeFalsy()
+		expect(updated.config.password).toBe('user-secret-2')
+
+		await destroySession(session)
+	})
+})
+
+// ── wrapConnectionResult helper ────────────────────────────
+
+describe('wrapConnectionResult', () => {
+	test('redacts a server-managed connection result (sync handler)', () => {
+		const managed = new Set(['srv-1'])
+		const wrapped = wrapConnectionResult(() => makeServerConnInfo('srv-1', 'plain-secret'), managed)
+		const result = wrapped()
+		if (result instanceof Promise) throw new Error('Expected a synchronous result')
+		if (result.config.type !== 'postgresql') throw new Error('Expected PostgreSQL connection')
+		expect(result.serverManaged).toBe(true)
+		expect(result.config.password).toBe('')
+	})
+
+	test('redacts a server-managed connection result (async handler)', async () => {
+		const managed = new Set(['srv-1'])
+		const wrapped = wrapConnectionResult(async () => makeServerConnInfo('srv-1', 'plain-secret'), managed)
+		const result = await wrapped()
+		if (result.config.type !== 'postgresql') throw new Error('Expected PostgreSQL connection')
+		expect(result.serverManaged).toBe(true)
+		expect(result.config.password).toBe('')
+	})
+
+	test('leaves a non-server-managed connection result untouched', () => {
+		const managed = new Set(['other'])
+		const wrapped = wrapConnectionResult(() => makeServerConnInfo('srv-1', 'plain-secret'), managed)
+		const result = wrapped()
+		if (result instanceof Promise) throw new Error('Expected a synchronous result')
+		if (result.config.type !== 'postgresql') throw new Error('Expected PostgreSQL connection')
+		expect(result.serverManaged).toBeUndefined()
+		expect(result.config.password).toBe('plain-secret')
 	})
 })

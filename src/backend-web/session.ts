@@ -49,6 +49,21 @@ function exposeConnection(conn: ConnectionInfo, serverManagedIds: Set<string>): 
 	return { ...conn, config: stripSecrets(conn.config), serverManaged: true }
 }
 
+// Wrap an RPC handler that resolves to a single ConnectionInfo so its result is
+// redacted for server-managed connections before it leaves the process. Handles
+// both synchronous handlers and those returning a Promise.
+export function wrapConnectionResult<Args extends unknown[]>(
+	handler: (...args: Args) => ConnectionInfo | Promise<ConnectionInfo>,
+	serverManagedIds: Set<string>,
+): (...args: Args) => ConnectionInfo | Promise<ConnectionInfo> {
+	return (...args: Args) => {
+		const result = handler(...args)
+		return result instanceof Promise
+			? result.then(conn => exposeConnection(conn, serverManagedIds))
+			: exposeConnection(result, serverManagedIds)
+	}
+}
+
 export function getSessions(): Map<string, Session> {
 	return sessions
 }
@@ -97,6 +112,30 @@ export function createSession(
 			const list = originalList()
 			return list.map(conn => exposeConnection(conn, serverManagedIds))
 		}
+
+		// Redact server-managed credentials on every handler that returns a
+		// ConnectionInfo — not just connections.list — so an authenticated client
+		// cannot read the DATABASE_URL password via create/setReadOnly/setGroup.
+		const originalCreate = handlers['connections.create']
+		;(handlers as Record<string, unknown>)['connections.create'] = wrapConnectionResult(originalCreate, serverManagedIds)
+		const originalSetReadOnly = handlers['connections.setReadOnly']
+		;(handlers as Record<string, unknown>)['connections.setReadOnly'] = wrapConnectionResult(originalSetReadOnly, serverManagedIds)
+		const originalSetGroup = handlers['connections.setGroup']
+		;(handlers as Record<string, unknown>)['connections.setGroup'] = wrapConnectionResult(originalSetGroup, serverManagedIds)
+
+		// Reject reconfiguring a server-managed connection: the client only holds the
+		// stripped (password '') config, so a passthrough update would wipe the real
+		// DATABASE_URL secret in the in-memory appDb and break auto-reconnect.
+		const originalUpdate = handlers['connections.update']
+		;(handlers as Record<string, unknown>)['connections.update'] = wrapConnectionResult(
+			(params: Parameters<typeof originalUpdate>[0]) => {
+				if (serverManagedIds.has(params.id)) {
+					throw new Error('Server-managed connections cannot be reconfigured')
+				}
+				return originalUpdate(params)
+			},
+			serverManagedIds,
+		)
 
 		// Remember activate/deactivate on the env connection across sessions so a
 		// reload restores the same set of databases (see envActiveDatabases).
