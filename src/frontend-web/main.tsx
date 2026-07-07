@@ -23,17 +23,10 @@ async function bootstrapRpcAuth(): Promise<BootstrapResult> {
 			return { ok: true }
 		}
 
-		if (response.status === 401) {
-			return {
-				ok: false,
-				message: 'This server requires an access token. Open Dotaz once using the ?rpcToken=… link printed by the server on startup.',
-			}
-		}
-
 		if (response.status === 403) {
 			return {
 				ok: false,
-				message: 'The server rejected this request (host/origin check). If Dotaz runs behind a proxy, check DOTAZ_ALLOWED_ORIGINS.',
+				message: 'The server rejected this request (host/origin check). Serve Dotaz UI and RPC under the same origin, and check DOTAZ_ALLOWED_HOSTS if it runs behind a proxy.',
 			}
 		}
 

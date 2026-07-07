@@ -67,26 +67,23 @@ Run as a web server accessible from your browser — no desktop app needed:
 bunx @dotaz/server
 ```
 
-Options: `--port <port>` (default: 6401), `--host <host>` (default: localhost), `--rpc-token <token>`
+Options: `--port <port>` (default: 6401), `--host <host>` (default: localhost)
 
-Access control depends on how the server is bound:
+Request isolation depends on how the server is bound:
 
-- **Loopback (default)** — no token needed. The server validates the `Host` header (DNS-rebinding protection) and rejects cross-site browser requests via `Sec-Fetch-Site`/`Origin` checks.
-- **Non-loopback (e.g. `--host 0.0.0.0`)** — `DOTAZ_ENCRYPTION_KEY` is required so saved credentials remain decryptable across restarts. Token auth is also required: set `DOTAZ_RPC_TOKEN` (or `--rpc-token`), or let the server generate one and print it on startup. Open the app once with `?rpcToken=<token>` — the browser receives a persistent HttpOnly cookie and the token is stripped from the URL.
-- **Behind a reverse proxy** — keep the loopback bind (default) and allow the public origin with `DOTAZ_ALLOWED_ORIGINS` (comma-separated), optionally pinning accepted `Host` headers with `DOTAZ_ALLOWED_HOSTS`. Configuring a non-loopback host/origin marks the server as publicly exposed, so token auth still applies: set `DOTAZ_RPC_TOKEN` or let the server generate one and print it on startup, then open the app once with `?rpcToken=<token>`.
+- **Loopback (default)** — the server validates the `Host` header (DNS-rebinding protection) and rejects cross-site browser requests via `Sec-Fetch-Site`/`Origin` checks.
+- **Non-loopback (e.g. `--host 0.0.0.0`)** — `DOTAZ_ENCRYPTION_KEY` is required so saved credentials remain decryptable across restarts. Dotaz still rejects cross-site browser requests, but it does not implement user authentication; put it behind your own auth/proxy if the URL is not trusted.
+- **Behind a reverse proxy** — serve the UI and `/rpc`/`/api` under the same origin. Keep the loopback bind (default); if the proxy preserves a public `Host` header, allow that host with `DOTAZ_ALLOWED_HOSTS`.
 
 ### Docker
 
 ```sh
-TOKEN=$(openssl rand -hex 32)
 docker run -p 6401:6401 \
   -e DOTAZ_ENCRYPTION_KEY=<your-secret> \
-  -e DOTAZ_RPC_TOKEN="$TOKEN" \
   ghcr.io/contember/dotaz
 ```
 
 `DOTAZ_ENCRYPTION_KEY` is required — it encrypts saved database credentials in the browser. Use any random string (e.g. `openssl rand -hex 32`).
-Open `http://localhost:6401/?rpcToken=$TOKEN` on first use. If you omit `DOTAZ_RPC_TOKEN`, a token is generated per run and printed to the container logs.
 
 ## Development
 

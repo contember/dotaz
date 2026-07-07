@@ -10,7 +10,7 @@ import type { ImportStreamParams } from '@dotaz/backend-shared/services/import-s
 import { DatabaseError } from '@dotaz/shared/types/errors'
 import type { ExportFormat } from '@dotaz/shared/types/export'
 import { resolve } from 'node:path'
-import { authorizeApiRequest, createTokenRedirectResponse, createWebAuthConfig, failureResponse, isAllowedHost } from './auth'
+import { authorizeApiRequest, createWebAuthConfig, failureResponse, isAllowedHost } from './auth'
 import {
 	cleanupExpiredTokens,
 	consumeStreamToken,
@@ -250,11 +250,6 @@ const server = Bun.serve<Session>({
 			return new Response('Host not allowed', { status: 403 })
 		}
 
-		// One-time cookie provisioning: /?rpcToken=… sets the auth cookie and strips the token from the URL
-		if (AUTH.token !== null && req.method === 'GET' && url.searchParams.has('rpcToken')) {
-			return createTokenRedirectResponse(req, url, AUTH)
-		}
-
 		// Auth status probe for the frontend — reports why access would be denied
 		if (url.pathname === '/api/bootstrap' && req.method === 'GET') {
 			const auth = authorizeApiRequest(req, AUTH)
@@ -421,10 +416,3 @@ const server = Bun.serve<Session>({
 })
 
 console.log(`Dotaz web server running at http://${HOST}:${server.port}`)
-
-if (AUTH.tokenGenerated) {
-	console.log(`DOTAZ_RPC_TOKEN not set — generated a token for this run: ${AUTH.token}`)
-	console.log(`Authorize your browser by opening the app once with ?rpcToken=${AUTH.token}`)
-} else if (AUTH.token !== null) {
-	console.log('Token auth enabled — authorize your browser by opening the app once with ?rpcToken=<DOTAZ_RPC_TOKEN>')
-}
