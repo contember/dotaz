@@ -1,10 +1,4 @@
-import {
-	authorizeApiRequest,
-	createWebAuthConfig,
-	failureResponse,
-	isAllowedHost,
-	isLoopbackHost,
-} from '@dotaz/backend-web/auth'
+import { authorizeApiRequest, createWebAuthConfig, failureResponse, isAllowedHost, isLoopbackHost } from '@dotaz/backend-web/auth'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
 describe('web RPC request isolation', () => {
