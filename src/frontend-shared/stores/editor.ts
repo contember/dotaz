@@ -201,9 +201,42 @@ function containsDmlStatements(sql: string): boolean {
 	return statements.some((s) => DML_PATTERN.test(s))
 }
 
+function isNoActiveTransactionError(err: unknown): boolean {
+	const message = err instanceof Error ? err.message : String(err)
+	return message.includes('No active transaction to commit')
+		|| message.includes('No active transaction to rollback')
+}
+
 // ── Internal helpers ──────────────────────────────────────
 
 const { getTab, ensureTab } = createTabHelpers(() => state.tabs, 'Editor')
+
+async function refreshTransactionLogForTab(tabId: string) {
+	const tab = getTab(tabId)
+	if (!tab) return null
+
+	const result = await fetchTransactionLog(
+		tab.connectionId,
+		tab.database,
+		sessionStore.getSessionForTab(tabId),
+	)
+	setTxLogVersion((v) => v + 1)
+	return result
+}
+
+async function syncTransactionStateForTab(tabId: string): Promise<boolean> {
+	const tab = getTab(tabId)
+	if (!tab) return false
+
+	const result = await refreshTransactionLogForTab(tabId)
+	if (!result) return tab.inTransaction
+
+	setState('tabs', tabId, {
+		inTransaction: result.inTransaction,
+		txAborted: result.inTransaction ? tab.txAborted : false,
+	})
+	return result.inTransaction
+}
 
 // ── Actions ───────────────────────────────────────────────
 
@@ -299,7 +332,13 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit =
 
 	try {
 		// Resolve session (auto-pin if configured)
-		const sessionId = await sessionStore.resolveSessionForExecution(tabId, tab.connectionId, sql, tab.database)
+		let sessionId = await sessionStore.resolveSessionForExecution(tabId, tab.connectionId, sql, tab.database)
+		if (tab.txMode === 'manual' && !sessionId) {
+			sessionId = await sessionStore.pinSession(tab.connectionId, tabId, tab.database)
+		}
+		if (tab.txMode === 'manual' && !sessionId) {
+			throw new Error('Manual transaction mode requires a session')
+		}
 
 		// Auto-BEGIN in manual mode if not yet in a transaction
 		if (tab.txMode === 'manual' && !tab.inTransaction && sessionId) {
@@ -392,7 +431,11 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit =
 		computeResultEditability(tabId, sql, results)
 
 		recordHistory(tab.connectionId, tab.database, sql, results)
-		setTxLogVersion((v) => v + 1)
+		if (sessionId || state.tabs[tabId]?.txMode === 'manual' || state.tabs[tabId]?.inTransaction) {
+			await syncTransactionStateForTab(tabId)
+		} else {
+			setTxLogVersion((v) => v + 1)
+		}
 
 		// Auto-unpin after commit/rollback if configured
 		sessionStore.checkAutoUnpin(tabId, sql).catch(() => {})
@@ -425,7 +468,11 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit =
 			durationMs: duration,
 			error: errorMessage,
 		}])
-		setTxLogVersion((v) => v + 1)
+		if (state.tabs[tabId]?.txMode === 'manual' || state.tabs[tabId]?.inTransaction) {
+			await syncTransactionStateForTab(tabId)
+		} else {
+			setTxLogVersion((v) => v + 1)
+		}
 	} finally {
 		clearTimeout(responseTimer)
 		activeQueryUnsubs.delete(queryId)
@@ -560,38 +607,59 @@ async function beginTransaction(tabId: string) {
 	try {
 		await rpc.tx.begin({ connectionId: tab.connectionId, database: tab.database, sessionId })
 		setState('tabs', tabId, { inTransaction: true, txAborted: false })
+		await refreshTransactionLogForTab(tabId)
 	} catch (err) {
 		setState('tabs', tabId, 'error', friendlyErrorMessage(err))
 	}
 }
 
-async function commitTransaction(tabId: string) {
+async function commitTransaction(tabId: string): Promise<boolean> {
 	const tab = ensureTab(tabId)
-	if (!tab.inTransaction) return
+	if (!tab.inTransaction) return true
 
 	const sessionId = sessionStore.getSessionForTab(tabId)
 	try {
 		await rpc.tx.commit({ connectionId: tab.connectionId, database: tab.database, sessionId })
 		setState('tabs', tabId, { inTransaction: false, txAborted: false })
+		await refreshTransactionLogForTab(tabId)
 		// Auto-unpin after commit if configured
 		sessionStore.checkAutoUnpin(tabId, 'COMMIT').catch(() => {})
+		return true
 	} catch (err) {
+		if (isNoActiveTransactionError(err)) {
+			setState('tabs', tabId, { inTransaction: false, txAborted: false })
+			await refreshTransactionLogForTab(tabId)
+			sessionStore.checkAutoUnpin(tabId, 'COMMIT').catch(() => {})
+			return true
+		}
 		setState('tabs', tabId, 'error', friendlyErrorMessage(err))
+		const stillInTransaction = await syncTransactionStateForTab(tabId)
+		return !stillInTransaction
 	}
 }
 
-async function rollbackTransaction(tabId: string) {
+async function rollbackTransaction(tabId: string): Promise<boolean> {
 	const tab = ensureTab(tabId)
-	if (!tab.inTransaction) return
+	if (!tab.inTransaction) return true
 
 	const sessionId = sessionStore.getSessionForTab(tabId)
 	try {
 		await rpc.tx.rollback({ connectionId: tab.connectionId, database: tab.database, sessionId })
 		setState('tabs', tabId, { inTransaction: false, txAborted: false })
+		await refreshTransactionLogForTab(tabId)
 		// Auto-unpin after rollback if configured
 		sessionStore.checkAutoUnpin(tabId, 'ROLLBACK').catch(() => {})
+		return true
 	} catch (err) {
+		if (isNoActiveTransactionError(err)) {
+			setState('tabs', tabId, { inTransaction: false, txAborted: false })
+			await refreshTransactionLogForTab(tabId)
+			sessionStore.checkAutoUnpin(tabId, 'ROLLBACK').catch(() => {})
+			return true
+		}
 		setState('tabs', tabId, 'error', friendlyErrorMessage(err))
+		const stillInTransaction = await syncTransactionStateForTab(tabId)
+		return !stillInTransaction
 	}
 }
 

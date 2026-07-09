@@ -32,6 +32,7 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 	const hasContent = () => (tab()?.content.trim().length ?? 0) > 0
 	const duration = () => tab()?.duration ?? 0
 	const txMode = () => tab()?.txMode ?? 'auto-commit'
+	const inTransaction = () => tab()?.inTransaction ?? false
 	const txAborted = () => tab()?.txAborted ?? false
 	const isPinned = () => sessionStore.isTabPinned(props.tabId)
 	const sessionLabel = () => sessionStore.getSessionLabelForTab(props.tabId)
@@ -244,24 +245,27 @@ export default function QueryToolbar(props: QueryToolbarProps) {
 
 			{/* Manual transaction controls */}
 			<Show when={txMode() === 'manual'}>
-				<div
-					class={txAborted() ? 'query-toolbar__tx-indicator query-toolbar__tx-indicator--aborted' : 'query-toolbar__tx-indicator'}
-					title={txAborted() ? 'Transaction is aborted — rollback required' : 'Transaction active'}
-				>
-					{txAborted() ? 'TXN ABORTED' : 'TXN'}
-				</div>
+				<Show when={inTransaction()}>
+					<div
+						class={txAborted() ? 'query-toolbar__tx-indicator query-toolbar__tx-indicator--aborted' : 'query-toolbar__tx-indicator'}
+						title={txAborted() ? 'Transaction is aborted — rollback required' : 'Transaction active'}
+					>
+						{txAborted() ? 'TXN ABORTED' : 'TXN'}
+					</div>
+				</Show>
 				<button
 					class="query-toolbar__btn"
 					onClick={handleCommit}
-					disabled={txAborted()}
-					title={txAborted() ? 'Cannot commit an aborted transaction' : 'Commit Transaction'}
+					disabled={!inTransaction() || txAborted()}
+					title={!inTransaction() ? 'No active transaction' : txAborted() ? 'Cannot commit an aborted transaction' : 'Commit Transaction'}
 				>
 					<Check size={12} /> Commit
 				</button>
 				<button
 					class="query-toolbar__btn"
 					onClick={handleRollback}
-					title="Rollback Transaction"
+					disabled={!inTransaction()}
+					title={inTransaction() ? 'Rollback Transaction' : 'No active transaction'}
 				>
 					<RotateCcw size={12} /> Rollback
 				</button>

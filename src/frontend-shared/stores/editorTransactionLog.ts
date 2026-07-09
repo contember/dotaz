@@ -1,4 +1,4 @@
-import type { TransactionLogEntry, TransactionLogStatus } from '@dotaz/shared/types/rpc'
+import type { TransactionLogEntry, TransactionLogResult, TransactionLogStatus } from '@dotaz/shared/types/rpc'
 import { createStore } from 'solid-js/store'
 import { rpc } from '../lib/rpc'
 import type { EditorStoreState } from './editor'
@@ -19,7 +19,7 @@ export const [txLogState, setTxLogState] = createStore<TransactionLogState>({
 	selectedEntryId: null,
 })
 
-export async function fetchTransactionLog(connectionId: string, database?: string, sessionId?: string) {
+export async function fetchTransactionLog(connectionId: string, database?: string, sessionId?: string): Promise<TransactionLogResult | null> {
 	try {
 		const result = await rpc.transaction.getLog({
 			connectionId,
@@ -32,8 +32,10 @@ export async function fetchTransactionLog(connectionId: string, database?: strin
 			entries: result.entries,
 			pendingStatementCount: result.pendingStatementCount,
 		})
+		return result
 	} catch (err) {
 		console.debug('Failed to fetch transaction log:', err instanceof Error ? err.message : err)
+		return null
 	}
 }
 

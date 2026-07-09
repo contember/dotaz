@@ -707,7 +707,8 @@ export default function AppShell() {
 				onCommit={async () => {
 					const m = modal()
 					if (m?.type !== 'tx-warning') return
-					await editorStore.commitTransaction(m.tabId)
+					const finished = await editorStore.commitTransaction(m.tabId)
+					if (!finished) return
 					setModal(null)
 					if (m.context === 'close') {
 						tabsStore.closeTab(m.tabId)
@@ -718,7 +719,8 @@ export default function AppShell() {
 				onRollback={async () => {
 					const m = modal()
 					if (m?.type !== 'tx-warning') return
-					await editorStore.rollbackTransaction(m.tabId)
+					const finished = await editorStore.rollbackTransaction(m.tabId)
+					if (!finished) return
 					setModal(null)
 					if (m.context === 'close') {
 						tabsStore.closeTab(m.tabId)
