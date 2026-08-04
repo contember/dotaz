@@ -4,6 +4,14 @@ import type { SchemaData } from '@dotaz/shared/types/database'
 import type { QueryResult } from '@dotaz/shared/types/query'
 import type { DriverConnectionHandleInfo } from '@dotaz/shared/types/rpc'
 
+export interface ReserveSessionOptions {
+	/**
+	 * Open the session read-only, enforced by the engine — never by inspecting SQL.
+	 * Used by CLI/agent sessions, which must not be able to write (see docs/agent-cli.md).
+	 */
+	readOnly?: boolean
+}
+
 export interface DatabaseDriver extends SqlDialect {
 	// Lifecycle
 	connect(config: ConnectionConfig): Promise<void>
@@ -11,7 +19,7 @@ export interface DatabaseDriver extends SqlDialect {
 	isConnected(): boolean
 
 	// Session management
-	reserveSession(sessionId: string): Promise<void>
+	reserveSession(sessionId: string, opts?: ReserveSessionOptions): Promise<void>
 	releaseSession(sessionId: string): Promise<void>
 	getSessionIds(): string[]
 

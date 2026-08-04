@@ -21,6 +21,8 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
 	maxSessionsPerConnection: '5',
 	idleTransactionTimeoutMs: '300000',
 	'console.queryResponseTimeout': '300000',
+	// Local CLI control endpoint — off until the user opts in (see docs/agent-cli.md)
+	'cli.enabled': 'false',
 }
 
 let instance: AppDatabase | null = null
