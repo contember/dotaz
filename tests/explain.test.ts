@@ -18,6 +18,7 @@ function makeMockDriver(overrides?: Partial<DatabaseDriver>): DatabaseDriver {
 	return {
 		execute: mock(async () => makeSuccessResult()),
 		cancel: mock(async () => {}),
+		isSessionReadOnly: () => false,
 		quoteIdentifier: (name: string) => `"${name}"`,
 		getDriverType: () => 'sqlite' as const,
 		qualifyTable: (schema: string, table: string) => schema === 'main' ? `"${table}"` : `"${schema}"."${table}"`,

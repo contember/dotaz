@@ -39,6 +39,10 @@ class CapturingMysqlSearchDriver implements DatabaseDriver {
 		return Promise.resolve()
 	}
 
+	isSessionReadOnly(_sessionId: string): boolean {
+		return false
+	}
+
 	getSessionIds(): string[] {
 		return []
 	}

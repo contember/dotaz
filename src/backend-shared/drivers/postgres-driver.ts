@@ -6,7 +6,7 @@ import type { QueryResult, QueryResultColumn } from '@dotaz/shared/types/query'
 import type { DriverConnectionHandleInfo } from '@dotaz/shared/types/rpc'
 import type { SQL } from 'bun'
 import { ConnectionPool, type PoolConnectionSnapshot } from '../db/connection-pool'
-import type { DatabaseDriver } from '../db/driver'
+import type { DatabaseDriver, ReserveSessionOptions } from '../db/driver'
 import { mapPostgresError } from '../db/error-mapping'
 import { getAffectedRowCount } from '../db/result-utils'
 import { isConnectionLevelError, safeCloseConnection, syncTxActive } from './driver-utils'
@@ -161,6 +161,7 @@ export class PostgresDriver implements DatabaseDriver {
 	private pool: ConnectionPool | null = null
 	private connected = false
 	private sessions = new Map<string, SessionState>()
+	private readOnlySessions = new Set<string>()
 	private defaultSessionPending = false
 	private poolActiveQueries = new Map<symbol, ReturnType<SQL['unsafe']>>()
 
@@ -204,6 +205,7 @@ export class PostgresDriver implements DatabaseDriver {
 			await safeCloseConnection(session.conn, { rollback: true })
 		}
 		this.sessions.clear()
+		this.readOnlySessions.clear()
 
 		if (this.pool) {
 			await this.pool.disconnectAll()
@@ -217,16 +219,28 @@ export class PostgresDriver implements DatabaseDriver {
 
 	// --- Session management ---
 
-	async reserveSession(sessionId: string): Promise<void> {
+	async reserveSession(sessionId: string, opts?: ReserveSessionOptions): Promise<void> {
 		this.ensureConnected()
 		if (this.sessions.has(sessionId)) {
 			throw new Error(`Session "${sessionId}" already exists`)
 		}
 		const conn = await this.pool!.createConnection()
+		if (opts?.readOnly) {
+			try {
+				// Session characteristics also apply to transactions started later on this connection.
+				await conn.unsafe('SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY')
+			} catch (err) {
+				await safeCloseConnection(conn)
+				await this.pool!.destroyConnection(conn)
+				throw err instanceof DatabaseError ? err : mapPostgresError(err)
+			}
+			this.readOnlySessions.add(sessionId)
+		}
 		this.sessions.set(sessionId, { conn, txActive: false, txAborted: false, iterating: false, activeQueries: new Set() })
 	}
 
 	async releaseSession(sessionId: string): Promise<void> {
+		this.readOnlySessions.delete(sessionId)
 		const session = this.sessions.get(sessionId)
 		if (!session) return // idempotent — already released or never existed
 		this.sessions.delete(sessionId)
@@ -238,6 +252,10 @@ export class PostgresDriver implements DatabaseDriver {
 
 	getSessionIds(): string[] {
 		return [...this.sessions.keys()].filter((id) => id !== DEFAULT_SESSION)
+	}
+
+	isSessionReadOnly(sessionId: string): boolean {
+		return this.readOnlySessions.has(sessionId)
 	}
 
 	// --- Query execution ---
