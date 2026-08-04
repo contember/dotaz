@@ -43,6 +43,8 @@ A lightweight Bun HTTP server you can self-host or run via Docker. Like [Adminer
 
 **Navigation** — Connection tree with databases, schemas, and tables. Schema viewer showing columns, indexes, and foreign keys. Command palette, query history, saved views, bookmarks, cross-table search. Dark theme throughout.
 
+**Agent CLI** — A `dotaz` command-line client that attaches to the running app so an AI coding agent can browse your databases and run read-only queries without ever holding your credentials. Writes are not executed by the CLI: they show up in the app for you to approve or reject. Off by default — see [docs/agent-cli.md](docs/agent-cli.md).
+
 ## Install
 
 ### Desktop app
