@@ -11,6 +11,7 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
 	defaultPageSize: '100',
 	defaultTxMode: 'auto-commit',
 	theme: 'dark',
+	// Engine-enforced statement cap on read-only (agent) sessions; 0 means uncapped
 	queryTimeout: '30000',
 	maxHistoryEntries: '1000',
 	clipboardIncludeHeaders: 'true',

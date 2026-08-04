@@ -32,6 +32,19 @@ describe('mapPostgresError', () => {
 		expect(err.code).toBe('CONNECTION_TIMEOUT')
 	})
 
+	// A statement timeout says "timeout" but the connection is healthy — reporting it as a
+	// connection failure would tell an agent the app died.
+	test('maps a statement timeout to QUERY_CANCELED, not CONNECTION_TIMEOUT', () => {
+		const pgErr = Object.assign(new Error('canceling statement due to statement timeout'), { errno: '57014' })
+		const err = mapPostgresError(pgErr)
+		expect(err.code).toBe('QUERY_CANCELED')
+	})
+
+	test('maps an explicit cancel to QUERY_CANCELED', () => {
+		const pgErr = Object.assign(new Error('canceling statement due to user request'), { code: '57014' })
+		expect(mapPostgresError(pgErr).code).toBe('QUERY_CANCELED')
+	})
+
 	test('maps ENOTFOUND to ConnectionError', () => {
 		const err = mapPostgresError(new Error('getaddrinfo ENOTFOUND bad.host'))
 		expect(err).toBeInstanceOf(ConnectionError)
@@ -215,6 +228,14 @@ describe('mapMysqlError', () => {
 		const err = mapMysqlError(new Error('connect ECONNREFUSED'))
 		expect(err).toBeInstanceOf(ConnectionError)
 		expect(err.code).toBe('CONNECTION_REFUSED')
+	})
+
+	test('maps MAX_EXECUTION_TIME (3024) and MariaDB max_statement_time (1969) to QUERY_CANCELED', () => {
+		const mysqlErr = Object.assign(new Error('Query execution was interrupted, maximum statement execution time exceeded'), { errno: 3024 })
+		expect(mapMysqlError(mysqlErr).code).toBe('QUERY_CANCELED')
+
+		const mariaErr = Object.assign(new Error('Query execution was interrupted (max_statement_time exceeded)'), { errno: 1969 })
+		expect(mapMysqlError(mariaErr).code).toBe('QUERY_CANCELED')
 	})
 
 	test('maps errno 2003 to ConnectionError', () => {

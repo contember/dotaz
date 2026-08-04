@@ -199,6 +199,10 @@ export class MysqlDriver implements DatabaseDriver {
 			try {
 				// Applies to every transaction started later on this connection.
 				await conn.unsafe('SET SESSION TRANSACTION READ ONLY')
+				const timeoutMs = Math.floor(opts.statementTimeoutMs ?? 0)
+				if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+					await this.setStatementTimeout(conn, timeoutMs)
+				}
 			} catch (err) {
 				await safeCloseConnection(conn)
 				await this.pool!.destroyConnection(conn)
@@ -708,6 +712,15 @@ export class MysqlDriver implements DatabaseDriver {
 
 	placeholder(_index: number): string {
 		return '?'
+	}
+
+	/** Cap statement runtime (SELECTs only, on both flavours). MariaDB has no MAX_EXECUTION_TIME — it takes seconds instead. */
+	private async setStatementTimeout(conn: SQL, timeoutMs: number): Promise<void> {
+		try {
+			await conn.unsafe(`SET SESSION MAX_EXECUTION_TIME = ${timeoutMs}`)
+		} catch {
+			await conn.unsafe(`SET SESSION max_statement_time = ${timeoutMs / 1000}`)
+		}
 	}
 
 	private ensureConnected(): void {

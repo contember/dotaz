@@ -178,6 +178,8 @@ export class SqliteDriver implements DatabaseDriver {
 
 	async reserveSession(sessionId: string, opts?: ReserveSessionOptions): Promise<void> {
 		if (opts?.readOnly) {
+			// statementTimeoutMs is ignored: SQLite has no statement timeout and bun:sqlite
+			// exposes no interrupt or progress hook, so nothing can stop a running query.
 			await this.openReadOnlyHandle(sessionId)
 		}
 		this.sessionIds.add(sessionId)
