@@ -4,11 +4,16 @@ import type { ExportOptions, ExportPreviewRequest, ExportRawPreviewRequest, Expo
 import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from '@dotaz/shared/types/import'
 import type { QueryHistoryEntry, QueryResult } from '@dotaz/shared/types/query'
 import type {
+	AgentHelloResult,
 	AiGenerateSqlParams,
 	AiGenerateSqlResult,
 	ConnectionHandleInfo,
 	HistoryListParams,
 	OpenDialogParams,
+	Proposal,
+	ProposalListParams,
+	ProposalResolveParams,
+	ProposeWriteParams,
 	QueryBookmark,
 	SaveDialogParams,
 	SavedView,
@@ -18,6 +23,8 @@ import type {
 	SessionInfo,
 	TransactionLogParams,
 	TransactionLogResult,
+	UiCommandPayload,
+	UiSnapshot,
 } from '@dotaz/shared/types/rpc'
 import type { DatabaseDriver } from '../db/driver'
 
@@ -45,7 +52,7 @@ export interface RpcAdapter {
 	terminateConnectionHandle(connectionId: string, database: string | undefined, handleId: string): Promise<void>
 
 	// ── Sessions ──────────────────────────────────────────
-	createSession(connectionId: string, database?: string): Promise<SessionInfo>
+	createSession(connectionId: string, database?: string, opts?: { readOnly?: boolean; label?: string }): Promise<SessionInfo>
 	destroySession(sessionId: string): Promise<void>
 	listSessions(connectionId: string): SessionInfo[]
 
@@ -157,6 +164,20 @@ export interface RpcAdapter {
 	// ── Workspace persistence ─────────────────────────────
 	saveWorkspace(data: string): void
 	loadWorkspace(): string | null
+
+	// ── Agent CLI (see docs/agent-cli.md) ─────────────────
+	agentHello(): AgentHelloResult
+	proposeWrite(params: ProposeWriteParams): Proposal
+	listProposals(filter?: ProposalListParams): Proposal[]
+	getProposal(proposalId: string): Proposal | null
+	waitForProposal(proposalId: string, timeoutMs: number): Promise<Proposal>
+	cancelProposal(proposalId: string): Proposal
+	resolveProposal(params: ProposalResolveParams): Proposal
+
+	// ── UI control ────────────────────────────────────────
+	getUiSnapshot(): UiSnapshot
+	setUiSnapshot(snapshot: UiSnapshot): void
+	sendUiCommand(payload: UiCommandPayload): void
 
 	// ── Demo ──────────────────────────────────────────────
 	initializeDemo?(): Promise<ConnectionInfo>
