@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // `dotaz` — command-line client for the running Dotaz desktop app. See docs/agent-cli.md.
 
-import { flagBool, flagString } from './args'
+import { flagBool, flagNumber, flagString } from './args'
 import { outputOptions, parseInvocation, timeoutMs } from './cli'
 import { DotazClient } from './client'
 import { findCommand } from './commands'
@@ -44,7 +44,10 @@ async function run(argv: string[]): Promise<ExitCode> {
 	}
 
 	const output = outputOptions(invocation.args)
-	const endpoint = discoverEndpoint({ explicitFile: flagString(invocation.args, 'endpoint') })
+	const endpoint = discoverEndpoint({
+		explicitFile: flagString(invocation.args, 'endpoint'),
+		instancePid: flagNumber(invocation.args, 'instance'),
+	})
 	const client = new DotazClient(endpoint.endpoint, timeoutMs(invocation.args))
 	const app = new AppContext(client)
 

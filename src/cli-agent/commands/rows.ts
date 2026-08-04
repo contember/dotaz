@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto'
 import { flagNumber, flagString, requireNonNegativeInt, requirePositiveInt } from '../args'
+import { executeQuery } from '../client'
 import { decodeQueryResults } from '../decode'
 import { databaseError, usageError } from '../errors'
 import { requireTable, resolvePath } from '../paths'
@@ -48,11 +48,10 @@ export const rowsCommand: Command = {
 
 		const results = await ctx.app.withReadOnlySession(resolved.connection.id, resolved.database, async (sessionId) => {
 			return decodeQueryResults(
-				await ctx.client.call('query.execute', {
+				await executeQuery(ctx.client, {
 					connectionId: resolved.connection.id,
 					database: resolved.database,
 					sessionId,
-					queryId: randomUUID(),
 					sql,
 					params,
 				}),

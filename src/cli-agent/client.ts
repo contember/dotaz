@@ -1,10 +1,14 @@
 // One-shot JSON RPC over the control server's unix socket (loopback TCP on Windows).
 
 import type { DatabaseErrorCode } from '@dotaz/shared/types/errors'
+import { randomUUID } from 'node:crypto'
 import type { EndpointInfo } from './endpoint'
 import { CliError, EXIT, messageOf, notRunningError, readOnlyError, START_DOTAZ_HINT, timeoutError } from './errors'
 
 export const DEFAULT_TIMEOUT_MS = 30_000
+
+/** A cancel issued because we stopped waiting must not start a long wait of its own. */
+export const CANCEL_TIMEOUT_MS = 3_000
 
 export interface RpcFailure {
 	message: string
@@ -20,6 +24,21 @@ export class RpcError extends CliError {
 		this.name = 'RpcError'
 		this.errorCode = failure.errorCode
 	}
+}
+
+/** The socket died under an in-flight request — the app was there and then quit. */
+export class ConnectionLostError extends CliError {
+	constructor(message: string) {
+		super(EXIT.notRunning, message, START_DOTAZ_HINT)
+		this.name = 'ConnectionLostError'
+	}
+}
+
+export interface CallOptions {
+	/** Overrides the client-wide timeout for this one request. */
+	timeoutMs?: number
+	/** Aborts the in-flight request; the caller then unwinds normally so cleanup still runs. */
+	signal?: AbortSignal
 }
 
 export interface HealthInfo {
@@ -89,14 +108,18 @@ export class DotazClient {
 		return base
 	}
 
-	private async send(path: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+	private async send(path: string, init: RequestInit, timeoutMs: number, external?: AbortSignal): Promise<Response> {
+		const timeout = AbortSignal.timeout(timeoutMs)
+		const signal = external ? AbortSignal.any([timeout, external]) : timeout
 		try {
-			return await fetch(this.url(path), { ...this.init(init), signal: AbortSignal.timeout(timeoutMs) })
+			return await fetch(this.url(path), { ...this.init(init), signal })
 		} catch (err) {
+			// Check the caller's signal first — an interrupt and a timeout both surface as an abort
+			if (external?.aborted) throw timeoutError('Interrupted while waiting for Dotaz')
 			if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
 				throw timeoutError(`Dotaz did not respond within ${timeoutMs}ms`)
 			}
-			throw notRunningError(`Cannot reach the Dotaz control endpoint (${messageOf(err)})`)
+			throw new ConnectionLostError(`Cannot reach the Dotaz control endpoint (${messageOf(err)})`)
 		}
 	}
 
@@ -114,13 +137,18 @@ export class DotazClient {
 	}
 
 	/** Returns the raw payload — callers narrow it with the decoders in `decode.ts`. */
-	async call(method: string, params: unknown = {}, timeoutMs = this.timeoutMs): Promise<unknown> {
+	async call(method: string, params: unknown = {}, opts: CallOptions = {}): Promise<unknown> {
 		const id = ++this.requestId
-		const res = await this.send('/rpc', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json', 'x-dotaz-token': this.endpoint.token },
-			body: JSON.stringify({ id, method, params }),
-		}, timeoutMs)
+		const res = await this.send(
+			'/rpc',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', 'x-dotaz-token': this.endpoint.token },
+				body: JSON.stringify({ id, method, params }),
+			},
+			opts.timeoutMs ?? this.timeoutMs,
+			opts.signal,
+		)
 
 		if (res.status === 401) {
 			throw new CliError(
@@ -148,5 +176,59 @@ export class DotazClient {
 		const errorCode = knownErrorCode(body.errorCode)
 		if (errorCode === 'READ_ONLY_SESSION') throw readOnlyError(message)
 		throw new RpcError({ message, errorCode })
+	}
+
+	/**
+	 * Ask the app to stop a running query. Best-effort by contract: the caller is already on an
+	 * error path, and a failed cancel must never replace the error the user has to see.
+	 */
+	async cancelQuery(queryId: string): Promise<boolean> {
+		try {
+			await this.call('query.cancel', { queryId }, { timeoutMs: CANCEL_TIMEOUT_MS })
+			return true
+		} catch {
+			return false
+		}
+	}
+}
+
+export interface QueryExecuteParams {
+	connectionId: string
+	database?: string
+	sessionId: string
+	sql: string
+	params?: unknown[]
+}
+
+/**
+ * Run `query.execute` under a queryId we own, so that giving up on the answer also stops the
+ * work: on a timeout or a Ctrl-C the query is cancelled inside the app instead of running on
+ * for nobody. SIGINT aborts the request rather than killing the process, so the caller's
+ * session teardown still runs.
+ */
+export async function executeQuery(client: DotazClient, params: QueryExecuteParams): Promise<unknown> {
+	const queryId = randomUUID()
+	const interrupt = new AbortController()
+	const onInterrupt = () => {
+		// Detach at once so a second Ctrl-C kills the process the usual way
+		process.off('SIGINT', onInterrupt)
+		interrupt.abort()
+	}
+	process.on('SIGINT', onInterrupt)
+
+	try {
+		return await client.call('query.execute', { ...params, queryId }, { signal: interrupt.signal })
+	} catch (err) {
+		// Both the timeout and the interrupt land on EXIT.timeout — nobody is waiting for the rows
+		if (!(err instanceof CliError) || err.exitCode !== EXIT.timeout) throw err
+		const cancelled = await client.cancelQuery(queryId)
+		// Same error, same exit code — plus whether the query is actually stopped
+		throw new CliError(
+			err.exitCode,
+			`${err.message} — ${cancelled ? 'the query was cancelled in Dotaz' : `could not cancel query ${queryId}, it may still be running in Dotaz`}`,
+			err.hint,
+		)
+	} finally {
+		process.off('SIGINT', onInterrupt)
 	}
 }

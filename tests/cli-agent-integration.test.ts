@@ -11,15 +11,29 @@ import { join } from 'node:path'
 import { type ControlServerHandle, startControlServer } from '../src/backend-desktop/control-server'
 import { DotazClient } from '../src/cli-agent/client'
 import { decodeAgentHello, decodeConnections } from '../src/cli-agent/decode'
-import { discoverEndpoint } from '../src/cli-agent/endpoint'
+import { discoverEndpoint, type EndpointInfo } from '../src/cli-agent/endpoint'
 import { CliError, EXIT } from '../src/cli-agent/errors'
+import { waitForProposal } from '../src/cli-agent/proposals'
 
 const runOnUnixSocket = process.platform !== 'win32'
 const MAIN = join(import.meta.dir, '../src/cli-agent/main.ts')
 
-const sessions = { created: 0, destroyed: 0, lastSql: '', lastReadOnly: false }
+const sessions = { created: 0, destroyed: 0, lastSql: '', lastQueryId: '', lastReadOnly: false }
+const cancelledQueries: string[] = []
+/** queryId → release, so a "long" query ends when it is cancelled (or when the suite tears down). */
+const sleepingQueries = new Map<string, () => void>()
+const bookmarkCalls: { connectionId: string; search?: string }[] = []
 const proposals = new Map<string, Proposal>()
 const uiCalls: Record<string, unknown>[] = []
+
+/** Poll until the mock app reports what we are waiting for — no fixed sleeps in the timing tests. */
+async function waitUntil(predicate: () => boolean, what: string, timeoutMs = 10_000): Promise<void> {
+	const deadline = Date.now() + timeoutMs
+	while (!predicate()) {
+		if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`)
+		await Bun.sleep(10)
+	}
+}
 
 const handlers = {
 	'agent.hello': () => ({ version: '9.9.9', mode: 'desktop', pid: process.pid, protocol: 1 }),
@@ -56,16 +70,40 @@ const handlers = {
 	'session.destroy': () => {
 		sessions.destroyed++
 	},
-	'query.execute': (params: { sql: string }) => {
+	'query.execute': async (params: { sql: string; queryId?: string }) => {
 		sessions.lastSql = params?.sql ?? ''
+		sessions.lastQueryId = params?.queryId ?? ''
 		if (!/^\s*(SELECT|EXPLAIN)/i.test(sessions.lastSql)) {
 			throw new DatabaseError('READ_ONLY_SESSION', 'cannot execute UPDATE in a read-only transaction')
+		}
+		if (/\bsleep\b/i.test(sessions.lastSql)) {
+			// Stands in for a long query: it only returns once something cancels it
+			const queryId = sessions.lastQueryId
+			await new Promise<void>((resolve) => sleepingQueries.set(queryId, resolve))
+			sleepingQueries.delete(queryId)
 		}
 		return [{
 			columns: [{ name: 'id', dataType: 'integer' }, { name: 'note', dataType: 'text' }],
 			rows: [{ id: 1, note: null }, { id: 2, note: 'NULL' }],
 			rowCount: 2,
 			durationMs: 3,
+		}]
+	},
+	'query.cancel': ({ queryId }: { queryId: string }) => {
+		cancelledQueries.push(queryId)
+		sleepingQueries.get(queryId)?.()
+	},
+	'bookmarks.list': ({ connectionId, search }: { connectionId: string; search?: string }) => {
+		bookmarkCalls.push({ connectionId, search })
+		return [{
+			id: 'b-1',
+			connectionId,
+			database: 'app',
+			name: 'daily orders',
+			description: 'orders of the day',
+			sql: "SELECT * FROM orders WHERE created_at > now() - interval '1 day'",
+			createdAt: '2024-05-05T10:00:00.000Z',
+			updatedAt: '2024-05-06T10:00:00.000Z',
 		}]
 	},
 	'agent.proposeWrite': ({ connectionId, sql, reason }: { connectionId: string; sql: string; reason?: string }) => {
@@ -132,6 +170,7 @@ describe.skipIf(!runOnUnixSocket)('cli-agent ↔ control server', () => {
 	})
 
 	afterAll(async () => {
+		for (const release of sleepingQueries.values()) release()
 		await server?.stop()
 		rmSync(userDataDir, { recursive: true, force: true })
 	})
@@ -339,6 +378,134 @@ describe.skipIf(!runOnUnixSocket)('cli-agent ↔ control server', () => {
 		expect(await proc.exited).toBe(EXIT.ok)
 		expect(stdout).toContain('Columns')
 		expect(stdout).toContain('Referenced by')
+	})
+
+	test('`dotaz bookmarks list` reads the saved queries of every connection', async () => {
+		bookmarkCalls.length = 0
+		const proc = Bun.spawn(['bun', MAIN, 'bookmarks', 'list', '--json', '--endpoint', server.endpointFile], { stdout: 'pipe', stderr: 'pipe' })
+		const stdout = await new Response(proc.stdout).text()
+		expect(await proc.exited).toBe(EXIT.ok)
+		expect(JSON.parse(stdout).rows[0].name).toBe('daily orders')
+		expect(bookmarkCalls).toEqual([{ connectionId: 'c-test', search: undefined }])
+	})
+
+	test('`dotaz bookmarks list` passes --conn and --search through', async () => {
+		bookmarkCalls.length = 0
+		const proc = Bun.spawn(['bun', MAIN, 'bookmarks', 'list', '--conn', 'testdb', '--search', 'orders', '--endpoint', server.endpointFile], {
+			stdout: 'pipe',
+			stderr: 'pipe',
+		})
+		const stdout = await new Response(proc.stdout).text()
+		expect(await proc.exited).toBe(EXIT.ok)
+		expect(stdout).toContain('daily orders')
+		expect(bookmarkCalls).toEqual([{ connectionId: 'c-test', search: 'orders' }])
+	})
+
+	test('`dotaz bookmarks` without a subcommand is a usage error', async () => {
+		const proc = Bun.spawn(['bun', MAIN, 'bookmarks', '--endpoint', server.endpointFile], { stdout: 'pipe', stderr: 'pipe' })
+		expect(await proc.exited).toBe(EXIT.usage)
+	})
+
+	test('`dotaz query --limit` pushes the limit into the SQL', async () => {
+		const proc = Bun.spawn(['bun', MAIN, 'query', 'testdb', 'SELECT * FROM orders', '--limit', '1', '--json', '--endpoint', server.endpointFile], {
+			stdout: 'pipe',
+			stderr: 'pipe',
+		})
+		const stdout = await new Response(proc.stdout).text()
+		const stderr = await new Response(proc.stderr).text()
+		expect(await proc.exited).toBe(EXIT.ok)
+		expect(sessions.lastSql).toBe('SELECT * FROM orders\nLIMIT 1')
+		const parsed = JSON.parse(stdout)
+		expect(parsed.limit).toMatchObject({ requested: 1, appliedTo: 'sql' })
+		expect(parsed.rows).toHaveLength(1)
+		expect(stderr).toContain('pushed into the SQL')
+	})
+
+	test('`dotaz query --limit` falls back to trimming the printed rows and says so', async () => {
+		const proc = Bun.spawn(['bun', MAIN, 'query', 'testdb', 'SELECT 1; SELECT 2', '--limit', '1', '--json', '--endpoint', server.endpointFile], {
+			stdout: 'pipe',
+			stderr: 'pipe',
+		})
+		const stdout = await new Response(proc.stdout).text()
+		const stderr = await new Response(proc.stderr).text()
+		expect(await proc.exited).toBe(EXIT.ok)
+		expect(sessions.lastSql).toBe('SELECT 1; SELECT 2')
+		expect(JSON.parse(stdout).limit).toMatchObject({ requested: 1, appliedTo: 'rows' })
+		expect(stderr).toContain('still ran the full query')
+	})
+
+	test('a query that outlives --timeout is cancelled in the app, and the session still goes away', async () => {
+		const before = { ...sessions }
+		cancelledQueries.length = 0
+		const proc = Bun.spawn(['bun', MAIN, 'query', 'testdb', 'SELECT sleep(60)', '--timeout', '700', '--endpoint', server.endpointFile], {
+			stdout: 'pipe',
+			stderr: 'pipe',
+		})
+		const stderr = await new Response(proc.stderr).text()
+		expect(await proc.exited).toBe(EXIT.timeout)
+		expect(stderr).toContain('did not respond')
+		expect(stderr).toContain('cancelled in Dotaz')
+		expect(cancelledQueries).toEqual([sessions.lastQueryId])
+		expect(sessions.destroyed).toBe(before.destroyed + 1)
+	})
+
+	test('SIGINT cancels the running query instead of orphaning it', async () => {
+		const before = { ...sessions }
+		cancelledQueries.length = 0
+		const proc = Bun.spawn(['bun', MAIN, 'query', 'testdb', 'SELECT sleep(61)', '--endpoint', server.endpointFile], { stdout: 'pipe', stderr: 'pipe' })
+		await waitUntil(() => sessions.lastSql.includes('sleep(61)'), 'the query to reach the app')
+
+		proc.kill('SIGINT')
+		const stderr = await new Response(proc.stderr).text()
+		expect(await proc.exited).toBe(EXIT.timeout)
+		expect(stderr).toContain('Interrupted')
+		expect(cancelledQueries).toEqual([sessions.lastQueryId])
+		expect(sessions.destroyed).toBe(before.destroyed + 1)
+	})
+
+	test('the app closing mid-wait is reported as a lost proposal, not as a timeout', async () => {
+		const socket = join(userDataDir, 'dying.sock')
+		let requests = 0
+		const dying = Bun.serve({
+			unix: socket,
+			async fetch() {
+				requests++
+				if (requests === 1) {
+					return Response.json({
+						type: 'response',
+						id: 0,
+						success: true,
+						payload: { id: 'p-lost', connectionId: 'c-test', sql: 'DELETE FROM orders', status: 'pending', createdAt: Date.now() },
+					})
+				}
+				// The long poll is in flight when the app quits
+				setTimeout(() => void dying.stop(true), 50).unref()
+				await new Promise<void>(() => {})
+				return new Response('unreachable')
+			},
+		})
+
+		const endpoint: EndpointInfo = {
+			pid: process.pid,
+			transport: 'unix',
+			socket,
+			port: null,
+			token: 'token',
+			version: '9.9.9',
+			protocol: 1,
+			startedAt: Date.now(),
+		}
+
+		try {
+			await waitForProposal(new DotazClient(endpoint, 5_000), 'p-lost', 5_000)
+			expect.unreachable()
+		} catch (err) {
+			expect(err instanceof CliError && err.exitCode).toBe(EXIT.notRunning)
+			expect(err instanceof Error && err.message).toContain('Dotaz closed while proposal p-lost')
+		} finally {
+			await dying.stop(true)
+			rmSync(socket, { force: true })
+		}
 	})
 
 	test('`dotaz query` with a write exits 4 and still destroys the session', async () => {
