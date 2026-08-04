@@ -10,6 +10,12 @@ export interface ReserveSessionOptions {
 	 * Used by CLI/agent sessions, which must not be able to write (see docs/agent-cli.md).
 	 */
 	readOnly?: boolean
+	/**
+	 * Engine-enforced cap on how long a single statement may run. Applied to read-only
+	 * sessions only — a user's own long report must never be cut short. Omitted or <= 0
+	 * means no cap. SQLite ignores it: the engine has no statement timeout.
+	 */
+	statementTimeoutMs?: number
 }
 
 export interface DatabaseDriver extends SqlDialect {

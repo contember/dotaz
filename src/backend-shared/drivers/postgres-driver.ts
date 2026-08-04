@@ -229,6 +229,11 @@ export class PostgresDriver implements DatabaseDriver {
 			try {
 				// Session characteristics also apply to transactions started later on this connection.
 				await conn.unsafe('SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY')
+				const timeoutMs = Math.floor(opts.statementTimeoutMs ?? 0)
+				if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+					// A bare integer is milliseconds; the server cancels the statement itself.
+					await conn.unsafe(`SET SESSION statement_timeout = ${timeoutMs}`)
+				}
 			} catch (err) {
 				await safeCloseConnection(conn)
 				await this.pool!.destroyConnection(conn)
