@@ -14,9 +14,10 @@ import { DatabaseError } from '@dotaz/shared/types/errors'
 import type { QueryResult, QueryResultColumn } from '@dotaz/shared/types/query'
 import type { DriverConnectionHandleInfo } from '@dotaz/shared/types/rpc'
 import { SQL } from 'bun'
-import type { DatabaseDriver } from '../db/driver'
+import type { DatabaseDriver, ReserveSessionOptions } from '../db/driver'
 import { mapSqliteError } from '../db/error-mapping'
 import { getAffectedRowCount } from '../db/result-utils'
+import { safeCloseConnection, syncTxActive } from './driver-utils'
 
 /** Row shape from sqlite_master */
 interface SqliteMasterRow {
@@ -55,6 +56,19 @@ interface SqlitePragmaForeignKeyRow {
 	on_delete: string
 }
 
+/**
+ * A read-only session's own connection. SQLite has no per-session state on a shared
+ * handle, so `PRAGMA query_only` needs a handle nobody else uses.
+ */
+interface ReadOnlyHandle {
+	conn: SQL
+	txActive: boolean
+	iterating: boolean
+	handleId: string
+	createdAt: number
+	lastUsedAt: number
+}
+
 /** Map SQLite type affinity strings to DatabaseDataType. */
 function mapSqliteDataType(type: string): DatabaseDataType {
 	const t = type.toUpperCase()
@@ -80,6 +94,8 @@ export class SqliteDriver implements DatabaseDriver {
 	private txActive = false
 	private txOwnerSession: string | null = null
 	private sessionIds = new Set<string>()
+	/** sessionId → dedicated read-only handle. Absent for normal sessions. */
+	private readOnlySessions = new Map<string, ReadOnlyHandle>()
 	private iterating = false
 	/** Separate read-only connection used by iterate() so it doesn't block the main connection. */
 	private iterateDb: SQL | null = null
@@ -128,6 +144,10 @@ export class SqliteDriver implements DatabaseDriver {
 
 	async disconnect(): Promise<void> {
 		this.connected = false
+		for (const readOnly of this.readOnlySessions.values()) {
+			await safeCloseConnection(readOnly.conn, { rollback: readOnly.txActive })
+		}
+		this.readOnlySessions.clear()
 		if (this.iterateDb) {
 			try {
 				await this.iterateDb.close()
@@ -156,11 +176,21 @@ export class SqliteDriver implements DatabaseDriver {
 		return this.connected
 	}
 
-	async reserveSession(sessionId: string): Promise<void> {
+	async reserveSession(sessionId: string, opts?: ReserveSessionOptions): Promise<void> {
+		if (opts?.readOnly) {
+			await this.openReadOnlyHandle(sessionId)
+		}
 		this.sessionIds.add(sessionId)
 	}
 
 	async releaseSession(sessionId: string): Promise<void> {
+		const readOnly = this.readOnlySessions.get(sessionId)
+		if (readOnly) {
+			this.readOnlySessions.delete(sessionId)
+			await safeCloseConnection(readOnly.conn, { rollback: readOnly.txActive })
+			this.sessionIds.delete(sessionId)
+			return
+		}
 		if (this.txActive && this.txOwnerSession === sessionId) {
 			try {
 				await this.db!.unsafe('ROLLBACK')
@@ -175,28 +205,48 @@ export class SqliteDriver implements DatabaseDriver {
 		return [...this.sessionIds]
 	}
 
+	isSessionReadOnly(sessionId: string): boolean {
+		return this.readOnlySessions.has(sessionId)
+	}
+
 	async execute(sql: string, params?: unknown[], sessionId?: string): Promise<QueryResult> {
 		this.ensureConnected()
+
+		const readOnly = sessionId === undefined ? undefined : this.readOnlySessions.get(sessionId)
+		if (readOnly) {
+			readOnly.lastUsedAt = Date.now()
+			const result = await this.runStatement(readOnly.conn, sql, params)
+			syncTxActive(readOnly, sql)
+			return result
+		}
+
 		this.ensureSessionCanExecute(sessionId)
 		this.markMainUsed()
+		const result = await this.runStatement(this.db!, sql, params)
+
+		// Sync txActive for raw transaction-control statements
+		const upper = sql.trim().toUpperCase()
+		if (/^(BEGIN|START\s+TRANSACTION)\b/.test(upper)) {
+			this.txActive = true
+			this.txOwnerSession = sessionId ?? null
+		} else if (/^(COMMIT|END)\b/.test(upper)) {
+			this.txActive = false
+			this.txOwnerSession = null
+		} else if (/^ROLLBACK\b/.test(upper) && !/^ROLLBACK\s+TO\b/.test(upper)) {
+			this.txActive = false
+			this.txOwnerSession = null
+		}
+
+		return result
+	}
+
+	/** Run one statement on a specific handle and shape the driver result. */
+	private async runStatement(conn: SQL, sql: string, params?: unknown[]): Promise<QueryResult> {
 		const start = performance.now()
 		try {
-			const result = await this.db!.unsafe(sql, params ?? [])
+			const result = await conn.unsafe(sql, params ?? [])
 			const durationMs = Math.round(performance.now() - start)
 			const rows = [...result] as Record<string, unknown>[]
-
-			// Sync txActive for raw transaction-control statements
-			const upper = sql.trim().toUpperCase()
-			if (/^(BEGIN|START\s+TRANSACTION)\b/.test(upper)) {
-				this.txActive = true
-				this.txOwnerSession = sessionId ?? null
-			} else if (/^(COMMIT|END)\b/.test(upper)) {
-				this.txActive = false
-				this.txOwnerSession = null
-			} else if (/^ROLLBACK\b/.test(upper) && !/^ROLLBACK\s+TO\b/.test(upper)) {
-				this.txActive = false
-				this.txOwnerSession = null
-			}
 
 			const columns: QueryResultColumn[] = rows.length > 0
 				? Object.keys(rows[0]).map((name) => ({ name, dataType: DatabaseDataType.Unknown }))
@@ -212,6 +262,36 @@ export class SqliteDriver implements DatabaseDriver {
 		} catch (err) {
 			throw err instanceof DatabaseError ? err : mapSqliteError(err)
 		}
+	}
+
+	/** Open the session's own `query_only` handle so the shared connection stays writable. */
+	private async openReadOnlyHandle(sessionId: string): Promise<void> {
+		this.ensureConnected()
+		if (this.readOnlySessions.has(sessionId)) return
+		if (!this.dbPath || this.dbPath === ':memory:') {
+			throw new Error('Read-only sessions require a file-backed SQLite database')
+		}
+		const conn = new SQL(`sqlite:${this.dbPath}`)
+		try {
+			await conn.unsafe('PRAGMA foreign_keys = ON')
+			await this.applyInitSql(conn)
+			// Last, so initSql can still configure the handle
+			await conn.unsafe('PRAGMA query_only = ON')
+		} catch (err) {
+			try {
+				await conn.close()
+			} catch { /* already dead */ }
+			throw err instanceof DatabaseError ? err : mapSqliteError(err)
+		}
+		const now = Date.now()
+		this.readOnlySessions.set(sessionId, {
+			conn,
+			txActive: false,
+			iterating: false,
+			handleId: this.createHandleId(),
+			createdAt: now,
+			lastUsedAt: now,
+		})
 	}
 
 	async cancel(_sessionId?: string, _poolQueryKey?: symbol): Promise<void> {
@@ -379,13 +459,20 @@ export class SqliteDriver implements DatabaseDriver {
 		sessionId?: string,
 	): AsyncGenerator<Record<string, unknown>[]> {
 		this.ensureConnected()
-		// For file-based databases, use a separate read-only connection so
-		// iteration doesn't block the main connection (WAL mode allows
-		// concurrent readers). In-memory databases can't share across
-		// connections, so they must fall back to the main connection.
-		const useMainConn = this.dbPath === ':memory:'
-		const readConn = useMainConn ? this.db! : await this.getIterateDb()
-		if (useMainConn) {
+		// A read-only session iterates on its own handle; for other file-based
+		// databases, use a separate read-only connection so iteration doesn't block
+		// the main connection (WAL mode allows concurrent readers). In-memory
+		// databases can't share across connections, so they fall back to the main one.
+		const readOnly = sessionId === undefined ? undefined : this.readOnlySessions.get(sessionId)
+		const useMainConn = !readOnly && this.dbPath === ':memory:'
+		let readConn: SQL
+		if (readOnly) {
+			if (readOnly.txActive) throw new Error('Cannot iterate with an active transaction')
+			readConn = readOnly.conn
+			readOnly.iterating = true
+			readOnly.lastUsedAt = Date.now()
+		} else if (useMainConn) {
+			readConn = this.db!
 			this.markMainUsed()
 			this.ensureSessionCanExecute(sessionId)
 			if (this.txActive) throw new Error('Cannot iterate with an active transaction')
@@ -393,6 +480,7 @@ export class SqliteDriver implements DatabaseDriver {
 			this.txOwnerSession = sessionId ?? null
 			this.iterating = true
 		} else {
+			readConn = await this.getIterateDb()
 			this.iterateActive = true
 			this.markIterateUsed()
 		}
@@ -425,7 +513,10 @@ export class SqliteDriver implements DatabaseDriver {
 					await readConn.unsafe('ROLLBACK')
 				} catch { /* ignore */ }
 			}
-			if (useMainConn) {
+			if (readOnly) {
+				readOnly.iterating = false
+				readOnly.lastUsedAt = Date.now()
+			} else if (useMainConn) {
 				this.iterating = false
 				this.txActive = false
 				this.txOwnerSession = null
@@ -494,6 +585,14 @@ export class SqliteDriver implements DatabaseDriver {
 
 	async beginTransaction(sessionId?: string): Promise<void> {
 		this.ensureConnected()
+		const readOnly = sessionId === undefined ? undefined : this.readOnlySessions.get(sessionId)
+		if (readOnly) {
+			if (readOnly.txActive) throw new Error('A transaction is already active')
+			await readOnly.conn.unsafe('BEGIN')
+			readOnly.txActive = true
+			readOnly.lastUsedAt = Date.now()
+			return
+		}
 		this.markMainUsed()
 		if (this.txActive) {
 			throw new Error(
@@ -509,6 +608,15 @@ export class SqliteDriver implements DatabaseDriver {
 
 	async commit(sessionId?: string): Promise<void> {
 		this.ensureConnected()
+		const readOnly = sessionId === undefined ? undefined : this.readOnlySessions.get(sessionId)
+		if (readOnly) {
+			if (!readOnly.txActive) throw new Error('No active transaction')
+			if (readOnly.iterating) throw new Error('Cannot commit during active iteration')
+			await readOnly.conn.unsafe('COMMIT')
+			readOnly.txActive = false
+			readOnly.lastUsedAt = Date.now()
+			return
+		}
 		this.ensureSessionOwnsTx(sessionId)
 		if (this.iterating) throw new Error('Cannot commit during active iteration')
 		this.markMainUsed()
@@ -519,6 +627,18 @@ export class SqliteDriver implements DatabaseDriver {
 
 	async rollback(sessionId?: string): Promise<void> {
 		this.ensureConnected()
+		const readOnly = sessionId === undefined ? undefined : this.readOnlySessions.get(sessionId)
+		if (readOnly) {
+			if (!readOnly.txActive) throw new Error('No active transaction')
+			if (readOnly.iterating) throw new Error('Cannot rollback during active iteration')
+			try {
+				await readOnly.conn.unsafe('ROLLBACK')
+			} finally {
+				readOnly.txActive = false
+				readOnly.lastUsedAt = Date.now()
+			}
+			return
+		}
 		this.ensureSessionOwnsTx(sessionId)
 		if (this.iterating) throw new Error('Cannot rollback during active iteration')
 		this.markMainUsed()
@@ -532,6 +652,8 @@ export class SqliteDriver implements DatabaseDriver {
 
 	inTransaction(sessionId?: string): boolean {
 		if (sessionId !== undefined) {
+			const readOnly = this.readOnlySessions.get(sessionId)
+			if (readOnly) return readOnly.txActive
 			return this.txActive && this.txOwnerSession === sessionId
 		}
 		return this.txActive && this.txOwnerSession === null
@@ -541,7 +663,11 @@ export class SqliteDriver implements DatabaseDriver {
 		return false
 	}
 
-	isIterating(_sessionId?: string): boolean {
+	isIterating(sessionId?: string): boolean {
+		if (sessionId !== undefined) {
+			const readOnly = this.readOnlySessions.get(sessionId)
+			if (readOnly) return readOnly.iterating
+		}
 		return this.iterating
 	}
 
@@ -582,6 +708,23 @@ export class SqliteDriver implements DatabaseDriver {
 			})
 		}
 
+		for (const [sessionId, readOnly] of this.readOnlySessions) {
+			handles.push({
+				handleId: readOnly.handleId,
+				role: 'session',
+				state: readOnly.txActive ? 'transaction' : (readOnly.iterating ? 'active' : 'idle'),
+				label: 'Read-only session',
+				sessionId,
+				createdAt: readOnly.createdAt,
+				lastUsedAt: readOnly.lastUsedAt,
+				activeQueryCount: readOnly.iterating ? 1 : 0,
+				inTransaction: readOnly.txActive,
+				txAborted: false,
+				iterating: readOnly.iterating,
+				canTerminate: true,
+			})
+		}
+
 		return handles
 	}
 
@@ -590,6 +733,12 @@ export class SqliteDriver implements DatabaseDriver {
 		if (this.mainHandleId === handleId) {
 			await this.reopenMainConnection()
 			return
+		}
+		for (const [sessionId, readOnly] of this.readOnlySessions) {
+			if (readOnly.handleId === handleId) {
+				await this.releaseSession(sessionId)
+				return
+			}
 		}
 		if (this.iterateHandleId === handleId && this.iterateDb) {
 			try {

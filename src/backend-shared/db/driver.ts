@@ -22,6 +22,8 @@ export interface DatabaseDriver extends SqlDialect {
 	reserveSession(sessionId: string, opts?: ReserveSessionOptions): Promise<void>
 	releaseSession(sessionId: string): Promise<void>
 	getSessionIds(): string[]
+	/** Whether the session was reserved read-only — the driver is the source of truth. */
+	isSessionReadOnly(sessionId: string): boolean
 
 	// Query execution
 	execute(sql: string, params?: unknown[], sessionId?: string, poolQueryKey?: symbol): Promise<QueryResult>
