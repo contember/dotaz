@@ -25,6 +25,7 @@ type Waiter = (proposal: Proposal) => void
 export class ProposalStore {
 	private proposals = new Map<string, Proposal>()
 	private waiters = new Map<string, Set<Waiter>>()
+	private observers = new Set<(proposal: Proposal) => void>()
 	private readonly ttlMs: number
 	private readonly now: () => number
 	private disposed = false
@@ -47,6 +48,7 @@ export class ProposalStore {
 			createdAt: this.now(),
 		}
 		this.proposals.set(proposal.id, proposal)
+		this.notify(proposal)
 		return { ...proposal }
 	}
 
@@ -123,6 +125,7 @@ export class ProposalStore {
 			for (const waiter of [...waiters]) waiter(proposal)
 		}
 		this.waiters.clear()
+		this.observers.clear()
 		this.proposals.clear()
 	}
 
@@ -180,7 +183,17 @@ export class ProposalStore {
 		}
 	}
 
+	/**
+	 * Observe every state change, including expiry. The app uses this to invalidate an
+	 * approval banner whose proposal was resolved behind its back.
+	 */
+	onChange(observer: (proposal: Proposal) => void): () => void {
+		this.observers.add(observer)
+		return () => this.observers.delete(observer)
+	}
+
 	private notify(proposal: Proposal): void {
+		for (const observer of [...this.observers]) observer({ ...proposal })
 		const waiters = this.waiters.get(proposal.id)
 		if (!waiters) return
 		for (const waiter of [...waiters]) waiter(proposal)

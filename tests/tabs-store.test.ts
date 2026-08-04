@@ -2,6 +2,11 @@ import { beforeEach, describe, expect, mock, test } from 'bun:test'
 
 // Mock solid-js/store before importing the module
 // We replicate createStore behavior for testing
+//
+// FRAGILE: this only works while no earlier test file has already evaluated stores/tabs.ts —
+// its module-level createStore() would then have run against the real implementation and every
+// test here fails. If you add a test for something that imports a store, import the pure logic
+// from a store-free module instead (see lib/ui-snapshot.ts, lib/proposal-state.ts).
 const stores: any[] = []
 
 mock.module('solid-js/store', () => ({
