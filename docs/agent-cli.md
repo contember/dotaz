@@ -207,6 +207,7 @@ dotaz query <conn[/db]> <sql> [--param v]… [--limit]
 dotaz explain <conn[/db]> <sql> [--analyze]
 dotaz search <conn[/db]> <term> [--scope database|schema|table]
 dotaz history [--conn] [--limit]
+dotaz bookmarks list [--conn] [--search]
 dotaz propose <conn[/db]> <sql> [--reason] [--wait [sec]]
 dotaz approvals list | status <id> | wait <id> [--timeout sec] | cancel <id>
 dotaz ui state
@@ -224,6 +225,13 @@ Output rules:
 - Row output is always capped. When truncated, the last line states
   `rows: 20/1543 (truncated, use --limit)`.
 - `--json` emits a single object; `--format jsonl` emits one row per line.
+- `--limit` on `query` is pushed into the SQL when the statement is a single unlimited
+  read-only `SELECT`/`WITH` with no `OFFSET`, locking clause or `INTO` — so the database
+  stops early. Anything else falls back to trimming the printed rows, and the CLI says which
+  of the two happened. The distinction matters: only the first one bounds what the database
+  actually does.
+- A timed-out or interrupted query is cancelled in the app (`query.cancel`) rather than left
+  running, and the CLI reports whether the cancel succeeded.
 
 Exit codes:
 
