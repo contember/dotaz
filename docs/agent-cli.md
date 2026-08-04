@@ -17,6 +17,8 @@ This document is the implementation contract. Everything below is normative.
 
 1. The CLI's database session is opened read-only and is **never** switched to read-write.
    An approved write executes in the frontend's own session, not in the CLI session.
+   No control-plane method may be used to get around this: `ui.openConsole` will prefill a
+   write, but refuses to auto-run one (`run: true` is rejected for non-read-only SQL).
 2. Read-only is enforced by the database engine, not by parsing SQL. Statement
    classification exists only to fail fast with a good message.
 3. The control endpoint does not exist unless the user enabled it (`cli.enabled` setting or
@@ -37,6 +39,13 @@ speaks unix sockets natively via `fetch(url, { unix })`.
 
 Auth: `x-dotaz-token` header, compared with `timingSafeEqual`. Required on `/rpc` even over a
 unix socket.
+
+The endpoint exposes an **allowlist**, not the app's full handler map
+(`backend-shared/rpc/cli-surface.ts`). Connection mutation, import/export, settings writes
+and anything that returns decrypted secrets stay unreachable, and `connections.list`
+responses are stripped of passwords on the way out. `ui.snapshot.set` and
+`agent.proposals.resolve` are frontend-only and equally unreachable. A forbidden method is
+indistinguishable from a nonexistent one.
 
 Socket path: `${XDG_RUNTIME_DIR ?? tmpdir()}/dotaz-${pid}.sock`. A stale socket at that path
 is unlinked on startup.
@@ -160,7 +169,8 @@ the frontend may act on.
 
 ## CLI
 
-Package `@dotaz/cli` in `src/cli-agent/`, binary `dotaz`.
+Package `@dotaz/agent-cli` in `src/cli-agent/`, binary `dotaz`. (`@dotaz/cli` is already
+taken by the web-server CLI in `src/cli/`.)
 
 Paths address objects as `connection/database/schema/table`. A connection is matched by id,
 by exact name, or by a unique case-insensitive prefix. Drivers without databases or schemas
