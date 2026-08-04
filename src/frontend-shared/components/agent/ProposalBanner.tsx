@@ -1,4 +1,5 @@
 import { Show } from 'solid-js'
+import type { ProposalPhase } from '../../lib/proposal-state'
 import { connectionsStore } from '../../stores/connections'
 import { proposalsStore } from '../../stores/proposals'
 import Icon from '../common/Icon'
@@ -6,6 +7,17 @@ import './ProposalBanner.css'
 
 interface ProposalBannerProps {
 	tabId: string
+}
+
+/** The proposal is settled — the tab keeps the SQL, the banner only offers Dismiss. */
+function isTerminal(phase: ProposalPhase): boolean {
+	return phase === 'resolved' || phase === 'invalidated'
+}
+
+function runLabel(phase: ProposalPhase): string {
+	if (phase === 'checking') return 'Checking…'
+	if (phase === 'running') return 'Running…'
+	return 'Run'
 }
 
 /** Approval surface for a write an agent proposed through the CLI. Never runs on its own. */
@@ -22,7 +34,8 @@ export default function ProposalBanner(props: ProposalBannerProps) {
 
 	function blocked(): string | null {
 		const e = entry()
-		return e ? proposalsStore.blockedReason(e) : null
+		// A settled proposal cannot be run, so why it is blocked no longer matters.
+		return e && !isTerminal(e.phase) ? proposalsStore.blockedReason(e) : null
 	}
 
 	function disconnected(): boolean {
@@ -35,7 +48,13 @@ export default function ProposalBanner(props: ProposalBannerProps) {
 	return (
 		<Show when={entry()}>
 			{(e) => (
-				<div class="proposal-banner" classList={{ 'proposal-banner--resolved': e().phase === 'resolved' }}>
+				<div
+					class="proposal-banner"
+					classList={{
+						'proposal-banner--resolved': e().phase === 'resolved',
+						'proposal-banner--invalidated': e().phase === 'invalidated',
+					}}
+				>
 					<div class="proposal-banner__badge">
 						<Icon name="sparkles" size={13} />
 						Agent
@@ -43,10 +62,27 @@ export default function ProposalBanner(props: ProposalBannerProps) {
 
 					<div class="proposal-banner__body">
 						<p class="proposal-banner__headline">
-							An agent wants to run this SQL on <strong>{target()}</strong>. It has not been executed.
+							<Show
+								when={e().phase === 'invalidated'}
+								fallback={
+									<>
+										An agent wants to run this SQL on <strong>{target()}</strong>. It has not been executed.
+									</>
+								}
+							>
+								An agent proposed this SQL on <strong>{target()}</strong>.
+							</Show>
 						</p>
 						<Show when={e().proposal.reason}>
 							{(reason) => <p class="proposal-banner__reason">“{reason()}”</p>}
+						</Show>
+						<Show when={e().invalidReason}>
+							{(reason) => (
+								<p class="proposal-banner__invalid">
+									<Icon name="info" size={12} />
+									{reason()}
+								</p>
+							)}
 						</Show>
 						<Show when={blocked()}>
 							{(reason) => (
@@ -70,12 +106,12 @@ export default function ProposalBanner(props: ProposalBannerProps) {
 					</div>
 
 					<div class="proposal-banner__actions">
-						<Show when={e().phase === 'resolved'}>
+						<Show when={isTerminal(e().phase)}>
 							<button class="btn btn--secondary btn--sm" onClick={() => proposalsStore.dismiss(e().proposal.id)}>
 								Dismiss
 							</button>
 						</Show>
-						<Show when={e().phase !== 'resolved'}>
+						<Show when={!isTerminal(e().phase)}>
 							<Show when={disconnected()}>
 								<button class="btn btn--secondary btn--sm" onClick={() => proposalsStore.connect(e().proposal.id)}>
 									Connect
@@ -83,18 +119,18 @@ export default function ProposalBanner(props: ProposalBannerProps) {
 							</Show>
 							<button
 								class="btn btn--primary btn--sm"
-								disabled={e().phase === 'running' || blocked() !== null}
+								disabled={e().phase !== 'pending' || blocked() !== null}
 								title="Run the proposed SQL in this tab"
-								onClick={() => proposalsStore.run(e().proposal.id)}
+								onClick={() => void proposalsStore.run(e().proposal.id)}
 							>
-								<Show when={e().phase === 'running'} fallback={<Icon name="play" size={12} />}>
-									<Icon name="spinner" size={12} />
+								<Show when={e().phase === 'pending'} fallback={<Icon name="spinner" size={12} />}>
+									<Icon name="play" size={12} />
 								</Show>
-								{e().phase === 'running' ? 'Running…' : 'Run'}
+								{runLabel(e().phase)}
 							</button>
 							<button
 								class="btn btn--secondary btn--sm"
-								disabled={e().phase === 'running'}
+								disabled={e().phase !== 'pending'}
 								title="Tell the agent the write was rejected"
 								onClick={() => proposalsStore.reject(e().proposal.id)}
 							>

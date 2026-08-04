@@ -74,6 +74,7 @@ export class BackendAdapter implements RpcAdapter {
 	private appVersion: string
 	private mode: 'desktop' | 'web' | 'demo'
 	private proposals = new ProposalStore()
+	private unsubscribeProposals: () => void
 	/** Last snapshot published by the frontend — absent until the UI reports in. */
 	private uiSnapshot: UiSnapshot | null = null
 
@@ -93,6 +94,11 @@ export class BackendAdapter implements RpcAdapter {
 		this.allowServerFileAccess = opts?.allowServerFileAccess ?? true
 		this.appVersion = opts?.appVersion ?? '0.0.0'
 		this.mode = opts?.mode ?? 'web'
+		// Every transition, not just creation — an approval banner whose proposal was cancelled
+		// or expired elsewhere must stop being actionable.
+		this.unsubscribeProposals = this.proposals.onChange((proposal) => {
+			this.emitMessage?.('cli.proposal', proposal)
+		})
 	}
 
 	// ── Connections ────────────────────────────────────────
@@ -822,9 +828,7 @@ export class BackendAdapter implements RpcAdapter {
 	}
 
 	proposeWrite(params: ProposeWriteParams): Proposal {
-		const proposal = this.proposals.create(params)
-		this.emitMessage?.('cli.proposal', proposal)
-		return proposal
+		return this.proposals.create(params)
 	}
 
 	listProposals(filter?: ProposalListParams): Proposal[] {
@@ -868,6 +872,7 @@ export class BackendAdapter implements RpcAdapter {
 	}
 
 	dispose(): void {
+		this.unsubscribeProposals()
 		this.proposals.dispose()
 	}
 }

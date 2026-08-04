@@ -1,4 +1,5 @@
 import { MAX_PROPOSALS, PROPOSAL_TTL_MS, ProposalStore } from '@dotaz/backend-shared/services/proposal-store'
+import type { ProposalStatus } from '@dotaz/shared/types/rpc'
 import { describe, expect, test } from 'bun:test'
 
 /** Store with a clock the test controls — expiry is never waited out for real. */
@@ -193,6 +194,48 @@ describe('ProposalStore', () => {
 		})
 	})
 
+	// The app has to learn about transitions it did not cause, or a stale approval banner
+	// stays actionable and a click runs SQL for a proposal that no longer exists.
+	describe('onChange', () => {
+		test('reports creation, resolution and cancellation', () => {
+			const { store } = withClock()
+			const seen: ProposalStatus[] = []
+			store.onChange((p) => seen.push(p.status))
+
+			const created = store.create({ connectionId: 'c1', sql: 'DELETE FROM t' })
+			store.cancel(created.id)
+			const second = store.create({ connectionId: 'c1', sql: 'DELETE FROM t' })
+			store.resolve({ proposalId: second.id, status: 'executed' })
+
+			expect(seen).toEqual(['pending', 'cancelled', 'pending', 'executed'])
+			store.dispose()
+		})
+
+		test('reports expiry, which nothing else would announce', () => {
+			const { store, clock } = withClock(60_000)
+			const created = createProposal(store)
+			const seen: string[] = []
+			store.onChange((p) => seen.push(`${p.id === created.id ? 'same' : 'other'}:${p.status}`))
+
+			clock.now += 60_001
+			store.get(created.id)
+
+			expect(seen).toEqual(['same:expired'])
+			store.dispose()
+		})
+
+		test('unsubscribing stops delivery', () => {
+			const { store } = withClock()
+			const seen: ProposalStatus[] = []
+			const off = store.onChange((p) => seen.push(p.status))
+			off()
+			store.create({ connectionId: 'c1', sql: 'DELETE FROM t' })
+
+			expect(seen).toEqual([])
+			store.dispose()
+		})
+	})
+
 	describe('list', () => {
 		test('filters by status and connectionId', () => {
 			const { store } = withClock()
@@ -303,6 +346,15 @@ describe('ProposalStore', () => {
 
 			expect((await pending).status).toBe('pending')
 			expect(store.waiterCount()).toBe(0)
+		})
+
+		test('disposing stops delivering changes to observers', () => {
+			const { store } = withClock()
+			const seen: ProposalStatus[] = []
+			store.onChange((p) => seen.push(p.status))
+			store.dispose()
+
+			expect(seen).toEqual([])
 		})
 
 		test('a disposed store rejects further use', () => {

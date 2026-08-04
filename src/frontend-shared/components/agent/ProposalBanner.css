@@ -9,7 +9,8 @@
 	flex-shrink: 0;
 }
 
-.proposal-banner--resolved {
+.proposal-banner--resolved,
+.proposal-banner--invalidated {
 	border-left-color: var(--ink-muted);
 }
 
@@ -51,6 +52,7 @@
 }
 
 .proposal-banner__blocked,
+.proposal-banner__invalid,
 .proposal-banner__outcome {
 	display: flex;
 	align-items: center;
@@ -61,6 +63,10 @@
 
 .proposal-banner__blocked {
 	color: var(--warning);
+}
+
+.proposal-banner__invalid {
+	color: var(--ink-secondary);
 }
 
 .proposal-banner__outcome {
