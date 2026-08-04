@@ -7,22 +7,26 @@ import appIcon from '../../../../assets/icon.png'
 import { registerAppCommands } from '../../lib/app-commands'
 import { registerAppShortcuts } from '../../lib/app-shortcuts'
 import { getCapabilities } from '../../lib/capabilities'
+import { handleUiCommand } from '../../lib/cli-commands'
 import { commandRegistry } from '../../lib/commands'
 import type { ShortcutContext } from '../../lib/keyboard'
 import { keyboardManager } from '../../lib/keyboard'
 import { applyUpdate, friendlyErrorMessage, messages, setWindowTitle } from '../../lib/rpc'
 import { formatWindowTitle } from '../../lib/tab-context'
+import { initUiSnapshotPublisher } from '../../lib/ui-snapshot'
 import { loadWorkspace, saveWorkspaceNow, scheduleWorkspaceSave, setWorkspaceStateCollector } from '../../lib/workspace'
 import { getComparisonParams, setComparisonParams } from '../../stores/comparison'
 import { connectionsStore } from '../../stores/connections'
 import { editorStore } from '../../stores/editor'
 import { gridStore } from '../../stores/grid'
 import { navigationStore } from '../../stores/navigation'
+import { proposalsStore } from '../../stores/proposals'
 import { sessionStore } from '../../stores/session'
 import { settingsStore } from '../../stores/settings'
 import { tabsStore } from '../../stores/tabs'
 import { uiStore } from '../../stores/ui'
 import { viewsStore } from '../../stores/views'
+import ProposalBanner from '../agent/ProposalBanner'
 import BookmarksDialog from '../bookmarks/BookmarksDialog'
 import CommandPalette from '../common/CommandPalette'
 import ConfirmDialog from '../common/ConfirmDialog'
@@ -68,6 +72,7 @@ tabsStore.onTabClosed((tabId) => {
 	editorStore.removeTab(tabId)
 	sessionStore.handleTabClosed(tabId)
 	navigationStore.handleTabClosed(tabId)
+	proposalsStore.handleTabClosed(tabId)
 })
 
 const MIN_WIDTH = 150
@@ -171,6 +176,8 @@ export default function AppShell() {
 	let removeStatusListener: (() => void) | undefined
 	let removeUpdateListener: (() => void) | undefined
 	let removeResizeListener: (() => void) | undefined
+	let removeProposalListener: (() => void) | undefined
+	let removeCliCommandListener: (() => void) | undefined
 
 	// ── Global error handlers ─────────────────────────────
 	function handleUnhandledError(event: ErrorEvent) {
@@ -205,6 +212,9 @@ export default function AppShell() {
 			setWindowTitle(title).catch(() => {})
 		}
 	})
+
+	// Publish what the user has open for the CLI's `ui.state` (desktop only, debounced).
+	initUiSnapshotPublisher()
 
 	onMount(async () => {
 		await connectionsStore.loadConnections()
@@ -259,6 +269,14 @@ export default function AppShell() {
 		// Listen for auto-update notifications
 		removeUpdateListener = messages.onUpdateReady(({ version }) => {
 			setUpdateVersion(version)
+		})
+
+		// Listen for the CLI — write proposals to approve and UI commands to perform
+		removeProposalListener = messages.onCliProposal((proposal) => {
+			proposalsStore.handleProposal(proposal)
+		})
+		removeCliCommandListener = messages.onCliCommand((command) => {
+			handleUiCommand(command)
 		})
 
 		// Global error catching — prevents app crash on unhandled errors
@@ -322,6 +340,8 @@ export default function AppShell() {
 		removeStatusListener?.()
 		removeUpdateListener?.()
 		removeResizeListener?.()
+		removeProposalListener?.()
+		removeCliCommandListener?.()
 		tabsStore.setBeforeCloseHook(null)
 		connectionsStore.setBeforeDisconnectHook(null)
 		window.removeEventListener('error', handleUnhandledError)
@@ -596,6 +616,7 @@ export default function AppShell() {
 												onToggleTransactionLog={() => setTxLogOpen((v) => !v)}
 												transactionLogOpen={txLogOpen()}
 											/>
+											<ProposalBanner tabId={tab.id} />
 											<Show when={editorStore.getTab(tab.id)?.aiPromptOpen}>
 												<AiPrompt tabId={tab.id} />
 											</Show>
