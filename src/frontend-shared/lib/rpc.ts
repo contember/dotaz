@@ -5,7 +5,7 @@ import type { NamespacedRpcClient } from '@dotaz/backend-types'
 import type { ConnectionState } from '@dotaz/shared/types/connection'
 import type { DatabaseErrorCode } from '@dotaz/shared/types/errors'
 import type { QueryCompletedEvent } from '@dotaz/shared/types/query'
-import type { SessionInfo } from '@dotaz/shared/types/rpc'
+import type { Proposal, SessionInfo, UiCommandPayload } from '@dotaz/shared/types/rpc'
 import { transport } from './transport'
 
 export { friendlyErrorMessage, RpcError } from './rpc-errors'
@@ -59,6 +59,18 @@ export const messages = {
 		handler: (event: { version: string }) => void,
 	) => {
 		return transport.addMessageListener('update.ready', handler)
+	},
+	/** A write the CLI wants the user to approve (see docs/agent-cli.md). */
+	onCliProposal: (
+		handler: (proposal: Proposal) => void,
+	) => {
+		return transport.addMessageListener('cli.proposal', handler)
+	},
+	/** A UI action requested by the CLI — open a tab, run a command. */
+	onCliCommand: (
+		handler: (payload: UiCommandPayload) => void,
+	) => {
+		return transport.addMessageListener('cli.command', handler)
 	},
 }
 
