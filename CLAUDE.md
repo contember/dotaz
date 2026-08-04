@@ -81,6 +81,7 @@ src/
   backend-desktop/     ← Electrobun backend entry point
   backend-web/         ← HTTP/WebSocket server entry point
   cli/                 ← CLI entry point (bunx @dotaz/server)
+  cli-agent/           ← `dotaz` agent CLI — attaches to the running desktop app (docs/agent-cli.md)
   frontend-shared/     ← Solid.js UI: components, stores, lib (transport/storage registries)
   frontend-desktop/    ← Desktop entry: setTransport(electrobun) + setStorage(rpc)
   frontend-web/        ← Web entry: setTransport(websocket) + setStorage(indexeddb)
@@ -100,6 +101,7 @@ frontend-demo        ← frontend-shared + backend-shared (runtime — createHan
 backend-desktop      ← backend-shared
 backend-web          ← backend-shared
 cli                  ← backend-web (starts server with CLI argument parsing)
+cli-agent            ← shared (talks to a running app over HTTP — no backend imports)
 ```
 
 ### Transport & storage — registration pattern
