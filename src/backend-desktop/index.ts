@@ -6,6 +6,7 @@ import type { DotazRPC } from '@dotaz/backend-types'
 import { ApplicationMenu, BrowserView, BrowserWindow, Updater, Utils } from 'electrobun/bun'
 import { existsSync, mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { type ControlServerHandle, startControlServer } from './control-server'
 
 const DEV_SERVER_PORT = 6400
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`
@@ -54,16 +55,49 @@ const userDataDir = Utils.paths.userData
 const devDemoPath = resolve(import.meta.dir, '../../scripts/seed/bookstore.db')
 const bundledDemoPath = resolve(import.meta.dir, '../resources/bookstore.db')
 const demoDbSourcePath = existsSync(devDemoPath) ? devDemoPath : bundledDemoPath
+const appVersion = await Updater.localInfo.version()
 const { handlers, sessionManager } = createHandlers(connectionManager, undefined, appDb, Utils, {
 	emitMessage: (channel, payload) => emitToFrontend?.(channel, payload),
 	demoDbSourcePath,
 	demoDbTargetPath: join(userDataDir, 'bookstore-demo.db'),
+	appVersion,
+	mode: 'desktop',
 })
+
+// ── CLI control endpoint (see docs/agent-cli.md) ─────────
+// Off unless the user opts in, and started/stopped live so the Settings toggle
+// takes effect without a restart.
+let controlServer: ControlServerHandle | null = null
+
+function cliAccessEnabled(): boolean {
+	return process.env.DOTAZ_CLI === '1' || appDb.getBooleanSetting('cli.enabled') === true
+}
+
+async function syncControlServer(): Promise<void> {
+	const enabled = cliAccessEnabled()
+	if (enabled && !controlServer) {
+		try {
+			controlServer = await startControlServer({ handlers, userDataDir, appVersion })
+			const { address } = controlServer
+			console.log(`CLI endpoint listening on ${address.transport === 'unix' ? address.socket : `127.0.0.1:${address.port}`}`)
+		} catch (err) {
+			console.error('CLI endpoint failed to start:', err instanceof Error ? err.message : err)
+		}
+	} else if (!enabled && controlServer) {
+		await controlServer.stop()
+		controlServer = null
+		console.log('CLI endpoint stopped')
+	}
+}
 const rpc = BrowserView.defineRPC<DotazRPC>({
 	maxRequestTime: 30000,
 	handlers: {
 		requests: {
 			...handlers,
+			'settings.set': (params: { key: string; value: string }) => {
+				handlers['settings.set'](params)
+				if (params.key === 'cli.enabled') void syncControlServer()
+			},
 			'update.apply': async () => {
 				await Updater.applyUpdate()
 			},
@@ -313,6 +347,13 @@ connectionManager.onStatusChanged(async (event) => {
 			console.warn('Session restoration failed:', err instanceof Error ? err.message : err)
 		}
 	}
+})
+
+// Started after the window exists so backend → frontend messages have somewhere to land
+await syncControlServer()
+
+mainWindow.on('close', () => {
+	void controlServer?.stop()
 })
 
 // ── Auto-update ──────────────────────────────────────────
