@@ -1,6 +1,16 @@
 import { describe, expect, test } from 'bun:test'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { appDataDir, discoverEndpoint, type EndpointInfo, parseEndpointFile, userDataRoot } from '../src/cli-agent/endpoint'
+import {
+	appDataDir,
+	candidateEndpointFiles,
+	discoverEndpoint,
+	type EndpointInfo,
+	listLiveInstances,
+	parseEndpointFile,
+	userDataRoot,
+} from '../src/cli-agent/endpoint'
 import { CliError, EXIT } from '../src/cli-agent/errors'
 
 const VALID: EndpointInfo = {
@@ -18,13 +28,17 @@ function fileFor(endpoint: Partial<EndpointInfo>): string {
 	return JSON.stringify({ ...VALID, ...endpoint })
 }
 
-function exitCodeOf(fn: () => unknown): number | undefined {
+function errorOf(fn: () => unknown): CliError | undefined {
 	try {
 		fn()
 		return undefined
 	} catch (err) {
-		return err instanceof CliError ? err.exitCode : undefined
+		return err instanceof CliError ? err : undefined
 	}
+}
+
+function exitCodeOf(fn: () => unknown): number | undefined {
+	return errorOf(fn)?.exitCode
 }
 
 describe('userData resolution', () => {
@@ -61,6 +75,32 @@ describe('parseEndpointFile', () => {
 	})
 })
 
+describe('candidateEndpointFiles', () => {
+	test('collects endpoint-<pid>.json from every channel, ignoring anything else', () => {
+		const root = mkdtempSync(join(tmpdir(), 'dotaz-endpoint-scan-'))
+		try {
+			mkdirSync(join(root, 'dev', 'cli'), { recursive: true })
+			mkdirSync(join(root, 'stable', 'cli'), { recursive: true })
+			// A channel that never enabled CLI access has no cli/ directory at all
+			mkdirSync(join(root, 'canary'), { recursive: true })
+			writeFileSync(join(root, 'dev', 'cli', 'endpoint-11.json'), fileFor({ pid: 11 }))
+			writeFileSync(join(root, 'dev', 'cli', 'notes.json'), '{}')
+			writeFileSync(join(root, 'stable', 'cli', 'endpoint-22.json'), fileFor({ pid: 22 }))
+
+			expect(candidateEndpointFiles(root).sort()).toEqual([
+				join(root, 'dev', 'cli', 'endpoint-11.json'),
+				join(root, 'stable', 'cli', 'endpoint-22.json'),
+			])
+		} finally {
+			rmSync(root, { recursive: true, force: true })
+		}
+	})
+
+	test('a missing root is not an error', () => {
+		expect(candidateEndpointFiles(join(tmpdir(), 'dotaz-does-not-exist-1234'))).toEqual([])
+	})
+})
+
 describe('discoverEndpoint', () => {
 	const base = {
 		platform: 'linux',
@@ -70,10 +110,17 @@ describe('discoverEndpoint', () => {
 		pidAlive: () => true,
 	}
 
+	const twoInstances = {
+		...base,
+		listCandidates: () => ['/a.json', '/b.json'],
+		readFile: (file: string) => fileFor(file === '/b.json' ? { pid: 2, startedAt: 20 } : { pid: 1, startedAt: 10 }),
+	}
+
 	test('uses an explicit file when given', () => {
 		const found = discoverEndpoint({ ...base, explicitFile: '/tmp/endpoint.json' })
 		expect(found.file).toBe('/tmp/endpoint.json')
 		expect(found.endpoint.pid).toBe(4242)
+		expect(found.instances).toHaveLength(1)
 	})
 
 	test('DOTAZ_ENDPOINT overrides discovery', () => {
@@ -83,18 +130,57 @@ describe('discoverEndpoint', () => {
 
 	test('scans every channel directory under userData', () => {
 		const root = userDataRoot('linux', {}, '/home/x')
-		const found = discoverEndpoint({ ...base, listCandidates: () => [join(root, 'dev', 'cli-endpoint.json')] })
-		expect(found.file).toBe(join(root, 'dev', 'cli-endpoint.json'))
+		const file = join(root, 'dev', 'cli', 'endpoint-4242.json')
+		const found = discoverEndpoint({ ...base, listCandidates: () => [file] })
+		expect(found.file).toBe(file)
 	})
 
 	test('prefers the most recently started live endpoint', () => {
-		const files = ['/a.json', '/b.json']
-		const found = discoverEndpoint({
-			...base,
-			listCandidates: () => files,
-			readFile: (file) => fileFor(file === '/b.json' ? { pid: 2, startedAt: 20 } : { pid: 1, startedAt: 10 }),
-		})
+		const found = discoverEndpoint(twoInstances)
 		expect(found.file).toBe('/b.json')
+	})
+
+	test('reports every live instance, newest first', () => {
+		const found = discoverEndpoint(twoInstances)
+		expect(found.instances.map((i) => i.pid)).toEqual([2, 1])
+	})
+
+	test('dead instances are left out of the instance list', () => {
+		const found = discoverEndpoint({ ...twoInstances, pidAlive: (pid: number) => pid === 1 })
+		expect(found.endpoint.pid).toBe(1)
+		expect(found.instances.map((i) => i.pid)).toEqual([1])
+	})
+
+	test('--instance selects a specific pid even when it is not the newest', () => {
+		const found = discoverEndpoint({ ...twoInstances, instancePid: 1 })
+		expect(found.endpoint.pid).toBe(1)
+		expect(found.file).toBe('/a.json')
+	})
+
+	test('--instance with an unknown pid is a usage error listing the live ones', () => {
+		const err = errorOf(() => discoverEndpoint({ ...twoInstances, instancePid: 999 }))
+		expect(err?.exitCode).toBe(EXIT.usage)
+		expect(err?.message).toContain('999')
+		expect(err?.hint).toBe('Live instances: 2, 1')
+	})
+
+	test('--instance with a dead pid is a usage error', () => {
+		const err = errorOf(() => discoverEndpoint({ ...twoInstances, instancePid: 2, pidAlive: (pid: number) => pid === 1 }))
+		expect(err?.exitCode).toBe(EXIT.usage)
+		expect(err?.hint).toBe('Live instances: 1')
+	})
+
+	test('--instance beats DOTAZ_ENDPOINT but conflicts with --endpoint', () => {
+		const found = discoverEndpoint({ ...twoInstances, env: { DOTAZ_ENDPOINT: '/from-env.json' }, instancePid: 1 })
+		expect(found.file).toBe('/a.json')
+
+		const err = errorOf(() => discoverEndpoint({ ...twoInstances, instancePid: 1, explicitFile: '/x.json' }))
+		expect(err?.exitCode).toBe(EXIT.usage)
+	})
+
+	test('--instance must be a process id', () => {
+		expect(exitCodeOf(() => discoverEndpoint({ ...twoInstances, instancePid: 1.5 }))).toBe(EXIT.usage)
+		expect(exitCodeOf(() => discoverEndpoint({ ...twoInstances, instancePid: -3 }))).toBe(EXIT.usage)
 	})
 
 	test('a dead pid is exit 5', () => {
@@ -123,11 +209,25 @@ describe('discoverEndpoint', () => {
 	})
 
 	test('every exit-5 message tells the user how to enable CLI access', () => {
-		try {
-			discoverEndpoint({ ...base, listCandidates: () => [] })
-			expect.unreachable()
-		} catch (err) {
-			expect(err instanceof CliError && err.hint).toContain('Allow CLI access')
-		}
+		expect(errorOf(() => discoverEndpoint({ ...base, listCandidates: () => [] }))?.hint).toContain('Allow CLI access')
+	})
+})
+
+describe('listLiveInstances', () => {
+	test('returns only live instances, newest first', () => {
+		const instances = listLiveInstances({
+			platform: 'linux',
+			env: {},
+			home: '/home/x',
+			listCandidates: () => ['/a.json', '/b.json', '/c.json'],
+			readFile: (file: string) =>
+				fileFor(file === '/a.json' ? { pid: 1, startedAt: 10 } : file === '/b.json' ? { pid: 2, startedAt: 30 } : { pid: 3, startedAt: 20 }),
+			pidAlive: (pid: number) => pid !== 3,
+		})
+		expect(instances.map((i) => i.endpoint.pid)).toEqual([2, 1])
+	})
+
+	test('nothing running is an empty list, not an error', () => {
+		expect(listLiveInstances({ platform: 'linux', env: {}, home: '/home/x', listCandidates: () => [] })).toEqual([])
 	})
 })

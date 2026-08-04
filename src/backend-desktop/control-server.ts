@@ -1,26 +1,33 @@
 // Local control endpoint for the `dotaz` CLI (see docs/agent-cli.md).
 //
-// Plain HTTP over a unix socket (macOS/Linux) or loopback TCP (Windows) — every CLI
-// invocation is one-shot, so a WebSocket would buy nothing. The endpoint only exists while
-// the user has CLI access enabled; there is no way to reach it otherwise.
+// Plain HTTP over a unix socket (macOS/Linux) or loopback TCP (Windows, or on request) —
+// every CLI invocation is one-shot, so a WebSocket would buy nothing. The endpoint only
+// exists while the user has CLI access enabled; there is no way to reach it otherwise.
 
 import { createCliHandlerLookup } from '@dotaz/backend-shared/rpc/cli-surface'
 import { dispatchRpc, parseRpcRequest, type RpcHandler } from '@dotaz/backend-shared/rpc/dispatch'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
-import { chmodSync, existsSync, unlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 export const CLI_PROTOCOL_VERSION = 1
 
-const ENDPOINT_FILE = 'cli-endpoint.json'
+// Layout must match src/cli-agent/endpoint.ts — one file per instance, so two running
+// instances never overwrite or delete each other's endpoint.
+const CLI_DIR = 'cli'
+const ENDPOINT_FILE_PATTERN = /^endpoint-(\d+)\.json$/
+
+export type ControlTransport = 'unix' | 'tcp'
 
 export interface ControlServerOptions {
 	/** RPC handlers to expose — the same map the webview RPC uses. */
 	handlers: Record<string, RpcHandler>
-	/** Directory holding the endpoint file, normally Utils.paths.userData. */
+	/** Parent of the `cli/` endpoint directory, normally Utils.paths.userData. */
 	userDataDir: string
 	appVersion: string
+	/** Overrides the platform default — also settable with DOTAZ_CLI_TRANSPORT. */
+	transport?: ControlTransport
 }
 
 export type ControlServerAddress =
@@ -29,13 +36,28 @@ export type ControlServerAddress =
 
 export interface ControlServerHandle {
 	address: ControlServerAddress
+	endpointDir: string
 	endpointFile: string
 	token: string
 	stop(): Promise<void>
 }
 
-export function endpointFilePath(userDataDir: string): string {
-	return join(userDataDir, ENDPOINT_FILE)
+export function endpointDirPath(userDataDir: string): string {
+	return join(userDataDir, CLI_DIR)
+}
+
+export function endpointFilePath(userDataDir: string, pid: number = process.pid): string {
+	return join(endpointDirPath(userDataDir), `endpoint-${pid}.json`)
+}
+
+/** Explicit option first, then DOTAZ_CLI_TRANSPORT, then the platform (Windows has no unix sockets). */
+export function resolveTransport(
+	opts: { transport?: ControlTransport; env?: Record<string, string | undefined>; platform?: string } = {},
+): ControlTransport {
+	if (opts.transport) return opts.transport
+	const fromEnv = (opts.env ?? process.env).DOTAZ_CLI_TRANSPORT
+	if (fromEnv === 'tcp' || fromEnv === 'unix') return fromEnv
+	return (opts.platform ?? process.platform) === 'win32' ? 'tcp' : 'unix'
 }
 
 /** Socket lives in the runtime dir so the OS cleans it up on reboot. */
@@ -66,13 +88,46 @@ function removeIfExists(path: string): void {
 	} catch { /* best effort — a leftover file must never block startup or shutdown */ }
 }
 
+function isPidAlive(pid: number): boolean {
+	try {
+		process.kill(pid, 0)
+		return true
+	} catch (err) {
+		// EPERM means the process exists but belongs to another user — still alive
+		return err instanceof Error && 'code' in err && err.code === 'EPERM'
+	}
+}
+
+/** Drops files left behind by crashed instances; a live instance's file is never touched. */
+function pruneDeadEndpointFiles(dir: string, ownPid: number): void {
+	let entries: string[]
+	try {
+		entries = readdirSync(dir)
+	} catch {
+		return
+	}
+	for (const entry of entries) {
+		const match = ENDPOINT_FILE_PATTERN.exec(entry)
+		if (!match) continue
+		const pid = Number(match[1])
+		if (pid !== ownPid && isPidAlive(pid)) continue
+		removeIfExists(join(dir, entry))
+	}
+}
+
 export async function startControlServer(opts: ControlServerOptions): Promise<ControlServerHandle> {
 	const token = randomBytes(32).toString('hex')
 	const getHandler = createCliHandlerLookup(opts.handlers)
 	const pid = process.pid
-	const useUnixSocket = process.platform !== 'win32'
-	const socketPath = useUnixSocket ? socketPathForPid(pid) : null
-	const endpointFile = endpointFilePath(opts.userDataDir)
+	const transport = resolveTransport({ transport: opts.transport })
+	const socketPath = transport === 'unix' ? socketPathForPid(pid) : null
+	const endpointDir = endpointDirPath(opts.userDataDir)
+	const endpointFile = endpointFilePath(opts.userDataDir, pid)
+
+	mkdirSync(endpointDir, { recursive: true, mode: 0o700 })
+	// mkdir applies the mode only when creating, and umask can strip bits off it
+	chmodSync(endpointDir, 0o700)
+	pruneDeadEndpointFiles(endpointDir, pid)
 
 	// A socket left behind by a crashed instance would make bind fail
 	if (socketPath) removeIfExists(socketPath)
@@ -106,7 +161,7 @@ export async function startControlServer(opts: ControlServerOptions): Promise<Co
 		server = Bun.serve({ unix: socketPath, fetch: handleRequest })
 		address = { transport: 'unix', socket: socketPath }
 	} else {
-		// Windows has no unix sockets — an ephemeral loopback port plus the token instead
+		// No unix sockets on Windows — an ephemeral loopback port plus the token instead
 		const tcpServer = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: handleRequest })
 		server = tcpServer
 		const port = tcpServer.port
@@ -138,6 +193,7 @@ export async function startControlServer(opts: ControlServerOptions): Promise<Co
 	// writeFileSync only applies mode when creating — an existing file keeps its old perms
 	chmodSync(endpointFile, 0o600)
 
+	// Only our own file and socket — another instance may still be serving from this directory
 	const cleanup = () => {
 		if (socketPath) removeIfExists(socketPath)
 		removeIfExists(endpointFile)
@@ -147,6 +203,7 @@ export async function startControlServer(opts: ControlServerOptions): Promise<Co
 	let stopped = false
 	return {
 		address,
+		endpointDir,
 		endpointFile,
 		token,
 		async stop() {
