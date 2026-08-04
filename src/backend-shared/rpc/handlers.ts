@@ -1,16 +1,44 @@
+import { isReadOnlySql } from '@dotaz/shared/sql/statements'
 import type { ConnectionConfig } from '@dotaz/shared/types/connection'
+import { DatabaseError } from '@dotaz/shared/types/errors'
 import type { ExportOptions, ExportPreviewRequest, ExportRawPreviewRequest } from '@dotaz/shared/types/export'
 import type { ImportOptions, ImportPreviewRequest } from '@dotaz/shared/types/import'
 import type {
 	AiGenerateSqlParams,
 	HistoryListParams,
 	OpenDialogParams,
+	ProposalListParams,
+	ProposalResolveParams,
+	ProposeWriteParams,
 	SaveDialogParams,
 	SavedViewConfig,
 	SearchDatabaseParams,
 	TransactionLogParams,
+	UiSnapshot,
 } from '@dotaz/shared/types/rpc'
 import type { RpcAdapter } from './adapter'
+
+/** Long-poll ceiling for `agent.proposals.wait` — anything above is clamped, not rejected. */
+const MAX_PROPOSAL_WAIT_MS = 10 * 60 * 1000
+const DEFAULT_PROPOSAL_WAIT_MS = 30 * 1000
+
+function requireKnownConnection(adapter: RpcAdapter, connectionId: string): void {
+	if (!connectionId) {
+		throw new Error('connectionId is required')
+	}
+	if (!adapter.listConnections().some((c) => c.id === connectionId)) {
+		throw new Error(`Unknown connection: ${connectionId}`)
+	}
+}
+
+function clampProposalWait(timeoutMs?: number): number {
+	if (timeoutMs === undefined) return DEFAULT_PROPOSAL_WAIT_MS
+	if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
+		throw new Error('timeoutMs must be a non-negative number')
+	}
+	return Math.min(timeoutMs, MAX_PROPOSAL_WAIT_MS)
+}
+
 export function createHandlers(adapter: RpcAdapter) {
 	return {
 		// ── Connection Management ─────────────────────────
@@ -78,8 +106,10 @@ export function createHandlers(adapter: RpcAdapter) {
 		},
 
 		// ── Sessions ─────────────────────────────────────
-		'session.create': async ({ connectionId, database }: { connectionId: string; database?: string }) => {
-			return adapter.createSession(connectionId, database)
+		'session.create': async (
+			{ connectionId, database, readOnly, label }: { connectionId: string; database?: string; readOnly?: boolean; label?: string },
+		) => {
+			return adapter.createSession(connectionId, database, { readOnly, label })
 		},
 		'session.destroy': async ({ sessionId }: { sessionId: string }) => {
 			await adapter.destroySession(sessionId)
@@ -350,6 +380,109 @@ export function createHandlers(adapter: RpcAdapter) {
 				return { path: null as string | null, cancelled: true }
 			}
 			return adapter.showSaveDialog(params)
+		},
+
+		// ── Agent CLI (see docs/agent-cli.md) ─────────────
+		'agent.hello': () => {
+			return adapter.agentHello()
+		},
+		'agent.proposeWrite': ({ connectionId, database, sql, reason }: ProposeWriteParams) => {
+			requireKnownConnection(adapter, connectionId)
+			if (!sql?.trim()) {
+				throw new Error('sql is required')
+			}
+			const proposal = adapter.proposeWrite({
+				connectionId,
+				database,
+				sql: sql.trim(),
+				reason: reason?.trim() || undefined,
+			})
+			return { proposalId: proposal.id }
+		},
+		'agent.proposals.list': (params?: ProposalListParams) => {
+			return adapter.listProposals(params)
+		},
+		'agent.proposals.get': ({ proposalId }: { proposalId: string }) => {
+			if (!proposalId) {
+				throw new Error('proposalId is required')
+			}
+			const proposal = adapter.getProposal(proposalId)
+			if (!proposal) {
+				throw new Error(`Proposal not found: ${proposalId}`)
+			}
+			return proposal
+		},
+		'agent.proposals.wait': async ({ proposalId, timeoutMs }: { proposalId: string; timeoutMs?: number }) => {
+			if (!proposalId) {
+				throw new Error('proposalId is required')
+			}
+			return adapter.waitForProposal(proposalId, clampProposalWait(timeoutMs))
+		},
+		'agent.proposals.cancel': ({ proposalId }: { proposalId: string }) => {
+			if (!proposalId) {
+				throw new Error('proposalId is required')
+			}
+			adapter.cancelProposal(proposalId)
+		},
+		// Frontend only — the app resolves a proposal after the user ran or rejected it.
+		'agent.proposals.resolve': ({ proposalId, status, result, error }: ProposalResolveParams) => {
+			if (!proposalId) {
+				throw new Error('proposalId is required')
+			}
+			if (!status) {
+				throw new Error('status is required')
+			}
+			return adapter.resolveProposal({ proposalId, status, result, error })
+		},
+
+		// ── UI control ────────────────────────────────────
+		'ui.state': () => {
+			return adapter.getUiSnapshot()
+		},
+		'ui.openTable': ({ connectionId, database, schema, table, where, limit }: {
+			connectionId: string
+			database?: string
+			schema?: string
+			table: string
+			where?: string
+			limit?: number
+		}) => {
+			requireKnownConnection(adapter, connectionId)
+			if (!table?.trim()) {
+				throw new Error('table is required')
+			}
+			if (limit !== undefined && (!Number.isInteger(limit) || limit <= 0)) {
+				throw new Error('limit must be a positive integer')
+			}
+			// SQLite has no schemas, so the CLI's shortened path form omits it.
+			adapter.sendUiCommand({ kind: 'open-table', connectionId, database, schema: schema ?? '', table: table.trim(), where, limit })
+			return { ok: true } as const
+		},
+		'ui.openConsole': ({ connectionId, database, sql, run }: { connectionId: string; database?: string; sql?: string; run?: boolean }) => {
+			requireKnownConnection(adapter, connectionId)
+			if (run && !sql?.trim()) {
+				throw new Error('run requires sql')
+			}
+			// Auto-run would otherwise be a way around the approval flow — writes must go through agent.proposeWrite
+			if (run && !isReadOnlySql(sql ?? '')) {
+				throw new DatabaseError('READ_ONLY_SESSION', 'Only read-only SQL can be auto-run — submit writes via agent.proposeWrite')
+			}
+			adapter.sendUiCommand({ kind: 'open-console', connectionId, database, sql, run })
+			return { ok: true } as const
+		},
+		'ui.runCommand': ({ commandId }: { commandId: string }) => {
+			if (!commandId?.trim()) {
+				throw new Error('commandId is required')
+			}
+			adapter.sendUiCommand({ kind: 'run-command', commandId: commandId.trim() })
+			return { ok: true } as const
+		},
+		// Frontend only — the app publishes what the user is currently looking at.
+		'ui.snapshot.set': ({ snapshot }: { snapshot: UiSnapshot }) => {
+			if (!snapshot || !Array.isArray(snapshot.tabs)) {
+				throw new Error('snapshot is required')
+			}
+			adapter.setUiSnapshot(snapshot)
 		},
 
 		// ── Demo ──────────────────────────────────────────────
