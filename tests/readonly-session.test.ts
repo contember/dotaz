@@ -27,6 +27,24 @@ import { MYSQL_URL, PG_URL, seedMysql, seedPostgres, seedSqlite } from './helper
 let dbPath: string
 let config: SqliteConnectionConfig
 
+const pgConfig: PostgresConnectionConfig = {
+	type: 'postgresql',
+	host: 'localhost',
+	port: 5488,
+	database: 'dotaz_test',
+	user: 'dotaz',
+	password: 'dotaz',
+}
+
+const mysqlConfig: MysqlConnectionConfig = {
+	type: 'mysql',
+	host: 'localhost',
+	port: 3388,
+	database: 'dotaz_test',
+	user: 'dotaz',
+	password: 'dotaz',
+}
+
 /** First column value of the first row — PRAGMA result column names vary. */
 function firstValue(rows: Record<string, unknown>[]): unknown {
 	return rows.length > 0 ? Object.values(rows[0])[0] : undefined
@@ -227,6 +245,27 @@ describe('SqliteDriver read-only sessions — initSql', () => {
 	})
 })
 
+describe('SqliteDriver read-only sessions — statement timeout', () => {
+	useTempSqliteDb()
+
+	// SQLite has no statement timeout, so the option is deliberately a no-op — it must
+	// not silently change the handle (busy_timeout is a lock wait, not a runtime cap).
+	test('the statement timeout option changes nothing', async () => {
+		const driver = new SqliteDriver()
+		await driver.connect(config)
+		const sessionId = crypto.randomUUID()
+		await driver.reserveSession(sessionId, { readOnly: true, statementTimeoutMs: 200 })
+		try {
+			expect(firstValue((await driver.execute('PRAGMA busy_timeout', undefined, sessionId)).rows)).toBe(0)
+			expect(firstValue((await driver.execute('PRAGMA query_only', undefined, sessionId)).rows)).toBe(1)
+			const result = await driver.execute('SELECT count(*) AS n FROM users', undefined, sessionId)
+			expect(Number(result.rows[0].n)).toBe(3)
+		} finally {
+			await driver.disconnect()
+		}
+	})
+})
+
 describe('SessionManager read-only sessions', () => {
 	useTempSqliteDb()
 
@@ -286,6 +325,70 @@ describe('SessionManager read-only sessions', () => {
 		const normal = restored.find((s) => s.label === 'Session 2')
 		expect(normal).toBeDefined()
 		expect(cm.getDriver(connectionId).isSessionReadOnly(normal!.sessionId)).toBe(false)
+	})
+})
+
+// Requires `docker compose up -d` — skipped when the container isn't reachable.
+describe.skipIf(!pgReachable)('SessionManager read-only statement timeout', () => {
+	let appDb: AppDatabase
+	let cm: ConnectionManager
+	let sm: SessionManager
+	let connectionId: string
+
+	beforeEach(async () => {
+		AppDatabase.resetInstance()
+		appDb = AppDatabase.getInstance(':memory:')
+		cm = new ConnectionManager(appDb)
+		sm = new SessionManager(cm, appDb)
+		connectionId = cm.createConnection({ name: 'Test PG', config: pgConfig }).id
+		await cm.connect(connectionId)
+	}, 30_000)
+
+	afterEach(async () => {
+		sm.dispose()
+		await cm.disconnectAll()
+		AppDatabase.resetInstance()
+	})
+
+	/** The engine's own view of the cap on a session. */
+	async function statementTimeout(sessionId: string): Promise<unknown> {
+		return firstValue((await cm.getDriver(connectionId).execute('SHOW statement_timeout', undefined, sessionId)).rows)
+	}
+
+	test('the queryTimeout setting caps a read-only session', async () => {
+		appDb.setSetting('queryTimeout', '250')
+		const session = await sm.createSession(connectionId, undefined, { readOnly: true, label: 'Agent' })
+		expect(await statementTimeout(session.sessionId)).toBe('250ms')
+		await expect(cm.getDriver(connectionId).execute('SELECT pg_sleep(5)', undefined, session.sessionId))
+			.rejects.toThrow(/statement timeout/i)
+	})
+
+	test('the default setting applies when nothing is stored', async () => {
+		const session = await sm.createSession(connectionId, undefined, { readOnly: true })
+		expect(await statementTimeout(session.sessionId)).toBe('30s')
+	})
+
+	test('a normal session is left uncapped', async () => {
+		appDb.setSetting('queryTimeout', '250')
+		const session = await sm.createSession(connectionId)
+		expect(await statementTimeout(session.sessionId)).toBe('0')
+	})
+
+	test('queryTimeout = 0 means no cap', async () => {
+		appDb.setSetting('queryTimeout', '0')
+		const session = await sm.createSession(connectionId, undefined, { readOnly: true })
+		expect(await statementTimeout(session.sessionId)).toBe('0')
+	})
+
+	test('a restored read-only session comes back capped', async () => {
+		appDb.setSetting('queryTimeout', '250')
+		await sm.createSession(connectionId, undefined, { readOnly: true, label: 'Agent CLI' })
+
+		sm.handleConnectionLost(connectionId)
+		const restored = await sm.handleConnectionRestored(connectionId)
+
+		expect(restored).toHaveLength(1)
+		expect(await statementTimeout(restored[0].sessionId)).toBe('250ms')
 	})
 })
 
@@ -413,15 +516,6 @@ describe('QueryExecutor read-only guard', () => {
 
 // Requires `docker compose up -d` — skipped when the container isn't reachable.
 describe.skipIf(!pgReachable)('PostgresDriver read-only sessions', () => {
-	const pgConfig: PostgresConnectionConfig = {
-		type: 'postgresql',
-		host: 'localhost',
-		port: 5488,
-		database: 'dotaz_test',
-		user: 'dotaz',
-		password: 'dotaz',
-	}
-
 	let driver: PostgresDriver
 	let readOnlyId: string
 	let writableId: string
@@ -500,16 +594,62 @@ describe.skipIf(!pgReachable)('PostgresDriver read-only sessions', () => {
 })
 
 // Requires `docker compose up -d` — skipped when the container isn't reachable.
-describe.skipIf(!mysqlReachable)('MysqlDriver read-only sessions', () => {
-	const mysqlConfig: MysqlConnectionConfig = {
-		type: 'mysql',
-		host: 'localhost',
-		port: 3388,
-		database: 'dotaz_test',
-		user: 'dotaz',
-		password: 'dotaz',
-	}
+describe.skipIf(!pgReachable)('PostgresDriver read-only statement timeout', () => {
+	let driver: PostgresDriver
 
+	beforeAll(async () => {
+		driver = new PostgresDriver()
+		await driver.connect(pgConfig)
+	}, 30_000)
+
+	afterAll(async () => {
+		if (driver.isConnected()) await driver.disconnect()
+	})
+
+	test('the engine cancels a slow query on a capped read-only session', async () => {
+		const sessionId = crypto.randomUUID()
+		await driver.reserveSession(sessionId, { readOnly: true, statementTimeoutMs: 200 })
+		try {
+			expect(firstValue((await driver.execute('SHOW statement_timeout', undefined, sessionId)).rows)).toBe('200ms')
+			await expect(driver.execute('SELECT pg_sleep(5)', undefined, sessionId)).rejects.toThrow(/statement timeout/i)
+		} finally {
+			await driver.releaseSession(sessionId)
+		}
+	})
+
+	test('a normal session on the same connection is never capped', async () => {
+		const sessionId = crypto.randomUUID()
+		// Even when asked for — the cap belongs to read-only sessions alone
+		await driver.reserveSession(sessionId, { statementTimeoutMs: 200 })
+		try {
+			expect(firstValue((await driver.execute('SHOW statement_timeout', undefined, sessionId)).rows)).toBe('0')
+			const result = await driver.execute('SELECT pg_sleep(0.6)', undefined, sessionId)
+			expect(result.rows).toHaveLength(1)
+			expect(firstValue((await driver.execute('SHOW statement_timeout')).rows)).toBe('0')
+		} finally {
+			await driver.releaseSession(sessionId)
+		}
+	})
+
+	test('no timeout is set when the value is 0 or absent', async () => {
+		const zeroId = crypto.randomUUID()
+		const absentId = crypto.randomUUID()
+		await driver.reserveSession(zeroId, { readOnly: true, statementTimeoutMs: 0 })
+		await driver.reserveSession(absentId, { readOnly: true })
+		try {
+			expect(firstValue((await driver.execute('SHOW statement_timeout', undefined, zeroId)).rows)).toBe('0')
+			expect(firstValue((await driver.execute('SHOW statement_timeout', undefined, absentId)).rows)).toBe('0')
+			const result = await driver.execute('SELECT pg_sleep(0.6)', undefined, zeroId)
+			expect(result.rows).toHaveLength(1)
+		} finally {
+			await driver.releaseSession(zeroId)
+			await driver.releaseSession(absentId)
+		}
+	})
+})
+
+// Requires `docker compose up -d` — skipped when the container isn't reachable.
+describe.skipIf(!mysqlReachable)('MysqlDriver read-only sessions', () => {
 	let driver: MysqlDriver
 	let readOnlyId: string
 	let writableId: string
@@ -574,5 +714,57 @@ describe.skipIf(!mysqlReachable)('MysqlDriver read-only sessions', () => {
 	test('a normal session on the same connection still writes', async () => {
 		const result = await driver.execute("INSERT INTO users (name, email) VALUES ('Frank', 'frank@example.com')", undefined, writableId)
 		expect(result.affectedRows).toBe(1)
+	})
+})
+
+// Requires `docker compose up -d` — skipped when the container isn't reachable.
+describe.skipIf(!mysqlReachable)('MysqlDriver read-only statement timeout', () => {
+	let driver: MysqlDriver
+
+	beforeAll(async () => {
+		driver = new MysqlDriver()
+		await driver.connect(mysqlConfig)
+	}, 30_000)
+
+	afterAll(async () => {
+		if (driver.isConnected()) await driver.disconnect()
+	})
+
+	test('the engine cancels a slow query on a capped read-only session', async () => {
+		const sessionId = crypto.randomUUID()
+		await driver.reserveSession(sessionId, { readOnly: true, statementTimeoutMs: 200 })
+		try {
+			// MySQL: "maximum statement execution time exceeded"; MariaDB: "max_statement_time exceeded"
+			await expect(driver.execute('SELECT SLEEP(5) AS s', undefined, sessionId))
+				.rejects.toThrow(/statement.execution.time exceeded|max_statement_time exceeded/i)
+		} finally {
+			await driver.releaseSession(sessionId)
+		}
+	})
+
+	test('a normal session on the same connection is never capped', async () => {
+		const sessionId = crypto.randomUUID()
+		// Even when asked for — the cap belongs to read-only sessions alone
+		await driver.reserveSession(sessionId, { statementTimeoutMs: 200 })
+		try {
+			const result = await driver.execute('SELECT SLEEP(0.6) AS s', undefined, sessionId)
+			expect(Number(result.rows[0].s)).toBe(0)
+		} finally {
+			await driver.releaseSession(sessionId)
+		}
+	})
+
+	test('no timeout is applied when the value is 0 or absent', async () => {
+		const zeroId = crypto.randomUUID()
+		const absentId = crypto.randomUUID()
+		await driver.reserveSession(zeroId, { readOnly: true, statementTimeoutMs: 0 })
+		await driver.reserveSession(absentId, { readOnly: true })
+		try {
+			expect(Number(firstValue((await driver.execute('SELECT SLEEP(0.6) AS s', undefined, zeroId)).rows))).toBe(0)
+			expect(Number(firstValue((await driver.execute('SELECT SLEEP(0.6) AS s', undefined, absentId)).rows))).toBe(0)
+		} finally {
+			await driver.releaseSession(zeroId)
+			await driver.releaseSession(absentId)
+		}
 	})
 })

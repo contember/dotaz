@@ -60,7 +60,10 @@ export class SessionManager {
 
 		const sessionId = crypto.randomUUID()
 		const driver = this.cm.getDriver(connectionId, database)
-		await driver.reserveSession(sessionId, { readOnly: opts?.readOnly })
+		await driver.reserveSession(sessionId, {
+			readOnly: opts?.readOnly,
+			statementTimeoutMs: opts?.readOnly ? this.readOnlyStatementTimeoutMs() : undefined,
+		})
 
 		const counter = (this.labelCounters.get(connectionId) ?? 0) + 1
 		this.labelCounters.set(connectionId, counter)
@@ -217,8 +220,11 @@ export class SessionManager {
 			try {
 				driver = this.cm.getDriver(connectionId, spec.database)
 				sessionId = crypto.randomUUID()
-				// A restored agent session must never come back writable
-				await driver.reserveSession(sessionId, { readOnly: spec.readOnly })
+				// A restored agent session must never come back writable — or uncapped
+				await driver.reserveSession(sessionId, {
+					readOnly: spec.readOnly,
+					statementTimeoutMs: spec.readOnly ? this.readOnlyStatementTimeoutMs() : undefined,
+				})
 				reserved = true
 
 				const info: SessionInfo = {
@@ -258,6 +264,12 @@ export class SessionManager {
 		this.labelCounters.set(connectionId, maxLabel)
 
 		return restored
+	}
+
+	/** Statement cap for read-only (agent) sessions — read-only is not the same as cheap. 0 means uncapped. */
+	private readOnlyStatementTimeoutMs(): number | undefined {
+		const timeoutMs = this.appDb.getNumberSetting('queryTimeout') ?? Number(DEFAULT_SETTINGS.queryTimeout)
+		return timeoutMs > 0 ? timeoutMs : undefined
 	}
 
 	private startIdleTransactionCheck(): void {
