@@ -124,7 +124,7 @@ Existing handlers are reused wherever possible. New methods:
 
 | Channel        | Payload                                                        |
 | -------------- | -------------------------------------------------------------- |
-| `cli.proposal` | `Proposal` — a write awaiting approval                         |
+| `cli.proposal` | `Proposal` — emitted on every state change, not only creation  |
 | `cli.command`  | `{ kind: 'open-table' \| 'open-console' \| 'run-command', … }` |
 
 ## Read-only sessions
@@ -194,6 +194,13 @@ Lifecycle:
 
 Proposals live in memory for one hour, then become `expired`. `pending` is the only status
 the frontend may act on.
+
+A proposal can also leave `pending` behind the app's back — the agent cancels it, the TTL
+expires it, or another window resolves it. The backend therefore emits `cli.proposal` on
+every transition, and the app invalidates that banner: the tab stays, Run and Reject go away.
+Because the message may not have arrived yet, Run additionally re-checks the proposal is
+still pending before executing anything. Without both, a click on a stale banner would run a
+write for a proposal that no longer exists.
 
 ## CLI
 
