@@ -1,0 +1,11 @@
+{
+	"name": "@dotaz/agent-cli",
+	"private": true,
+	"version": "0.0.0",
+	"bin": {
+		"dotaz": "./main.ts"
+	},
+	"dependencies": {
+		"@dotaz/shared": "workspace:*"
+	}
+}
