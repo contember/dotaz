@@ -20,7 +20,7 @@ export class SessionManager {
 	// Track label counters per connection for auto-naming
 	private labelCounters = new Map<string, number>()
 	// Saved session metadata for restoration after reconnect
-	private pendingRestore = new Map<string, Array<{ database?: string; label: string }>>()
+	private pendingRestore = new Map<string, Array<{ database?: string; label: string; readOnly?: boolean }>>()
 	// Track when we first observed a session with an active transaction
 	private txFirstSeen = new Map<string, number>()
 	private idleCheckTimer: ReturnType<typeof setInterval> | null = null
@@ -42,7 +42,11 @@ export class SessionManager {
 		this.stopIdleTransactionCheck()
 	}
 
-	async createSession(connectionId: string, database?: string): Promise<SessionInfo> {
+	async createSession(
+		connectionId: string,
+		database?: string,
+		opts?: { readOnly?: boolean; label?: string },
+	): Promise<SessionInfo> {
 		const maxSessions = this.appDb.getNumberSetting('maxSessionsPerConnection')
 			?? Number(DEFAULT_SETTINGS.maxSessionsPerConnection)
 		const connSessions = this.sessions.get(connectionId)
@@ -56,7 +60,7 @@ export class SessionManager {
 
 		const sessionId = crypto.randomUUID()
 		const driver = this.cm.getDriver(connectionId, database)
-		await driver.reserveSession(sessionId)
+		await driver.reserveSession(sessionId, { readOnly: opts?.readOnly })
 
 		const counter = (this.labelCounters.get(connectionId) ?? 0) + 1
 		this.labelCounters.set(connectionId, counter)
@@ -65,10 +69,11 @@ export class SessionManager {
 			sessionId,
 			connectionId,
 			database,
-			label: `Session ${counter}`,
+			label: opts?.label ?? `Session ${counter}`,
 			inTransaction: false,
 			txAborted: false,
 			createdAt: Date.now(),
+			readOnly: opts?.readOnly,
 		}
 
 		if (!this.sessions.has(connectionId)) {
@@ -185,7 +190,7 @@ export class SessionManager {
 			if (connSessions.size > 0) {
 				this.pendingRestore.set(
 					connectionId,
-					Array.from(connSessions.values()).map((s) => ({ database: s.database, label: s.label })),
+					Array.from(connSessions.values()).map((s) => ({ database: s.database, label: s.label, readOnly: s.readOnly })),
 				)
 			}
 		}
@@ -212,7 +217,8 @@ export class SessionManager {
 			try {
 				driver = this.cm.getDriver(connectionId, spec.database)
 				sessionId = crypto.randomUUID()
-				await driver.reserveSession(sessionId)
+				// A restored agent session must never come back writable
+				await driver.reserveSession(sessionId, { readOnly: spec.readOnly })
 				reserved = true
 
 				const info: SessionInfo = {
@@ -223,6 +229,7 @@ export class SessionManager {
 					inTransaction: false,
 					txAborted: false,
 					createdAt: Date.now(),
+					readOnly: spec.readOnly,
 				}
 
 				if (!this.sessions.has(connectionId)) {

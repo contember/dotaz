@@ -74,6 +74,11 @@ export class WasmSqliteDriver implements DatabaseDriver {
 		return [...this.sessionIds]
 	}
 
+	isSessionReadOnly(_sessionId: string): boolean {
+		// Demo mode never opens read-only sessions — the WASM database is a scratch copy
+		return false
+	}
+
 	async execute(sql: string, params?: unknown[], _sessionId?: string): Promise<QueryResult> {
 		this.ensureConnected()
 		this.markUsed()

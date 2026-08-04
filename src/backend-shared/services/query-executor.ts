@@ -1,4 +1,4 @@
-import { parseErrorPosition, splitStatements, stripLiteralsAndComments } from '@dotaz/shared/sql/statements'
+import { isReadOnlySql, parseErrorPosition, splitStatements, stripLiteralsAndComments } from '@dotaz/shared/sql/statements'
 import { DatabaseError } from '@dotaz/shared/types/errors'
 import type { ExplainNode, ExplainResult, QueryResult } from '@dotaz/shared/types/query'
 import type { TransactionLogEntry, TransactionLogStatus } from '@dotaz/shared/types/rpc'
@@ -127,6 +127,20 @@ function isTopLevelTransactionControl(statement: string): boolean {
 		&& !/^(COMMIT|ROLLBACK) PREPARED\b/.test(normalized)
 }
 
+/**
+ * Fail fast when a read-only session is asked to run something we can't prove is a read.
+ * The engine is what actually guarantees read-only (see docs/agent-cli.md) — this only
+ * turns its late, driver-specific error into an actionable one, and fails closed.
+ */
+export function assertSessionWritable(driver: DatabaseDriver, sql: string, sessionId?: string): void {
+	if (sessionId === undefined || !driver.isSessionReadOnly(sessionId)) return
+	if (isReadOnlySql(sql)) return
+	throw new DatabaseError(
+		'READ_ONLY_SESSION',
+		'This session is read-only and cannot execute writes. Submit the statement with `dotaz propose` so it can be approved and run in the app.',
+	)
+}
+
 export class QueryExecutor {
 	private connectionManager: ConnectionManager
 	private runningQueries = new Map<string, RunningQuery>()
@@ -161,6 +175,8 @@ export class QueryExecutor {
 		if (statements.length === 0) {
 			return []
 		}
+
+		assertSessionWritable(driver, sql, sessionId)
 
 		// Reject transaction-control statements without a session — running
 		// BEGIN/COMMIT/ROLLBACK on the pool sends each to a different connection,
@@ -302,6 +318,8 @@ export class QueryExecutor {
 	): Promise<ExplainResult> {
 		const driver = this.connectionManager.getDriver(connectionId, database)
 		const driverType = driver.getDriverType()
+		// Only ANALYZE actually runs the statement, so classify the EXPLAIN as executed
+		assertSessionWritable(driver, `EXPLAIN ${analyze ? 'ANALYZE ' : ''}${sql}`, sessionId)
 		const start = performance.now()
 
 		const runWithSession = async (effectiveSessionId: string | undefined): Promise<ExplainResult> => {
