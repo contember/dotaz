@@ -1,15 +1,17 @@
 // Endpoint discovery — find the control server the running desktop app published.
 // See docs/agent-cli.md § Endpoint discovery.
 
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { notRunningError } from './errors'
+import { notRunningError, usageError } from './errors'
 
 /** Must match `app.identifier` in electrobun.config.ts — it is part of the userData path. */
 export const APP_IDENTIFIER = 'dotaz.electrobun.dev'
 
-export const ENDPOINT_FILE_NAME = 'cli-endpoint.json'
+// Layout must match src/backend-desktop/control-server.ts — one file per running instance.
+export const CLI_DIR_NAME = 'cli'
+const ENDPOINT_FILE_PATTERN = /^endpoint-(\d+)\.json$/
 
 export interface EndpointInfo {
 	pid: number
@@ -22,9 +24,14 @@ export interface EndpointInfo {
 	startedAt: number
 }
 
-export interface EndpointSource {
+export interface EndpointRef {
 	file: string
 	endpoint: EndpointInfo
+}
+
+export interface EndpointSource extends EndpointRef {
+	/** Every live instance, newest first — `status` reports when more than one is running. */
+	instances: EndpointInfo[]
 }
 
 /** Mirrors Electrobun's `Utils.paths.appData` so we land in the same userData directory. */
@@ -88,18 +95,22 @@ export function isPidAlive(pid: number): boolean {
 	}
 }
 
-/** Every `<channel>/cli-endpoint.json` under the userData root, newest channel directory first. */
-export function candidateEndpointFiles(root: string): string[] {
-	let entries: string[]
+function readDirSafely(dir: string): string[] {
 	try {
-		entries = readdirSync(root)
+		return readdirSync(dir)
 	} catch {
 		return []
 	}
+}
+
+/** Every `<channel>/cli/endpoint-<pid>.json` under the userData root — one file per instance. */
+export function candidateEndpointFiles(root: string): string[] {
 	const files: string[] = []
-	for (const entry of entries) {
-		const file = join(root, entry, ENDPOINT_FILE_NAME)
-		if (existsSync(file)) files.push(file)
+	for (const channel of readDirSafely(root)) {
+		const dir = join(root, channel, CLI_DIR_NAME)
+		for (const entry of readDirSafely(dir)) {
+			if (ENDPOINT_FILE_PATTERN.test(entry)) files.push(join(dir, entry))
+		}
 	}
 	return files
 }
@@ -107,6 +118,8 @@ export function candidateEndpointFiles(root: string): string[] {
 export interface DiscoverOptions {
 	/** `--endpoint <file>`, then `DOTAZ_ENDPOINT`. */
 	explicitFile?: string
+	/** `--instance <pid>` — pick one specific running instance. */
+	instancePid?: number
 	platform?: string
 	env?: Record<string, string | undefined>
 	home?: string
@@ -115,31 +128,16 @@ export interface DiscoverOptions {
 	listCandidates?: (root: string) => string[]
 }
 
-/**
- * Resolve the endpoint to talk to. Throws exit-5 for every "cannot reach the app" case,
- * so callers never have to distinguish missing file from dead pid.
- */
-export function discoverEndpoint(opts: DiscoverOptions = {}): EndpointSource {
-	const platform = opts.platform ?? process.platform
-	const env = opts.env ?? process.env
-	const home = opts.home ?? homedir()
-	const pidAlive = opts.pidAlive ?? isPidAlive
-	const read = opts.readFile ?? ((file: string) => readFileSync(file, 'utf8'))
-	const listCandidates = opts.listCandidates ?? candidateEndpointFiles
+interface Scan {
+	/** Live instances, newest first. */
+	live: EndpointRef[]
+	/** Human-readable reason per rejected file, for the exit-5 message. */
+	stale: string[]
+}
 
-	const explicit = opts.explicitFile ?? env.DOTAZ_ENDPOINT
-	const files = explicit ? [explicit] : listCandidates(userDataRoot(platform, env, home))
-
-	if (files.length === 0) {
-		throw notRunningError(
-			explicit
-				? `Endpoint file not found: ${explicit}`
-				: `No Dotaz control endpoint found under ${userDataRoot(platform, env, home)}`,
-		)
-	}
-
+function scanEndpointFiles(files: string[], read: (file: string) => string, pidAlive: (pid: number) => boolean): Scan {
+	const live: EndpointRef[] = []
 	const stale: string[] = []
-	let best: EndpointSource | null = null
 
 	for (const file of files) {
 		let raw: string
@@ -158,12 +156,76 @@ export function discoverEndpoint(opts: DiscoverOptions = {}): EndpointSource {
 			stale.push(`${file} (pid ${endpoint.pid} is not running)`)
 			continue
 		}
-		if (!best || endpoint.startedAt > best.endpoint.startedAt) {
-			best = { file, endpoint }
-		}
+		live.push({ file, endpoint })
 	}
 
-	if (best) return best
+	live.sort((a, b) => b.endpoint.startedAt - a.endpoint.startedAt)
+	return { live, stale }
+}
 
-	throw notRunningError(`Dotaz is not running — no live control endpoint. Checked: ${stale.join(', ')}`)
+interface Resolved extends DiscoverOptions {
+	platform: string
+	env: Record<string, string | undefined>
+	home: string
+	pidAlive: (pid: number) => boolean
+	readFile: (file: string) => string
+	listCandidates: (root: string) => string[]
+}
+
+function resolveOptions(opts: DiscoverOptions): Resolved {
+	return {
+		...opts,
+		platform: opts.platform ?? process.platform,
+		env: opts.env ?? process.env,
+		home: opts.home ?? homedir(),
+		pidAlive: opts.pidAlive ?? isPidAlive,
+		readFile: opts.readFile ?? ((file: string) => readFileSync(file, 'utf8')),
+		listCandidates: opts.listCandidates ?? candidateEndpointFiles,
+	}
+}
+
+/** Every instance currently serving a control endpoint, newest first. */
+export function listLiveInstances(opts: DiscoverOptions = {}): EndpointRef[] {
+	const resolved = resolveOptions(opts)
+	const root = userDataRoot(resolved.platform, resolved.env, resolved.home)
+	return scanEndpointFiles(resolved.listCandidates(root), resolved.readFile, resolved.pidAlive).live
+}
+
+/**
+ * Resolve the endpoint to talk to. Throws exit-5 for every "cannot reach the app" case,
+ * so callers never have to distinguish missing file from dead pid.
+ */
+export function discoverEndpoint(opts: DiscoverOptions = {}): EndpointSource {
+	const resolved = resolveOptions(opts)
+	const instancePid = resolved.instancePid
+
+	if (instancePid !== undefined) {
+		if (opts.explicitFile !== undefined) throw usageError('--instance and --endpoint cannot be combined')
+		if (!Number.isInteger(instancePid) || instancePid <= 0) throw usageError('--instance must be a process id')
+	}
+
+	// A flag beats the environment, so --instance ignores DOTAZ_ENDPOINT
+	const explicit = opts.explicitFile ?? (instancePid === undefined ? resolved.env.DOTAZ_ENDPOINT : undefined)
+	if (explicit) {
+		const { live, stale } = scanEndpointFiles([explicit], resolved.readFile, resolved.pidAlive)
+		const chosen = live[0]
+		if (!chosen) throw notRunningError(`Dotaz is not running — no live control endpoint. Checked: ${stale.join(', ')}`)
+		return { ...chosen, instances: [chosen.endpoint] }
+	}
+
+	const root = userDataRoot(resolved.platform, resolved.env, resolved.home)
+	const files = resolved.listCandidates(root)
+	if (files.length === 0) throw notRunningError(`No Dotaz control endpoint found under ${root}`)
+
+	const { live, stale } = scanEndpointFiles(files, resolved.readFile, resolved.pidAlive)
+	if (live.length === 0) throw notRunningError(`Dotaz is not running — no live control endpoint. Checked: ${stale.join(', ')}`)
+
+	const instances = live.map((ref) => ref.endpoint)
+	if (instancePid === undefined) return { ...live[0], instances }
+
+	const match = live.find((ref) => ref.endpoint.pid === instancePid)
+	if (!match) {
+		throw usageError(`No live Dotaz instance with pid ${instancePid}`, `Live instances: ${instances.map((i) => i.pid).join(', ')}`)
+	}
+	return { ...match, instances }
 }
