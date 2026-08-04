@@ -74,8 +74,14 @@ picks a specific one — an unknown or dead pid is a usage error listing the liv
 `--endpoint <file>` and `DOTAZ_ENDPOINT` still override with one explicit file. No live
 instance, or a refused connection ⇒ exit code 5.
 
-An instance prunes files belonging to dead pids at startup, and on shutdown (`exit`,
-`SIGINT`, `SIGTERM`) removes only its own file and socket.
+An instance prunes files belonging to dead pids at startup, and on a graceful shutdown
+(closing the window, or switching the setting off) removes only its own file and socket.
+
+A killed instance leaves both behind: Electrobun installs its own signal handlers and exits
+through a native quit, so neither our signal handlers nor `process.on('exit')` get a turn.
+Nothing depends on that cleanup — the next instance prunes dead pids at startup, and the CLI
+skips any endpoint whose pid is gone. Verified: after `kill -TERM`, `dotaz status` reports
+`pid <n> is not running` and exits 5.
 
 The transport follows the platform, but `DOTAZ_CLI_TRANSPORT=tcp|unix` overrides it — that
 is how the Windows path gets tested on Linux.

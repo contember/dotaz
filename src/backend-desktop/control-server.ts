@@ -198,6 +198,10 @@ export async function startControlServer(opts: ControlServerOptions): Promise<Co
 		if (socketPath) removeIfExists(socketPath)
 		removeIfExists(endpointFile)
 	}
+	// Covers graceful paths only. Electrobun installs its own SIGINT/SIGTERM handlers that end
+	// the process through a native quit, so a signalled instance runs neither these nor 'exit'
+	// and leaves its files behind — that is what the startup prune and the CLI's dead-pid
+	// filter are for.
 	process.once('exit', cleanup)
 
 	let stopped = false
