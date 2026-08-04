@@ -1,7 +1,7 @@
 # Agent CLI
 
 `dotaz` — a command-line client that lets an AI agent (or a human) browse databases, run
-read-only queries, and drive the running desktop app.
+read-only queries, submit writes for the user to approve, and drive the running desktop app.
 
 This document is the implementation contract. Everything below is normative.
 

@@ -1,6 +1,6 @@
 ---
 name: dotaz
-description: Browse databases and run read-only queries through the running Dotaz app via the `dotaz` CLI. Use when you need to inspect a database the user has configured in Dotaz — list tables, read schema, sample rows, run SELECTs — or to open a table or SQL console in their app window. Triggers include "look at the database", "co je v tabulce X", "run this query", "show me the schema", "open this in Dotaz".
+description: Read databases and submit writes for approval through the running Dotaz app via the `dotaz` CLI. Use when you need to inspect a database the user has configured in Dotaz — list tables, read schema, sample rows, run SELECTs — to change data (submit the SQL with `dotaz propose` and the user approves it in the app), or to open a table or SQL console in their app window. Triggers include "look at the database", "co je v tabulce X", "run this query", "show me the schema", "uprav ten záznam", "fix this row", "open this in Dotaz".
 ---
 
 # Dotaz CLI
