@@ -1,9 +1,10 @@
 // Proposal helpers shared by `propose` and `approvals` — including the status → exit code map.
 
 import type { Proposal, ProposalStatus } from '@dotaz/shared/types/rpc'
-import type { DotazClient } from './client'
+import type { CallOptions } from './client'
+import { ConnectionLostError } from './client'
 import { decodeProposal } from './decode'
-import { EXIT, type ExitCode } from './errors'
+import { CliError, EXIT, type ExitCode } from './errors'
 import type { CommandOutput } from './output'
 
 export const DEFAULT_WAIT_SECONDS = 300
@@ -69,11 +70,28 @@ export function proposalOutput(proposal: Proposal): CommandOutput {
 	}
 }
 
+/** Just enough of `DotazClient` to poll with — a narrow surface keeps the wait testable. */
+export interface ProposalPoller {
+	call(method: string, params?: unknown, opts?: CallOptions): Promise<unknown>
+}
+
+/**
+ * Proposals only ever live in the app's memory, so an app that quits takes them with it.
+ * That is a different answer from "the user has not decided yet" and deserves its own message.
+ */
+function appClosedError(proposalId: string): CliError {
+	return new CliError(
+		EXIT.notRunning,
+		`Dotaz closed while proposal ${proposalId} was still pending — the proposal is gone.`,
+		'Proposals are never persisted. Start Dotaz again and submit the write with `dotaz propose`.',
+	)
+}
+
 /**
  * Long-poll until the proposal leaves `pending` or the deadline passes.
  * Returns the last known proposal either way — the caller maps status to an exit code.
  */
-export async function waitForProposal(client: DotazClient, proposalId: string, timeoutMs: number): Promise<Proposal> {
+export async function waitForProposal(client: ProposalPoller, proposalId: string, timeoutMs: number): Promise<Proposal> {
 	const deadline = Date.now() + timeoutMs
 	let proposal = decodeProposal(await client.call('agent.proposals.get', { proposalId }))
 
@@ -81,7 +99,15 @@ export async function waitForProposal(client: DotazClient, proposalId: string, t
 		const remaining = deadline - Date.now()
 		if (remaining <= 0) break
 		const slice = Math.min(remaining, WAIT_SLICE_MS)
-		proposal = decodeProposal(await client.call('agent.proposals.wait', { proposalId, timeoutMs: slice }, slice + WAIT_SLACK_MS))
+		try {
+			proposal = decodeProposal(
+				await client.call('agent.proposals.wait', { proposalId, timeoutMs: slice }, { timeoutMs: slice + WAIT_SLACK_MS }),
+			)
+		} catch (err) {
+			// The app answered a moment ago, so a dead socket now means it quit under us
+			if (err instanceof ConnectionLostError) throw appClosedError(proposalId)
+			throw err
+		}
 	}
 
 	return proposal

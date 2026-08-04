@@ -1,4 +1,5 @@
 import { approvalsCommand } from './approvals'
+import { bookmarksCommand } from './bookmarks'
 import { describeCommand } from './describe'
 import { explainCommand } from './explain'
 import { historyCommand } from './history'
@@ -20,6 +21,7 @@ export const COMMANDS: Record<string, Command> = {
 	explain: explainCommand,
 	search: searchCommand,
 	history: historyCommand,
+	bookmarks: bookmarksCommand,
 	propose: proposeCommand,
 	approvals: approvalsCommand,
 	ui: uiCommand,

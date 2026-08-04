@@ -1,8 +1,8 @@
 import type { ProposalStatus } from '@dotaz/shared/types/rpc'
 import { describe, expect, test } from 'bun:test'
-import { RpcError } from '../src/cli-agent/client'
+import { ConnectionLostError, RpcError } from '../src/cli-agent/client'
 import { CliError, databaseError, EXIT, type ExitCode, notRunningError, readOnlyError, timeoutError, usageError } from '../src/cli-agent/errors'
-import { exitCodeForProposal, proposalNote } from '../src/cli-agent/proposals'
+import { exitCodeForProposal, proposalNote, type ProposalPoller, waitForProposal } from '../src/cli-agent/proposals'
 
 describe('exit code constants', () => {
 	test('match the documented contract', () => {
@@ -41,6 +41,61 @@ describe('error constructors', () => {
 		expect(err instanceof CliError).toBe(true)
 		expect(err.exitCode).toBe(EXIT.database)
 		expect(err.errorCode).toBe('QUERY_SYNTAX')
+	})
+
+	test('a lost connection is still exit 5, but recognisable on its own', () => {
+		const err = new ConnectionLostError('socket closed')
+		expect(err instanceof CliError).toBe(true)
+		expect(err.exitCode).toBe(EXIT.notRunning)
+	})
+})
+
+describe('waitForProposal', () => {
+	const pending = { id: 'p1', connectionId: 'c1', sql: 'DELETE FROM t', status: 'pending', createdAt: 0 }
+
+	function poller(onWait: () => unknown): ProposalPoller {
+		return {
+			call: async (method) => {
+				if (method === 'agent.proposals.get') return pending
+				return onWait()
+			},
+		}
+	}
+
+	test('the app closing mid-wait exits 5 and says the proposal is gone', async () => {
+		const client = poller(() => {
+			throw new ConnectionLostError('Cannot reach the Dotaz control endpoint (socket closed)')
+		})
+		try {
+			await waitForProposal(client, 'p1', 1_000)
+			expect.unreachable()
+		} catch (err) {
+			expect(err instanceof CliError && err.exitCode).toBe(EXIT.notRunning)
+			expect(err instanceof Error && err.message).toContain('Dotaz closed while proposal p1')
+			expect(err instanceof Error && err.message).toContain('gone')
+			expect(err instanceof CliError && err.hint).toContain('dotaz propose')
+		}
+	})
+
+	test('an unrelated failure is passed through untouched', async () => {
+		const client = poller(() => {
+			throw new RpcError({ message: 'Proposal not found: p1' })
+		})
+		expect(waitForProposal(client, 'p1', 1_000)).rejects.toThrow('Proposal not found')
+	})
+
+	test('a decision ends the wait', async () => {
+		const client = poller(() => ({ ...pending, status: 'executed', result: { affectedRows: 1 } }))
+		const proposal = await waitForProposal(client, 'p1', 1_000)
+		expect(exitCodeForProposal(proposal.status)).toBe(EXIT.ok)
+	})
+
+	test('an expired deadline reports the proposal as still pending (exit 7), not as a closed app', async () => {
+		const client = poller(() => {
+			throw new Error('the wait must not be issued once the deadline has passed')
+		})
+		const proposal = await waitForProposal(client, 'p1', 0)
+		expect(exitCodeForProposal(proposal.status)).toBe(EXIT.pending)
 	})
 })
 

@@ -14,7 +14,9 @@ export const statusCommand: Command = {
 		const hello = decodeAgentHello(await ctx.client.call('agent.hello'))
 		const connections = await ctx.app.listConnections()
 		const connected = connections.filter((c) => c.state === 'connected').length
-		const { endpoint, file } = ctx.endpoint
+		const { endpoint, file, instances } = ctx.endpoint
+		// Only worth a row when it changes what the user should do — pass --instance <pid>
+		const others = instances.filter((i) => i.pid !== endpoint.pid).map((i) => i.pid)
 
 		const row = {
 			status: 'running',
@@ -26,6 +28,7 @@ export const statusCommand: Command = {
 			endpoint: file,
 			connections: connections.length,
 			connected,
+			...(others.length > 0 ? { otherInstances: others.join(', ') } : {}),
 		}
 
 		return {

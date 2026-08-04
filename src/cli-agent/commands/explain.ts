@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto'
 import { flagBool } from '../args'
+import { executeQuery } from '../client'
 import { decodeQueryResults } from '../decode'
 import { databaseError, usageError } from '../errors'
 import { resolveScope } from '../paths'
@@ -29,11 +29,10 @@ export const explainCommand: Command = {
 
 		const results = await ctx.app.withReadOnlySession(scope.connection.id, scope.database, async (sessionId) => {
 			return decodeQueryResults(
-				await ctx.client.call('query.execute', {
+				await executeQuery(ctx.client, {
 					connectionId: scope.connection.id,
 					database: scope.database,
 					sessionId,
-					queryId: randomUUID(),
 					sql: explainSql,
 				}),
 			)
