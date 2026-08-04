@@ -52,7 +52,8 @@ is unlinked on startup.
 
 ### Endpoint discovery
 
-`${userData}/cli-endpoint.json`, mode `0600`:
+One file per running instance, so two open windows never overwrite or delete each other's
+endpoint: `${userData}/cli/endpoint-<pid>.json`, directory mode `0700`, files `0600`.
 
 ```jsonc
 {
@@ -67,10 +68,17 @@ is unlinked on startup.
 }
 ```
 
-The CLI reads the file, verifies the pid is alive (`process.kill(pid, 0)`), and connects.
-Missing file, dead pid, or a refused connection ⇒ exit code 5.
+The CLI reads every file in that directory, drops the ones whose pid is no longer alive
+(`process.kill(pid, 0)`), and connects to the newest surviving `startedAt`. `--instance <pid>`
+picks a specific one — an unknown or dead pid is a usage error listing the live instances.
+`--endpoint <file>` and `DOTAZ_ENDPOINT` still override with one explicit file. No live
+instance, or a refused connection ⇒ exit code 5.
 
-Both the socket and the endpoint file are removed on shutdown (`exit`, `SIGINT`, `SIGTERM`).
+An instance prunes files belonging to dead pids at startup, and on shutdown (`exit`,
+`SIGINT`, `SIGTERM`) removes only its own file and socket.
+
+The transport follows the platform, but `DOTAZ_CLI_TRANSPORT=tcp|unix` overrides it — that
+is how the Windows path gets tested on Linux.
 
 ### Wire format
 
@@ -122,6 +130,20 @@ Existing handlers are reused wherever possible. New methods:
 | PostgreSQL | `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY` on the session's dedicated connection            |
 | MySQL      | `SET SESSION TRANSACTION READ ONLY` on the session's dedicated connection                               |
 | SQLite     | dedicated `SQL` handle for the session with `PRAGMA query_only = ON`; the session's queries route to it |
+
+Read-only is not the same as cheap, so the same sessions also carry an engine-enforced
+statement timeout, driven by the existing `queryTimeout` setting (30 s; `0` disables it):
+`statement_timeout` on PostgreSQL, `MAX_EXECUTION_TIME` on MySQL — falling back to
+`max_statement_time` on MariaDB, which has no `MAX_EXECUTION_TIME`. Both surface as
+`QUERY_CANCELED`.
+
+**SQLite has no cap.** `bun:sqlite` exposes neither an interrupt nor a progress handler, and
+`busy_timeout` bounds lock waits rather than query runtime, so an agent session against
+SQLite can still run an unbounded scan. Nothing here fakes it with a client-side race that
+would leave the query running.
+
+Normal UI sessions never get a cap — a deliberate ten-minute report from the SQL console must
+keep working.
 
 On top of that, `QueryExecutor` rejects a statement classified as a write before it reaches
 the driver, with error code `READ_ONLY_SESSION`. `classifyStatement()` in
@@ -194,7 +216,7 @@ dotaz ui command <command-id>
 ```
 
 Global flags: `--json`, `--format table|json|jsonl|csv|md`, `--max-bytes N` (default 65536),
-`--timeout ms`, `--endpoint <file>`, `--quiet`.
+`--timeout ms`, `--endpoint <file>`, `--instance <pid>`, `--quiet`.
 
 Output rules:
 
