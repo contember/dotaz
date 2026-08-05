@@ -38,8 +38,9 @@ Rules that matter:
   you only need shape.
 - **Parameterise.** Use `--param` instead of pasting values into SQL.
 - `--json` when you need to parse the result; the default table output is for humans.
-- Truncated output says so on the last line. Do not conclude "the table has 20 rows" from a
-  truncated result.
+- Truncation is always reported, but where depends on the format: `table`/`md` on the last
+  line of stdout, `--json` in the `truncated`/`shown`/`total` fields, `csv`/`jsonl` on stderr.
+  `--quiet` never hides it. Do not conclude "the table has 20 rows" from a truncated result.
 
 ## Writes need the user
 
