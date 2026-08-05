@@ -180,3 +180,62 @@ describe('isReadOnlySql', () => {
 		expect(isReadOnlySql("SELECT 'a;DELETE FROM users' AS s")).toBe(true)
 	})
 })
+
+// Every case below classified as `read` before the review that added them. Where the
+// classifier is the only gate (`ui.openConsole { run: true }`) that meant an auto-run write;
+// on a read-only session it meant a statement that revokes the session's own enforcement.
+describe('read-only escapes the classifier must not wave through', () => {
+	test('a data-modifying CTE is a write even when the tail only selects', () => {
+		// PostgreSQL executes the CTE body regardless of what the tail does with it
+		expect(classifyStatement("WITH x AS (INSERT INTO users(name) VALUES ('p') RETURNING id) SELECT * FROM x")).toBe('write')
+		expect(classifyStatement('WITH x AS (DELETE FROM orders RETURNING id) SELECT * FROM x')).toBe('write')
+		expect(classifyStatement('WITH x AS (UPDATE t SET a = 1 RETURNING a) SELECT * FROM x')).toBe('write')
+		expect(classifyStatement('WITH a AS (SELECT 1), b AS (DELETE FROM t RETURNING 1) SELECT * FROM a')).toBe('write')
+	})
+
+	test('a plain CTE still reads', () => {
+		expect(classifyStatement('WITH x AS (SELECT 1) SELECT * FROM x')).toBe('read')
+		expect(classifyStatement('WITH RECURSIVE x AS (SELECT 1) SELECT * FROM x')).toBe('read')
+		expect(classifyStatement('WITH x AS MATERIALIZED (SELECT 1) SELECT * FROM x')).toBe('read')
+	})
+
+	test('a nested CTE inside a body fails closed', () => {
+		expect(classifyStatement('WITH x AS (WITH y AS (INSERT INTO t VALUES (1) RETURNING 1) SELECT * FROM y) SELECT * FROM x'))
+			.toBe('unknown')
+	})
+
+	test('SELECT … INTO writes a table or a file', () => {
+		expect(classifyStatement('SELECT * INTO stolen FROM users')).toBe('unknown')
+		expect(classifyStatement("SELECT * FROM users INTO OUTFILE '/tmp/users'")).toBe('unknown')
+		expect(classifyStatement("SELECT * FROM users INTO DUMPFILE '/tmp/users'")).toBe('unknown')
+	})
+
+	test('a column literal containing the word INTO is still a read', () => {
+		expect(classifyStatement("SELECT 'into' AS x")).toBe('read')
+	})
+
+	test('set_config can clear the GUC that makes a PostgreSQL session read-only', () => {
+		expect(classifyStatement("SELECT set_config('default_transaction_read_only','off',false)")).toBe('unknown')
+		expect(classifyStatement("SELECT pg_catalog.set_config('statement_timeout','0',false)")).toBe('unknown')
+	})
+
+	test('a PRAGMA with an argument changes state — the function form carries no `=`', () => {
+		expect(classifyStatement('PRAGMA query_only(0)')).toBe('unknown')
+		expect(classifyStatement('PRAGMA query_only (off)')).toBe('unknown')
+		expect(classifyStatement('PRAGMA main.query_only(0)')).toBe('unknown')
+		expect(classifyStatement('PRAGMA user_version(42)')).toBe('unknown')
+		expect(classifyStatement('PRAGMA query_only = ON')).toBe('unknown')
+	})
+
+	test('introspection pragmas still read', () => {
+		expect(classifyStatement('PRAGMA table_info(users)')).toBe('read')
+		expect(classifyStatement('PRAGMA foreign_key_list(orders)')).toBe('read')
+		expect(classifyStatement('PRAGMA index_list(t)')).toBe('read')
+		expect(classifyStatement('PRAGMA journal_mode')).toBe('read')
+	})
+
+	test('switching the session back to read-write is not a read', () => {
+		expect(classifyStatement('SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE')).toBe('unknown')
+		expect(classifyStatement('SET SESSION TRANSACTION READ WRITE')).toBe('unknown')
+	})
+})
