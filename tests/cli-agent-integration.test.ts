@@ -2,6 +2,7 @@
 // Windows uses loopback TCP instead, and the desktop control server is not part of the
 // web/CI matrix there — skip rather than fake it.
 
+import { isReadOnlySql } from '@dotaz/shared/sql/statements'
 import { DatabaseError } from '@dotaz/shared/types/errors'
 import type { Proposal } from '@dotaz/shared/types/rpc'
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
@@ -19,6 +20,8 @@ const runOnUnixSocket = process.platform !== 'win32'
 const MAIN = join(import.meta.dir, '../src/cli-agent/main.ts')
 
 const sessions = { created: 0, destroyed: 0, lastSql: '', lastQueryId: '', lastReadOnly: false }
+/** Stands in for SessionManager, so the control server can confirm a session really is read-only. */
+const readOnlySessionIds = new Set<string>()
 const cancelledQueries: string[] = []
 /** queryId → release, so a "long" query ends when it is cancelled (or when the suite tears down). */
 const sleepingQueries = new Map<string, () => void>()
@@ -65,15 +68,20 @@ const handlers = {
 	'session.create': (params: { readOnly?: boolean }) => {
 		sessions.created++
 		sessions.lastReadOnly = params?.readOnly === true
-		return { sessionId: 's-1', connectionId: 'c-test', label: 'cli', inTransaction: false, txAborted: false, createdAt: 0, readOnly: true }
+		const sessionId = `s-${sessions.created}`
+		readOnlySessionIds.add(sessionId)
+		return { sessionId, connectionId: 'c-test', label: 'cli', inTransaction: false, txAborted: false, createdAt: 0, readOnly: true }
 	},
-	'session.destroy': () => {
+	'session.destroy': (params: { sessionId?: string }) => {
 		sessions.destroyed++
+		if (params?.sessionId) readOnlySessionIds.delete(params.sessionId)
 	},
 	'query.execute': async (params: { sql: string; queryId?: string }) => {
 		sessions.lastSql = params?.sql ?? ''
 		sessions.lastQueryId = params?.queryId ?? ''
-		if (!/^\s*(SELECT|EXPLAIN)/i.test(sessions.lastSql)) {
+		// The real engine is what rejects a write; this stands in for it using the same
+		// classifier the app uses, so the mock cannot be laxer than production.
+		if (!isReadOnlySql(sessions.lastSql)) {
 			throw new DatabaseError('READ_ONLY_SESSION', 'cannot execute UPDATE in a read-only transaction')
 		}
 		if (/\bsleep\b/i.test(sessions.lastSql)) {
@@ -166,7 +174,12 @@ describe.skipIf(!runOnUnixSocket)('cli-agent ↔ control server', () => {
 
 	beforeAll(async () => {
 		userDataDir = mkdtempSync(join(tmpdir(), 'dotaz-cli-test-'))
-		server = await startControlServer({ handlers, userDataDir, appVersion: '9.9.9' })
+		server = await startControlServer({
+			handlers,
+			sessionGuard: { isSessionReadOnly: (id) => readOnlySessionIds.has(id) },
+			userDataDir,
+			appVersion: '9.9.9',
+		})
 	})
 
 	afterAll(async () => {
