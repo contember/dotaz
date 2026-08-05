@@ -49,7 +49,14 @@ export function extractCommand(argv: string[]): { command?: string; rest: string
 }
 
 export function mergeSpecs(commandFlags: FlagSpecs): FlagSpecs {
-	// Command flags win — `approvals wait --timeout` is seconds, not the global milliseconds
+	// A command flag that shadows a global one is a bug, not a feature: the global reader still
+	// reads the same key, so it would silently reinterpret the command's value (a `--timeout`
+	// spelled in seconds became a millisecond RPC deadline).
+	for (const name of Object.keys(commandFlags)) {
+		if (name in GLOBAL_FLAGS) {
+			throw new Error(`Command flag --${name} collides with a global flag`)
+		}
+	}
 	return { ...GLOBAL_FLAGS, ...commandFlags }
 }
 
