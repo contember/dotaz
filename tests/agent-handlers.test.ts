@@ -206,11 +206,48 @@ describe('Agent CLI handlers', () => {
 		expect(ctx.emitted).toHaveLength(0)
 	})
 
-	test('ui.runCommand emits cli.command and rejects an empty id', () => {
-		ctx.handlers['ui.runCommand']({ commandId: 'query.run' })
+	// This guard is the whole of invariant I1 on the auto-run path — the frontend does not
+	// re-check. Every case here reached the database before the review that added them.
+	test.each([
+		['a plain write', 'DELETE FROM orders'],
+		['a data-modifying CTE', "WITH x AS (INSERT INTO users(name) VALUES ('p') RETURNING id) SELECT * FROM x"],
+		['a deleting CTE', 'WITH x AS (DELETE FROM orders RETURNING id) SELECT * FROM x'],
+		['SELECT … INTO', 'SELECT * INTO stolen FROM users'],
+		['INTO OUTFILE', "SELECT * FROM users INTO OUTFILE '/tmp/users'"],
+		['a GUC rewrite', "SELECT set_config('default_transaction_read_only','off',false)"],
+		['a pragma with an argument', 'PRAGMA query_only(0)'],
+		['a trailing statement', 'SELECT 1; DELETE FROM orders'],
+	])('ui.openConsole refuses to auto-run %s', (_label, sql) => {
+		expect(() => ctx.handlers['ui.openConsole']({ connectionId: ctx.connectionId, sql, run: true }))
+			.toThrow(/Only read-only SQL can be auto-run/)
+		expect(ctx.emitted).toHaveLength(0)
+	})
 
-		expect(payloadsOn(ctx.emitted, 'cli.command')[0]).toMatchObject({ kind: 'run-command', commandId: 'query.run' })
-		expect(() => ctx.handlers['ui.runCommand']({ commandId: '' })).toThrow(/commandId is required/)
+	test('ui.openConsole still prefills a write when it is not asked to run it', () => {
+		ctx.handlers['ui.openConsole']({ connectionId: ctx.connectionId, sql: 'DELETE FROM orders' })
+
+		expect(payloadsOn(ctx.emitted, 'cli.command')[0]).toMatchObject({ kind: 'open-console', sql: 'DELETE FROM orders' })
+	})
+
+	test('ui.openTable rejects a where fragment that is not a boolean expression', () => {
+		const bad = [
+			'1=1); DELETE FROM orders; --',
+			'id > 1; DROP TABLE users',
+			'id > 1 -- ',
+			'id > 1 /* x */',
+			'id > 1)',
+		]
+		for (const where of bad) {
+			expect(() => ctx.handlers['ui.openTable']({ connectionId: ctx.connectionId, table: 'users', where }))
+				.toThrow(/where /)
+		}
+		expect(ctx.emitted).toHaveLength(0)
+	})
+
+	test('ui.openTable accepts ordinary filters, including quoted literals', () => {
+		for (const where of ["status='new'", "name = 'a;b'", 'id > 1 AND (a = 2 OR b = 3)', "note = 'it''s fine'"]) {
+			expect(() => ctx.handlers['ui.openTable']({ connectionId: ctx.connectionId, table: 'users', where })).not.toThrow()
+		}
 	})
 
 	test('ui.state returns an empty snapshot until the frontend publishes one', () => {

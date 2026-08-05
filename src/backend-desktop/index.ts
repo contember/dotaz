@@ -77,7 +77,12 @@ async function syncControlServer(): Promise<void> {
 	const enabled = cliAccessEnabled()
 	if (enabled && !controlServer) {
 		try {
-			controlServer = await startControlServer({ handlers, userDataDir, appVersion })
+			controlServer = await startControlServer({
+				handlers,
+				sessionGuard: { isSessionReadOnly: (id) => sessionManager.getSession(id)?.readOnly === true },
+				userDataDir,
+				appVersion,
+			})
 			const { address } = controlServer
 			console.log(`CLI endpoint listening on ${address.transport === 'unix' ? address.socket : `127.0.0.1:${address.port}`}`)
 		} catch (err) {

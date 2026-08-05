@@ -6,7 +6,6 @@ import { editorStore } from '../stores/editor'
 import { gridStore } from '../stores/grid'
 import { tabsStore } from '../stores/tabs'
 import { uiStore } from '../stores/ui'
-import { commandRegistry } from './commands'
 
 function connectionName(connectionId: string): string | null {
 	return connectionsStore.connections.find((c) => c.id === connectionId)?.name ?? null
@@ -85,14 +84,5 @@ export function handleUiCommand(command: UiCommandPayload): void {
 		case 'open-console':
 			openConsole(command)
 			return
-		case 'run-command': {
-			if (!commandRegistry.getById(command.commandId)) {
-				console.warn(`CLI requested an unknown command: ${command.commandId}`)
-				uiStore.addToast('warning', `Unknown command: ${command.commandId}`)
-				return
-			}
-			commandRegistry.execute(command.commandId)
-			return
-		}
 	}
 }

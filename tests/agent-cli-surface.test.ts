@@ -52,13 +52,53 @@ describe('CLI surface', () => {
 	})
 
 	test('allowlisted methods pass params and results through', async () => {
-		const lookup = createCliHandlerLookup({
-			'query.execute': (params: { sql: string }) => ({ echoed: params.sql }),
-		})
+		const lookup = createCliHandlerLookup(
+			{ 'query.execute': (params: { sql: string }) => ({ echoed: params.sql }) },
+			{ isSessionReadOnly: (id) => id === 'ro-1' },
+		)
 		const handler = lookup('query.execute')
 
 		expect(handler).toBeDefined()
-		expect(await handler!({ sql: 'SELECT 1' })).toEqual({ echoed: 'SELECT 1' })
+		expect(await handler!({ sql: 'SELECT 1', sessionId: 'ro-1' })).toEqual({ echoed: 'SELECT 1' })
+	})
+
+	// Filtering by method name is not enough — `query.execute` without a sessionId runs on the
+	// writable pool, and `session.create` took `readOnly` straight from the caller. The CLI
+	// client applies the same rules, but anything holding the token can skip the client.
+	describe('the gate constrains params, not just method names', () => {
+		const lookup = createCliHandlerLookup(
+			{
+				'query.execute': (params) => ({ ran: params }),
+				'session.create': (params) => ({ created: params }),
+			},
+			{ isSessionReadOnly: (id) => id === 'ro-1' },
+		)
+
+		test('query.execute without a session is refused', async () => {
+			await expect(lookup('query.execute')!({ connectionId: 'c1', sql: 'DELETE FROM users' }))
+				.rejects.toThrow(/read-only session/)
+		})
+
+		test('query.execute on a session the backend did not open read-only is refused', async () => {
+			await expect(lookup('query.execute')!({ sql: 'DELETE FROM users', sessionId: 'writable-1' }))
+				.rejects.toThrow(/not read-only/)
+		})
+
+		test('session.create is pinned to read-only, and an explicit false is refused', async () => {
+			expect(await lookup('session.create')!({ connectionId: 'c1' })).toEqual({
+				created: { connectionId: 'c1', readOnly: true },
+			})
+			await expect(lookup('session.create')!({ connectionId: 'c1', readOnly: false }))
+				.rejects.toThrow(/always read-only/)
+		})
+
+		test("session.list is unreachable — it would hand over the ids of the user's own writable sessions", () => {
+			expect(CLI_ALLOWED_METHODS.has('session.list')).toBe(false)
+		})
+
+		test('ui.runCommand is unreachable — it could run any registered command in a writable session', () => {
+			expect(CLI_ALLOWED_METHODS.has('ui.runCommand')).toBe(false)
+		})
 	})
 
 	test('connections.list never leaks a password', async () => {

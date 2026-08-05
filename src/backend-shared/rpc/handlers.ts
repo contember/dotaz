@@ -22,6 +22,52 @@ import type { RpcAdapter } from './adapter'
 const MAX_PROPOSAL_WAIT_MS = 10 * 60 * 1000
 const DEFAULT_PROPOSAL_WAIT_MS = 30 * 1000
 
+/**
+ * Reject a `where` fragment that is not a single boolean expression.
+ *
+ * The grid splices this straight into `WHERE (…)` and loads without any user interaction, so
+ * `1=1); DELETE FROM orders; --` would run as three statements in the tab's writable session.
+ * The filter box has always interpolated raw SQL — safe for a human typing into their own
+ * app, but this is a trust boundary in front of it.
+ */
+function assertBooleanExpression(where: string | undefined): void {
+	if (where === undefined) return
+	const fragment = where.trim()
+	if (fragment === '') return
+
+	let depth = 0
+	let i = 0
+	while (i < fragment.length) {
+		const ch = fragment[i]
+		const next = fragment[i + 1] ?? ''
+
+		// Skip over string literals and quoted identifiers — a `;` inside one is just data
+		if (ch === "'" || ch === '"') {
+			i++
+			while (i < fragment.length) {
+				if (fragment[i] !== ch) {
+					i++
+					continue
+				}
+				i++
+				if (fragment[i] === ch) i++ // doubled quote escapes itself
+				else break
+			}
+			continue
+		}
+		if (ch === ';') {
+			throw new Error('where must be a single boolean expression, not a statement list')
+		}
+		if ((ch === '-' && next === '-') || (ch === '/' && next === '*')) {
+			throw new Error('where must not contain SQL comments')
+		}
+		if (ch === '(') depth++
+		if (ch === ')' && --depth < 0) throw new Error('where has unbalanced parentheses')
+		i++
+	}
+	if (depth !== 0) throw new Error('where has unbalanced parentheses')
+}
+
 function requireKnownConnection(adapter: RpcAdapter, connectionId: string): void {
 	if (!connectionId) {
 		throw new Error('connectionId is required')
@@ -454,6 +500,7 @@ export function createHandlers(adapter: RpcAdapter) {
 			if (limit !== undefined && (!Number.isInteger(limit) || limit <= 0)) {
 				throw new Error('limit must be a positive integer')
 			}
+			assertBooleanExpression(where)
 			// SQLite has no schemas, so the CLI's shortened path form omits it.
 			adapter.sendUiCommand({ kind: 'open-table', connectionId, database, schema: schema ?? '', table: table.trim(), where, limit })
 			return { ok: true } as const
@@ -468,13 +515,6 @@ export function createHandlers(adapter: RpcAdapter) {
 				throw new DatabaseError('READ_ONLY_SESSION', 'Only read-only SQL can be auto-run — submit writes via agent.proposeWrite')
 			}
 			adapter.sendUiCommand({ kind: 'open-console', connectionId, database, sql, run })
-			return { ok: true } as const
-		},
-		'ui.runCommand': ({ commandId }: { commandId: string }) => {
-			if (!commandId?.trim()) {
-				throw new Error('commandId is required')
-			}
-			adapter.sendUiCommand({ kind: 'run-command', commandId: commandId.trim() })
 			return { ok: true } as const
 		},
 		// Frontend only — the app publishes what the user is currently looking at.
