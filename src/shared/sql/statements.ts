@@ -244,6 +244,32 @@ const DDL_KEYWORDS = new Set(['CREATE', 'ALTER', 'DROP', 'GRANT', 'REVOKE', 'VAC
 /** Keywords that can follow a CTE list and decide what the statement really does. */
 const CTE_TAIL_KEYWORDS = new Set(['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'MERGE', 'REPLACE', 'VALUES', 'TABLE'])
 
+/** Keywords that make a CTE body itself data-modifying, whatever the tail does. */
+const CTE_BODY_WRITE_KEYWORDS = new Set(['INSERT', 'UPDATE', 'DELETE', 'MERGE', 'REPLACE'])
+
+/**
+ * SQLite introspection pragmas that read even when given an argument.
+ * Anything else carrying an argument changes state (`query_only(0)`, `user_version(42)`).
+ */
+const READ_ONLY_PRAGMAS = new Set([
+	'TABLE_INFO',
+	'TABLE_XINFO',
+	'TABLE_LIST',
+	'INDEX_LIST',
+	'INDEX_INFO',
+	'INDEX_XINFO',
+	'FOREIGN_KEY_LIST',
+	'FOREIGN_KEY_CHECK',
+	'DATABASE_LIST',
+	'COLLATION_LIST',
+	'FUNCTION_LIST',
+	'MODULE_LIST',
+	'PRAGMA_LIST',
+	'COMPILE_OPTIONS',
+	'INTEGRITY_CHECK',
+	'QUICK_CHECK',
+])
+
 /**
  * Classify a single SQL statement by what it does to the database.
  * Keyword-based — literals and comments are stripped first so a keyword inside
@@ -274,15 +300,23 @@ function classifyNormalized(sql: string): StatementKind {
 	const keyword = stmt.match(/^[A-Z_]+/)?.[0]
 	if (!keyword) return 'unknown'
 
+	// `set_config`/`SET` can revoke the session's own read-only mode from inside a SELECT
+	if (/\bSET_CONFIG\s*\(/.test(stmt)) return 'unknown'
+
 	if (keyword === 'WITH') {
-		const tail = findCteTail(stmt)
-		return tail === null ? 'unknown' : classifyNormalized(tail)
+		const tailStart = findCteTailIndex(stmt)
+		if (tailStart === null) return 'unknown'
+		// A data-modifying CTE writes even when the tail is a plain SELECT (PostgreSQL)
+		const bodies = classifyCteBodies(stmt.slice(0, tailStart))
+		if (bodies !== 'read') return bodies
+		return classifyNormalized(stmt.slice(tailStart))
 	}
 	if (keyword === 'EXPLAIN') return classifyExplain(stmt)
-	// A PRAGMA assignment changes state; only a bare PRAGMA is a read
-	if (keyword === 'PRAGMA') return stmt.includes('=') ? 'unknown' : 'read'
+	if (keyword === 'PRAGMA') return classifyPragma(stmt)
 	// COPY … TO writes a server-side file rather than the database — not provably a read
 	if (keyword === 'COPY') return /\bFROM\b/.test(stmt) ? 'write' : 'unknown'
+	// `SELECT … INTO` creates a table (PG) or writes a file (MySQL `INTO OUTFILE`)
+	if (keyword === 'SELECT' && /\bINTO\b/.test(stmt)) return 'unknown'
 
 	if (READ_KEYWORDS.has(keyword)) return 'read'
 	if (WRITE_KEYWORDS.has(keyword)) return 'write'
@@ -291,12 +325,12 @@ function classifyNormalized(sql: string): StatementKind {
 }
 
 /**
- * Return the statement that follows a CTE list, so data-modifying CTEs
+ * Index of the statement that follows a CTE list, so data-modifying CTEs
  * (`WITH x AS (…) INSERT …`) are classified by their tail, not by `WITH`.
  * CTE bodies are always parenthesised, so the tail is the first matching
  * keyword at paren depth 0.
  */
-function findCteTail(sql: string): string | null {
+function findCteTailIndex(sql: string): number | null {
 	let depth = 0
 	let wordStart = -1
 
@@ -312,11 +346,51 @@ function findCteTail(sql: string): string | null {
 			continue
 		}
 		if (wordStart !== -1 && depth === 0 && CTE_TAIL_KEYWORDS.has(sql.slice(wordStart, i))) {
-			return sql.slice(wordStart)
+			return wordStart
 		}
 		wordStart = -1
 	}
 	return null
+}
+
+/**
+ * Classify the CTE bodies in a `WITH` prefix. PostgreSQL executes a data-modifying CTE
+ * even when the tail only selects from it, so `WITH x AS (INSERT …) SELECT * FROM x`
+ * is a write — the tail alone does not decide.
+ * A nested `WITH` inside a body is not worth parsing; it fails closed as `unknown`.
+ */
+function classifyCteBodies(prefix: string): StatementKind {
+	let depth = 0
+
+	for (let i = 0; i < prefix.length; i++) {
+		const ch = prefix[i]
+		if (ch === ')') {
+			depth--
+			continue
+		}
+		if (ch !== '(') continue
+		depth++
+		if (depth !== 1) continue
+
+		const head = prefix.slice(i + 1).match(/^\s*([A-Z_]+)/)?.[1]
+		if (!head) continue
+		if (CTE_BODY_WRITE_KEYWORDS.has(head)) return 'write'
+		if (DDL_KEYWORDS.has(head)) return 'ddl'
+		if (head === 'WITH') return 'unknown'
+	}
+	return 'read'
+}
+
+/**
+ * A PRAGMA that assigns (`= x`) or takes an argument (`query_only(0)`) changes state.
+ * Introspection pragmas take an argument too, so those are named explicitly.
+ */
+function classifyPragma(stmt: string): StatementKind {
+	if (stmt.includes('=')) return 'unknown'
+	const match = stmt.match(/^PRAGMA\s+(?:[A-Z0-9_]+\s*\.\s*)?([A-Z0-9_]+)\s*(\()?/)
+	if (!match) return 'unknown'
+	if (!match[2]) return 'read'
+	return READ_ONLY_PRAGMAS.has(match[1]) ? 'read' : 'unknown'
 }
 
 /**
