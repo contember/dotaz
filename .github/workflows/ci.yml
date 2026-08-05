@@ -46,10 +46,15 @@ jobs:
       - name: Start docker-compose services
         run: docker compose up -d --wait
 
+      # readonly-session also runs in the `check` job, where its PostgreSQL and MySQL blocks
+      # skip for want of docker. It has to run here too, or engine-enforced read-only — the
+      # guarantee the agent CLI rests on — is never exercised in CI for anything but SQLite.
       - name: Test (integration — requires docker)
+        env:
+          DOTAZ_REQUIRE_DB: '1'
         run: |
           shopt -s extglob
-          bun test tests/@(pg-*|postgres-*|mysql-*|multi-database|driver-iterate).test.ts
+          bun test tests/@(pg-*|postgres-*|mysql-*|multi-database|driver-iterate|readonly-session).test.ts
 
       - name: Show docker-compose logs on failure
         if: failure()

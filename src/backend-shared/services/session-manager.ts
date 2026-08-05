@@ -1,4 +1,5 @@
 import type { SessionInfo } from '@dotaz/shared/types/rpc'
+import type { DatabaseDriver } from '../db/driver'
 import type { AppDatabase } from '../storage/app-db'
 import { DEFAULT_SETTINGS } from '../storage/app-db'
 import type { ConnectionManager } from './connection-manager'
@@ -64,6 +65,7 @@ export class SessionManager {
 			readOnly: opts?.readOnly,
 			statementTimeoutMs: opts?.readOnly ? this.readOnlyStatementTimeoutMs() : undefined,
 		})
+		const readOnly = await this.confirmReadOnly(driver, sessionId, opts?.readOnly)
 
 		const counter = (this.labelCounters.get(connectionId) ?? 0) + 1
 		this.labelCounters.set(connectionId, counter)
@@ -76,7 +78,7 @@ export class SessionManager {
 			inTransaction: false,
 			txAborted: false,
 			createdAt: Date.now(),
-			readOnly: opts?.readOnly,
+			readOnly,
 		}
 
 		if (!this.sessions.has(connectionId)) {
@@ -85,6 +87,28 @@ export class SessionManager {
 		this.sessions.get(connectionId)!.set(sessionId, info)
 
 		return info
+	}
+
+	/**
+	 * Report read-only as the driver sees it, not as the caller asked for it.
+	 *
+	 * `SessionInfo.readOnly` is what the CLI checks before it runs agent SQL, so echoing the
+	 * request back would make a driver that accepts `readOnly` and ignores it look enforced.
+	 * A requested-but-unconfirmed session is released and refused rather than handed over.
+	 */
+	private async confirmReadOnly(
+		driver: DatabaseDriver,
+		sessionId: string,
+		requested: boolean | undefined,
+	): Promise<boolean | undefined> {
+		const actual = driver.isSessionReadOnly(sessionId)
+		if (requested && !actual) {
+			try {
+				await driver.releaseSession(sessionId)
+			} catch { /* best effort — the session is being refused either way */ }
+			throw new Error('The driver did not open this session read-only')
+		}
+		return requested ? true : undefined
 	}
 
 	async destroySession(sessionId: string): Promise<void> {
@@ -226,6 +250,7 @@ export class SessionManager {
 					statementTimeoutMs: spec.readOnly ? this.readOnlyStatementTimeoutMs() : undefined,
 				})
 				reserved = true
+				const readOnly = await this.confirmReadOnly(driver, sessionId, spec.readOnly)
 
 				const info: SessionInfo = {
 					sessionId,
@@ -235,7 +260,7 @@ export class SessionManager {
 					inTransaction: false,
 					txAborted: false,
 					createdAt: Date.now(),
-					readOnly: spec.readOnly,
+					readOnly,
 				}
 
 				if (!this.sessions.has(connectionId)) {

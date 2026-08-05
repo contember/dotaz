@@ -213,6 +213,7 @@ export class SqliteDriver implements DatabaseDriver {
 
 	async execute(sql: string, params?: unknown[], sessionId?: string): Promise<QueryResult> {
 		this.ensureConnected()
+		this.ensureKnownSession(sessionId)
 
 		const readOnly = sessionId === undefined ? undefined : this.readOnlySessions.get(sessionId)
 		if (readOnly) {
@@ -266,14 +267,21 @@ export class SqliteDriver implements DatabaseDriver {
 		}
 	}
 
-	/** Open the session's own `query_only` handle so the shared connection stays writable. */
+	/**
+	 * Open the session's own read-only handle so the shared connection stays writable.
+	 *
+	 * Read-only is set when the handle is opened, not by `PRAGMA query_only` — a pragma can be
+	 * revoked from inside the session (`PRAGMA query_only(0)`), and the argument form carries
+	 * no `=`, so statement classification reads it as a plain read. The pragma stays as a
+	 * second layer.
+	 */
 	private async openReadOnlyHandle(sessionId: string): Promise<void> {
 		this.ensureConnected()
 		if (this.readOnlySessions.has(sessionId)) return
 		if (!this.dbPath || this.dbPath === ':memory:') {
 			throw new Error('Read-only sessions require a file-backed SQLite database')
 		}
-		const conn = new SQL(`sqlite:${this.dbPath}`)
+		const conn = new SQL({ adapter: 'sqlite', filename: this.dbPath, readonly: true })
 		try {
 			await conn.unsafe('PRAGMA foreign_keys = ON')
 			await this.applyInitSql(conn)
@@ -465,6 +473,7 @@ export class SqliteDriver implements DatabaseDriver {
 		// databases, use a separate read-only connection so iteration doesn't block
 		// the main connection (WAL mode allows concurrent readers). In-memory
 		// databases can't share across connections, so they fall back to the main one.
+		this.ensureKnownSession(sessionId)
 		const readOnly = sessionId === undefined ? undefined : this.readOnlySessions.get(sessionId)
 		const useMainConn = !readOnly && this.dbPath === ':memory:'
 		let readConn: SQL
@@ -587,6 +596,7 @@ export class SqliteDriver implements DatabaseDriver {
 
 	async beginTransaction(sessionId?: string): Promise<void> {
 		this.ensureConnected()
+		this.ensureKnownSession(sessionId)
 		const readOnly = sessionId === undefined ? undefined : this.readOnlySessions.get(sessionId)
 		if (readOnly) {
 			if (readOnly.txActive) throw new Error('A transaction is already active')
@@ -610,6 +620,7 @@ export class SqliteDriver implements DatabaseDriver {
 
 	async commit(sessionId?: string): Promise<void> {
 		this.ensureConnected()
+		this.ensureKnownSession(sessionId)
 		const readOnly = sessionId === undefined ? undefined : this.readOnlySessions.get(sessionId)
 		if (readOnly) {
 			if (!readOnly.txActive) throw new Error('No active transaction')
@@ -629,6 +640,7 @@ export class SqliteDriver implements DatabaseDriver {
 
 	async rollback(sessionId?: string): Promise<void> {
 		this.ensureConnected()
+		this.ensureKnownSession(sessionId)
 		const readOnly = sessionId === undefined ? undefined : this.readOnlySessions.get(sessionId)
 		if (readOnly) {
 			if (!readOnly.txActive) throw new Error('No active transaction')
@@ -771,6 +783,19 @@ export class SqliteDriver implements DatabaseDriver {
 
 	placeholder(index: number): string {
 		return `$${index}`
+	}
+
+	/**
+	 * Reject a session id this driver never reserved. Without this, SQLite would fall through
+	 * to the shared writable handle — silently downgrading a read-only session to read-write
+	 * whenever its handle was lost (terminated, reconnected) or the id was simply made up.
+	 * PostgreSQL and MySQL already throw for the same input.
+	 */
+	private ensureKnownSession(sessionId?: string): void {
+		if (sessionId === undefined) return
+		if (!this.sessionIds.has(sessionId)) {
+			throw new Error(`Session "${sessionId}" not found`)
+		}
 	}
 
 	private ensureSessionCanExecute(sessionId?: string): void {

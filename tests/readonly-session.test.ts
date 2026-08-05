@@ -76,14 +76,23 @@ function useTempSqliteDb(): void {
 	})
 }
 
-/** The docker-compose services are optional — skip their tests when they aren't up. */
+/**
+ * The docker-compose services are optional locally — skip their tests when they aren't up.
+ *
+ * Never skip in the integration job: engine-enforced read-only is the guarantee this file
+ * exists to prove, and a silent skip there once meant a whole invariant went unverified in CI
+ * while the suite reported green.
+ */
 async function isReachable(url: string): Promise<boolean> {
 	try {
 		const db = new SQL({ url })
 		await db.unsafe('SELECT 1')
 		await db.close()
 		return true
-	} catch {
+	} catch (err) {
+		if (process.env.DOTAZ_REQUIRE_DB === '1') {
+			throw new Error(`${url} is unreachable, but DOTAZ_REQUIRE_DB=1 forbids skipping: ${err}`)
+		}
 		return false
 	}
 }
@@ -115,6 +124,39 @@ describe('SqliteDriver read-only sessions', () => {
 		expect(driver.isSessionReadOnly(readOnlyId)).toBe(true)
 		expect(driver.isSessionReadOnly(writableId)).toBe(false)
 		expect(driver.getSessionIds()).toContain(readOnlyId)
+	})
+
+	// The handle is opened read-only, so `PRAGMA query_only` is a second layer rather than
+	// the enforcement — the pragma's function form carries no `=`, classifies as a read, and
+	// would otherwise let the session switch its own enforcement off.
+	test('the read-only handle cannot be made writable from inside the session', async () => {
+		await driver.execute('PRAGMA query_only(0)', undefined, readOnlyId).catch(() => {})
+
+		await expect(driver.execute("INSERT INTO users (name) VALUES ('sneaky')", undefined, readOnlyId)).rejects.toThrow()
+		const count = await driver.execute("SELECT count(*) AS c FROM users WHERE name = 'sneaky'", undefined, readOnlyId)
+		expect(firstValue(count.rows)).toBe(0)
+	})
+
+	test('DDL is refused on a read-only session too', async () => {
+		await expect(driver.execute('CREATE TABLE sneaky (a INTEGER)', undefined, readOnlyId)).rejects.toThrow()
+	})
+
+	// SQLite shares one handle across sessions, so an unrecognised id used to fall through to
+	// it — turning a lost read-only handle (terminated, reconnected) into a silent write.
+	// PostgreSQL and MySQL already threw for the same input.
+	test('an unknown session id is refused instead of falling back to the writable handle', async () => {
+		const ghost = crypto.randomUUID()
+
+		await expect(driver.execute("INSERT INTO users (name) VALUES ('ghost')", undefined, ghost)).rejects.toThrow(/not found/)
+		await expect(driver.beginTransaction(ghost)).rejects.toThrow(/not found/)
+		await expect(driver.commit(ghost)).rejects.toThrow(/not found/)
+		await expect(driver.rollback(ghost)).rejects.toThrow(/not found/)
+	})
+
+	test('a released read-only session cannot keep executing', async () => {
+		await driver.releaseSession(readOnlyId)
+
+		await expect(driver.execute('SELECT 1', undefined, readOnlyId)).rejects.toThrow(/not found/)
 	})
 
 	test('query_only is on for the read-only session and nowhere else', async () => {
