@@ -18,11 +18,18 @@ This document is the implementation contract. Everything below is normative.
 1. The CLI's database session is opened read-only and is **never** switched to read-write.
    An approved write executes in the frontend's own session, not in the CLI session.
    No control-plane method may be used to get around this: `ui.openConsole` will prefill a
-   write, but refuses to auto-run one (`run: true` is rejected for non-read-only SQL).
+   write, but refuses to auto-run one (`run: true` is rejected for non-read-only SQL), and
+   `ui.openTable`'s `where` must be a single boolean expression.
 2. Read-only is enforced by the database engine, not by parsing SQL. Statement
    classification exists only to fail fast with a good message.
 3. The control endpoint does not exist unless the user enabled it (`cli.enabled` setting or
    `DOTAZ_CLI=1`). No setting, no socket, no endpoint file.
+
+The endpoint enforces invariant 1 itself, on **params and not just method names** — the CLI
+client applies the same rules, but anything holding the token can talk to the socket directly,
+so the client is not what enforces them. `session.create` is pinned to `readOnly: true`, and
+`query.execute` is refused unless its `sessionId` names a session the backend confirms is
+read-only (a sessionless `query.execute` would otherwise run on the writable pool).
 
 ## Transport
 
@@ -46,6 +53,12 @@ and anything that returns decrypted secrets stay unreachable, and `connections.l
 responses are stripped of passwords on the way out. `ui.snapshot.set` and
 `agent.proposals.resolve` are frontend-only and equally unreachable. A forbidden method is
 indistinguishable from a nonexistent one.
+
+Also absent, and worth naming because each was reachable at one point: `session.list` (it
+hands over the ids of the user's own writable sessions, including one inside a transaction)
+and `ui.runCommand` (it could execute any of the app's registered commands — including
+`run-query` in the frontend's writable session — so two allowlisted calls were enough to run
+an arbitrary write, and to let an agent approve its own proposal).
 
 Socket path: `${XDG_RUNTIME_DIR ?? tmpdir()}/dotaz-${pid}.sock`. A stale socket at that path
 is unlinked on startup.
@@ -115,27 +128,43 @@ Existing handlers are reused wherever possible. New methods:
 | `ui.state`                | —                                                            | `UiSnapshot`                       |
 | `ui.openTable`            | `{ connectionId, database?, schema, table, where?, limit? }` | `{ ok: true }`                     |
 | `ui.openConsole`          | `{ connectionId, database?, sql?, run? }`                    | `{ ok: true }`                     |
-| `ui.runCommand`           | `{ commandId }`                                              | `{ ok: true }`                     |
 | `ui.snapshot.set`         | `{ snapshot }`                                               | `void` — **frontend only**         |
 
 `session.create` gains two optional params: `readOnly?: boolean` and `label?: string`.
 
 ### Backend → frontend messages
 
-| Channel        | Payload                                                        |
-| -------------- | -------------------------------------------------------------- |
-| `cli.proposal` | `Proposal` — emitted on every state change, not only creation  |
-| `cli.command`  | `{ kind: 'open-table' \| 'open-console' \| 'run-command', … }` |
+| Channel        | Payload                                                       |
+| -------------- | ------------------------------------------------------------- |
+| `cli.proposal` | `Proposal` — emitted on every state change, not only creation |
+| `cli.command`  | `{ kind: 'open-table' \| 'open-console', … }`                 |
 
 ## Read-only sessions
 
 `session.create { readOnly: true }` reaches `driver.reserveSession(sessionId, { readOnly })`:
 
-| Driver     | Enforcement                                                                                             |
-| ---------- | ------------------------------------------------------------------------------------------------------- |
-| PostgreSQL | `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY` on the session's dedicated connection            |
-| MySQL      | `SET SESSION TRANSACTION READ ONLY` on the session's dedicated connection                               |
-| SQLite     | dedicated `SQL` handle for the session with `PRAGMA query_only = ON`; the session's queries route to it |
+| Driver     | Enforcement                                                                                          |
+| ---------- | ---------------------------------------------------------------------------------------------------- |
+| PostgreSQL | `SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY` on the session's dedicated connection         |
+| MySQL      | `SET SESSION TRANSACTION READ ONLY` on the session's dedicated connection                            |
+| SQLite     | dedicated handle opened `readonly`, plus `PRAGMA query_only = ON`; the session's queries route to it |
+
+Neither mechanism protects itself, so both are re-established rather than set once:
+
+- PostgreSQL's `default_transaction_read_only` is an ordinary GUC, and
+  `SELECT set_config('default_transaction_read_only','off',false)` classifies as a _read_. The
+  driver therefore re-asserts the session characteristics (and the timeout) before every
+  statement. Verified against PostgreSQL 17: re-asserting blocks the write, and a single
+  statement cannot both clear the GUC and write under it.
+- SQLite's `PRAGMA query_only` can be revoked with `PRAGMA query_only(0)` — the function form
+  carries no `=`, so it too classifies as a read. The handle is opened read-only at the VFS
+  level, which no statement can revoke; the pragma is a second layer.
+- An unknown `sessionId` throws on every driver. SQLite used to fall through to the shared
+  writable handle, which silently downgraded a session whose handle had been lost.
+
+`SessionInfo.readOnly` is read back from `driver.isSessionReadOnly()`, not echoed from the
+request, and a session requested read-only that the driver does not confirm is released and
+refused.
 
 Read-only is not the same as cheap, so the same sessions also carry an engine-enforced
 statement timeout, driven by the existing `queryTimeout` setting (30 s; `0` disables it):
@@ -189,7 +218,10 @@ Lifecycle:
 2. Frontend opens a SQL console tab with the SQL prefilled and a banner offering Run / Reject.
 3. On Run the frontend executes the SQL in the tab's own session, then calls
    `agent.proposals.resolve` with `executed` (or `failed` + error). On Reject it resolves
-   `rejected`.
+   `rejected`. The run is matched to the proposal by tab _and_ by SQL — if the user edited the
+   console, or ran a single statement of a multi-statement proposal, the proposal resolves
+   `failed` rather than reporting a write that did not happen. So `executed` means the
+   proposed SQL ran, not merely that something ran in that tab.
 4. `agent.proposals.wait` returns as soon as the status leaves `pending`, or on timeout.
 
 Proposals live in memory for one hour, then become `expired`. `pending` is the only status
@@ -222,11 +254,10 @@ dotaz search <conn[/db]> <term> [--scope database|schema|table]
 dotaz history [--conn] [--limit]
 dotaz bookmarks list [--conn] [--search]
 dotaz propose <conn[/db]> <sql> [--reason] [--wait [sec]]
-dotaz approvals list | status <id> | wait <id> [--timeout sec] | cancel <id>
+dotaz approvals list | status <id> | wait <id> [--wait sec] | cancel <id>
 dotaz ui state
 dotaz ui open <path> [--where]
 dotaz ui console <conn[/db]> [--sql] [--run]
-dotaz ui command <command-id>
 ```
 
 Global flags: `--json`, `--format table|json|jsonl|csv|md`, `--max-bytes N` (default 65536),
@@ -235,8 +266,10 @@ Global flags: `--json`, `--format table|json|jsonl|csv|md`, `--max-bytes N` (def
 Output rules:
 
 - Default format is a compact aligned table on stdout; diagnostics go to stderr.
-- Row output is always capped. When truncated, the last line states
-  `rows: 20/1543 (truncated, use --limit)`.
+- Row output is always capped, and truncation is always reported — `--quiet` silences
+  diagnostics, never a missing row. `table`/`md` end with `rows: 20/1543 (truncated, use
+  --limit)`; `--json` carries `truncated`/`shown`/`total` inside the object; `csv`/`jsonl`
+  keep stdout a clean stream and report on stderr.
 - `--json` emits a single object; `--format jsonl` emits one row per line.
 - `--limit` on `query` is pushed into the SQL when the statement is a single unlimited
   read-only `SELECT`/`WITH` with no `OFFSET`, locking clause or `INTO` — so the database
