@@ -209,6 +209,31 @@ describe('renderOutput', () => {
 		expect(rendered.stderr).toBe('')
 	})
 
+	// For csv/jsonl the stderr line is the ONLY signal that rows are missing — stdout carries
+	// no footer. Dropping it under --quiet let an agent read a truncated result as a whole
+	// table, and `--format jsonl --quiet` is exactly how an agent pipes rows.
+	test.each(['jsonl', 'csv'] as const)('--quiet still reports truncation for --format %s', (format) => {
+		const rendered = renderOutput({ sections: [rowsSection(50)], json: {}, notes: ['a note'] }, { format, maxBytes: 40, quiet: true })
+
+		expect(rendered.stderr).toContain('truncated')
+		expect(rendered.stderr).not.toContain('a note')
+	})
+
+	test.each(['table', 'md'] as const)('--format %s carries truncation on stdout, so --quiet cannot hide it', (format) => {
+		const rendered = renderOutput({ sections: [rowsSection(50)], json: {}, notes: ['a note'] }, { format, maxBytes: 40, quiet: true })
+
+		expect(rendered.stdout).toContain('truncated')
+		expect(rendered.stderr).toBe('')
+	})
+
+	test('--quiet still reports truncation for --json', () => {
+		const rows = Array.from({ length: 200 }, (_, i) => ({ i, pad: 'q'.repeat(50) }))
+		const rendered = renderOutput({ sections: [], json: { rows } }, { ...opts, maxBytes: 500, quiet: true })
+
+		expect(JSON.parse(rendered.stdout).truncated).toBe(true)
+		expect(rendered.stderr).toContain('truncated')
+	})
+
 	test('notes go to stderr, never stdout', () => {
 		const rendered = renderOutput({ sections: [rowsSection(1)], json: {}, notes: ['a note'] }, { format: 'table', maxBytes: 65536, quiet: false })
 		expect(rendered.stderr).toContain('a note')

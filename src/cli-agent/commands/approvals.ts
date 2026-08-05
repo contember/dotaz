@@ -48,15 +48,14 @@ export const approvalsCommand: Command = {
 	flags: {
 		status: { kind: 'string', placeholder: '<status>', description: 'Filter `list` by status (pending, executed, rejected, …)' },
 		conn: { kind: 'string', placeholder: '<connection>', description: 'Filter `list` by connection' },
-		// Shadows the global --timeout on purpose: the spec spells this one in seconds
-		timeout: { kind: 'number', placeholder: '<sec>', description: `Seconds to wait in \`wait\` (default ${DEFAULT_WAIT_SECONDS})` },
+		// Named --wait like `propose --wait`; the global --timeout stays the RPC deadline
+		wait: { kind: 'number', placeholder: '<sec>', description: `Seconds to block in \`wait\` (default ${DEFAULT_WAIT_SECONDS})` },
 	},
 	help: {
-		usage: 'approvals list | status <id> | wait <id> [--timeout sec] | cancel <id>',
+		usage: 'approvals list | status <id> | wait <id> [--wait sec] | cancel <id>',
 		summary: 'inspect and wait on write proposals',
 		notes: [
 			'`status` and `wait` also report through the exit code: 0 executed · 3 failed · 7 pending · 8 rejected.',
-			'Note that --timeout is in seconds here, not milliseconds.',
 		],
 	},
 	async run(ctx) {
@@ -77,8 +76,8 @@ export const approvalsCommand: Command = {
 
 			case 'wait': {
 				if (!id) throw usageError('approvals wait requires a proposal id')
-				const seconds = flagNumber(ctx.args, 'timeout') ?? DEFAULT_WAIT_SECONDS
-				if (!(seconds > 0)) throw usageError('--timeout must be a positive number of seconds')
+				const seconds = flagNumber(ctx.args, 'wait') ?? DEFAULT_WAIT_SECONDS
+				if (!(seconds > 0)) throw usageError('--wait must be a positive number of seconds')
 				const proposal = await waitForProposal(ctx.client, id, seconds * 1000)
 				return { output: proposalOutput(proposal), exitCode: exitCodeForProposal(proposal.status) }
 			}

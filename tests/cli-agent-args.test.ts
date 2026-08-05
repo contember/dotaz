@@ -9,7 +9,7 @@ import {
 	requireNonNegativeInt,
 	requirePositiveInt,
 } from '../src/cli-agent/args'
-import { extractCommand, outputOptions, parseInvocation, timeoutMs } from '../src/cli-agent/cli'
+import { extractCommand, mergeSpecs, outputOptions, parseInvocation, timeoutMs } from '../src/cli-agent/cli'
 import { findCommand } from '../src/cli-agent/commands'
 import { CliError, EXIT } from '../src/cli-agent/errors'
 
@@ -130,9 +130,17 @@ describe('parseInvocation', () => {
 		expect(flagNumber(invocation.args, 'limit')).toBe(5)
 	})
 
-	test('command flags shadow global ones — approvals --timeout is seconds', () => {
-		const invocation = parseInvocation(['approvals', 'wait', 'p1', '--timeout', '10'], flagsFor)
-		expect(invocation.specs.timeout?.placeholder).toBe('<sec>')
+	// A shadowing flag reads back through the global reader, which silently reinterprets it —
+	// `approvals --timeout 300` (seconds) became a 300ms RPC deadline. Now it cannot compile.
+	test('a command flag may not shadow a global one', () => {
+		expect(() => mergeSpecs({ timeout: { kind: 'number', description: 'seconds' } })).toThrow(/collides with a global flag/)
+		expect(() => mergeSpecs({ json: { kind: 'boolean', description: 'json' } })).toThrow(/collides with a global flag/)
+	})
+
+	test('approvals spells its wait in seconds under its own flag name', () => {
+		const invocation = parseInvocation(['approvals', 'wait', 'p1', '--wait', '10'], flagsFor)
+		expect(invocation.specs.wait?.placeholder).toBe('<sec>')
+		expect(invocation.specs.timeout?.placeholder).not.toBe('<sec>')
 	})
 
 	test('unknown command is a usage error', () => {

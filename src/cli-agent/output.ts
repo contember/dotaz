@@ -46,11 +46,11 @@ export function renderOutput(output: CommandOutput, opts: OutputOptions): Render
 	const notes = opts.quiet ? [] : (output.notes ?? [])
 	const noteText = notes.length > 0 ? `${notes.join('\n')}\n` : ''
 
-	if (opts.format === 'json') {
-		const rendered = renderJson(output.json, opts.maxBytes)
-		return { stdout: rendered.stdout, stderr: noteText + (opts.quiet ? '' : rendered.stderr) }
-	}
-
-	const rendered = renderSections(output.sections, opts.format, opts.maxBytes)
-	return { stdout: rendered.stdout, stderr: noteText + (opts.quiet ? '' : rendered.stderr) }
+	// `--quiet` silences diagnostics, never truncation. For csv/jsonl the stderr line is the
+	// only signal that rows are missing, so dropping it would let a consumer read a short
+	// result as the whole table.
+	const rendered = opts.format === 'json'
+		? renderJson(output.json, opts.maxBytes)
+		: renderSections(output.sections, opts.format, opts.maxBytes)
+	return { stdout: rendered.stdout, stderr: noteText + rendered.stderr }
 }
