@@ -71,3 +71,16 @@ export function isStaleProposalError(err: unknown): boolean {
 	const message = err instanceof Error ? err.message : String(err)
 	return STALE_PROPOSAL_ERROR.test(message)
 }
+
+/**
+ * Whether what ran is the SQL the agent proposed and the user approved.
+ *
+ * The run listener matches on the tab, so without this an edited buffer — or one statement of
+ * a multi-statement proposal run on its own — would be reported back to the agent as the whole
+ * proposal `executed`. Whitespace and a trailing semicolon are ignored because the editor may
+ * reformat those; any other difference is a different statement reaching the database.
+ */
+export function sqlMatchesProposal(ran: string, proposed: string): boolean {
+	const normalize = (sql: string) => sql.trim().replace(/\s+/g, ' ').replace(/;$/, '').trim()
+	return normalize(ran) === normalize(proposed)
+}
