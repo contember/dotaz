@@ -8,6 +8,7 @@ import {
 	PROPOSAL_ALREADY_RESOLVED_REASON,
 	PROPOSAL_GONE_REASON,
 	type ProposalPhase,
+	sqlMatchesProposal,
 } from '../lib/proposal-state'
 import { friendlyErrorMessage, rpc } from '../lib/rpc'
 import { connectionsStore } from './connections'
@@ -94,6 +95,15 @@ function handleRunFinished(event: RunFinishedEvent) {
 	if (event.skipped) {
 		// Nothing reached the database (read-only connection, destructive warning cancelled).
 		if (entry.phase === 'running') setState('entries', proposalId, 'phase', 'pending')
+		return
+	}
+
+	// Matching on the tab alone would report "executed" for whatever the user actually ran —
+	// an edited buffer, or one statement of a multi-statement proposal run on its own.
+	if (!sqlMatchesProposal(event.sql, entry.proposal.sql)) {
+		const message = 'The SQL in the console was changed before it ran — this proposal was not executed.'
+		setState('entries', proposalId, { phase: 'resolved', outcome: { status: 'failed', message } })
+		resolve(proposalId, 'failed', { error: message })
 		return
 	}
 
