@@ -1,4 +1,10 @@
-import { decideProposalMessage, invalidationReason, isStaleProposalError, type ProposalPhase } from '@dotaz/frontend-shared/lib/proposal-state'
+import {
+	decideProposalMessage,
+	invalidationReason,
+	isStaleProposalError,
+	type ProposalPhase,
+	sqlMatchesProposal,
+} from '@dotaz/frontend-shared/lib/proposal-state'
 import type { Proposal, ProposalStatus } from '@dotaz/shared/types/rpc'
 import { describe, expect, test } from 'bun:test'
 
@@ -89,5 +95,30 @@ describe('isStaleProposalError', () => {
 		expect(isStaleProposalError(new Error('Failed to fetch'))).toBe(false)
 		expect(isStaleProposalError(new Error('connection closed'))).toBe(false)
 		expect(isStaleProposalError(undefined)).toBe(false)
+	})
+})
+
+// The run listener matches on the tab alone, so this is what stops "the user ran something in
+// this tab" from being reported to the agent as "your write executed".
+describe('sqlMatchesProposal', () => {
+	const proposed = "UPDATE orders SET status='paid' WHERE id=42"
+
+	test('accepts the proposal SQL, including editor reformatting', () => {
+		expect(sqlMatchesProposal(proposed, proposed)).toBe(true)
+		expect(sqlMatchesProposal(`  ${proposed}  `, proposed)).toBe(true)
+		expect(sqlMatchesProposal(`${proposed};`, proposed)).toBe(true)
+		expect(sqlMatchesProposal("UPDATE orders SET status='paid'\n  WHERE id=42", proposed)).toBe(true)
+	})
+
+	test('rejects an edited buffer', () => {
+		expect(sqlMatchesProposal("UPDATE orders SET status='paid' WHERE id=43", proposed)).toBe(false)
+		expect(sqlMatchesProposal("UPDATE orders SET status='paid'", proposed)).toBe(false)
+		expect(sqlMatchesProposal('', proposed)).toBe(false)
+	})
+
+	test('rejects one statement of a multi-statement proposal run on its own', () => {
+		const multi = 'DELETE FROM a; DELETE FROM b'
+		expect(sqlMatchesProposal('DELETE FROM a', multi)).toBe(false)
+		expect(sqlMatchesProposal(multi, multi)).toBe(true)
 	})
 })
