@@ -4,7 +4,7 @@ import { usageError } from '../errors'
 import { requireTable, resolvePath, resolveScope } from '../paths'
 import type { Command, CommandContext, CommandResult } from './types'
 
-const SUBCOMMANDS = ['state', 'open', 'console', 'command'] as const
+const SUBCOMMANDS = ['state', 'open', 'console'] as const
 
 async function state(ctx: CommandContext): Promise<CommandResult> {
 	const snapshot = decodeUiSnapshot(await ctx.client.call('ui.state'))
@@ -56,7 +56,7 @@ export const uiCommand: Command = {
 		run: { kind: 'boolean', description: 'Also run the prefilled SQL — read-only statements only' },
 	},
 	help: {
-		usage: 'ui state | open <path> [--where sql] | console <conn[/db]> [--sql text] [--run] | command <command-id>',
+		usage: 'ui state | open <path> [--where sql] | console <conn[/db]> [--sql text] [--run]',
 		summary: 'read and drive what the user has open in the app',
 		notes: ['`ui console --run` refuses non-read-only SQL and exits 4 — use `dotaz propose` for writes.'],
 	},
@@ -97,12 +97,6 @@ export const uiCommand: Command = {
 				if (run && !sql) throw usageError('--run needs --sql')
 				await ctx.client.call('ui.openConsole', { connectionId: scope.connection.id, database: scope.database, sql, run })
 				return ok('open-console', { connection: scope.connection.name, database: scope.database ?? null, run })
-			}
-
-			case 'command': {
-				if (!target) throw usageError('ui command requires a command id')
-				await ctx.client.call('ui.runCommand', { commandId: target })
-				return ok('run-command', { commandId: target })
 			}
 
 			default:
