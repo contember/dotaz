@@ -22,7 +22,13 @@ mock.module('solid-js/store', () => ({
 		const resolveValue = (current: any, value: any) => {
 			if (typeof value === 'function') {
 				const next = value(current)
-				if (isPlainObject(next) && isPlainObject(current)) return { ...current, ...next }
+				if (isPlainObject(next) && isPlainObject(current)) {
+					const merged = { ...current, ...next }
+					for (const [key, entry] of Object.entries(merged)) {
+						if (entry === undefined) delete merged[key]
+					}
+					return merged
+				}
 				return next
 			}
 			if (isPlainObject(value) && isPlainObject(current)) return { ...current, ...value }
