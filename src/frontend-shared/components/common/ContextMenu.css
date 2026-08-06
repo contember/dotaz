@@ -50,6 +50,63 @@
 	background: var(--surface-hover);
 }
 
+.context-menu__submenu-wrap {
+	position: relative;
+}
+
+.context-menu__submenu-wrap--disabled {
+	pointer-events: none;
+}
+
+.context-menu__submenu-trigger > span:nth-child(2) {
+	flex: 1;
+}
+
+.context-menu__submenu-chevron {
+	margin-left: auto;
+	color: var(--ink-muted);
+}
+
+.context-menu__submenu {
+	position: absolute;
+	z-index: 1;
+	left: calc(100% + 4px);
+	top: -5px;
+	min-width: 200px;
+	padding: var(--spacing-xs) 0;
+	background: var(--surface-overlay);
+	border: 1px solid var(--edge-strong);
+	border-radius: var(--radius-lg);
+	box-shadow: var(--shadow-popup);
+	opacity: 0;
+	visibility: hidden;
+	pointer-events: none;
+}
+
+.context-menu__submenu::before,
+.context-menu__submenu::after {
+	content: "";
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 5px;
+}
+
+.context-menu__submenu::before {
+	left: -5px;
+}
+
+.context-menu__submenu::after {
+	right: -5px;
+}
+
+.context-menu__submenu-wrap:hover > .context-menu__submenu,
+.context-menu__submenu-wrap:focus-within > .context-menu__submenu {
+	opacity: 1;
+	visibility: visible;
+	pointer-events: auto;
+}
+
 .context-menu__item--disabled {
 	color: var(--ink-muted);
 	cursor: default;

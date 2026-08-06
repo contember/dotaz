@@ -1,3 +1,4 @@
+import ChevronRight from 'lucide-solid/icons/chevron-right'
 import { For, type JSX, onCleanup, onMount, Show } from 'solid-js'
 import './ContextMenu.css'
 
@@ -24,13 +25,136 @@ export interface ContextMenuLabel {
 	label: string
 }
 
-export type ContextMenuEntry = ContextMenuItem | ContextMenuButtonRow | ContextMenuLabel | 'separator'
+export interface ContextMenuSubmenu {
+	type: 'submenu'
+	label: string
+	icon?: () => JSX.Element
+	items: ContextMenuEntry[]
+	disabled?: boolean
+}
+
+export type ContextMenuEntry = ContextMenuItem | ContextMenuButtonRow | ContextMenuLabel | ContextMenuSubmenu | 'separator'
 
 interface ContextMenuProps {
 	x: number
 	y: number
 	items: ContextMenuEntry[]
 	onClose: () => void
+}
+
+function positionSubmenu(submenu: HTMLDivElement) {
+	const viewportGap = 4
+	let top = -5
+
+	submenu.style.left = 'calc(100% + 4px)'
+	submenu.style.right = 'auto'
+	submenu.style.top = `${top}px`
+
+	let rect = submenu.getBoundingClientRect()
+	if (rect.right > window.innerWidth - viewportGap) {
+		submenu.style.left = 'auto'
+		submenu.style.right = 'calc(100% + 4px)'
+		rect = submenu.getBoundingClientRect()
+	}
+
+	if (rect.bottom > window.innerHeight - viewportGap) {
+		top -= rect.bottom - window.innerHeight + viewportGap
+		submenu.style.top = `${top}px`
+		rect = submenu.getBoundingClientRect()
+	}
+	if (rect.top < viewportGap) {
+		top += viewportGap - rect.top
+		submenu.style.top = `${top}px`
+	}
+}
+
+function ContextMenuIcon(props: { icon?: () => JSX.Element }) {
+	return (
+		<Show when={props.icon}>
+			{(icon) => <span class="context-menu__icon">{icon()()}</span>}
+		</Show>
+	)
+}
+
+function ContextMenuEntries(props: { items: ContextMenuEntry[]; onSelect: () => void }) {
+	return (
+		<For each={props.items}>
+			{(item) => {
+				if (item === 'separator') {
+					return <div class="context-menu__separator" />
+				}
+				if ('type' in item) {
+					switch (item.type) {
+						case 'label':
+							return <div class="context-menu__label">{item.label}</div>
+						case 'button-row':
+							return (
+								<div class="context-menu__button-row">
+									<For each={item.buttons}>
+										{(btn) => (
+											<button
+												class="context-menu__btn"
+												classList={{
+													'context-menu__btn--disabled': btn.disabled,
+													'context-menu__btn--active': btn.active,
+												}}
+												onClick={() => {
+													if (!btn.disabled) {
+														btn.action()
+														props.onSelect()
+													}
+												}}
+											>
+												<ContextMenuIcon icon={btn.icon} />
+												{btn.label}
+											</button>
+										)}
+									</For>
+								</div>
+							)
+						case 'submenu': {
+							let submenuRef: HTMLDivElement | undefined
+							return (
+								<div
+									class="context-menu__submenu-wrap"
+									classList={{ 'context-menu__submenu-wrap--disabled': item.disabled }}
+									onMouseEnter={() => submenuRef && positionSubmenu(submenuRef)}
+								>
+									<button
+										class="context-menu__item context-menu__submenu-trigger"
+										classList={{ 'context-menu__item--disabled': item.disabled }}
+										aria-haspopup="menu"
+									>
+										<ContextMenuIcon icon={item.icon} />
+										<span>{item.label}</span>
+										<ChevronRight class="context-menu__submenu-chevron" size={14} />
+									</button>
+									<div ref={submenuRef} class="context-menu__submenu" role="menu">
+										<ContextMenuEntries items={item.items} onSelect={props.onSelect} />
+									</div>
+								</div>
+							)
+						}
+					}
+				}
+				return (
+					<button
+						class="context-menu__item"
+						classList={{ 'context-menu__item--disabled': item.disabled }}
+						onClick={() => {
+							if (!item.disabled) {
+								item.action()
+								props.onSelect()
+							}
+						}}
+					>
+						<ContextMenuIcon icon={item.icon} />
+						{item.label}
+					</button>
+				)
+			}}
+		</For>
+	)
 }
 
 export default function ContextMenu(props: ContextMenuProps) {
@@ -80,62 +204,7 @@ export default function ContextMenu(props: ContextMenuProps) {
 			class="context-menu"
 			style={{ left: `${props.x}px`, top: `${props.y}px` }}
 		>
-			<For each={props.items}>
-				{(item) => {
-					if (item === 'separator') {
-						return <div class="context-menu__separator" />
-					}
-					if ('type' in item && item.type === 'label') {
-						return <div class="context-menu__label">{item.label}</div>
-					}
-					if ('type' in item && item.type === 'button-row') {
-						return (
-							<div class="context-menu__button-row">
-								<For each={item.buttons}>
-									{(btn) => (
-										<button
-											class="context-menu__btn"
-											classList={{
-												'context-menu__btn--disabled': btn.disabled,
-												'context-menu__btn--active': btn.active,
-											}}
-											onClick={() => {
-												if (!btn.disabled) {
-													btn.action()
-													props.onClose()
-												}
-											}}
-										>
-											<Show when={btn.icon}>
-												<span class="context-menu__icon">{btn.icon!()}</span>
-											</Show>
-											{btn.label}
-										</button>
-									)}
-								</For>
-							</div>
-						)
-					}
-					const menuItem = item as ContextMenuItem
-					return (
-						<button
-							class="context-menu__item"
-							classList={{ 'context-menu__item--disabled': menuItem.disabled }}
-							onClick={() => {
-								if (!menuItem.disabled) {
-									menuItem.action()
-									props.onClose()
-								}
-							}}
-						>
-							<Show when={menuItem.icon}>
-								<span class="context-menu__icon">{menuItem.icon!()}</span>
-							</Show>
-							{menuItem.label}
-						</button>
-					)
-				}}
-			</For>
+			<ContextMenuEntries items={props.items} onSelect={props.onClose} />
 		</div>
 	)
 }

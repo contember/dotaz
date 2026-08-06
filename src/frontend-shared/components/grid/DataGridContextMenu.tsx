@@ -4,14 +4,18 @@ import type { GridColumnDef } from '@dotaz/shared/types/grid'
 import ArrowDown from 'lucide-solid/icons/arrow-down'
 import ArrowUp from 'lucide-solid/icons/arrow-up'
 import Slash from 'lucide-solid/icons/ban'
+import CalendarClock from 'lucide-solid/icons/calendar-clock'
+import Calendar from 'lucide-solid/icons/calendar-days'
 import ClipboardCopy from 'lucide-solid/icons/clipboard-copy'
 import ClipboardPaste from 'lucide-solid/icons/clipboard-paste'
+import Clock from 'lucide-solid/icons/clock'
 import Copy from 'lucide-solid/icons/copy'
 import CopyPlus from 'lucide-solid/icons/copy-plus'
 import ExternalLink from 'lucide-solid/icons/external-link'
 import EyeOff from 'lucide-solid/icons/eye-off'
 import FilterIcon from 'lucide-solid/icons/funnel'
 import FilterXIcon from 'lucide-solid/icons/funnel-x'
+import KeyRound from 'lucide-solid/icons/key-round'
 import Link from 'lucide-solid/icons/link'
 import LinkIcon from 'lucide-solid/icons/link-2'
 import PinLeft from 'lucide-solid/icons/panel-left-close'
@@ -20,14 +24,72 @@ import PinRight from 'lucide-solid/icons/panel-right-close'
 import PanelRightOpen from 'lucide-solid/icons/panel-right-open'
 import Pencil from 'lucide-solid/icons/pencil'
 import Rows3 from 'lucide-solid/icons/rows-3'
+import Sparkles from 'lucide-solid/icons/sparkles'
 import Thermometer from 'lucide-solid/icons/thermometer'
 import Trash2 from 'lucide-solid/icons/trash-2'
 import Unlink from 'lucide-solid/icons/unlink'
 import { formatCellForClipboard } from '../../lib/grid-clipboard'
+import {
+	generateCurrentDate,
+	generateCurrentTime,
+	generateCurrentTimestamp,
+	generateUuidV4,
+	generateUuidV7,
+	getValueGeneratorKinds,
+} from '../../lib/value-generators'
 import type { FkTarget } from '../../stores/grid'
 import { gridStore } from '../../stores/grid'
 import { tabsStore } from '../../stores/tabs'
 import type { ContextMenuEntry } from '../common/ContextMenu'
+
+function createValueGeneratorItems(
+	column: GridColumnDef,
+	onGenerate: (value: string) => void,
+): ContextMenuEntry[] {
+	const items: ContextMenuEntry[] = []
+
+	for (const kind of getValueGeneratorKinds(column.dataType)) {
+		switch (kind) {
+			case 'uuid-v4':
+				items.push({
+					label: 'UUID v4',
+					icon: () => <KeyRound size={14} />,
+					action: () => onGenerate(generateUuidV4()),
+				})
+				break
+			case 'uuid-v7':
+				items.push({
+					label: 'UUID v7',
+					icon: () => <KeyRound size={14} />,
+					action: () => onGenerate(generateUuidV7()),
+				})
+				break
+			case 'current-date':
+				items.push({
+					label: 'Current date',
+					icon: () => <Calendar size={14} />,
+					action: () => onGenerate(generateCurrentDate()),
+				})
+				break
+			case 'current-time':
+				items.push({
+					label: 'Current time',
+					icon: () => <Clock size={14} />,
+					action: () => onGenerate(generateCurrentTime()),
+				})
+				break
+			case 'current-timestamp':
+				items.push({
+					label: 'Current timestamp',
+					icon: () => <CalendarClock size={14} />,
+					action: () => onGenerate(generateCurrentTimestamp()),
+				})
+				break
+		}
+	}
+
+	return items
+}
 
 export interface DataGridContextMenuDeps {
 	tabId: string
@@ -66,9 +128,25 @@ export function useDataGridContextMenu(deps: DataGridContextMenuDeps) {
 		const row = t.rows[rowIndex]
 		if (!row) return null
 		const value = row[column]
+		const columnDef = t.columns.find((candidate) => candidate.name === column)
 		const isDeleted = gridStore.isRowDeleted(deps.tabId, rowIndex)
 		const ro = deps.isReadOnly()
 		const currentSort = t.sort.find((s) => s.column === column)
+		const generatorItems = columnDef
+			? createValueGeneratorItems(
+				columnDef,
+				(generatedValue) => gridStore.setCellValue(deps.tabId, rowIndex, column, generatedValue),
+			)
+			: []
+		const generatorMenu: ContextMenuEntry[] = generatorItems.length > 0
+			? [{
+				type: 'submenu',
+				label: 'Generate value',
+				icon: () => <Sparkles size={14} />,
+				disabled: isDeleted || ro,
+				items: generatorItems,
+			}]
+			: []
 
 		const items: ContextMenuEntry[] = [
 			{ type: 'label', label: 'Clipboard' },
@@ -114,6 +192,7 @@ export function useDataGridContextMenu(deps: DataGridContextMenuDeps) {
 				action: () => gridStore.setCellValue(deps.tabId, rowIndex, column, null),
 				disabled: isDeleted || ro,
 			},
+			...generatorMenu,
 			'separator',
 			{ type: 'label', label: 'Sort' },
 			{
