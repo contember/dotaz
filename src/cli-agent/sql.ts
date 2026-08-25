@@ -139,8 +139,8 @@ export function applySqlLimit(sql: string, limit: number, type: ConnectionType):
 }
 
 /**
- * EXPLAIN runs through `query.execute` on the read-only session — the app's own explain path is
- * fire-and-forget over a message channel the one-shot CLI transport cannot receive.
+ * EXPLAIN runs through `agent.query` in a backend-owned read-only session. The app's own explain
+ * path is fire-and-forget over a message channel the one-shot CLI transport cannot receive.
  */
 export function buildExplainSql(type: ConnectionType, sql: string, analyze: boolean): string {
 	const statement = sql.trim().replace(/;\s*$/, '')

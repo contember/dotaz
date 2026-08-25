@@ -51,20 +51,18 @@ export const queryCommand: Command = {
 		const limit = requirePositiveInt('limit', flagNumber(ctx.args, 'limit'))
 		const params = flagStrings(ctx.args, 'param')
 		const scope = await resolveScope(scopePath, ctx.app)
+		await ctx.app.ensureConnected(scope.connection.id)
 		const applied = limit === undefined ? undefined : applySqlLimit(sql, limit, scope.connection.type)
 		const effectiveSql = applied?.sql ?? sql
 
-		const results = await ctx.app.withReadOnlySession(scope.connection.id, scope.database, async (sessionId) => {
-			return decodeQueryResults(
-				await executeQuery(ctx.client, {
-					connectionId: scope.connection.id,
-					database: scope.database,
-					sessionId,
-					sql: effectiveSql,
-					params: params.length > 0 ? params : undefined,
-				}),
-			)
-		})
+		const results = decodeQueryResults(
+			await executeQuery(ctx.client, {
+				connectionId: scope.connection.id,
+				database: scope.database,
+				sql: effectiveSql,
+				params: params.length > 0 ? params : undefined,
+			}),
+		)
 
 		const failure = firstResultError(results)
 		if (failure) throw databaseError(failure)

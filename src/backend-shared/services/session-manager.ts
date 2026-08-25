@@ -92,9 +92,9 @@ export class SessionManager {
 	/**
 	 * Report read-only as the driver sees it, not as the caller asked for it.
 	 *
-	 * `SessionInfo.readOnly` is what the CLI checks before it runs agent SQL, so echoing the
-	 * request back would make a driver that accepts `readOnly` and ignores it look enforced.
-	 * A requested-but-unconfirmed session is released and refused rather than handed over.
+	 * Agent handlers require `SessionInfo.readOnly === true`, so echoing the request would make
+	 * a driver that accepts `readOnly` and ignores it look enforced. A requested-but-unconfirmed
+	 * session is released and refused rather than handed over.
 	 */
 	private async confirmReadOnly(
 		driver: DatabaseDriver,

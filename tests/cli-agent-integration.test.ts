@@ -19,9 +19,7 @@ import { waitForProposal } from '../src/cli-agent/proposals'
 const runOnUnixSocket = process.platform !== 'win32'
 const MAIN = join(import.meta.dir, '../src/cli-agent/main.ts')
 
-const sessions = { created: 0, destroyed: 0, lastSql: '', lastQueryId: '', lastReadOnly: false }
-/** Stands in for SessionManager, so the control server can confirm a session really is read-only. */
-const readOnlySessionIds = new Set<string>()
+const sessions = { created: 0, destroyed: 0, active: 0, lastSql: '', lastQueryId: '', lastReadOnly: false }
 const cancelledQueries: string[] = []
 /** queryId → release, so a "long" query ends when it is cancelled (or when the suite tears down). */
 const sleepingQueries = new Map<string, () => void>()
@@ -38,6 +36,33 @@ async function waitUntil(predicate: () => boolean, what: string, timeoutMs = 10_
 	}
 }
 
+/** Stands in for the backend-owned read-only session around each agent operation. */
+async function withMockReadOnlySession<T>(operation: () => T | Promise<T>): Promise<T> {
+	sessions.created++
+	sessions.active++
+	sessions.lastReadOnly = true
+	try {
+		return await operation()
+	} finally {
+		sessions.destroyed++
+		sessions.active--
+	}
+}
+
+const schema = {
+	schemas: [{ name: 'public' }],
+	tables: { public: [{ schema: 'public', name: 'orders', type: 'table' }] },
+	columns: {
+		'public.orders': [
+			{ name: 'id', dataType: 'integer', nullable: false, defaultValue: null, isPrimaryKey: true, isAutoIncrement: true },
+			{ name: 'note', dataType: 'text', nullable: true, defaultValue: null, isPrimaryKey: false, isAutoIncrement: false },
+		],
+	},
+	indexes: {},
+	foreignKeys: {},
+	referencingForeignKeys: {},
+}
+
 const handlers = {
 	'agent.hello': () => ({ version: '9.9.9', mode: 'desktop', pid: process.pid, protocol: 1 }),
 	'connections.list': () => [
@@ -52,51 +77,37 @@ const handlers = {
 		},
 	],
 	'databases.list': () => [{ name: 'app', isDefault: true, isActive: true }],
-	'schema.load': () => ({
-		schemas: [{ name: 'public' }],
-		tables: { public: [{ schema: 'public', name: 'orders', type: 'table' }] },
-		columns: {
-			'public.orders': [
-				{ name: 'id', dataType: 'integer', nullable: false, defaultValue: null, isPrimaryKey: true, isAutoIncrement: true },
-				{ name: 'note', dataType: 'text', nullable: true, defaultValue: null, isPrimaryKey: false, isAutoIncrement: false },
-			],
-		},
-		indexes: {},
-		foreignKeys: {},
-		referencingForeignKeys: {},
-	}),
-	'session.create': (params: { readOnly?: boolean }) => {
-		sessions.created++
-		sessions.lastReadOnly = params?.readOnly === true
-		const sessionId = `s-${sessions.created}`
-		readOnlySessionIds.add(sessionId)
-		return { sessionId, connectionId: 'c-test', label: 'cli', inTransaction: false, txAborted: false, createdAt: 0, readOnly: true }
-	},
-	'session.destroy': (params: { sessionId?: string }) => {
-		sessions.destroyed++
-		if (params?.sessionId) readOnlySessionIds.delete(params.sessionId)
-	},
-	'query.execute': async (params: { sql: string; queryId?: string }) => {
-		sessions.lastSql = params?.sql ?? ''
-		sessions.lastQueryId = params?.queryId ?? ''
-		// The real engine is what rejects a write; this stands in for it using the same
-		// classifier the app uses, so the mock cannot be laxer than production.
-		if (!isReadOnlySql(sessions.lastSql)) {
-			throw new DatabaseError('READ_ONLY_SESSION', 'cannot execute UPDATE in a read-only transaction')
-		}
-		if (/\bsleep\b/i.test(sessions.lastSql)) {
-			// Stands in for a long query: it only returns once something cancels it
-			const queryId = sessions.lastQueryId
-			await new Promise<void>((resolve) => sleepingQueries.set(queryId, resolve))
-			sleepingQueries.delete(queryId)
-		}
-		return [{
-			columns: [{ name: 'id', dataType: 'integer' }, { name: 'note', dataType: 'text' }],
-			rows: [{ id: 1, note: null }, { id: 2, note: 'NULL' }],
-			rowCount: 2,
-			durationMs: 3,
-		}]
-	},
+	'agent.schema': () => withMockReadOnlySession(() => schema),
+	'agent.query': (params: { sql: string; queryId?: string }) =>
+		withMockReadOnlySession(async () => {
+			sessions.lastSql = params?.sql ?? ''
+			sessions.lastQueryId = params?.queryId ?? ''
+			// The real engine is what rejects a write; this stands in for it using the same
+			// classifier the app uses, so the mock cannot be laxer than production.
+			if (!isReadOnlySql(sessions.lastSql)) {
+				throw new DatabaseError('READ_ONLY_SESSION', 'cannot execute UPDATE in a read-only transaction')
+			}
+			if (/\bsleep\b/i.test(sessions.lastSql)) {
+				// Stands in for a long query: it only returns once something cancels it
+				const queryId = sessions.lastQueryId
+				await new Promise<void>((resolve) => sleepingQueries.set(queryId, resolve))
+				sleepingQueries.delete(queryId)
+			}
+			return [{
+				columns: [{ name: 'id', dataType: 'integer' }, { name: 'note', dataType: 'text' }],
+				rows: [{ id: 1, note: null }, { id: 2, note: 'NULL' }],
+				rowCount: 2,
+				durationMs: 3,
+			}]
+		}),
+	'agent.search': () =>
+		withMockReadOnlySession(() => ({
+			matches: [],
+			searchedTables: 1,
+			totalMatches: 0,
+			cancelled: false,
+			elapsedMs: 1,
+		})),
 	'query.cancel': ({ queryId }: { queryId: string }) => {
 		cancelledQueries.push(queryId)
 		sleepingQueries.get(queryId)?.()
@@ -176,7 +187,6 @@ describe.skipIf(!runOnUnixSocket)('cli-agent ↔ control server', () => {
 		userDataDir = mkdtempSync(join(tmpdir(), 'dotaz-cli-test-'))
 		server = await startControlServer({
 			handlers,
-			sessionGuard: { isSessionReadOnly: (id) => readOnlySessionIds.has(id) },
 			userDataDir,
 			appVersion: '9.9.9',
 		})
@@ -222,7 +232,7 @@ describe.skipIf(!runOnUnixSocket)('cli-agent ↔ control server', () => {
 
 	test('a read-only violation maps to exit 4 with the propose hint', async () => {
 		try {
-			await client().call('query.execute', { sql: 'UPDATE t SET a = 1' })
+			await client().call('agent.query', { sql: 'UPDATE t SET a = 1' })
 			expect.unreachable()
 		} catch (err) {
 			expect(err instanceof CliError).toBe(true)
@@ -313,8 +323,9 @@ describe.skipIf(!runOnUnixSocket)('cli-agent ↔ control server', () => {
 
 		expect(sessions.lastReadOnly).toBe(true)
 		expect(sessions.lastSql).toBe('SELECT * FROM "public"."orders" ORDER BY "id" DESC LIMIT $1 OFFSET $2')
-		expect(sessions.created).toBe(before.created + 1)
-		expect(sessions.destroyed).toBe(before.destroyed + 1)
+		expect(sessions.created).toBe(before.created + 2)
+		expect(sessions.destroyed).toBe(before.destroyed + 2)
+		expect(sessions.active).toBe(0)
 		// SQL NULL and the string "NULL" must not look the same
 		expect(stdout).toContain('NULL')
 		expect(stdout).toContain('"NULL"')
@@ -460,6 +471,7 @@ describe.skipIf(!runOnUnixSocket)('cli-agent ↔ control server', () => {
 		expect(stderr).toContain('cancelled in Dotaz')
 		expect(cancelledQueries).toEqual([sessions.lastQueryId])
 		expect(sessions.destroyed).toBe(before.destroyed + 1)
+		expect(sessions.active).toBe(0)
 	})
 
 	test('SIGINT cancels the running query instead of orphaning it', async () => {
@@ -474,6 +486,7 @@ describe.skipIf(!runOnUnixSocket)('cli-agent ↔ control server', () => {
 		expect(stderr).toContain('Interrupted')
 		expect(cancelledQueries).toEqual([sessions.lastQueryId])
 		expect(sessions.destroyed).toBe(before.destroyed + 1)
+		expect(sessions.active).toBe(0)
 	})
 
 	test('the app closing mid-wait is reported as a lost proposal, not as a timeout', async () => {
@@ -531,5 +544,6 @@ describe.skipIf(!runOnUnixSocket)('cli-agent ↔ control server', () => {
 		expect(await proc.exited).toBe(EXIT.readOnly)
 		expect(stderr).toContain('dotaz propose')
 		expect(sessions.destroyed).toBe(before.destroyed + 1)
+		expect(sessions.active).toBe(0)
 	})
 })

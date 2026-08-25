@@ -46,17 +46,14 @@ export const rowsCommand: Command = {
 			offset,
 		})
 
-		const results = await ctx.app.withReadOnlySession(resolved.connection.id, resolved.database, async (sessionId) => {
-			return decodeQueryResults(
-				await executeQuery(ctx.client, {
-					connectionId: resolved.connection.id,
-					database: resolved.database,
-					sessionId,
-					sql,
-					params,
-				}),
-			)
-		})
+		const results = decodeQueryResults(
+			await executeQuery(ctx.client, {
+				connectionId: resolved.connection.id,
+				database: resolved.database,
+				sql,
+				params,
+			}),
+		)
 
 		const failure = firstResultError(results)
 		if (failure) throw databaseError(failure)

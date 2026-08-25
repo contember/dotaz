@@ -79,7 +79,6 @@ async function syncControlServer(): Promise<void> {
 		try {
 			controlServer = await startControlServer({
 				handlers,
-				sessionGuard: { isSessionReadOnly: (id) => sessionManager.getSession(id)?.readOnly === true },
 				userDataDir,
 				appVersion,
 			})
