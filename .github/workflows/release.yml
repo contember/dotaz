@@ -233,8 +233,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ── npm package (trusted publisher — no NPM_TOKEN needed) ─
-  npm:
+  # ── Server npm package (trusted publisher) ───────────────
+  npm-server:
     needs: prepare
     runs-on: ubuntu-latest
     permissions:
@@ -264,9 +264,50 @@ jobs:
         run: npm publish --tag ${{ needs.prepare.outputs.npm-tag }} --access public --provenance
         working-directory: dist-server
 
+  # ── Agent CLI npm package (trusted publisher) ────────────
+  npm-cli:
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build agent CLI package
+        run: bun run build:agent-cli
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+
+      - name: Smoke-test agent CLI package
+        working-directory: dist-agent-cli
+        run: |
+          test "$(./bin/dotaz.js --version)" = "dotaz ${{ needs.prepare.outputs.version }}"
+          ./bin/dotaz.js --help > /dev/null
+          PACKAGE_TARBALL=$(npm pack --silent)
+          TEST_DIR=$(mktemp -d)
+          npm install --prefix "$TEST_DIR" "$PWD/$PACKAGE_TARBALL"
+          test "$(cd "$TEST_DIR" && bunx --no-install @dotaz/cli --version)" = "dotaz ${{ needs.prepare.outputs.version }}"
+
+      - name: Publish to npm
+        run: npm publish --tag ${{ needs.prepare.outputs.npm-tag }} --access public --provenance
+        working-directory: dist-agent-cli
+
   # ── GitHub Release ────────────────────────────────────────
   release:
-    needs: [prepare, desktop, docker, npm]
+    needs: [prepare, desktop, docker, npm-server, npm-cli]
     runs-on: ubuntu-latest
     permissions:
       contents: write

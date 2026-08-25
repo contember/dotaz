@@ -32,6 +32,9 @@ bun run build:canary
 # Production build (web server)
 bun run build:server
 
+# Production build (agent CLI npm package)
+bun run build:agent-cli
+
 # Type checking (must pass with zero errors)
 bunx tsc --noEmit
 
@@ -133,6 +136,7 @@ This triggers the release workflow which:
 - Builds desktop apps for 5 platforms (Linux x64/ARM64, macOS x64/ARM64, Windows x64)
 - Publishes Docker image to `ghcr.io/contember/dotaz`
 - Publishes `@dotaz/server` npm package
+- Publishes `@dotaz/cli` npm package
 - Creates GitHub Release with all artifacts
 
 Pre-release tags (containing `-beta`, `-alpha`, `-rc`) get `canary` electrobun env and `beta` npm tag.

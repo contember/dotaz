@@ -12,6 +12,7 @@
 		"start": "vite build && WEBKIT_DISABLE_COMPOSITING_MODE=1 electrobun dev",
 		"dev": "concurrently \"vite --port 6400\" \"WEBKIT_DISABLE_COMPOSITING_MODE=1 electrobun dev --watch\"",
 		"build:canary": "vite build && electrobun build --env=canary",
+		"build:agent-cli": "bun scripts/build-agent-cli.ts",
 		"build:server": "bun scripts/build-server.ts",
 		"build:docker": "docker build -t dotaz .",
 		"test": "bun test",

@@ -77,6 +77,17 @@ Request isolation depends on how the server is bound:
 - **Non-loopback (e.g. `--host 0.0.0.0`)** — `DOTAZ_ENCRYPTION_KEY` is required so saved credentials remain decryptable across restarts. Dotaz still rejects cross-site browser requests, but it does not implement user authentication; put it behind your own auth/proxy if the URL is not trusted.
 - **Behind a reverse proxy** — serve the UI and `/rpc`/`/api` under the same origin. Keep the loopback bind (default); if the proxy preserves a public `Host` header, allow that host with `DOTAZ_ALLOWED_HOSTS`.
 
+### Agent CLI
+
+With the desktop app running and CLI access enabled in Settings:
+
+```sh
+bunx @dotaz/cli status
+bunx @dotaz/cli rows local/users --limit 20
+```
+
+The CLI reads through backend-owned read-only sessions. Writes are submitted to the desktop app for explicit approval.
+
 ### Docker
 
 ```sh
