@@ -6,7 +6,7 @@ import type { QueryResult, QueryResultColumn } from '@dotaz/shared/types/query'
 import type { DriverConnectionHandleInfo } from '@dotaz/shared/types/rpc'
 import type { SQL } from 'bun'
 import { ConnectionPool, type PoolConnectionSnapshot } from '../db/connection-pool'
-import type { DatabaseDriver } from '../db/driver'
+import type { DatabaseDriver, ReserveSessionOptions } from '../db/driver'
 import { mapPostgresError } from '../db/error-mapping'
 import { getAffectedRowCount } from '../db/result-utils'
 import { isConnectionLevelError, safeCloseConnection, syncTxActive } from './driver-utils'
@@ -161,6 +161,8 @@ export class PostgresDriver implements DatabaseDriver {
 	private pool: ConnectionPool | null = null
 	private connected = false
 	private sessions = new Map<string, SessionState>()
+	/** sessionId → the SQL that re-asserts read-only mode, re-run before every statement. */
+	private readOnlySessions = new Map<string, string>()
 	private defaultSessionPending = false
 	private poolActiveQueries = new Map<symbol, ReturnType<SQL['unsafe']>>()
 
@@ -204,6 +206,7 @@ export class PostgresDriver implements DatabaseDriver {
 			await safeCloseConnection(session.conn, { rollback: true })
 		}
 		this.sessions.clear()
+		this.readOnlySessions.clear()
 
 		if (this.pool) {
 			await this.pool.disconnectAll()
@@ -217,16 +220,37 @@ export class PostgresDriver implements DatabaseDriver {
 
 	// --- Session management ---
 
-	async reserveSession(sessionId: string): Promise<void> {
+	async reserveSession(sessionId: string, opts?: ReserveSessionOptions): Promise<void> {
 		this.ensureConnected()
 		if (this.sessions.has(sessionId)) {
 			throw new Error(`Session "${sessionId}" already exists`)
 		}
 		const conn = await this.pool!.createConnection()
+		if (opts?.readOnly) {
+			// Both settings are plain GUCs, so `SELECT set_config(…)` — which classifies as a
+			// read — can clear them from inside the session. Re-asserting before every
+			// statement is what makes them stick; see reassertReadOnly().
+			const statements = ['SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY']
+			const timeoutMs = Math.floor(opts.statementTimeoutMs ?? 0)
+			if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+				// A bare integer is milliseconds; the server cancels the statement itself.
+				statements.push(`SET SESSION statement_timeout = ${timeoutMs}`)
+			}
+			const reassertSql = statements.join('; ')
+			try {
+				await conn.unsafe(reassertSql)
+			} catch (err) {
+				await safeCloseConnection(conn)
+				await this.pool!.destroyConnection(conn)
+				throw err instanceof DatabaseError ? err : mapPostgresError(err)
+			}
+			this.readOnlySessions.set(sessionId, reassertSql)
+		}
 		this.sessions.set(sessionId, { conn, txActive: false, txAborted: false, iterating: false, activeQueries: new Set() })
 	}
 
 	async releaseSession(sessionId: string): Promise<void> {
+		this.readOnlySessions.delete(sessionId)
 		const session = this.sessions.get(sessionId)
 		if (!session) return // idempotent — already released or never existed
 		this.sessions.delete(sessionId)
@@ -240,6 +264,28 @@ export class PostgresDriver implements DatabaseDriver {
 		return [...this.sessions.keys()].filter((id) => id !== DEFAULT_SESSION)
 	}
 
+	isSessionReadOnly(sessionId: string): boolean {
+		return this.readOnlySessions.has(sessionId)
+	}
+
+	/**
+	 * Re-apply a read-only session's characteristics before each statement.
+	 *
+	 * `default_transaction_read_only` and `statement_timeout` are ordinary GUCs, and
+	 * `SELECT set_config('default_transaction_read_only','off',false)` classifies as a read —
+	 * so without this a read-only session could clear its own enforcement and then write.
+	 * Verified against PostgreSQL 17: re-asserting between statements blocks the write, and a
+	 * single statement cannot both clear the GUC and write under it.
+	 *
+	 * Skipped inside an explicit transaction: session characteristics only affect transactions
+	 * started afterwards, and that transaction already began read-only.
+	 */
+	private async reassertReadOnly(sessionId: string, session: SessionState, conn: SQL): Promise<void> {
+		const reassertSql = this.readOnlySessions.get(sessionId)
+		if (!reassertSql || session.txActive) return
+		await conn.unsafe(reassertSql)
+	}
+
 	// --- Query execution ---
 
 	async execute(sql: string, params?: unknown[], sessionId?: string, poolQueryKey?: symbol): Promise<QueryResult> {
@@ -247,6 +293,9 @@ export class PostgresDriver implements DatabaseDriver {
 		const session = this.resolveSession(sessionId)
 		const conn = session ? session.conn : await this.pool!.acquireConnection()
 		const releaseConn = !session
+		if (session && sessionId !== undefined) {
+			await this.reassertReadOnly(sessionId, session, conn)
+		}
 		const start = performance.now()
 		const query = conn.unsafe(sql, params ?? [])
 		const effectiveQueryKey = session ? undefined : (poolQueryKey ?? Symbol())

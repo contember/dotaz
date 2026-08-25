@@ -1,16 +1,122 @@
+import { isReadOnlySql } from '@dotaz/shared/sql/statements'
 import type { ConnectionConfig } from '@dotaz/shared/types/connection'
+import { DatabaseError } from '@dotaz/shared/types/errors'
 import type { ExportOptions, ExportPreviewRequest, ExportRawPreviewRequest } from '@dotaz/shared/types/export'
 import type { ImportOptions, ImportPreviewRequest } from '@dotaz/shared/types/import'
 import type {
+	AgentQueryParams,
+	AgentSchemaParams,
+	AgentSearchParams,
 	AiGenerateSqlParams,
 	HistoryListParams,
 	OpenDialogParams,
+	ProposalListParams,
+	ProposalResolveParams,
+	ProposeWriteParams,
 	SaveDialogParams,
 	SavedViewConfig,
 	SearchDatabaseParams,
 	TransactionLogParams,
+	UiSnapshot,
 } from '@dotaz/shared/types/rpc'
 import type { RpcAdapter } from './adapter'
+
+/** Long-poll ceiling for `agent.proposals.wait` — anything above is clamped, not rejected. */
+const MAX_PROPOSAL_WAIT_MS = 10 * 60 * 1000
+const DEFAULT_PROPOSAL_WAIT_MS = 30 * 1000
+const AGENT_SESSION_LABEL = 'cli'
+
+/**
+ * Reject a `where` fragment that is not a single boolean expression.
+ *
+ * The grid splices this straight into `WHERE (…)` and loads without any user interaction, so
+ * `1=1); DELETE FROM orders; --` would run as three statements in the tab's writable session.
+ * The filter box has always interpolated raw SQL — safe for a human typing into their own
+ * app, but this is a trust boundary in front of it.
+ */
+function assertBooleanExpression(where: string | undefined): void {
+	if (where === undefined) return
+	const fragment = where.trim()
+	if (fragment === '') return
+
+	let depth = 0
+	let i = 0
+	while (i < fragment.length) {
+		const ch = fragment[i]
+		const next = fragment[i + 1] ?? ''
+
+		// Skip over string literals and quoted identifiers — a `;` inside one is just data
+		if (ch === "'" || ch === '"') {
+			i++
+			while (i < fragment.length) {
+				if (fragment[i] !== ch) {
+					i++
+					continue
+				}
+				i++
+				if (fragment[i] === ch) i++ // doubled quote escapes itself
+				else break
+			}
+			continue
+		}
+		if (ch === ';') {
+			throw new Error('where must be a single boolean expression, not a statement list')
+		}
+		if ((ch === '-' && next === '-') || (ch === '/' && next === '*')) {
+			throw new Error('where must not contain SQL comments')
+		}
+		if (ch === '(') depth++
+		if (ch === ')' && --depth < 0) throw new Error('where has unbalanced parentheses')
+		i++
+	}
+	if (depth !== 0) throw new Error('where has unbalanced parentheses')
+}
+
+function requireKnownConnection(adapter: RpcAdapter, connectionId: string): void {
+	if (!connectionId) {
+		throw new Error('connectionId is required')
+	}
+	if (!adapter.listConnections().some((c) => c.id === connectionId)) {
+		throw new Error(`Unknown connection: ${connectionId}`)
+	}
+}
+
+async function destroyAgentSession(adapter: RpcAdapter, sessionId: string): Promise<void> {
+	try {
+		await adapter.destroySession(sessionId)
+	} catch (error) {
+		console.warn(`Failed to destroy agent session ${sessionId}`, error)
+	}
+}
+
+async function withAgentReadOnlySession<T>(
+	adapter: RpcAdapter,
+	connectionId: string,
+	database: string | undefined,
+	operation: (sessionId: string) => Promise<T>,
+): Promise<T> {
+	requireKnownConnection(adapter, connectionId)
+	const session = await adapter.createSession(connectionId, database, { readOnly: true, label: AGENT_SESSION_LABEL })
+	if (session.readOnly !== true) {
+		await destroyAgentSession(adapter, session.sessionId)
+		throw new DatabaseError('READ_ONLY_SESSION', 'The database did not confirm a read-only agent session')
+	}
+
+	try {
+		return await operation(session.sessionId)
+	} finally {
+		await destroyAgentSession(adapter, session.sessionId)
+	}
+}
+
+function clampProposalWait(timeoutMs?: number): number {
+	if (timeoutMs === undefined) return DEFAULT_PROPOSAL_WAIT_MS
+	if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
+		throw new Error('timeoutMs must be a non-negative number')
+	}
+	return Math.min(timeoutMs, MAX_PROPOSAL_WAIT_MS)
+}
+
 export function createHandlers(adapter: RpcAdapter) {
 	return {
 		// ── Connection Management ─────────────────────────
@@ -78,8 +184,10 @@ export function createHandlers(adapter: RpcAdapter) {
 		},
 
 		// ── Sessions ─────────────────────────────────────
-		'session.create': async ({ connectionId, database }: { connectionId: string; database?: string }) => {
-			return adapter.createSession(connectionId, database)
+		'session.create': async (
+			{ connectionId, database, readOnly, label }: { connectionId: string; database?: string; readOnly?: boolean; label?: string },
+		) => {
+			return adapter.createSession(connectionId, database, { readOnly, label })
 		},
 		'session.destroy': async ({ sessionId }: { sessionId: string }) => {
 			await adapter.destroySession(sessionId)
@@ -350,6 +458,124 @@ export function createHandlers(adapter: RpcAdapter) {
 				return { path: null as string | null, cancelled: true }
 			}
 			return adapter.showSaveDialog(params)
+		},
+
+		// ── Agent CLI (see docs/agent-cli.md) ─────────────
+		'agent.hello': () => {
+			return adapter.agentHello()
+		},
+		'agent.schema': async ({ connectionId, database }: AgentSchemaParams) => {
+			return withAgentReadOnlySession(adapter, connectionId, database, (sessionId) => {
+				return adapter.getDriver(connectionId, database).loadSchema(sessionId)
+			})
+		},
+		'agent.query': async ({ connectionId, database, sql, queryId, params, searchPath }: AgentQueryParams) => {
+			if (!sql?.trim()) {
+				throw new Error('sql is required')
+			}
+			if (!queryId) {
+				throw new Error('queryId is required')
+			}
+			return withAgentReadOnlySession(adapter, connectionId, database, (sessionId) => {
+				return adapter.executeQuery(connectionId, sql, params, queryId, database, sessionId, searchPath)
+			})
+		},
+		'agent.search': async (params: AgentSearchParams) => {
+			return withAgentReadOnlySession(adapter, params.connectionId, params.database, (sessionId) => {
+				return adapter.searchDatabase({ ...params, sessionId })
+			})
+		},
+		'agent.proposeWrite': ({ connectionId, database, sql, reason }: ProposeWriteParams) => {
+			requireKnownConnection(adapter, connectionId)
+			if (!sql?.trim()) {
+				throw new Error('sql is required')
+			}
+			const proposal = adapter.proposeWrite({
+				connectionId,
+				database,
+				sql: sql.trim(),
+				reason: reason?.trim() || undefined,
+			})
+			return { proposalId: proposal.id }
+		},
+		'agent.proposals.list': (params?: ProposalListParams) => {
+			return adapter.listProposals(params)
+		},
+		'agent.proposals.get': ({ proposalId }: { proposalId: string }) => {
+			if (!proposalId) {
+				throw new Error('proposalId is required')
+			}
+			const proposal = adapter.getProposal(proposalId)
+			if (!proposal) {
+				throw new Error(`Proposal not found: ${proposalId}`)
+			}
+			return proposal
+		},
+		'agent.proposals.wait': async ({ proposalId, timeoutMs }: { proposalId: string; timeoutMs?: number }) => {
+			if (!proposalId) {
+				throw new Error('proposalId is required')
+			}
+			return adapter.waitForProposal(proposalId, clampProposalWait(timeoutMs))
+		},
+		'agent.proposals.cancel': ({ proposalId }: { proposalId: string }) => {
+			if (!proposalId) {
+				throw new Error('proposalId is required')
+			}
+			adapter.cancelProposal(proposalId)
+		},
+		// Frontend only — the app resolves a proposal after the user ran or rejected it.
+		'agent.proposals.resolve': ({ proposalId, status, result, error }: ProposalResolveParams) => {
+			if (!proposalId) {
+				throw new Error('proposalId is required')
+			}
+			if (!status) {
+				throw new Error('status is required')
+			}
+			return adapter.resolveProposal({ proposalId, status, result, error })
+		},
+
+		// ── UI control ────────────────────────────────────
+		'ui.state': () => {
+			return adapter.getUiSnapshot()
+		},
+		'ui.openTable': ({ connectionId, database, schema, table, where, limit }: {
+			connectionId: string
+			database?: string
+			schema?: string
+			table: string
+			where?: string
+			limit?: number
+		}) => {
+			requireKnownConnection(adapter, connectionId)
+			if (!table?.trim()) {
+				throw new Error('table is required')
+			}
+			if (limit !== undefined && (!Number.isInteger(limit) || limit <= 0)) {
+				throw new Error('limit must be a positive integer')
+			}
+			assertBooleanExpression(where)
+			// SQLite has no schemas, so the CLI's shortened path form omits it.
+			adapter.sendUiCommand({ kind: 'open-table', connectionId, database, schema: schema ?? '', table: table.trim(), where, limit })
+			return { ok: true } as const
+		},
+		'ui.openConsole': ({ connectionId, database, sql, run }: { connectionId: string; database?: string; sql?: string; run?: boolean }) => {
+			requireKnownConnection(adapter, connectionId)
+			if (run && !sql?.trim()) {
+				throw new Error('run requires sql')
+			}
+			// Auto-run would otherwise be a way around the approval flow — writes must go through agent.proposeWrite
+			if (run && !isReadOnlySql(sql ?? '')) {
+				throw new DatabaseError('READ_ONLY_SESSION', 'Only read-only SQL can be auto-run — submit writes via agent.proposeWrite')
+			}
+			adapter.sendUiCommand({ kind: 'open-console', connectionId, database, sql, run })
+			return { ok: true } as const
+		},
+		// Frontend only — the app publishes what the user is currently looking at.
+		'ui.snapshot.set': ({ snapshot }: { snapshot: UiSnapshot }) => {
+			if (!snapshot || !Array.isArray(snapshot.tabs)) {
+				throw new Error('snapshot is required')
+			}
+			adapter.setUiSnapshot(snapshot)
 		},
 
 		// ── Demo ──────────────────────────────────────────────

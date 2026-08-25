@@ -87,6 +87,27 @@ function gridConfigToSettings(config: GridConfig): Record<string, string> {
 	}
 }
 
+// ── CLI config ────────────────────────────────────────────
+
+export interface CliConfig {
+	/** Whether local processes may drive this app through the CLI (see docs/agent-cli.md). */
+	enabled: boolean
+}
+
+const DEFAULT_CLI_CONFIG: CliConfig = { enabled: false }
+
+function settingsToCliConfig(settings: Record<string, string>): CliConfig {
+	return {
+		enabled: settings['cli.enabled'] === 'true',
+	}
+}
+
+function cliConfigToSettings(config: CliConfig): Record<string, string> {
+	return {
+		'cli.enabled': String(config.enabled),
+	}
+}
+
 // ── Connections list config ───────────────────────────────
 
 export type ConnectionSortMode = 'manual' | 'name' | 'type' | 'status'
@@ -144,6 +165,7 @@ interface SettingsState {
 	consoleConfig: ConsoleConfig
 	appearanceConfig: AppearanceConfig
 	gridConfig: GridConfig
+	cliConfig: CliConfig
 	connectionsConfig: ConnectionsConfig
 	loaded: boolean
 }
@@ -155,6 +177,7 @@ const [state, setState] = createStore<SettingsState>({
 	consoleConfig: { ...DEFAULT_CONSOLE_CONFIG },
 	appearanceConfig: { ...DEFAULT_APPEARANCE_CONFIG },
 	gridConfig: { ...DEFAULT_GRID_CONFIG },
+	cliConfig: { ...DEFAULT_CLI_CONFIG },
 	connectionsConfig: { ...DEFAULT_CONNECTIONS_CONFIG },
 	loaded: false,
 })
@@ -167,6 +190,7 @@ async function loadSettings() {
 		setState('sessionConfig', settingsToSessionConfig(all))
 		setState('consoleConfig', settingsToConsoleConfig(all))
 		setState('gridConfig', settingsToGridConfig(all))
+		setState('cliConfig', settingsToCliConfig(all))
 		setState('connectionsConfig', settingsToConnectionsConfig(all))
 		const appearance = settingsToAppearanceConfig(all)
 		setState('appearanceConfig', appearance)
@@ -238,6 +262,18 @@ async function saveGridConfig(config: GridConfig) {
 	}
 }
 
+async function saveCliConfig(config: CliConfig) {
+	setState('cliConfig', config)
+	const entries = cliConfigToSettings(config)
+	for (const [key, value] of Object.entries(entries)) {
+		try {
+			await rpc.settings.set({ key, value })
+		} catch (err) {
+			uiStore.addToast('error', `Failed to save setting "${key}": ${err instanceof Error ? err.message : String(err)}`)
+		}
+	}
+}
+
 async function saveAppearanceConfig(config: AppearanceConfig) {
 	setState('appearanceConfig', config)
 	applyTheme(config.colorTheme)
@@ -288,6 +324,9 @@ export const settingsStore = {
 	get gridConfig() {
 		return state.gridConfig
 	},
+	get cliConfig() {
+		return state.cliConfig
+	},
 	get connectionsConfig() {
 		return state.connectionsConfig
 	},
@@ -301,6 +340,7 @@ export const settingsStore = {
 	saveConsoleConfig,
 	saveAppearanceConfig,
 	saveGridConfig,
+	saveCliConfig,
 	setConnectionSort,
 	setConnectionOrder,
 	applyTheme,

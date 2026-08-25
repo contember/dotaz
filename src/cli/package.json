@@ -1,5 +1,5 @@
 {
-	"name": "@dotaz/cli",
+	"name": "@dotaz/server-cli",
 	"private": true,
 	"version": "0.0.0",
 	"dependencies": {

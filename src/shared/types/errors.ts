@@ -23,6 +23,8 @@ export type DatabaseErrorCode =
 	| 'TRANSACTION_ABORTED'
 	| 'COMMIT_UNCERTAIN'
 	| 'STATEMENT_UNCERTAIN'
+	| 'QUERY_CANCELED'
+	| 'READ_ONLY_SESSION'
 	| 'UNKNOWN'
 
 /** Base domain error with a typed code for programmatic handling */
@@ -135,6 +137,10 @@ export function friendlyMessageForCode(code: DatabaseErrorCode, rawMessage: stri
 			return 'Commit status unknown — the connection was lost before confirmation. Your data may have been saved. Please verify before retrying.'
 		case 'STATEMENT_UNCERTAIN':
 			return 'Statement may have completed — the timeout fired but the server may have already executed the statement. Verify your data before retrying.'
+		case 'QUERY_CANCELED':
+			return 'Query cancelled — it hit the statement timeout or was cancelled explicitly'
+		case 'READ_ONLY_SESSION':
+			return 'This session is read-only — writes must be proposed for approval'
 		case 'UNKNOWN':
 			return rawMessage || 'An unexpected error occurred'
 	}

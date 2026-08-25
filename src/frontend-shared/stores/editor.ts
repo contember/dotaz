@@ -186,6 +186,35 @@ function findDestructiveStatements(sql: string): string[] {
 	return statements.filter(detectDestructiveWithoutWhere)
 }
 
+// ── Run completion notifications ──────────────────────────
+
+/** Outcome of one console run, reported to observers such as the CLI proposal banner. */
+export interface RunFinishedEvent {
+	tabId: string
+	/** The SQL that was submitted. */
+	sql: string
+	/** Result sets, when the run reached the database. */
+	results?: QueryResult[]
+	/** Execution error, when the run failed as a whole. */
+	error?: string
+	/** The run never reached the database (read-only connection, destructive warning cancelled). */
+	skipped?: boolean
+}
+
+const runListeners = new Set<(event: RunFinishedEvent) => void>()
+
+/** Subscribe to run outcomes. Returns an unsubscribe function. */
+function onRunFinished(listener: (event: RunFinishedEvent) => void): () => void {
+	runListeners.add(listener)
+	return () => runListeners.delete(listener)
+}
+
+function notifyRunFinished(event: RunFinishedEvent) {
+	for (const listener of [...runListeners]) {
+		listener(event)
+	}
+}
+
 /** Track active query message listeners so they can be cleaned up on cancel/new-query. */
 const activeQueryUnsubs = new Map<string, () => void>()
 /** Track active query reject functions so connection-loss can fail pending queries. */
@@ -439,6 +468,8 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit =
 
 		// Auto-unpin after commit/rollback if configured
 		sessionStore.checkAutoUnpin(tabId, sql).catch(() => {})
+
+		notifyRunFinished({ tabId, sql, results })
 	} catch (err) {
 		// Discard if tab was removed or a newer query was started
 		if (!getTab(tabId) || state.tabs[tabId]?.queryId !== queryId) return
@@ -473,6 +504,8 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit =
 		} else {
 			setTxLogVersion((v) => v + 1)
 		}
+
+		notifyRunFinished({ tabId, sql, error: errorMessage })
 	} finally {
 		clearTimeout(responseTimer)
 		activeQueryUnsubs.delete(queryId)
@@ -484,6 +517,7 @@ function checkAndRunQuery(tabId: string, sql: string, baseOffset = 0) {
 	const tab = getTab(tabId)
 	if (tab && connectionsStore.isReadOnly(tab.connectionId) && containsDmlStatements(sql)) {
 		uiStore.addToast('warning', 'This connection is read-only. DML/DDL statements are not allowed.')
+		notifyRunFinished({ tabId, sql, skipped: true })
 		return
 	}
 	if (!suppressDestructiveWarning) {
@@ -539,7 +573,11 @@ function confirmDestructiveQuery(suppressForSession = false) {
 }
 
 function cancelDestructiveQuery() {
+	const pending = pendingDestructiveQuery()
 	setPendingDestructiveQuery(null)
+	if (pending) {
+		notifyRunFinished({ tabId: pending.tabId, sql: pending.sql, skipped: true })
+	}
 }
 
 async function cancelQuery(tabId: string) {
@@ -1046,6 +1084,7 @@ export const editorStore = {
 	executeQuery,
 	executeSelected,
 	executeStatement,
+	onRunFinished,
 	cancelQuery,
 	explainQuery,
 	formatSql,

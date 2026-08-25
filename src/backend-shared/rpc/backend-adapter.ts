@@ -5,11 +5,16 @@ import type { ExportOptions, ExportPreviewRequest, ExportRawPreviewRequest, Expo
 import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from '@dotaz/shared/types/import'
 import type { QueryHistoryEntry, QueryResult } from '@dotaz/shared/types/query'
 import type {
+	AgentHelloResult,
 	AiGenerateSqlParams,
 	AiGenerateSqlResult,
 	ConnectionHandleInfo,
 	HistoryListParams,
 	OpenDialogParams,
+	Proposal,
+	ProposalListParams,
+	ProposalResolveParams,
+	ProposeWriteParams,
 	SaveDialogParams,
 	SavedView,
 	SavedViewConfig,
@@ -18,6 +23,8 @@ import type {
 	SessionInfo,
 	TransactionLogParams,
 	TransactionLogResult,
+	UiCommandPayload,
+	UiSnapshot,
 } from '@dotaz/shared/types/rpc'
 import { settingsToAiConfig } from '@dotaz/shared/types/settings'
 import type { DatabaseDriver } from '../db/driver'
@@ -27,6 +34,8 @@ import type { ConnectionManager } from '../services/connection-manager'
 import type { EncryptionService } from '../services/encryption'
 import { buildExportSelectQuery, exportPreview, exportToFile } from '../services/export-service'
 import { importFromStream, importPreviewFromStream } from '../services/import-service'
+import { ProposalStore } from '../services/proposal-store'
+import { assertSessionWritable } from '../services/query-executor'
 import type { QueryExecutor } from '../services/query-executor'
 import { searchDatabase } from '../services/search-service'
 import type { SessionManager } from '../services/session-manager'
@@ -37,6 +46,9 @@ import type { RpcAdapter } from './adapter'
 
 export type EmitMessage = (channel: string, payload: unknown) => void
 
+/** Wire protocol version reported by `agent.hello` and `/health` (docs/agent-cli.md). */
+export const AGENT_PROTOCOL_VERSION = 1
+
 export interface BackendAdapterOptions {
 	encryption?: EncryptionService
 	Utils?: typeof import('electrobun/bun').Utils
@@ -45,6 +57,8 @@ export interface BackendAdapterOptions {
 	demoDbSourcePath?: string
 	demoDbTargetPath?: string
 	allowServerFileAccess?: boolean
+	appVersion?: string
+	mode?: 'desktop' | 'web' | 'demo'
 }
 
 export class BackendAdapter implements RpcAdapter {
@@ -56,6 +70,12 @@ export class BackendAdapter implements RpcAdapter {
 	private demoDbSourcePath?: string
 	private demoDbTargetPath?: string
 	private allowServerFileAccess: boolean
+	private appVersion: string
+	private mode: 'desktop' | 'web' | 'demo'
+	private proposals = new ProposalStore()
+	private unsubscribeProposals: () => void
+	/** Last snapshot published by the frontend — absent until the UI reports in. */
+	private uiSnapshot: UiSnapshot | null = null
 
 	constructor(
 		private cm: ConnectionManager,
@@ -71,6 +91,13 @@ export class BackendAdapter implements RpcAdapter {
 		this.demoDbSourcePath = opts?.demoDbSourcePath
 		this.demoDbTargetPath = opts?.demoDbTargetPath
 		this.allowServerFileAccess = opts?.allowServerFileAccess ?? true
+		this.appVersion = opts?.appVersion ?? '0.0.0'
+		this.mode = opts?.mode ?? 'web'
+		// Every transition, not just creation — an approval banner whose proposal was cancelled
+		// or expired elsewhere must stop being actionable.
+		this.unsubscribeProposals = this.proposals.onChange((proposal) => {
+			this.emitMessage?.('cli.proposal', proposal)
+		})
 	}
 
 	// ── Connections ────────────────────────────────────────
@@ -192,9 +219,9 @@ export class BackendAdapter implements RpcAdapter {
 
 	// ── Sessions ──────────────────────────────────────────
 
-	async createSession(connectionId: string, database?: string): Promise<SessionInfo> {
+	async createSession(connectionId: string, database?: string, opts?: { readOnly?: boolean; label?: string }): Promise<SessionInfo> {
 		if (!this.sessionManager) throw new Error('SessionManager not available')
-		const info = await this.sessionManager.createSession(connectionId, database)
+		const info = await this.sessionManager.createSession(connectionId, database, opts)
 		this.emitMessage?.('session.changed', { connectionId, sessions: this.sessionManager.listSessions(connectionId) })
 		return info
 	}
@@ -263,6 +290,8 @@ export class BackendAdapter implements RpcAdapter {
 		sessionId?: string,
 	): Promise<QueryResult[]> {
 		const driver = this.cm.getDriver(connectionId, database)
+		// The engine blocks these anyway; this turns the raw engine error into READ_ONLY_SESSION
+		for (const stmt of statements) assertSessionWritable(driver, stmt.sql, sessionId)
 
 		const runInSession = async (effectiveSessionId: string) => {
 			const inExistingTx = driver.inTransaction(effectiveSessionId)
@@ -492,6 +521,7 @@ export class BackendAdapter implements RpcAdapter {
 				schemaName: params.schemaName,
 				tableNames: params.tableNames,
 				resultsPerTable: params.resultsPerTable ?? 50,
+				sessionId: params.sessionId,
 			},
 			() => {},
 			() => false,
@@ -791,9 +821,58 @@ export class BackendAdapter implements RpcAdapter {
 		return conn
 	}
 
+	// ── Agent CLI ─────────────────────────────────────────
+
+	agentHello(): AgentHelloResult {
+		return { version: this.appVersion, mode: this.mode, pid: process.pid, protocol: AGENT_PROTOCOL_VERSION }
+	}
+
+	proposeWrite(params: ProposeWriteParams): Proposal {
+		return this.proposals.create(params)
+	}
+
+	listProposals(filter?: ProposalListParams): Proposal[] {
+		return this.proposals.list(filter)
+	}
+
+	getProposal(proposalId: string): Proposal | null {
+		return this.proposals.get(proposalId)
+	}
+
+	async waitForProposal(proposalId: string, timeoutMs: number): Promise<Proposal> {
+		return this.proposals.wait(proposalId, timeoutMs)
+	}
+
+	cancelProposal(proposalId: string): Proposal {
+		return this.proposals.cancel(proposalId)
+	}
+
+	resolveProposal(params: ProposalResolveParams): Proposal {
+		return this.proposals.resolve(params)
+	}
+
+	// ── UI control ────────────────────────────────────────
+
+	getUiSnapshot(): UiSnapshot {
+		return this.uiSnapshot ?? { tabs: [], activeTabId: null, activeConnectionId: null, updatedAt: 0 }
+	}
+
+	setUiSnapshot(snapshot: UiSnapshot): void {
+		this.uiSnapshot = snapshot
+	}
+
+	sendUiCommand(payload: UiCommandPayload): void {
+		this.emitMessage?.('cli.command', payload)
+	}
+
 	// ── Session Manager access ────────────────────────────
 
 	getSessionManager(): SessionManager | undefined {
 		return this.sessionManager
+	}
+
+	dispose(): void {
+		this.unsubscribeProposals()
+		this.proposals.dispose()
 	}
 }

@@ -32,6 +32,9 @@ bun run build:canary
 # Production build (web server)
 bun run build:server
 
+# Production build (agent CLI npm package)
+bun run build:agent-cli
+
 # Type checking (must pass with zero errors)
 bunx tsc --noEmit
 
@@ -81,6 +84,7 @@ src/
   backend-desktop/     ← Electrobun backend entry point
   backend-web/         ← HTTP/WebSocket server entry point
   cli/                 ← CLI entry point (bunx @dotaz/server)
+  cli-agent/           ← `dotaz` agent CLI — attaches to the running desktop app (docs/agent-cli.md)
   frontend-shared/     ← Solid.js UI: components, stores, lib (transport/storage registries)
   frontend-desktop/    ← Desktop entry: setTransport(electrobun) + setStorage(rpc)
   frontend-web/        ← Web entry: setTransport(websocket) + setStorage(indexeddb)
@@ -100,6 +104,7 @@ frontend-demo        ← frontend-shared + backend-shared (runtime — createHan
 backend-desktop      ← backend-shared
 backend-web          ← backend-shared
 cli                  ← backend-web (starts server with CLI argument parsing)
+cli-agent            ← shared (talks to a running app over HTTP — no backend imports)
 ```
 
 ### Transport & storage — registration pattern
@@ -131,6 +136,7 @@ This triggers the release workflow which:
 - Builds desktop apps for 5 platforms (Linux x64/ARM64, macOS x64/ARM64, Windows x64)
 - Publishes Docker image to `ghcr.io/contember/dotaz`
 - Publishes `@dotaz/server` npm package
+- Publishes `@dotaz/cli` npm package
 - Creates GitHub Release with all artifacts
 
 Pre-release tags (containing `-beta`, `-alpha`, `-rc`) get `canary` electrobun env and `beta` npm tag.

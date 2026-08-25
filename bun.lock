@@ -64,10 +64,20 @@
       },
     },
     "src/cli": {
-      "name": "@dotaz/cli",
+      "name": "@dotaz/server-cli",
       "version": "0.0.0",
       "dependencies": {
         "@dotaz/backend-web": "workspace:*",
+      },
+    },
+    "src/cli-agent": {
+      "name": "@dotaz/cli",
+      "version": "0.0.0",
+      "bin": {
+        "dotaz": "./main.ts",
+      },
+      "dependencies": {
+        "@dotaz/shared": "workspace:*",
       },
     },
     "src/frontend-demo": {
@@ -188,7 +198,7 @@
 
     "@dotaz/backend-web": ["@dotaz/backend-web@workspace:src/backend-web"],
 
-    "@dotaz/cli": ["@dotaz/cli@workspace:src/cli"],
+    "@dotaz/cli": ["@dotaz/cli@workspace:src/cli-agent"],
 
     "@dotaz/frontend-demo": ["@dotaz/frontend-demo@workspace:src/frontend-demo"],
 
@@ -197,6 +207,8 @@
     "@dotaz/frontend-shared": ["@dotaz/frontend-shared@workspace:src/frontend-shared"],
 
     "@dotaz/frontend-web": ["@dotaz/frontend-web@workspace:src/frontend-web"],
+
+    "@dotaz/server-cli": ["@dotaz/server-cli@workspace:src/cli"],
 
     "@dotaz/shared": ["@dotaz/shared@workspace:src/shared"],
 

@@ -1,5 +1,5 @@
-import { hasExplicitEncryptionKey, validateEncryptionKeyStartup } from '@dotaz/cli/startup'
 import { describe, expect, test } from 'bun:test'
+import { hasExplicitEncryptionKey, validateEncryptionKeyStartup } from '../src/cli/startup'
 
 describe('CLI startup encryption key policy', () => {
 	test('allows loopback binds without an explicit encryption key', () => {

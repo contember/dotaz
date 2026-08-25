@@ -11,7 +11,103 @@ export interface SessionInfo {
 	inTransaction: boolean
 	txAborted: boolean
 	createdAt: number
+	/** Session is read-only at the engine level — set for agent/CLI sessions. */
+	readOnly?: boolean
 }
+
+// ---- Agent CLI types (see docs/agent-cli.md) ----
+
+export type ProposalStatus =
+	| 'pending'
+	| 'approved'
+	| 'rejected'
+	| 'executed'
+	| 'failed'
+	| 'cancelled'
+	| 'expired'
+
+/**
+ * A write submitted by the CLI for the user to approve in the app.
+ * The CLI never executes writes itself.
+ */
+export interface Proposal {
+	id: string
+	connectionId: string
+	database?: string
+	sql: string
+	reason?: string
+	status: ProposalStatus
+	createdAt: number
+	resolvedAt?: number
+	result?: { affectedRows?: number; statements?: number }
+	error?: string
+}
+
+export interface ProposeWriteParams {
+	connectionId: string
+	database?: string
+	sql: string
+	reason?: string
+}
+
+export interface ProposalListParams {
+	status?: ProposalStatus
+	connectionId?: string
+}
+
+export interface ProposalResolveParams {
+	proposalId: string
+	status: ProposalStatus
+	result?: { affectedRows?: number; statements?: number }
+	error?: string
+}
+
+export interface AgentHelloResult {
+	version: string
+	mode: 'desktop' | 'web' | 'demo'
+	pid: number
+	protocol: number
+}
+
+export interface AgentQueryParams {
+	connectionId: string
+	database?: string
+	sql: string
+	queryId: string
+	params?: unknown[]
+	searchPath?: string
+}
+
+export interface AgentSchemaParams {
+	connectionId: string
+	database?: string
+}
+
+export type AgentSearchParams = Omit<SearchDatabaseParams, 'sessionId'>
+
+/** One open tab, as reported to the CLI by `ui.state`. */
+export interface UiTabSnapshot {
+	id: string
+	type: string
+	title: string
+	connectionId: string
+	database?: string
+	schema?: string
+	table?: string
+	/** Current editor contents — SQL console tabs only. */
+	sql?: string
+}
+
+export interface UiSnapshot {
+	tabs: UiTabSnapshot[]
+	activeTabId: string | null
+	activeConnectionId: string | null
+	updatedAt: number
+}
+
+export type UiCommandPayload =
+	| { kind: 'open-table'; connectionId: string; database?: string; schema: string; table: string; where?: string; limit?: number }
+	| { kind: 'open-console'; connectionId: string; database?: string; sql?: string; run?: boolean }
 
 // ---- Open connection handle diagnostics ----
 
