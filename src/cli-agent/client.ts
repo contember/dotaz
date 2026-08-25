@@ -195,16 +195,14 @@ export class DotazClient {
 export interface QueryExecuteParams {
 	connectionId: string
 	database?: string
-	sessionId: string
 	sql: string
 	params?: unknown[]
 }
 
 /**
- * Run `query.execute` under a queryId we own, so that giving up on the answer also stops the
+ * Run `agent.query` under a queryId we own, so that giving up on the answer also stops the
  * work: on a timeout or a Ctrl-C the query is cancelled inside the app instead of running on
- * for nobody. SIGINT aborts the request rather than killing the process, so the caller's
- * session teardown still runs.
+ * for nobody. The backend owns the read-only session and releases it when the handler settles.
  */
 export async function executeQuery(client: DotazClient, params: QueryExecuteParams): Promise<unknown> {
 	const queryId = randomUUID()
@@ -217,7 +215,7 @@ export async function executeQuery(client: DotazClient, params: QueryExecutePara
 	process.on('SIGINT', onInterrupt)
 
 	try {
-		return await client.call('query.execute', { ...params, queryId }, { signal: interrupt.signal })
+		return await client.call('agent.query', { ...params, queryId }, { signal: interrupt.signal })
 	} catch (err) {
 		// Both the timeout and the interrupt land on EXIT.timeout — nobody is waiting for the rows
 		if (!(err instanceof CliError) || err.exitCode !== EXIT.timeout) throw err

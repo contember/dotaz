@@ -10,6 +10,7 @@ export interface SearchDatabaseOptions {
 	schemaName?: string
 	tableNames?: string[]
 	resultsPerTable: number
+	sessionId?: string
 }
 
 export interface SearchDatabaseResult {
@@ -36,7 +37,7 @@ export async function searchDatabase(
 	isCancelled: () => boolean,
 ): Promise<SearchDatabaseResult> {
 	const start = performance.now()
-	const schema = await driver.loadSchema()
+	const schema = await driver.loadSchema(opts.sessionId)
 
 	// Determine which tables to search based on scope
 	const tablesToSearch: TableInfo[] = []
@@ -94,7 +95,7 @@ export async function searchDatabase(
 		params.push(opts.resultsPerTable)
 
 		try {
-			const result = await driver.execute(sql, params)
+			const result = await driver.execute(sql, params, opts.sessionId)
 			for (const row of result.rows) {
 				// Find which column(s) matched
 				const rowRecord = row as Record<string, unknown>

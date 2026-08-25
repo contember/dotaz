@@ -521,6 +521,7 @@ export class BackendAdapter implements RpcAdapter {
 				schemaName: params.schemaName,
 				tableNames: params.tableNames,
 				resultsPerTable: params.resultsPerTable ?? 50,
+				sessionId: params.sessionId,
 			},
 			() => {},
 			() => false,

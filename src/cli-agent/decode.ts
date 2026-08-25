@@ -20,7 +20,6 @@ import type {
 	ProposalStatus,
 	SearchDatabaseResult,
 	SearchMatch,
-	SessionInfo,
 	UiSnapshot,
 	UiTabSnapshot,
 } from '@dotaz/shared/types/rpc'
@@ -192,7 +191,7 @@ function decodeMap<T>(value: unknown, decode: (v: unknown) => T): Record<string,
 }
 
 export function decodeSchemaData(payload: unknown): SchemaData {
-	if (!isRecord(payload)) throw decodeError('schema.load')
+	if (!isRecord(payload)) throw decodeError('agent.schema')
 	const schemas: SchemaInfo[] = arr(payload.schemas)
 		.map((entry) => ({ name: str(rec(entry).name) }))
 		.filter((s) => s.name.length > 0)
@@ -206,24 +205,7 @@ export function decodeSchemaData(payload: unknown): SchemaData {
 	}
 }
 
-// ── sessions & queries ─────────────────────────────────────
-
-export function decodeSessionInfo(payload: unknown): SessionInfo {
-	if (!isRecord(payload)) throw decodeError('session.create')
-	const sessionId = str(payload.sessionId)
-	if (!sessionId) throw decodeError('session.create')
-	return {
-		sessionId,
-		connectionId: str(payload.connectionId),
-		database: optStr(payload.database),
-		label: str(payload.label),
-		inTransaction: bool(payload.inTransaction),
-		txAborted: bool(payload.txAborted),
-		createdAt: num(payload.createdAt),
-		// Left undefined when the app does not report it — only an explicit `false` is a problem
-		readOnly: typeof payload.readOnly === 'boolean' ? payload.readOnly : undefined,
-	}
-}
+// ── queries ────────────────────────────────────────────────
 
 function decodeResultColumn(value: unknown): QueryResultColumn {
 	const obj = rec(value)
@@ -245,7 +227,7 @@ function decodeQueryResult(value: unknown): QueryResult {
 export function decodeQueryResults(payload: unknown): QueryResult[] {
 	if (Array.isArray(payload)) return payload.map(decodeQueryResult)
 	if (isRecord(payload)) return [decodeQueryResult(payload)]
-	throw decodeError('query.execute')
+	throw decodeError('agent.query')
 }
 
 // ── history & search ───────────────────────────────────────
@@ -276,7 +258,7 @@ function decodeSearchMatch(value: unknown): SearchMatch {
 }
 
 export function decodeSearchResult(payload: unknown): SearchDatabaseResult {
-	if (!isRecord(payload)) throw decodeError('search.searchDatabase')
+	if (!isRecord(payload)) throw decodeError('agent.search')
 	return {
 		matches: arr(payload.matches).map(decodeSearchMatch),
 		searchedTables: num(payload.searchedTables),

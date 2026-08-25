@@ -25,18 +25,16 @@ export const explainCommand: Command = {
 		if (extra.length > 0) throw usageError('explain takes exactly one SQL string — quote it')
 
 		const scope = await resolveScope(scopePath, ctx.app)
+		await ctx.app.ensureConnected(scope.connection.id)
 		const explainSql = buildExplainSql(scope.connection.type, sql, flagBool(ctx.args, 'analyze'))
 
-		const results = await ctx.app.withReadOnlySession(scope.connection.id, scope.database, async (sessionId) => {
-			return decodeQueryResults(
-				await executeQuery(ctx.client, {
-					connectionId: scope.connection.id,
-					database: scope.database,
-					sessionId,
-					sql: explainSql,
-				}),
-			)
-		})
+		const results = decodeQueryResults(
+			await executeQuery(ctx.client, {
+				connectionId: scope.connection.id,
+				database: scope.database,
+				sql: explainSql,
+			}),
+		)
 
 		const failure = firstResultError(results)
 		if (failure) throw databaseError(failure)

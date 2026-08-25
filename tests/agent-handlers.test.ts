@@ -4,6 +4,9 @@ import { AppDatabase } from '@dotaz/backend-shared/storage/app-db'
 import type { SqliteConnectionConfig } from '@dotaz/shared/types/connection'
 import type { UiSnapshot } from '@dotaz/shared/types/rpc'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 const sqliteConfig: SqliteConnectionConfig = { type: 'sqlite', path: ':memory:' }
 
@@ -16,14 +19,15 @@ function setup() {
 	AppDatabase.resetInstance()
 	const appDb = AppDatabase.getInstance(':memory:')
 	const cm = new ConnectionManager(appDb)
+	const tempDir = mkdtempSync(join(tmpdir(), 'dotaz-agent-handlers-'))
 	const emitted: Emitted[] = []
-	const { handlers, adapter } = createHandlers(cm, undefined, appDb, undefined, {
+	const { handlers, adapter, sessionManager } = createHandlers(cm, undefined, appDb, undefined, {
 		emitMessage: (channel, payload) => emitted.push({ channel, payload }),
 		appVersion: '1.2.3',
 		mode: 'desktop',
 	})
-	const connection = handlers['connections.create']({ name: 'Test SQLite', config: sqliteConfig })
-	return { adapter, appDb, cm, connectionId: connection.id, emitted, handlers }
+	const connection = handlers['connections.create']({ name: 'Test SQLite', config: { type: 'sqlite', path: join(tempDir, 'test.db') } })
+	return { adapter, appDb, cm, connectionId: connection.id, emitted, handlers, sessionManager, tempDir }
 }
 
 function payloadsOn(emitted: Emitted[], channel: string): unknown[] {
@@ -41,6 +45,7 @@ describe('Agent CLI handlers', () => {
 		ctx.adapter.dispose()
 		await ctx.cm.disconnectAll()
 		AppDatabase.resetInstance()
+		rmSync(ctx.tempDir, { recursive: true, force: true })
 	})
 
 	// ── agent.hello ──────────────────────────────────────
@@ -61,6 +66,50 @@ describe('Agent CLI handlers', () => {
 
 		expect(hello.version).toBe('0.0.0')
 		expect(hello.mode).toBe('web')
+	})
+
+	// ── backend-owned read sessions ─────────────────────
+
+	test('agent data methods own and release their read-only sessions', async () => {
+		await ctx.handlers['connections.connect']({ connectionId: ctx.connectionId })
+		await ctx.handlers['query.execute']({
+			connectionId: ctx.connectionId,
+			queryId: 'seed-schema',
+			sql: 'CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL)',
+		})
+		await ctx.handlers['query.execute']({
+			connectionId: ctx.connectionId,
+			queryId: 'seed-row',
+			sql: "INSERT INTO items (name) VALUES ('Widget')",
+		})
+
+		const schema = await ctx.handlers['agent.schema']({ connectionId: ctx.connectionId })
+		expect(Object.values(schema.tables).flat().some((table) => table.name === 'items')).toBe(true)
+		expect(ctx.sessionManager.listSessions(ctx.connectionId)).toEqual([])
+
+		const results = await ctx.handlers['agent.query']({
+			connectionId: ctx.connectionId,
+			queryId: 'agent-read',
+			sql: 'SELECT name FROM items',
+		})
+		expect(results[0].rows).toEqual([{ name: 'Widget' }])
+		expect(ctx.sessionManager.listSessions(ctx.connectionId)).toEqual([])
+
+		const search = await ctx.handlers['agent.search']({
+			connectionId: ctx.connectionId,
+			searchTerm: 'Widget',
+			scope: 'database',
+			resultsPerTable: 10,
+		})
+		expect(search.totalMatches).toBe(1)
+		expect(ctx.sessionManager.listSessions(ctx.connectionId)).toEqual([])
+
+		await expect(ctx.handlers['agent.query']({
+			connectionId: ctx.connectionId,
+			queryId: 'agent-write',
+			sql: "UPDATE items SET name = 'Changed'",
+		})).rejects.toThrow(/read-only/)
+		expect(ctx.sessionManager.listSessions(ctx.connectionId)).toEqual([])
 	})
 
 	// ── agent.proposeWrite ───────────────────────────────
