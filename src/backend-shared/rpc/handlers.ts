@@ -4,6 +4,9 @@ import { DatabaseError } from '@dotaz/shared/types/errors'
 import type { ExportOptions, ExportPreviewRequest, ExportRawPreviewRequest } from '@dotaz/shared/types/export'
 import type { ImportOptions, ImportPreviewRequest } from '@dotaz/shared/types/import'
 import type {
+	AgentQueryParams,
+	AgentSchemaParams,
+	AgentSearchParams,
 	AiGenerateSqlParams,
 	HistoryListParams,
 	OpenDialogParams,
@@ -21,6 +24,7 @@ import type { RpcAdapter } from './adapter'
 /** Long-poll ceiling for `agent.proposals.wait` — anything above is clamped, not rejected. */
 const MAX_PROPOSAL_WAIT_MS = 10 * 60 * 1000
 const DEFAULT_PROPOSAL_WAIT_MS = 30 * 1000
+const AGENT_SESSION_LABEL = 'cli'
 
 /**
  * Reject a `where` fragment that is not a single boolean expression.
@@ -74,6 +78,34 @@ function requireKnownConnection(adapter: RpcAdapter, connectionId: string): void
 	}
 	if (!adapter.listConnections().some((c) => c.id === connectionId)) {
 		throw new Error(`Unknown connection: ${connectionId}`)
+	}
+}
+
+async function destroyAgentSession(adapter: RpcAdapter, sessionId: string): Promise<void> {
+	try {
+		await adapter.destroySession(sessionId)
+	} catch (error) {
+		console.warn(`Failed to destroy agent session ${sessionId}`, error)
+	}
+}
+
+async function withAgentReadOnlySession<T>(
+	adapter: RpcAdapter,
+	connectionId: string,
+	database: string | undefined,
+	operation: (sessionId: string) => Promise<T>,
+): Promise<T> {
+	requireKnownConnection(adapter, connectionId)
+	const session = await adapter.createSession(connectionId, database, { readOnly: true, label: AGENT_SESSION_LABEL })
+	if (session.readOnly !== true) {
+		await destroyAgentSession(adapter, session.sessionId)
+		throw new DatabaseError('READ_ONLY_SESSION', 'The database did not confirm a read-only agent session')
+	}
+
+	try {
+		return await operation(session.sessionId)
+	} finally {
+		await destroyAgentSession(adapter, session.sessionId)
 	}
 }
 
@@ -431,6 +463,27 @@ export function createHandlers(adapter: RpcAdapter) {
 		// ── Agent CLI (see docs/agent-cli.md) ─────────────
 		'agent.hello': () => {
 			return adapter.agentHello()
+		},
+		'agent.schema': async ({ connectionId, database }: AgentSchemaParams) => {
+			return withAgentReadOnlySession(adapter, connectionId, database, (sessionId) => {
+				return adapter.getDriver(connectionId, database).loadSchema(sessionId)
+			})
+		},
+		'agent.query': async ({ connectionId, database, sql, queryId, params, searchPath }: AgentQueryParams) => {
+			if (!sql?.trim()) {
+				throw new Error('sql is required')
+			}
+			if (!queryId) {
+				throw new Error('queryId is required')
+			}
+			return withAgentReadOnlySession(adapter, connectionId, database, (sessionId) => {
+				return adapter.executeQuery(connectionId, sql, params, queryId, database, sessionId, searchPath)
+			})
+		},
+		'agent.search': async (params: AgentSearchParams) => {
+			return withAgentReadOnlySession(adapter, params.connectionId, params.database, (sessionId) => {
+				return adapter.searchDatabase({ ...params, sessionId })
+			})
 		},
 		'agent.proposeWrite': ({ connectionId, database, sql, reason }: ProposeWriteParams) => {
 			requireKnownConnection(adapter, connectionId)

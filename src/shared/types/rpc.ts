@@ -69,6 +69,22 @@ export interface AgentHelloResult {
 	protocol: number
 }
 
+export interface AgentQueryParams {
+	connectionId: string
+	database?: string
+	sql: string
+	queryId: string
+	params?: unknown[]
+	searchPath?: string
+}
+
+export interface AgentSchemaParams {
+	connectionId: string
+	database?: string
+}
+
+export type AgentSearchParams = Omit<SearchDatabaseParams, 'sessionId'>
+
 /** One open tab, as reported to the CLI by `ui.state`. */
 export interface UiTabSnapshot {
 	id: string

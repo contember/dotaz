@@ -45,20 +45,18 @@ export const searchCommand: Command = {
 		if (scope === 'tables' && tableNames.length === 0) throw usageError('--scope table requires at least one --table <name>')
 
 		const resolved = await resolveScope(scopePath, ctx.app)
-		const result = await ctx.app.withReadOnlySession(resolved.connection.id, resolved.database, async (sessionId) => {
-			return decodeSearchResult(
-				await ctx.client.call('search.searchDatabase', {
-					connectionId: resolved.connection.id,
-					database: resolved.database,
-					sessionId,
-					searchTerm: term,
-					scope,
-					schemaName,
-					tableNames: tableNames.length > 0 ? tableNames : undefined,
-					resultsPerTable: requirePositiveInt('per-table', flagNumber(ctx.args, 'per-table')),
-				}),
-			)
-		})
+		await ctx.app.ensureConnected(resolved.connection.id)
+		const result = decodeSearchResult(
+			await ctx.client.call('agent.search', {
+				connectionId: resolved.connection.id,
+				database: resolved.database,
+				searchTerm: term,
+				scope,
+				schemaName,
+				tableNames: tableNames.length > 0 ? tableNames : undefined,
+				resultsPerTable: requirePositiveInt('per-table', flagNumber(ctx.args, 'per-table')),
+			}),
+		)
 
 		const rows = result.matches.map((match) => ({
 			schema: match.schema,

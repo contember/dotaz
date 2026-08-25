@@ -8,7 +8,6 @@
 
 import type { ConnectionInfo } from '@dotaz/shared/types/connection'
 import { stripSecrets } from '@dotaz/shared/types/connection'
-import { DatabaseError } from '@dotaz/shared/types/errors'
 import type { RpcHandler, RpcHandlerLookup } from './dispatch'
 
 /**
@@ -23,14 +22,12 @@ export const CLI_ALLOWED_METHODS: ReadonlySet<string> = new Set([
 	'connections.list',
 	'connections.connect',
 	'databases.list',
-	'schema.load',
 	// Read-only querying
-	'session.create',
-	'session.destroy',
-	'query.execute',
+	'agent.schema',
+	'agent.query',
+	'agent.search',
 	'query.cancel',
 	'query.format',
-	'search.searchDatabase',
 	// Context the agent can read but not change
 	'history.list',
 	'bookmarks.list',
@@ -57,66 +54,16 @@ function redact(method: string, payload: unknown): unknown {
 	return payload.map((connection) => ({ ...connection, config: stripSecrets(connection.config) }))
 }
 
-/** Lets the gate ask the backend whether a session really is read-only. */
-export interface CliSessionGuard {
-	isSessionReadOnly(sessionId: string): boolean
-}
-
-function paramsOf(params: unknown): Record<string, unknown> {
-	return typeof params === 'object' && params !== null ? params as Record<string, unknown> : {}
-}
-
 /**
- * Constrain the params of an allowlisted method.
- *
- * Filtering by method name is not enough: `query.execute` runs on the writable pool when no
- * sessionId is given, and `session.create` takes `readOnly` straight from the caller. Both are
- * allowlisted, so without this a CLI client could write without ever proposing anything.
- * The CLI client applies the same rules, but it is not what enforces them — anything holding
- * the token can talk to the socket directly.
+ * Wrap a handler map so only allowlisted methods resolve and their results are redacted.
+ * An unknown or forbidden method looks identical from outside, so the caller learns nothing
+ * about which handlers exist.
  */
-function guardParams(method: string, params: unknown, guard?: CliSessionGuard): unknown {
-	const p = paramsOf(params)
-
-	if (method === 'session.create') {
-		if (p.readOnly !== undefined && p.readOnly !== true) {
-			throw new DatabaseError('READ_ONLY_SESSION', 'CLI sessions are always read-only')
-		}
-		return { ...p, readOnly: true }
-	}
-
-	if (method === 'query.execute') {
-		const sessionId = typeof p.sessionId === 'string' ? p.sessionId : undefined
-		if (!sessionId) {
-			throw new DatabaseError(
-				'READ_ONLY_SESSION',
-				'The CLI must run queries in a read-only session — create one with session.create. Submit writes with `dotaz propose`.',
-			)
-		}
-		if (!guard?.isSessionReadOnly(sessionId)) {
-			throw new DatabaseError(
-				'READ_ONLY_SESSION',
-				'This session is not read-only. Submit the statement with `dotaz propose` so it can be approved and run in the app.',
-			)
-		}
-	}
-
-	return params
-}
-
-/**
- * Wrap a handler map so only allowlisted methods resolve, their params are constrained, and
- * their results are redacted. An unknown or forbidden method looks identical from outside —
- * the caller learns nothing about which handlers exist.
- */
-export function createCliHandlerLookup(
-	handlers: Record<string, RpcHandler>,
-	guard?: CliSessionGuard,
-): RpcHandlerLookup {
+export function createCliHandlerLookup(handlers: Record<string, RpcHandler>): RpcHandlerLookup {
 	return (method) => {
 		if (!CLI_ALLOWED_METHODS.has(method)) return undefined
 		const handler = handlers[method]
 		if (!handler) return undefined
-		return async (params: unknown) => redact(method, await handler(guardParams(method, params, guard)))
+		return async (params: unknown) => redact(method, await handler(params))
 	}
 }

@@ -4,7 +4,7 @@
 // every CLI invocation is one-shot, so a WebSocket would buy nothing. The endpoint only
 // exists while the user has CLI access enabled; there is no way to reach it otherwise.
 
-import { type CliSessionGuard, createCliHandlerLookup } from '@dotaz/backend-shared/rpc/cli-surface'
+import { createCliHandlerLookup } from '@dotaz/backend-shared/rpc/cli-surface'
 import { dispatchRpc, parseRpcRequest, type RpcHandler } from '@dotaz/backend-shared/rpc/dispatch'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs'
@@ -23,8 +23,6 @@ export type ControlTransport = 'unix' | 'tcp'
 export interface ControlServerOptions {
 	/** RPC handlers to expose — the same map the webview RPC uses. */
 	handlers: Record<string, RpcHandler>
-	/** Lets the allowlist reject a query on a session the backend did not open read-only. */
-	sessionGuard?: CliSessionGuard
 	/** Parent of the `cli/` endpoint directory, normally Utils.paths.userData. */
 	userDataDir: string
 	appVersion: string
@@ -119,7 +117,7 @@ function pruneDeadEndpointFiles(dir: string, ownPid: number): void {
 
 export async function startControlServer(opts: ControlServerOptions): Promise<ControlServerHandle> {
 	const token = randomBytes(32).toString('hex')
-	const getHandler = createCliHandlerLookup(opts.handlers, opts.sessionGuard)
+	const getHandler = createCliHandlerLookup(opts.handlers)
 	const pid = process.pid
 	const transport = resolveTransport({ transport: opts.transport })
 	const socketPath = transport === 'unix' ? socketPathForPid(pid) : null

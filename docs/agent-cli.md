@@ -15,8 +15,9 @@ This document is the implementation contract. Everything below is normative.
 
 ## Invariants
 
-1. The CLI's database session is opened read-only and is **never** switched to read-write.
-   An approved write executes in the frontend's own session, not in the CLI session.
+1. Every CLI database operation runs in a backend-owned read-only session that is **never**
+   switched to read-write. An approved write executes in the frontend's own session, not in
+   an agent session.
    No control-plane method may be used to get around this: `ui.openConsole` will prefill a
    write, but refuses to auto-run one (`run: true` is rejected for non-read-only SQL), and
    `ui.openTable`'s `where` must be a single boolean expression.
@@ -25,11 +26,10 @@ This document is the implementation contract. Everything below is normative.
 3. The control endpoint does not exist unless the user enabled it (`cli.enabled` setting or
    `DOTAZ_CLI=1`). No setting, no socket, no endpoint file.
 
-The endpoint enforces invariant 1 itself, on **params and not just method names** — the CLI
-client applies the same rules, but anything holding the token can talk to the socket directly,
-so the client is not what enforces them. `session.create` is pinned to `readOnly: true`, and
-`query.execute` is refused unless its `sessionId` names a session the backend confirms is
-read-only (a sessionless `query.execute` would otherwise run on the writable pool).
+The endpoint enforces invariant 1 itself. It exposes only the operation-level `agent.query`,
+`agent.schema`, and `agent.search` methods. Their backend handlers create, verify, and destroy
+the read-only session internally. Generic `session.*`, `query.execute`, `schema.load`, and
+`search.searchDatabase` methods are not exposed, and session IDs never cross the CLI boundary.
 
 ## Transport
 
@@ -54,11 +54,10 @@ responses are stripped of passwords on the way out. `ui.snapshot.set` and
 `agent.proposals.resolve` are frontend-only and equally unreachable. A forbidden method is
 indistinguishable from a nonexistent one.
 
-Also absent, and worth naming because each was reachable at one point: `session.list` (it
-hands over the ids of the user's own writable sessions, including one inside a transaction)
-and `ui.runCommand` (it could execute any of the app's registered commands — including
-`run-query` in the frontend's writable session — so two allowlisted calls were enough to run
-an arbitrary write, and to let an agent approve its own proposal).
+Also absent, and worth naming because each was reachable at one point: all `session.*`
+methods, the generic data methods `query.execute`, `schema.load`, and
+`search.searchDatabase`, and `ui.runCommand` (it could execute any registered app command,
+including `run-query` in the frontend's writable session).
 
 Socket path: `${XDG_RUNTIME_DIR ?? tmpdir()}/dotaz-${pid}.sock`. A stale socket at that path
 is unlinked on startup.
@@ -116,21 +115,22 @@ transports share one dispatcher (`backend-shared/rpc/dispatch.ts`):
 
 Existing handlers are reused wherever possible. New methods:
 
-| Method                    | Params                                                       | Returns                            |
-| ------------------------- | ------------------------------------------------------------ | ---------------------------------- |
-| `agent.hello`             | —                                                            | `{ version, mode, pid, protocol }` |
-| `agent.proposeWrite`      | `{ connectionId, database?, sql, reason? }`                  | `{ proposalId }`                   |
-| `agent.proposals.list`    | `{ status?, connectionId? }`                                 | `Proposal[]`                       |
-| `agent.proposals.get`     | `{ proposalId }`                                             | `Proposal`                         |
-| `agent.proposals.wait`    | `{ proposalId, timeoutMs? }`                                 | `Proposal` (long-poll)             |
-| `agent.proposals.cancel`  | `{ proposalId }`                                             | `void`                             |
-| `agent.proposals.resolve` | `{ proposalId, status, result?, error? }`                    | `Proposal` — **frontend only**     |
-| `ui.state`                | —                                                            | `UiSnapshot`                       |
-| `ui.openTable`            | `{ connectionId, database?, schema, table, where?, limit? }` | `{ ok: true }`                     |
-| `ui.openConsole`          | `{ connectionId, database?, sql?, run? }`                    | `{ ok: true }`                     |
-| `ui.snapshot.set`         | `{ snapshot }`                                               | `void` — **frontend only**         |
-
-`session.create` gains two optional params: `readOnly?: boolean` and `label?: string`.
+| Method                    | Params                                                            | Returns                            |
+| ------------------------- | ----------------------------------------------------------------- | ---------------------------------- |
+| `agent.hello`             | —                                                                 | `{ version, mode, pid, protocol }` |
+| `agent.schema`            | `{ connectionId, database? }`                                     | `SchemaData`                       |
+| `agent.query`             | `{ connectionId, database?, sql, queryId, params?, searchPath? }` | `QueryResult[]`                    |
+| `agent.search`            | `{ connectionId, database?, searchTerm, scope, … }`               | `SearchDatabaseResult`             |
+| `agent.proposeWrite`      | `{ connectionId, database?, sql, reason? }`                       | `{ proposalId }`                   |
+| `agent.proposals.list`    | `{ status?, connectionId? }`                                      | `Proposal[]`                       |
+| `agent.proposals.get`     | `{ proposalId }`                                                  | `Proposal`                         |
+| `agent.proposals.wait`    | `{ proposalId, timeoutMs? }`                                      | `Proposal` (long-poll)             |
+| `agent.proposals.cancel`  | `{ proposalId }`                                                  | `void`                             |
+| `agent.proposals.resolve` | `{ proposalId, status, result?, error? }`                         | `Proposal` — **frontend only**     |
+| `ui.state`                | —                                                                 | `UiSnapshot`                       |
+| `ui.openTable`            | `{ connectionId, database?, schema, table, where?, limit? }`      | `{ ok: true }`                     |
+| `ui.openConsole`          | `{ connectionId, database?, sql?, run? }`                         | `{ ok: true }`                     |
+| `ui.snapshot.set`         | `{ snapshot }`                                                    | `void` — **frontend only**         |
 
 ### Backend → frontend messages
 
@@ -141,7 +141,13 @@ Existing handlers are reused wherever possible. New methods:
 
 ## Read-only sessions
 
-`session.create { readOnly: true }` reaches `driver.reserveSession(sessionId, { readOnly })`:
+Each `agent.query`, `agent.schema`, and `agent.search` call creates a session with
+`readOnly: true`. The handler checks that the driver confirmed it as read-only, runs exactly
+one operation, and destroys the session in `finally`. The CLI neither creates sessions nor
+receives their IDs. If the CLI disconnects mid-request, the backend handler keeps ownership
+and releases the session when the operation ends.
+
+Creating the session reaches `driver.reserveSession(sessionId, { readOnly: true })`:
 
 | Driver     | Enforcement                                                                                          |
 | ---------- | ---------------------------------------------------------------------------------------------------- |
@@ -163,8 +169,8 @@ Neither mechanism protects itself, so both are re-established rather than set on
   writable handle, which silently downgraded a session whose handle had been lost.
 
 `SessionInfo.readOnly` is read back from `driver.isSessionReadOnly()`, not echoed from the
-request, and a session requested read-only that the driver does not confirm is released and
-refused.
+request. A session the driver does not confirm as read-only is released and refused before
+the operation starts.
 
 Read-only is not the same as cheap, so the same sessions also carry an engine-enforced
 statement timeout, driven by the existing `queryTimeout` setting (30 s; `0` disables it):
@@ -277,7 +283,8 @@ Output rules:
   of the two happened. The distinction matters: only the first one bounds what the database
   actually does.
 - A timed-out or interrupted query is cancelled in the app (`query.cancel`) rather than left
-  running, and the CLI reports whether the cancel succeeded.
+  running. The `agent.query` handler then releases its session in `finally`, and the CLI
+  reports whether the cancel succeeded.
 
 Exit codes:
 
