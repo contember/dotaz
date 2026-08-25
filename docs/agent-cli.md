@@ -242,8 +242,9 @@ write for a proposal that no longer exists.
 
 ## CLI
 
-Package `@dotaz/agent-cli` in `src/cli-agent/`, binary `dotaz`. (`@dotaz/cli` is already
-taken by the web-server CLI in `src/cli/`.)
+Public package `@dotaz/cli`, binary `dotaz`. Its private source workspace lives in
+`src/cli-agent/`; `scripts/build-agent-cli.ts` bundles it and `@dotaz/shared` into the
+dependency-free `dist-agent-cli/` package published by the tag-driven release workflow.
 
 Paths address objects as `connection/database/schema/table`. A connection is matched by id,
 by exact name, or by a unique case-insensitive prefix. Drivers without databases or schemas

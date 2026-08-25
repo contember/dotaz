@@ -1,5 +1,6 @@
 node_modules
 dist/
+dist-agent-cli/
 dist-server/
 dist-electron/
 build/

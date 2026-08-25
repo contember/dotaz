@@ -12,6 +12,10 @@ import { renderCommandHelp, renderRootHelp } from './help'
 import { renderOutput } from './output'
 import pkg from './package.json'
 
+declare const __DOTAZ_CLI_VERSION__: string
+
+const cliVersion = typeof __DOTAZ_CLI_VERSION__ === 'string' ? __DOTAZ_CLI_VERSION__ : pkg.version
+
 async function write(stream: typeof Bun.stdout | typeof Bun.stderr, text: string): Promise<void> {
 	if (!text) return
 	try {
@@ -25,12 +29,12 @@ async function run(argv: string[]): Promise<ExitCode> {
 	const invocation = parseInvocation(argv, (name) => findCommand(name)?.flags)
 
 	if (flagBool(invocation.args, 'version')) {
-		await write(Bun.stdout, `dotaz ${pkg.version}\n`)
+		await write(Bun.stdout, `dotaz ${cliVersion}\n`)
 		return EXIT.ok
 	}
 
 	if (!invocation.command) {
-		await write(Bun.stdout, renderRootHelp(pkg.version))
+		await write(Bun.stdout, renderRootHelp(cliVersion))
 		// No command at all is a usage error unless help was asked for explicitly
 		return flagBool(invocation.args, 'help') ? EXIT.ok : EXIT.usage
 	}
