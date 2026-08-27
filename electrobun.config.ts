@@ -8,6 +8,8 @@ export default {
 		version: process.env.VERSION || pkg.version,
 	},
 	build: {
+		// v2 defaults to the Cottontail runtime; dotaz needs real Bun for bun:sqlite + Bun.SQL.
+		mainProcess: 'bun',
 		bun: {
 			entrypoint: 'src/backend-desktop/index.ts',
 		},

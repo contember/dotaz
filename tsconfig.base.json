@@ -17,7 +17,12 @@
 		"jsx": "preserve",
 		"jsxImportSource": "solid-js",
 		"paths": {
-			"@dotaz/*": ["./src/*"]
+			"@dotaz/*": ["./src/*"],
+			// Electrobun 2.x ships its SDK via the Hutch devkit, not node_modules.
+			// Run `electrobun prepare` to (re)generate .hutch/devkit.
+			"electrobun": ["./.hutch/devkit/api/sdks/main/index.ts"],
+			"electrobun/bun": ["./.hutch/devkit/api/sdks/main/index.ts"],
+			"electrobun/view": ["./.hutch/devkit/api/browser/index.ts"]
 		}
 	}
 }
