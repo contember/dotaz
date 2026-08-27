@@ -15,3 +15,6 @@ scripts/seed/*.db-wal
 
 # Electrobun build files
 .cottontail-tmp/
+
+# Hutch-generated Electrobun devkit projection
+.hutch/

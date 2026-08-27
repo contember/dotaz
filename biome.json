@@ -14,7 +14,8 @@
 			"!**/node_modules",
 			"!**/dist",
 			"!**/build",
-			"!**/artifacts"
+			"!**/artifacts",
+			"!**/.hutch"
 		]
 	},
 	"linter": {
