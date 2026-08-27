@@ -22,6 +22,13 @@ case "$ARCH" in
 	*)               echo "Error: unsupported architecture: $ARCH"; exit 1 ;;
 esac
 
+# Electrobun 2.x publishes no macOS x64 core artifact, so Intel Macs get no desktop build.
+if [ "$PLATFORM" = "macos" ] && [ "$ARCH" = "x64" ]; then
+	echo "Error: Intel Macs are no longer supported by the desktop build."
+	echo "Run the server instead: bunx @dotaz/server"
+	exit 1
+fi
+
 ARTIFACT="dotaz-${PLATFORM}-${ARCH}"
 
 # ── Resolve version ─────────────────────────────────────────
