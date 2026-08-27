@@ -64,9 +64,6 @@ jobs:
           - os: macos-14
             platform: macos-arm64
             artifact: dotaz-macos-arm64
-          - os: macos-15-large
-            platform: macos-x64
-            artifact: dotaz-macos-x64
           - os: windows-latest
             platform: win-x64
             artifact: dotaz-win-x64
@@ -80,6 +77,19 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      # Electrobun 2.x downloads its toolchain (Hutch, CEF, Bun) into ~/.hutch on
+      # first use. Cache it per electrobun version to keep release runs fast.
+      - name: Cache Hutch toolchain store
+        uses: actions/cache@v4
+        with:
+          path: ~/.hutch
+          key: hutch-${{ matrix.platform }}-${{ hashFiles('bun.lock') }}
+          restore-keys: hutch-${{ matrix.platform }}-
+
+      # Projects the Electrobun SDK into .hutch/devkit, which Vite and tsc resolve against.
+      - name: Prepare Electrobun devkit
+        run: bunx electrobun prepare
 
       - name: Seed SQLite demo database
         run: bun run seed:sqlite

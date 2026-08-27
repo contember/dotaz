@@ -17,6 +17,18 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # typecheck resolves `electrobun/*` from .hutch/devkit, which Hutch projects
+      # from its toolchain store — cached here to keep the check job fast.
+      - name: Cache Hutch toolchain store
+        uses: actions/cache@v4
+        with:
+          path: ~/.hutch
+          key: hutch-linux-x64-${{ hashFiles('bun.lock') }}
+          restore-keys: hutch-linux-x64-
+
+      - name: Prepare Electrobun devkit
+        run: bunx electrobun prepare
+
       - name: Lint
         run: bun run lint
 
