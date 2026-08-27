@@ -52,15 +52,24 @@ bun run seed:sqlite
 bun run seed:postgres
 ```
 
-### Upgrading electrobun
+### The Hutch devkit
 
-The electrobun CLI caches platform binaries in `node_modules/electrobun/dist-<platform>-<arch>/` and reuses them across version bumps without checking the version. After bumping electrobun, wipe the cache before running `electrobun dev`:
+Electrobun 2.x does **not** ship its SDK through npm — `node_modules/electrobun` is a bootstrap that only downloads Hutch. The real SDK is projected into `.hutch/devkit/` (gitignored) by:
 
 ```bash
-rm -rf node_modules/electrobun/dist-* node_modules/electrobun/.cache
+bunx electrobun prepare
 ```
 
-Otherwise FFI calls into symbols added in the new version fail with `TypeError: null is not an object (evaluating 'bridge.requestHost')` — `dlopen` quietly returns `null` when symbols are missing, then the bridge fallback is also `null` outside of carrot workers.
+Anything that resolves `electrobun/*` needs that directory to exist first, so `prepare` is prepended to `dev`, `start`, `build:canary`, and `typecheck`, and runs as its own step in both CI workflows:
+
+- **tsc** resolves the three specifiers dotaz uses via `paths` in `tsconfig.base.json`. Add a mapping there if you import a new `electrobun/*` subpath.
+- **Vite** gets aliases derived from `.hutch/devkit/package.json` in `vite.config.ts`. The helper returns `undefined` when the devkit is absent, so the web/demo/Docker builds — which never import `electrobun/*` at runtime — keep working without Hutch.
+
+The toolchain itself (Hutch, CEF, Bun) lands in `~/.hutch`, shared across projects and cached in CI.
+
+`build.mainProcess` is pinned to `"bun"`. The v2 default is Cottontail, which dotaz cannot use — the whole DB layer runs on `bun:sqlite` and `Bun.SQL`.
+
+Hutch only ever builds for the **current host**, and publishes no macOS x64 artifact, so Intel Macs get no desktop build.
 
 ## Architecture
 
