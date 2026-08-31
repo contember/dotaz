@@ -7,6 +7,7 @@ interface UseDataGridCellEditParams {
 	tabId: string
 	visibleColumns: Accessor<GridColumnDef[]>
 	isReadOnly: Accessor<boolean>
+	isColumnEditable: (column: string) => boolean
 	fkMap: Accessor<Map<string, FkTarget>>
 	onOpenFkPicker: (rowIndex: number, column: string, target: FkTarget) => void
 }
@@ -22,14 +23,15 @@ export function useDataGridCellEdit(params: UseDataGridCellEditParams) {
 	}
 
 	function startEditingFocused() {
-		if (params.isReadOnly()) return
 		const focused = getFocusedCellInfo()
 		if (!focused) return
+		if (!params.isColumnEditable(focused.column)) return
 		if (gridStore.isRowDeleted(params.tabId, focused.row)) return
 		gridStore.startEditing(params.tabId, focused.row, focused.column)
 	}
 
 	function handleCellSave(rowIndex: number, column: string, value: unknown) {
+		if (!params.isColumnEditable(column)) return
 		gridStore.setCellValue(params.tabId, rowIndex, column, value)
 		gridStore.stopEditing(params.tabId)
 	}
@@ -41,16 +43,17 @@ export function useDataGridCellEdit(params: UseDataGridCellEditParams) {
 	function handleCellMoveNext(rowIndex: number, currentColumn: string) {
 		const cols = params.visibleColumns()
 		const idx = cols.findIndex((c) => c.name === currentColumn)
-		if (idx < cols.length - 1) {
-			const nextCol = cols[idx + 1].name
+		const nextCol = cols.slice(idx + 1).find((column) => params.isColumnEditable(column.name))?.name
+		if (nextCol) {
 			gridStore.startEditing(params.tabId, rowIndex, nextCol)
-			gridStore.selectCell(params.tabId, rowIndex, idx + 1)
+			gridStore.selectCell(params.tabId, rowIndex, cols.findIndex((column) => column.name === nextCol))
 		} else {
 			gridStore.stopEditing(params.tabId)
 		}
 	}
 
 	function handleCellMoveDown(rowIndex: number, currentColumn: string) {
+		if (!params.isColumnEditable(currentColumn)) return
 		const t = gridStore.getTab(params.tabId)
 		if (!t) return
 		const cols = params.visibleColumns()
@@ -71,11 +74,10 @@ export function useDataGridCellEdit(params: UseDataGridCellEditParams) {
 	}
 
 	function handleRowDblClick(index: number, e: MouseEvent) {
-		if (params.isReadOnly()) return
 		const target = e.target as HTMLElement
 		const cellEl = target.closest<HTMLElement>('[data-column]')
 		const columnName = cellEl?.dataset.column
-		if (columnName && !gridStore.isRowDeleted(params.tabId, index)) {
+		if (columnName && params.isColumnEditable(columnName) && !gridStore.isRowDeleted(params.tabId, index)) {
 			gridStore.startEditing(params.tabId, index, columnName)
 		}
 	}

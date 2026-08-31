@@ -13,6 +13,7 @@ export interface RowDetailEditFieldsProps {
 	pkColumns: Set<string>
 	getValue: (col: string) => unknown
 	isChanged: (col: string) => boolean
+	isColumnReadOnly?: (column: GridColumnDef) => boolean
 	setFieldValue: (col: string, value: unknown) => void
 	setFieldError?: (col: string, error: string | null) => void
 	connectionId: string
@@ -33,7 +34,7 @@ export default function RowDetailEditFields(props: RowDetailEditFieldsProps) {
 	function handleFieldKeyDown(e: KeyboardEvent, col: GridColumnDef) {
 		if (!isQuickValueModifier(e)) return
 		const key = e.key.toLowerCase()
-		if (props.pkColumns.has(col.name)) return
+		if (props.pkColumns.has(col.name) || props.isColumnReadOnly?.(col)) return
 		if (key === 'n' && col.nullable) {
 			e.preventDefault()
 			setNull(col.name)
@@ -50,7 +51,7 @@ export default function RowDetailEditFields(props: RowDetailEditFieldsProps) {
 	}
 
 	function renderFieldInput(col: GridColumnDef) {
-		const readOnly = props.pkColumns.has(col.name)
+		const readOnly = props.pkColumns.has(col.name) || !!props.isColumnReadOnly?.(col)
 
 		if (isBooleanType(col.dataType)) {
 			return (
@@ -103,7 +104,7 @@ export default function RowDetailEditFields(props: RowDetailEditFieldsProps) {
 								<Show when={fk()}>
 									<span class="row-detail__label-badge row-detail__label-badge--fk">FK</span>
 								</Show>
-								<Show when={!props.pkColumns.has(col.name)}>
+								<Show when={!props.pkColumns.has(col.name) && !props.isColumnReadOnly?.(col)}>
 									<div class="row-detail__label-actions">
 										<Show when={col.nullable}>
 											<button

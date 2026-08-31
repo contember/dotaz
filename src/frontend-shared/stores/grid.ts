@@ -1038,6 +1038,7 @@ function deleteSelectedRows(tabId: string) {
 function setCellValueWithUndo(tabId: string, rowIndex: number, column: string, newValue: unknown) {
 	const tab = getTab(tabId)
 	if (tab) {
+		if (tab.columns.find((candidate) => candidate.name === column)?.sourceTable) return
 		const result = reconcileCellEdit({
 			rowIndex,
 			column,

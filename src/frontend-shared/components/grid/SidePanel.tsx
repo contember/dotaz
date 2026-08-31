@@ -88,6 +88,7 @@ export interface SidePanelProps {
 		row: Record<string, unknown> | null
 		foreignKeys: ForeignKeyInfo[]
 		readOnly: boolean
+		isColumnReadOnly: (column: GridColumnDef) => boolean
 		rowLabel: string
 		canGoPrev: boolean
 		canGoNext: boolean
@@ -456,6 +457,7 @@ export default function SidePanel(props: SidePanelProps) {
 					foreignKeys={props.rowDetail!.foreignKeys}
 					width={props.width}
 					readOnly={props.rowDetail!.readOnly}
+					isColumnReadOnly={props.rowDetail!.isColumnReadOnly}
 					rowLabel={props.rowDetail!.rowLabel}
 					canGoPrev={props.rowDetail!.canGoPrev}
 					canGoNext={props.rowDetail!.canGoNext}

@@ -22,6 +22,7 @@ export interface DataGridSidePanelProps {
 	fkMap: () => Map<string, FkTarget>
 	visibleColumns: () => GridColumnDef[]
 	isReadOnly: () => boolean
+	isConnectionReadOnly: () => boolean
 	onExportSelected: () => void
 	onBatchEdit: () => void
 }
@@ -246,6 +247,7 @@ export default function DataGridSidePanel(
 		const idx = getRowDetailIndex()
 		if (idx === null) return
 		for (const [column, value] of Object.entries(changes)) {
+			if (tab()?.columns.find((candidate) => candidate.name === column)?.sourceTable) continue
 			gridStore.setCellValue(props.tabId, idx, column, value)
 		}
 	}
@@ -574,7 +576,7 @@ export default function DataGridSidePanel(
 				: null,
 			foreignKeys: panelMatches ? panel.foreignKeys : [],
 			loading: panelMatches ? panel.loading : true,
-			readOnly: props.isReadOnly(),
+			readOnly: props.isConnectionReadOnly(),
 			rowLabel: panelMatches ? fkPanelRowLabel() : '',
 			canGoPrev: panelMatches ? fkPanelCanPrev() : false,
 			canGoNext: panelMatches ? fkPanelCanNext() : false,
@@ -632,7 +634,8 @@ export default function DataGridSidePanel(
 			columns: tabData.columns,
 			row: tabData.rows[idx] ?? null,
 			foreignKeys: props.foreignKeys(),
-			readOnly: props.isReadOnly(),
+			readOnly: props.isConnectionReadOnly(),
+			isColumnReadOnly: (column) => !!column.sourceTable,
 			rowLabel: `Row ${idx + 1} of ${tabData.rows.length}`,
 			canGoPrev: idx > 0,
 			canGoNext: idx < tabData.rows.length - 1,
@@ -652,7 +655,7 @@ export default function DataGridSidePanel(
 		if (mode?.type !== 'value') return undefined
 
 		return {
-			readOnly: props.isReadOnly(),
+			readOnly: props.isConnectionReadOnly() || !!mode.column.sourceTable,
 			onSave: (value) => {
 				gridStore.setCellValue(
 					props.tabId,
