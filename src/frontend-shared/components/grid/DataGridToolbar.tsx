@@ -124,8 +124,8 @@ export default function DataGridToolbar(props: DataGridToolbarProps) {
 		gridStore.setFilter(props.tabId, filter)
 	}
 
-	function handleRemoveFilter(column: string) {
-		gridStore.removeFilter(props.tabId, column)
+	function handleRemoveFilter(index: number) {
+		gridStore.removeFilter(props.tabId, index)
 	}
 
 	function handleClearFilters() {
@@ -245,10 +245,7 @@ export default function DataGridToolbar(props: DataGridToolbarProps) {
 								filters={tabState().filters}
 								customFilter={tabState().customFilter}
 								onAddFilter={handleAddFilter}
-								onUpdateFilter={(oldCol, filter) => {
-									gridStore.removeFilter(props.tabId, oldCol)
-									gridStore.setFilter(props.tabId, filter)
-								}}
+								onUpdateFilter={(index, filter) => gridStore.updateFilter(props.tabId, index, filter)}
 								onRemoveFilter={handleRemoveFilter}
 								onSetCustomFilter={(v) => gridStore.setCustomFilter(props.tabId, v)}
 								onClearAll={handleClearFilters}

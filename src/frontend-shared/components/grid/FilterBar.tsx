@@ -13,8 +13,8 @@ interface FilterBarProps {
 	filters: ColumnFilter[]
 	customFilter: string
 	onAddFilter: (filter: ColumnFilter) => void
-	onUpdateFilter: (oldColumn: string, filter: ColumnFilter) => void
-	onRemoveFilter: (column: string) => void
+	onUpdateFilter: (index: number, filter: ColumnFilter) => void
+	onRemoveFilter: (index: number) => void
 	onSetCustomFilter: (value: string) => void
 	onClearAll: () => void
 }
@@ -34,6 +34,7 @@ const ALL_OPERATORS: OperatorOption[] = [
 	{ value: 'like', label: 'LIKE' },
 	{ value: 'notLike', label: 'NOT LIKE' },
 	{ value: 'in', label: 'IN' },
+	{ value: 'notIn', label: 'NOT IN' },
 	{ value: 'isNull', label: 'IS NULL' },
 	{ value: 'isNotNull', label: 'IS NOT NULL' },
 ]
@@ -58,7 +59,7 @@ function operatorNeedsValue(op: FilterOperator): boolean {
 
 function formatFilterValue(filter: ColumnFilter): string {
 	if (!operatorNeedsValue(filter.operator)) return ''
-	if (filter.operator === 'in' && Array.isArray(filter.value)) {
+	if ((filter.operator === 'in' || filter.operator === 'notIn') && Array.isArray(filter.value)) {
 		return (filter.value as unknown[]).join(', ')
 	}
 	return String(filter.value ?? '')
@@ -163,7 +164,7 @@ export default function FilterBar(props: FilterBarProps) {
 		<div class="filter-bar">
 			<div class="filter-bar__chips">
 				<For each={props.filters}>
-					{(filter) => {
+					{(filter, index) => {
 						const colDef = () => props.columns.find((c) => c.name === filter.column)
 						const operators = () => {
 							const col = colDef()
@@ -178,8 +179,10 @@ export default function FilterBar(props: FilterBarProps) {
 							if (e.key === 'Enter') {
 								const raw = (e.currentTarget as HTMLInputElement).value.trim()
 								if (!raw) return
-								const value = filter.operator === 'in' ? raw.split(',').map((v) => v.trim()) : raw
-								props.onAddFilter({ ...filter, value })
+								const value = filter.operator === 'in' || filter.operator === 'notIn'
+									? raw.split(',').map((v) => v.trim())
+									: raw
+								props.onUpdateFilter(index(), { ...filter, value })
 								;(e.currentTarget as HTMLInputElement).blur()
 							}
 						}
@@ -195,14 +198,14 @@ export default function FilterBar(props: FilterBarProps) {
 										const op = newOps.find((o) => o.value === filter.operator)
 											? filter.operator
 											: newOps[0].value
-										props.onUpdateFilter(filter.column, { ...filter, column: v, operator: op })
+										props.onUpdateFilter(index(), { ...filter, column: v, operator: op })
 									}}
 									options={availableCols().map((c) => ({ value: c.name, label: c.name }))}
 								/>
 								<Select
 									class="filter-bar__chip-inline-select filter-bar__chip-op-select"
 									value={filter.operator}
-									onChange={(v) => props.onAddFilter({ ...filter, operator: v as FilterOperator })}
+									onChange={(v) => props.onUpdateFilter(index(), { ...filter, operator: v as FilterOperator })}
 									options={operators().map((op) => ({ value: op.value, label: op.label }))}
 								/>
 								<Show when={operatorNeedsValue(filter.operator)}>
@@ -216,14 +219,16 @@ export default function FilterBar(props: FilterBarProps) {
 											const raw = e.currentTarget.value.trim()
 											if (raw === formatFilterValue(filter)) return
 											if (!raw) return
-											const value = filter.operator === 'in' ? raw.split(',').map((v) => v.trim()) : raw
-											props.onAddFilter({ ...filter, value })
+											const value = filter.operator === 'in' || filter.operator === 'notIn'
+												? raw.split(',').map((v) => v.trim())
+												: raw
+											props.onUpdateFilter(index(), { ...filter, value })
 										}}
 									/>
 								</Show>
 								<button
 									class="filter-bar__chip-remove"
-									onClick={() => props.onRemoveFilter(filter.column)}
+									onClick={() => props.onRemoveFilter(index())}
 									title="Remove filter"
 								>
 									<X size={12} />

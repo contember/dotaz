@@ -114,8 +114,14 @@ export default function FkPickerModal(props: FkPickerModalProps) {
 		fetchRows({ searchTerm: search(), filters: next, customFilter: customFilter() })
 	}
 
-	function handleRemoveFilter(column: string) {
-		const next = filters().filter((f) => f.column !== column)
+	function handleUpdateFilter(index: number, filter: ColumnFilter) {
+		const next = filters().map((current, i) => i === index ? filter : current)
+		setFilters(next)
+		fetchRows({ searchTerm: search(), filters: next, customFilter: customFilter() })
+	}
+
+	function handleRemoveFilter(index: number) {
+		const next = filters().filter((_, i) => i !== index)
 		setFilters(next)
 		fetchRows({ searchTerm: search(), filters: next, customFilter: customFilter() })
 	}
@@ -173,10 +179,7 @@ export default function FkPickerModal(props: FkPickerModalProps) {
 							filters={filters()}
 							customFilter={customFilter()}
 							onAddFilter={handleAddFilter}
-							onUpdateFilter={(oldCol, filter) => {
-								handleRemoveFilter(oldCol)
-								handleAddFilter(filter)
-							}}
+							onUpdateFilter={handleUpdateFilter}
 							onRemoveFilter={handleRemoveFilter}
 							onSetCustomFilter={handleSetCustomFilter}
 							onClearAll={handleClearAllFilters}
