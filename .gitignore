@@ -12,3 +12,6 @@ artifacts/
 scripts/seed/*.db
 scripts/seed/*.db-shm
 scripts/seed/*.db-wal
+
+# Electrobun build files
+.cottontail-tmp/
