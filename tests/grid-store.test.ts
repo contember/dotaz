@@ -372,6 +372,46 @@ describe('grid store', () => {
 			expect(tab.filters[0].value).toBe('%ob%')
 		})
 
+		test('addValueFilter accumulates included values with IN', async () => {
+			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
+
+			await gridStore.addValueFilter('tab-1', 'name', 'Alice', false)
+			await gridStore.addValueFilter('tab-1', 'name', 'Bob', false)
+
+			expect(gridStore.getTab('tab-1')!.filters).toEqual([
+				{ column: 'name', operator: 'in', value: ['Alice', 'Bob'] },
+			])
+		})
+
+		test('addValueFilter accumulates excluded values with NOT IN', async () => {
+			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
+
+			await gridStore.addValueFilter('tab-1', 'name', 'Alice', true)
+			await gridStore.addValueFilter('tab-1', 'name', 'Bob', true)
+
+			expect(gridStore.getTab('tab-1')!.filters).toEqual([
+				{ column: 'name', operator: 'notIn', value: ['Alice', 'Bob'] },
+			])
+		})
+
+		test('value filters with opposite operators remain independently editable', async () => {
+			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
+
+			await gridStore.addValueFilter('tab-1', 'name', 'Alice', false)
+			await gridStore.addValueFilter('tab-1', 'name', 'Bob', true)
+			await gridStore.updateFilter('tab-1', 1, { column: 'name', operator: 'neq', value: 'Charlie' })
+
+			expect(gridStore.getTab('tab-1')!.filters).toEqual([
+				{ column: 'name', operator: 'eq', value: 'Alice' },
+				{ column: 'name', operator: 'neq', value: 'Charlie' },
+			])
+
+			await gridStore.removeFilter('tab-1', 0)
+			expect(gridStore.getTab('tab-1')!.filters).toEqual([
+				{ column: 'name', operator: 'neq', value: 'Charlie' },
+			])
+		})
+
 		test('setFilter resets to page 1', async () => {
 			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
 			await gridStore.setPage('tab-1', 2)

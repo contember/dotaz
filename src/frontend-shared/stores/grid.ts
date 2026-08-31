@@ -698,16 +698,63 @@ async function setFilter(tabId: string, filter: ColumnFilter) {
 	await fetchData(tabId)
 }
 
-async function removeFilter(tabId: string, column: string) {
+async function addValueFilter(tabId: string, column: string, value: unknown, exclude: boolean) {
 	const tab = ensureTab(tabId)
 	assertCanRequery(tabId)
 	stopLiveModeIfActive(tabId)
-	setState(
-		'tabs',
-		tabId,
-		'filters',
-		tab.filters.filter((f) => f.column !== column),
-	)
+
+	const filterValue = value == null ? null : String(value)
+	let filters: ColumnFilter[]
+
+	if (filterValue === null) {
+		const operator = exclude ? 'isNotNull' : 'isNull'
+		if (tab.filters.some((filter) => filter.column === column && filter.operator === operator)) return
+		filters = [...tab.filters, { column, operator, value: null }]
+	} else {
+		const singleOperator = exclude ? 'neq' : 'eq'
+		const multipleOperator = exclude ? 'notIn' : 'in'
+		const index = tab.filters.findIndex((filter) =>
+			filter.column === column
+			&& (filter.operator === singleOperator || filter.operator === multipleOperator)
+		)
+
+		if (index === -1) {
+			filters = [...tab.filters, { column, operator: singleOperator, value: filterValue }]
+		} else {
+			const existing = tab.filters[index]
+			const values = Array.isArray(existing.value) ? existing.value : [existing.value]
+			if (values.includes(filterValue)) return
+			filters = tab.filters.map((filter, filterIndex) =>
+				filterIndex === index
+					? { column, operator: multipleOperator, value: [...values, filterValue] }
+					: filter
+			)
+		}
+	}
+
+	setState('tabs', tabId, 'filters', filters)
+	setState('tabs', tabId, 'currentPage', 1)
+	setState('tabs', tabId, 'selection', createDefaultSelection())
+	await fetchData(tabId)
+}
+
+async function updateFilter(tabId: string, index: number, filter: ColumnFilter) {
+	const tab = ensureTab(tabId)
+	assertCanRequery(tabId)
+	stopLiveModeIfActive(tabId)
+	if (!tab.filters[index]) return
+	setState('tabs', tabId, 'filters', (filters) => filters.map((current, i) => (i === index ? filter : current)))
+	setState('tabs', tabId, 'currentPage', 1)
+	setState('tabs', tabId, 'selection', createDefaultSelection())
+	await fetchData(tabId)
+}
+
+async function removeFilter(tabId: string, index: number) {
+	const tab = ensureTab(tabId)
+	assertCanRequery(tabId)
+	stopLiveModeIfActive(tabId)
+	if (!tab.filters[index]) return
+	setState('tabs', tabId, 'filters', tab.filters.filter((_, i) => i !== index))
 	setState('tabs', tabId, 'currentPage', 1)
 	setState('tabs', tabId, 'selection', createDefaultSelection())
 	await fetchData(tabId)
@@ -1038,6 +1085,8 @@ export const gridStore = {
 	setPageSize,
 	toggleSort,
 	setFilter,
+	addValueFilter,
+	updateFilter,
 	removeFilter,
 	clearFilters,
 	setCustomFilter,

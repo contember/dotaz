@@ -719,20 +719,7 @@ export default function DataGridSidePanel(
 					onFilter={tabState()!.fkPeek!.breadcrumbs.length === 1
 							&& !tabState()!.fkPeek!.breadcrumbs[0].column
 						? (column, value, exclude) => {
-							const v = value === null || value === undefined
-								? null
-								: String(value)
-							gridStore.setFilter(props.tabId, {
-								column,
-								operator: v === null
-									? exclude
-										? 'isNotNull'
-										: 'isNull'
-									: exclude
-									? 'neq'
-									: 'eq',
-								value: v,
-							})
+							gridStore.addValueFilter(props.tabId, column, value, exclude)
 							gridStore.closeFkPeek(props.tabId)
 						}
 						: undefined}

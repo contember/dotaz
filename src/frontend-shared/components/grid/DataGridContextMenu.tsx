@@ -220,20 +220,12 @@ export function useDataGridContextMenu(deps: DataGridContextMenuDeps) {
 					{
 						label: value === null ? 'Is NULL' : 'Include',
 						icon: () => <FilterIcon size={14} />,
-						action: () => {
-							const filterValue = value === null ? '' : String(value)
-							const operator = value === null ? ('isNull' as const) : ('eq' as const)
-							gridStore.setFilter(deps.tabId, { column, operator, value: filterValue })
-						},
+						action: () => gridStore.addValueFilter(deps.tabId, column, value, false),
 					},
 					{
 						label: value === null ? 'Not NULL' : 'Exclude',
 						icon: () => <FilterXIcon size={14} />,
-						action: () => {
-							const filterValue = value === null ? '' : String(value)
-							const operator = value === null ? ('isNotNull' as const) : ('neq' as const)
-							gridStore.setFilter(deps.tabId, { column, operator, value: filterValue })
-						},
+						action: () => gridStore.addValueFilter(deps.tabId, column, value, true),
 					},
 				],
 			},
