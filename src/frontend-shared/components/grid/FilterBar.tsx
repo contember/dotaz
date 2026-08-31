@@ -32,6 +32,7 @@ const ALL_OPERATORS: OperatorOption[] = [
 	{ value: 'lt', label: '<' },
 	{ value: 'lte', label: '<=' },
 	{ value: 'like', label: 'LIKE' },
+	{ value: 'notLike', label: 'NOT LIKE' },
 	{ value: 'in', label: 'IN' },
 	{ value: 'isNull', label: 'IS NULL' },
 	{ value: 'isNotNull', label: 'IS NOT NULL' },
@@ -43,7 +44,7 @@ function getOperatorsForType(dataType: DatabaseDataType): OperatorOption[] {
 		case 'boolean':
 			return ALL_OPERATORS.filter((o) => ['eq', 'neq', 'isNull', 'isNotNull'].includes(o.value))
 		case 'number':
-			return ALL_OPERATORS.filter((o) => o.value !== 'like')
+			return ALL_OPERATORS.filter((o) => o.value !== 'like' && o.value !== 'notLike')
 		case 'text':
 			return ALL_OPERATORS
 		default:
