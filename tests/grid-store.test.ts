@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import { DatabaseDataType } from '../src/shared/types/database'
 // Import the real implementation so the rpc mock can re-expose it. Stubbing it
 // out here pollutes other suites in the same bun process (notably
 // rpc-errors.test.ts) on Linux — the mock leaks across files even though they
@@ -949,6 +950,26 @@ describe('grid store', () => {
 				oldValue: 'Alice',
 				newValue: 'Updated',
 			})
+		})
+
+		test('setCellValue rejects columns from an auto-join', async () => {
+			await gridStore.loadTableData('tab-1', 'conn-1', 'public', 'users')
+			const tab = gridStore.getTab('tab-1')!
+			tab.columns.push({
+				name: 'companies.name',
+				dataType: DatabaseDataType.Text,
+				nullable: true,
+				isPrimaryKey: false,
+				joinAlias: 'j1',
+				sourceTable: 'companies',
+			})
+			tab.rows[0]['companies.name'] = 'Acme'
+
+			gridStore.setCellValue('tab-1', 0, 'companies.name', 'Other')
+
+			expect(tab.rows[0]['companies.name']).toBe('Acme')
+			expect(tab.pendingChanges.cellEdits).toEqual({})
+			expect(tab.undoStack).toEqual([])
 		})
 
 		test('isCellChanged returns correct state', async () => {

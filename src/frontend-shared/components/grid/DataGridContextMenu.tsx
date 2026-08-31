@@ -100,6 +100,7 @@ export interface DataGridContextMenuDeps {
 	fkMap: () => Map<string, FkTarget>
 	visibleColumns: () => GridColumnDef[]
 	isReadOnly: () => boolean
+	isColumnEditable: (column: string) => boolean
 	onPaste: () => void
 	onAdvancedCopy: () => void
 	onDuplicateRow: (rowIndex: number) => void
@@ -131,6 +132,7 @@ export function useDataGridContextMenu(deps: DataGridContextMenuDeps) {
 		const columnDef = t.columns.find((candidate) => candidate.name === column)
 		const isDeleted = gridStore.isRowDeleted(deps.tabId, rowIndex)
 		const ro = deps.isReadOnly()
+		const cellReadOnly = !deps.isColumnEditable(column)
 		const currentSort = t.sort.find((s) => s.column === column)
 		const generatorItems = columnDef
 			? createValueGeneratorItems(
@@ -143,7 +145,7 @@ export function useDataGridContextMenu(deps: DataGridContextMenuDeps) {
 				type: 'submenu',
 				label: 'Generate value',
 				icon: () => <Sparkles size={14} />,
-				disabled: isDeleted || ro,
+				disabled: isDeleted || cellReadOnly,
 				items: generatorItems,
 			}]
 			: []
@@ -184,13 +186,13 @@ export function useDataGridContextMenu(deps: DataGridContextMenuDeps) {
 				label: 'Edit Cell',
 				icon: () => <Pencil size={14} />,
 				action: () => gridStore.startEditing(deps.tabId, rowIndex, column),
-				disabled: isDeleted || ro,
+				disabled: isDeleted || cellReadOnly,
 			},
 			{
 				label: 'Set NULL',
 				icon: () => <Slash size={14} />,
 				action: () => gridStore.setCellValue(deps.tabId, rowIndex, column, null),
-				disabled: isDeleted || ro,
+				disabled: isDeleted || cellReadOnly,
 			},
 			...generatorMenu,
 			'separator',

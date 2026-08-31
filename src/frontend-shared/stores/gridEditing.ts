@@ -68,6 +68,7 @@ export function createGridEditingActions(
 		newValue: unknown,
 	): boolean {
 		const tab = ensureTab(tabId)
+		if (tab.columns.find((candidate) => candidate.name === column)?.sourceTable) return false
 		const key = `${rowIndex}:${column}`
 		const existing = tab.pendingChanges.cellEdits[key]
 		const result = reconcileCellEdit({
@@ -382,6 +383,7 @@ export function createGridEditingActions(
 			if (!row) continue
 			const values: Record<string, unknown> = {}
 			for (const col of tab.columns) {
+				if (col.sourceTable) continue
 				if (row[col.name] !== null && row[col.name] !== undefined) {
 					values[col.name] = row[col.name]
 				}

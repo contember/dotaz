@@ -27,6 +27,7 @@ interface RowDetailPanelProps {
 	width: number
 	loading?: boolean
 	readOnly?: boolean
+	isColumnReadOnly?: (column: GridColumnDef) => boolean
 
 	// Navigation
 	rowLabel?: string
@@ -94,7 +95,20 @@ export default function RowDetailPanel(props: RowDetailPanelProps) {
 		setExpandedField(null)
 	}))
 
-	const canEdit = () => !props.readOnly && !!props.onSave && detail.pkColumns().size > 0
+	const canEdit = () =>
+		!props.readOnly
+		&& !!props.onSave
+		&& detail.pkColumns().size > 0
+		&& props.columns.some((column) => !detail.pkColumns().has(column.name) && !props.isColumnReadOnly?.(column))
+
+	function editableEdits(): Record<string, unknown> {
+		return Object.fromEntries(
+			Object.entries(detail.localEdits()).filter(([column]) => {
+				const columnDef = props.columns.find((candidate) => candidate.name === column)
+				return columnDef && !props.isColumnReadOnly?.(columnDef)
+			}),
+		)
+	}
 
 	function isChanged(column: string): boolean {
 		if (detail.isFieldChanged(column)) return true
@@ -119,7 +133,7 @@ export default function RowDetailPanel(props: RowDetailPanelProps) {
 	// ── Save / Cancel ────────────────────────────────────────
 	function saveCurrentEdits() {
 		if (detail.hasFieldErrors()) return
-		const edits = detail.localEdits()
+		const edits = editableEdits()
 		if (Object.keys(edits).length > 0 && props.onSave) {
 			props.onSave(edits)
 			detail.resetEdits()
@@ -128,7 +142,7 @@ export default function RowDetailPanel(props: RowDetailPanelProps) {
 
 	async function handleSave() {
 		if (detail.hasFieldErrors()) return
-		const edits = detail.localEdits()
+		const edits = editableEdits()
 		if (Object.keys(edits).length === 0) {
 			setEditing(false)
 			return
@@ -356,6 +370,7 @@ export default function RowDetailPanel(props: RowDetailPanelProps) {
 									pkColumns={detail.pkColumns()}
 									getValue={detail.getValue}
 									isChanged={isChanged}
+									isColumnReadOnly={props.isColumnReadOnly}
 									setFieldValue={detail.setFieldValue}
 									setFieldError={detail.setFieldError}
 									connectionId={props.connectionId}

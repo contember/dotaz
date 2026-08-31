@@ -64,9 +64,13 @@ export default function DataGrid(props: DataGridProps) {
 
 	const tab = () => gridStore.getTab(props.tabId)
 	const tabInfo = () => tabsStore.openTabs.find((t) => t.id === props.tabId)
+	const isConnectionReadOnly = () => connectionsStore.isReadOnly(props.connectionId)
 	const isReadOnly = () =>
-		connectionsStore.isReadOnly(props.connectionId)
+		isConnectionReadOnly()
 		|| (tab()?.autoJoins.length ?? 0) > 0
+	const isColumnEditable = (column: string) =>
+		!isConnectionReadOnly()
+		&& !tab()?.columns.find((candidate) => candidate.name === column)?.sourceTable
 
 	const currentSchema = () => tab()?.schema ?? props.schema
 	const currentTable = () => tab()?.table ?? props.table
@@ -86,6 +90,7 @@ export default function DataGrid(props: DataGridProps) {
 		tabId: props.tabId,
 		visibleColumns,
 		isReadOnly,
+		isColumnEditable,
 		fkMap: () => fkState.map,
 		onOpenFkPicker: modals.openFkPicker,
 	})
@@ -106,6 +111,7 @@ export default function DataGrid(props: DataGridProps) {
 		fkMap: () => fkState.map,
 		visibleColumns,
 		isReadOnly,
+		isColumnEditable,
 		onPaste: clipboard.handlePaste,
 		onAdvancedCopy: () => modals.openAdvancedCopy(),
 		onDuplicateRow: cellEdit.handleDuplicateRow,
@@ -294,9 +300,9 @@ export default function DataGrid(props: DataGridProps) {
 	function gridEditing(): GridViewEditing {
 		return {
 			editingCell: tab()?.editingCell ?? null,
-			isEditable: () => !isReadOnly(),
+			isEditable: isColumnEditable,
 			onStart: (rowIdx, col, initialValue) => {
-				if (isReadOnly()) return
+				if (!isColumnEditable(col)) return
 				if (gridStore.isRowDeleted(props.tabId, rowIdx)) return
 				gridStore.startEditing(props.tabId, rowIdx, col, initialValue)
 			},
@@ -631,6 +637,7 @@ export default function DataGrid(props: DataGridProps) {
 									fkMap={() => fkState.map}
 									visibleColumns={visibleColumns}
 									isReadOnly={isReadOnly}
+									isConnectionReadOnly={isConnectionReadOnly}
 									onExportSelected={() => {
 										if (!gridStore.getSelectionSnapshot(props.tabId)) {
 											const t = tab()
