@@ -71,6 +71,8 @@ The toolchain itself (Hutch, CEF, Bun) lands in `~/.hutch`, shared across projec
 
 Hutch only ever builds for the **current host**, and publishes no macOS x64 artifact, so Intel Macs get no desktop build.
 
+The `scripts.postBuild` hook (`scripts/fix-linux-app-icon.ts`) works around an electrobun 2.0.1 bug: on Linux the launcher loads `Resources/appIcon.png` relative to its own cwd, which it forces to `<app>/bin`, so the window icon never loads. Drop the hook once upstream resolves that path against the app root.
+
 ## Architecture
 
 Two-process model communicating via type-safe RPC:

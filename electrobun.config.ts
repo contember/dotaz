@@ -44,6 +44,9 @@ export default {
 			icon: 'assets/icon.ico',
 		},
 	},
+	scripts: {
+		postBuild: 'scripts/fix-linux-app-icon.ts',
+	},
 	release: {
 		baseUrl: 'https://github.com/contember/dotaz/releases/latest/download',
 		generatePatch: true,
