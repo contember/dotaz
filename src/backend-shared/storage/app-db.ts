@@ -260,6 +260,9 @@ export class AppDatabase {
 	updateConnection(
 		params: { id: string; name: string; config: ConnectionConfig; readOnly?: boolean; color?: string; groupName?: string },
 	): ConnectionInfo {
+		const existing = this.getConnectionById(params.id)
+		if (!existing) throw new Error(`Connection not found: ${params.id}`)
+
 		const now = new Date().toISOString()
 		this.db.prepare(
 			'UPDATE connections SET name = ?, type = ?, config = ?, read_only = ?, color = ?, group_name = ?, updated_at = ? WHERE id = ?',
@@ -267,15 +270,13 @@ export class AppDatabase {
 			params.name,
 			params.config.type,
 			this.encryptConfigJson(params.config),
-			params.readOnly ? 1 : 0,
-			params.color || null,
-			params.groupName !== undefined ? (params.groupName || null) : null,
+			(params.readOnly ?? existing.readOnly) ? 1 : 0,
+			params.color !== undefined ? (params.color || null) : (existing.color ?? null),
+			params.groupName !== undefined ? (params.groupName || null) : (existing.groupName ?? null),
 			now,
 			params.id,
 		)
-		const result = this.getConnectionById(params.id)
-		if (!result) throw new Error(`Connection not found: ${params.id}`)
-		return result
+		return this.getConnectionById(params.id)!
 	}
 
 	setConnectionGroup(id: string, groupName: string | null): ConnectionInfo {

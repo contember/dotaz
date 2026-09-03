@@ -322,6 +322,26 @@ describe('AppDatabase', () => {
 			expect(updated.updatedAt).toBeTruthy()
 		})
 
+		test('config-only update preserves connection metadata', () => {
+			const created = appDb.createConnection({
+				name: 'Production',
+				config: pgConfig,
+				readOnly: true,
+				color: '#ef4444',
+			})
+			appDb.setConnectionGroup(created.id, 'Servers')
+
+			const updated = appDb.updateConnection({
+				id: created.id,
+				name: created.name,
+				config: { ...pgConfig, activeDatabases: ['analytics'] },
+			})
+
+			expect(updated.readOnly).toBe(true)
+			expect(updated.color).toBe('#ef4444')
+			expect(updated.groupName).toBe('Servers')
+		})
+
 		test('update throws for non-existent id', () => {
 			expect(() => appDb.updateConnection({ id: 'nonexistent', name: 'X', config: pgConfig })).toThrow('Connection not found')
 		})
