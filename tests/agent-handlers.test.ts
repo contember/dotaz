@@ -285,6 +285,12 @@ describe('Agent CLI handlers', () => {
 			'id > 1 -- ',
 			'id > 1 /* x */',
 			'id > 1)',
+			// A quote left open would otherwise swallow the rest of the fragment unscanned
+			"id = 'unterminated ; DELETE FROM orders",
+			'id = "unterminated ; DELETE FROM orders',
+			// Backslash escapes desynchronise the scan from what MySQL and Postgres E'…' parse
+			"1=1 AND E'\\'') ; DELETE FROM orders; --",
+			"1=1 AND '\\'') ; DELETE FROM orders; --",
 		]
 		for (const where of bad) {
 			expect(() => ctx.handlers['ui.openTable']({ connectionId: ctx.connectionId, table: 'users', where }))

@@ -48,15 +48,24 @@ function assertBooleanExpression(where: string | undefined): void {
 		// Skip over string literals and quoted identifiers — a `;` inside one is just data
 		if (ch === "'" || ch === '"') {
 			i++
+			let closed = false
 			while (i < fragment.length) {
+				// A backslash escapes the quote in MySQL and in Postgres E'…' strings but not in
+				// standard SQL, so scanning cannot agree with every dialect's parser here.
+				if (fragment[i] === '\\') throw new Error('where must not contain a backslash inside quoted text')
 				if (fragment[i] !== ch) {
 					i++
 					continue
 				}
 				i++
-				if (fragment[i] === ch) i++ // doubled quote escapes itself
-				else break
+				if (fragment[i] === ch) {
+					i++ // doubled quote escapes itself
+					continue
+				}
+				closed = true
+				break
 			}
+			if (!closed) throw new Error('where has an unterminated quoted string')
 			continue
 		}
 		if (ch === ';') {
