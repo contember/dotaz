@@ -178,6 +178,32 @@ describe('control server shutdown', () => {
 	})
 })
 
+describe('control server idle timeout', () => {
+	// Bun.serve defaults to a 10s idle timeout and severs an in-flight request past it. The CLI
+	// long-polls `agent.proposals.wait` in 30s slices and runs reads up to the statement cap, so
+	// the server must not cut those off. This drives a handler well past the default and expects a
+	// reply, which fails without an explicit idleTimeout on the serve call.
+	test('a handler slower than the default idle timeout still completes', async () => {
+		const userDataDir = mkdtempSync(join(tmpdir(), 'dotaz-control-idle-'))
+		// `agent.hello` is on the CLI allowlist; a bespoke method name would be refused by the surface.
+		const slowHandlers = {
+			'agent.hello': async () => {
+				await Bun.sleep(11_000)
+				return { ok: true }
+			},
+		}
+		const server = await startControlServer({ handlers: slowHandlers, userDataDir, appVersion: '9.9.9', transport: 'unix' })
+		try {
+			const found = discoverEndpoint({ explicitFile: server.endpointFile })
+			const payload = await new DotazClient(found.endpoint, 20_000).call('agent.hello')
+			expect(payload).toEqual({ ok: true })
+		} finally {
+			await server.stop()
+			rmSync(userDataDir, { recursive: true, force: true })
+		}
+	}, 25_000)
+})
+
 describe('resolveTransport', () => {
 	test('the explicit option wins over everything', () => {
 		expect(resolveTransport({ transport: 'tcp', env: { DOTAZ_CLI_TRANSPORT: 'unix' }, platform: 'linux' })).toBe('tcp')
