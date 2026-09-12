@@ -1,3 +1,4 @@
+import { isSingleStatement } from '@dotaz/shared/sql/single-statement'
 import { isReadOnlySql } from '@dotaz/shared/sql/statements'
 import type { ConnectionConfig } from '@dotaz/shared/types/connection'
 import { DatabaseError } from '@dotaz/shared/types/errors'
@@ -572,9 +573,14 @@ export function createHandlers(adapter: RpcAdapter) {
 			if (run && !sql?.trim()) {
 				throw new Error('run requires sql')
 			}
-			// Auto-run would otherwise be a way around the approval flow — writes must go through agent.proposeWrite
-			if (run && !isReadOnlySql(sql ?? '')) {
-				throw new DatabaseError('READ_ONLY_SESSION', 'Only read-only SQL can be auto-run — submit writes via agent.proposeWrite')
+			// Auto-run happens in the app's own writable session, so a write here would sidestep the
+			// approval flow. Require a single provably-read statement: multi-statement input could
+			// hide a write behind a leading SELECT, and only one statement per round-trip is provable.
+			if (run) {
+				const type = adapter.listConnections().find((c) => c.id === connectionId)?.config.type
+				if (!isSingleStatement(sql ?? '', type) || !isReadOnlySql(sql ?? '')) {
+					throw new DatabaseError('READ_ONLY_SESSION', 'Only a single read-only statement can be auto-run — submit writes via agent.proposeWrite')
+				}
 			}
 			adapter.sendUiCommand({ kind: 'open-console', connectionId, database, sql, run })
 			return { ok: true } as const

@@ -19,10 +19,14 @@ This document is the implementation contract. Everything below is normative.
    switched to read-write. An approved write executes in the frontend's own session, not in
    an agent session.
    No control-plane method may be used to get around this: `ui.openConsole` will prefill a
-   write, but refuses to auto-run one (`run: true` is rejected for non-read-only SQL), and
-   `ui.openTable`'s `where` must be a single boolean expression.
-2. Read-only is enforced by the database engine, not by parsing SQL. Statement
-   classification exists only to fail fast with a good message.
+   write, but refuses to auto-run one (`run: true` is rejected unless the SQL is a single
+   read-only statement), and `ui.openTable`'s `where` must be a single boolean expression.
+2. Read-only is enforced by the database engine, not by parsing SQL. Statement classification
+   exists only to fail fast with a good message. The one thing parsing must get right is that a
+   read-only session runs exactly one statement per engine round-trip: a multi-statement string
+   could flip the session to read-write between statements (`… ; SET SESSION … READ WRITE ;
+   COMMIT ; INSERT …`), which the engine cannot catch on its own. The guard rejects anything not
+   provably a single statement, using a dialect-aware, fail-closed scanner (`isSingleStatement`).
 3. The control endpoint does not exist unless the user enabled it (`cli.enabled` setting or
    `DOTAZ_CLI=1`). No setting, no socket, no endpoint file.
 
@@ -161,7 +165,9 @@ Neither mechanism protects itself, so both are re-established rather than set on
   `SELECT set_config('default_transaction_read_only','off',false)` classifies as a _read_. The
   driver therefore re-asserts the session characteristics (and the timeout) before every
   statement. Verified against PostgreSQL 17: re-asserting blocks the write, and a single
-  statement cannot both clear the GUC and write under it.
+  statement cannot both clear the GUC and write under it. That re-assert runs once per
+  `execute()`, so it only holds if `execute()` receives one statement at a time — which is why a
+  read-only session rejects multi-statement input (`isSingleStatement`) before running it.
 - SQLite's `PRAGMA query_only` can be revoked with `PRAGMA query_only(0)` — the function form
   carries no `=`, so it too classifies as a read. The handle is opened read-only at the VFS
   level, which no statement can revoke; the pragma is a second layer.

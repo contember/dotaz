@@ -556,6 +556,53 @@ describe('QueryExecutor read-only guard', () => {
 	})
 })
 
+// The multi-statement bypass: a hostile string packs `SET SESSION … READ WRITE; COMMIT` between a
+// leading read and a write, so a tokenizer that under-splits it (treating the whole thing as one
+// dollar-quoted read) would slip the write past the engine. The guard must reject it before it
+// runs; these prove the write never reaches the database. Requires `docker compose up -d`.
+describe.skipIf(!pgReachable)('QueryExecutor read-only bypass — PostgreSQL', () => {
+	let appDb: AppDatabase
+	let cm: ConnectionManager
+	let sm: SessionManager
+	let qe: QueryExecutor
+	let connectionId: string
+
+	const bypasses = [
+		`SELECT 1 AS x$$; SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE; COMMIT; INSERT INTO ro_canary VALUES (1); SELECT 1 AS y$$`,
+		`SELECT E'\\''; SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE; COMMIT; INSERT INTO ro_canary VALUES (1); SELECT ''''`,
+		`SELECT 1 /* /* */ ' */ ; SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE; COMMIT; INSERT INTO ro_canary VALUES (1); -- '`,
+	]
+
+	beforeEach(async () => {
+		AppDatabase.resetInstance()
+		appDb = AppDatabase.getInstance(':memory:')
+		cm = new ConnectionManager(appDb)
+		sm = new SessionManager(cm, appDb)
+		qe = new QueryExecutor(cm)
+		connectionId = cm.createConnection({ name: 'pg-bypass', config: pgConfig }).id
+		await cm.connect(connectionId)
+		await qe.executeQuery(connectionId, 'DROP TABLE IF EXISTS ro_canary; CREATE TABLE ro_canary (id integer)')
+	})
+
+	afterEach(async () => {
+		await qe.executeQuery(connectionId, 'DROP TABLE IF EXISTS ro_canary').catch(() => {})
+		sm.dispose()
+		await cm.disconnectAll()
+		AppDatabase.resetInstance()
+	})
+
+	test('every bypass is rejected and writes nothing', async () => {
+		for (const sql of bypasses) {
+			const sessionId = (await sm.createSession(connectionId, undefined, { readOnly: true })).sessionId
+			await expect(qe.executeQuery(connectionId, sql, undefined, undefined, undefined, undefined, sessionId))
+				.rejects.toThrow(/read-only/i)
+			await sm.destroySession(sessionId)
+		}
+		const [count] = await qe.executeQuery(connectionId, 'SELECT count(*)::int AS n FROM ro_canary')
+		expect(Number(count.rows[0].n)).toBe(0)
+	})
+})
+
 // Requires `docker compose up -d` — skipped when the container isn't reachable.
 describe.skipIf(!pgReachable)('PostgresDriver read-only sessions', () => {
 	let driver: PostgresDriver
@@ -687,6 +734,54 @@ describe.skipIf(!pgReachable)('PostgresDriver read-only statement timeout', () =
 			await driver.releaseSession(zeroId)
 			await driver.releaseSession(absentId)
 		}
+	})
+})
+
+// The MySQL counterparts of the bypass: `$$` is bare identifier text here (not a dollar-quote),
+// backslash escapes and `#` comments are real, and `--x` is not a comment — each a place a
+// Postgres-shaped tokenizer would mis-split. Requires `docker compose up -d`.
+describe.skipIf(!mysqlReachable)('QueryExecutor read-only bypass — MySQL', () => {
+	let appDb: AppDatabase
+	let cm: ConnectionManager
+	let sm: SessionManager
+	let qe: QueryExecutor
+	let connectionId: string
+
+	const bypasses = [
+		`SELECT 1 AS $$; SET SESSION TRANSACTION READ WRITE; INSERT INTO ro_canary VALUES (1); SELECT 1 AS $$`,
+		`SELECT '\\''; SET SESSION TRANSACTION READ WRITE; INSERT INTO ro_canary VALUES (1); SELECT ''''`,
+		`SELECT 1 # '\n; SET SESSION TRANSACTION READ WRITE; INSERT INTO ro_canary VALUES (1); -- '`,
+		`SELECT 1 --'';SET SESSION TRANSACTION READ WRITE;INSERT INTO ro_canary VALUES (1);`,
+	]
+
+	beforeEach(async () => {
+		AppDatabase.resetInstance()
+		appDb = AppDatabase.getInstance(':memory:')
+		cm = new ConnectionManager(appDb)
+		sm = new SessionManager(cm, appDb)
+		qe = new QueryExecutor(cm)
+		connectionId = cm.createConnection({ name: 'my-bypass', config: mysqlConfig }).id
+		await cm.connect(connectionId)
+		await qe.executeQuery(connectionId, 'DROP TABLE IF EXISTS ro_canary')
+		await qe.executeQuery(connectionId, 'CREATE TABLE ro_canary (id int)')
+	})
+
+	afterEach(async () => {
+		await qe.executeQuery(connectionId, 'DROP TABLE IF EXISTS ro_canary').catch(() => {})
+		sm.dispose()
+		await cm.disconnectAll()
+		AppDatabase.resetInstance()
+	})
+
+	test('every bypass is rejected and writes nothing', async () => {
+		for (const sql of bypasses) {
+			const sessionId = (await sm.createSession(connectionId, undefined, { readOnly: true })).sessionId
+			await expect(qe.executeQuery(connectionId, sql, undefined, undefined, undefined, undefined, sessionId))
+				.rejects.toThrow(/read-only/i)
+			await sm.destroySession(sessionId)
+		}
+		const [count] = await qe.executeQuery(connectionId, 'SELECT count(*) AS n FROM ro_canary')
+		expect(Number(count.rows[0].n)).toBe(0)
 	})
 })
 

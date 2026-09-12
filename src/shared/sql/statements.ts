@@ -1,6 +1,22 @@
 import type { ErrorPosition } from '../types/query'
 
 /**
+ * A character that can be part of an SQL identifier: an ASCII letter or digit, `_`, or any
+ * non-ASCII character (engines allow those in identifiers). `undefined` (start of input) is not one.
+ */
+export function isIdentChar(ch: string | undefined): boolean {
+	if (ch === undefined || ch === '') return false
+	const code = ch.charCodeAt(0)
+	return (
+		(code >= 48 && code <= 57) // 0-9
+		|| (code >= 65 && code <= 90) // A-Z
+		|| (code >= 97 && code <= 122) // a-z
+		|| code === 95 // _
+		|| code >= 128 // non-ASCII
+	)
+}
+
+/**
  * Split a SQL string into individual statements by semicolons.
  * Respects single-quoted strings (with '' escaping), double-quoted identifiers,
  * dollar-quoted strings ($$...$$), line comments (--), and block comments.
@@ -41,7 +57,10 @@ export function splitStatements(sql: string): string[] {
 		}
 
 		// Dollar-quoted string: $$...$$ or $tag$...$tag$
-		if (ch === '$') {
+		// A `$` touching an identifier character is part of that identifier, not a quote opener —
+		// PostgreSQL reads `x$$` as a name, so `SELECT 1 AS x$$; …` is many statements, not one
+		// dollar-quoted SELECT. Treating it as a quote let a read-only bypass hide a write inside.
+		if (ch === '$' && !isIdentChar(sql[i - 1])) {
 			const tagMatch = sql.slice(i).match(/^(\$[a-zA-Z0-9_]*\$)/)
 			if (tagMatch) {
 				const tag = tagMatch[1]
@@ -175,8 +194,8 @@ export function stripLiteralsAndComments(sql: string): string {
 			continue
 		}
 
-		// Dollar-quoted string
-		if (ch === '$') {
+		// Dollar-quoted string ($ touching an identifier char is part of a name, not a quote)
+		if (ch === '$' && !isIdentChar(sql[i - 1])) {
 			const tagMatch = sql.slice(i).match(/^(\$[a-zA-Z0-9_]*\$)/)
 			if (tagMatch) {
 				const tag = tagMatch[1]
