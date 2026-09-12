@@ -266,9 +266,12 @@ describe('Agent CLI handlers', () => {
 		['a GUC rewrite', "SELECT set_config('default_transaction_read_only','off',false)"],
 		['a pragma with an argument', 'PRAGMA query_only(0)'],
 		['a trailing statement', 'SELECT 1; DELETE FROM orders'],
+		// Auto-run executes one statement in the app's writable session; even an all-read batch is
+		// refused, so a write cannot ride in behind a leading SELECT the classifier misreads.
+		['a multi-statement batch', 'SELECT 1; SELECT 2'],
 	])('ui.openConsole refuses to auto-run %s', (_label, sql) => {
 		expect(() => ctx.handlers['ui.openConsole']({ connectionId: ctx.connectionId, sql, run: true }))
-			.toThrow(/Only read-only SQL can be auto-run/)
+			.toThrow(/Only a single read-only statement can be auto-run/)
 		expect(ctx.emitted).toHaveLength(0)
 	})
 

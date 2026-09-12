@@ -1,3 +1,4 @@
+import { isSingleStatement } from '@dotaz/shared/sql/single-statement'
 import { isReadOnlySql, parseErrorPosition, splitStatements, stripLiteralsAndComments } from '@dotaz/shared/sql/statements'
 import { DatabaseError } from '@dotaz/shared/types/errors'
 import type { ExplainNode, ExplainResult, QueryResult } from '@dotaz/shared/types/query'
@@ -134,12 +135,21 @@ function isTopLevelTransactionControl(statement: string): boolean {
  */
 export function assertSessionWritable(driver: DatabaseDriver, sql: string, sessionId?: string): void {
 	if (sessionId === undefined || !driver.isSessionReadOnly(sessionId)) return
+	// A read-only session runs exactly one statement per engine round-trip. A multi-statement
+	// string could flip the session to read-write between statements (`… ; SET SESSION … READ
+	// WRITE ; COMMIT ; INSERT …`), and no keyword classifier can be trusted to see every separator
+	// the engine does — so reject anything not provably a single statement before classifying it.
+	// The engine still blocks a lone statement that tries to write; this closes the multi-statement
+	// gap that the reassert-once-per-execute enforcement cannot.
+	if (!isSingleStatement(sql, driver.getDriverType())) {
+		throw new DatabaseError('READ_ONLY_SESSION', READ_ONLY_MESSAGE)
+	}
 	if (isReadOnlySql(sql)) return
-	throw new DatabaseError(
-		'READ_ONLY_SESSION',
-		'This session is read-only and cannot execute writes. Submit the statement with `dotaz propose` so it can be approved and run in the app.',
-	)
+	throw new DatabaseError('READ_ONLY_SESSION', READ_ONLY_MESSAGE)
 }
+
+const READ_ONLY_MESSAGE =
+	'This session is read-only and cannot execute writes. Submit the statement with `dotaz propose` so it can be approved and run in the app.'
 
 export class QueryExecutor {
 	private connectionManager: ConnectionManager
