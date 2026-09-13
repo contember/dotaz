@@ -12,6 +12,9 @@ export interface HandlerOptions {
 	demoDbSourcePath?: string
 	demoDbTargetPath?: string
 	allowServerFileAccess?: boolean
+	/** Reported by `agent.hello` — the entry point knows these, `backend-shared` does not. */
+	appVersion?: string
+	mode?: 'desktop' | 'web' | 'demo'
 }
 
 function requireAppDb(appDb: AppDatabase | undefined): AppDatabase {
@@ -39,6 +42,8 @@ export function createHandlers(
 		demoDbSourcePath: opts?.demoDbSourcePath,
 		demoDbTargetPath: opts?.demoDbTargetPath,
 		allowServerFileAccess: opts?.allowServerFileAccess,
+		appVersion: opts?.appVersion,
+		mode: opts?.mode,
 	})
 	return { handlers: createSharedHandlers(adapter), sessionManager, adapter }
 }

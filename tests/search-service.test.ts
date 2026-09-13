@@ -18,6 +18,8 @@ let driver: SqliteDriver
 class CapturingMysqlSearchDriver implements DatabaseDriver {
 	readonly executedSql: string[] = []
 	readonly executedParams: unknown[][] = []
+	readonly executeSessionIds: (string | undefined)[] = []
+	readonly schemaSessionIds: (string | undefined)[] = []
 
 	connect(_config: ConnectionConfig): Promise<void> {
 		return Promise.resolve()
@@ -39,13 +41,18 @@ class CapturingMysqlSearchDriver implements DatabaseDriver {
 		return Promise.resolve()
 	}
 
+	isSessionReadOnly(_sessionId: string): boolean {
+		return false
+	}
+
 	getSessionIds(): string[] {
 		return []
 	}
 
-	execute(sql: string, params?: unknown[]): Promise<QueryResult> {
+	execute(sql: string, params?: unknown[], sessionId?: string): Promise<QueryResult> {
 		this.executedSql.push(sql)
 		this.executedParams.push(params ?? [])
+		this.executeSessionIds.push(sessionId)
 		return Promise.resolve({
 			columns: [],
 			rows: [],
@@ -69,7 +76,8 @@ class CapturingMysqlSearchDriver implements DatabaseDriver {
 		return Promise.resolve(0)
 	}
 
-	loadSchema(_sessionId?: string): Promise<SchemaData> {
+	loadSchema(sessionId?: string): Promise<SchemaData> {
+		this.schemaSessionIds.push(sessionId)
 		return Promise.resolve({
 			schemas: [{ name: 'app' }],
 			tables: {
@@ -383,6 +391,7 @@ describe('searchDatabase', () => {
 				searchTerm: 'Alice',
 				scope: 'database',
 				resultsPerTable: 5,
+				sessionId: 'agent-session',
 			},
 			() => {},
 			() => false,
@@ -392,5 +401,7 @@ describe('searchDatabase', () => {
 			'SELECT * FROM `app`.`users` WHERE CAST(`name` AS CHAR) LIKE ? OR CAST(`age` AS CHAR) LIKE ? LIMIT ?',
 		])
 		expect(mysqlDriver.executedParams).toEqual([['%Alice%', '%Alice%', 5]])
+		expect(mysqlDriver.schemaSessionIds).toEqual(['agent-session'])
+		expect(mysqlDriver.executeSessionIds).toEqual(['agent-session'])
 	})
 })

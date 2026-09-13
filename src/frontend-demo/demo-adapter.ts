@@ -4,6 +4,7 @@ import { buildSchemaContext, generateSql } from '@dotaz/backend-shared/services/
 import { buildExportSelectQuery, exportPreview as generateExportPreview, exportToStream } from '@dotaz/backend-shared/services/export-service'
 import type { ExportWriter } from '@dotaz/backend-shared/services/export-service'
 import { importFromStream, importPreviewFromStream } from '@dotaz/backend-shared/services/import-service'
+import { ProposalStore } from '@dotaz/backend-shared/services/proposal-store'
 import { searchDatabase } from '@dotaz/backend-shared/services/search-service'
 import { formatSql } from '@dotaz/backend-shared/services/sql-formatter'
 import { splitStatements } from '@dotaz/shared/sql/statements'
@@ -13,10 +14,15 @@ import type { ExportOptions, ExportPreviewRequest, ExportRawPreviewRequest, Expo
 import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from '@dotaz/shared/types/import'
 import type { ExplainNode, ExplainResult, QueryHistoryEntry, QueryHistoryStatus, QueryResult } from '@dotaz/shared/types/query'
 import type {
+	AgentHelloResult,
 	AiGenerateSqlParams,
 	AiGenerateSqlResult,
 	ConnectionHandleInfo,
 	HistoryListParams,
+	Proposal,
+	ProposalListParams,
+	ProposalResolveParams,
+	ProposeWriteParams,
 	QueryBookmark,
 	SavedView,
 	SavedViewConfig,
@@ -26,6 +32,8 @@ import type {
 	TransactionLogEntry,
 	TransactionLogParams,
 	TransactionLogResult,
+	UiCommandPayload,
+	UiSnapshot,
 } from '@dotaz/shared/types/rpc'
 import { settingsToAiConfig } from '@dotaz/shared/types/settings'
 import type { DemoAppState } from './demo-state'
@@ -35,6 +43,8 @@ export class DemoAdapter implements RpcAdapter {
 	private connectedSet = new Set<string>()
 	private sessionLogEntries: TransactionLogEntry[] = []
 	private pendingCount = 0
+	private proposals = new ProposalStore()
+	private uiSnapshot: UiSnapshot | null = null
 
 	constructor(
 		private driver: DatabaseDriver,
@@ -148,7 +158,7 @@ export class DemoAdapter implements RpcAdapter {
 
 	// ── Sessions (no-op in demo — single WASM connection) ──
 
-	async createSession(connectionId: string, _database?: string): Promise<SessionInfo> {
+	async createSession(connectionId: string, _database?: string, _opts?: { readOnly?: boolean; label?: string }): Promise<SessionInfo> {
 		return {
 			sessionId: crypto.randomUUID(),
 			connectionId,
@@ -434,6 +444,7 @@ export class DemoAdapter implements RpcAdapter {
 				schemaName: params.schemaName,
 				tableNames: params.tableNames,
 				resultsPerTable: params.resultsPerTable ?? 50,
+				sessionId: params.sessionId,
 			},
 			() => {},
 			() => false,
@@ -617,6 +628,52 @@ export class DemoAdapter implements RpcAdapter {
 
 	loadWorkspace(): string | null {
 		return null
+	}
+
+	// ── Agent CLI (no CLI transport in demo — state is local only) ──
+
+	agentHello(): AgentHelloResult {
+		return { version: '0.0.0', mode: 'demo', pid: 0, protocol: 1 }
+	}
+
+	proposeWrite(params: ProposeWriteParams): Proposal {
+		const proposal = this.proposals.create(params)
+		this.emitMessage('cli.proposal', proposal)
+		return proposal
+	}
+
+	listProposals(filter?: ProposalListParams): Proposal[] {
+		return this.proposals.list(filter)
+	}
+
+	getProposal(proposalId: string): Proposal | null {
+		return this.proposals.get(proposalId)
+	}
+
+	async waitForProposal(proposalId: string, timeoutMs: number): Promise<Proposal> {
+		return this.proposals.wait(proposalId, timeoutMs)
+	}
+
+	cancelProposal(proposalId: string): Proposal {
+		return this.proposals.cancel(proposalId)
+	}
+
+	resolveProposal(params: ProposalResolveParams): Proposal {
+		return this.proposals.resolve(params)
+	}
+
+	// ── UI control ────────────────────────────────────────
+
+	getUiSnapshot(): UiSnapshot {
+		return this.uiSnapshot ?? { tabs: [], activeTabId: null, activeConnectionId: null, updatedAt: 0 }
+	}
+
+	setUiSnapshot(snapshot: UiSnapshot): void {
+		this.uiSnapshot = snapshot
+	}
+
+	sendUiCommand(payload: UiCommandPayload): void {
+		this.emitMessage('cli.command', payload)
 	}
 
 	// ── Demo ──────────────────────────────────────────────

@@ -6,7 +6,7 @@ import type { QueryResult, QueryResultColumn } from '@dotaz/shared/types/query'
 import type { DriverConnectionHandleInfo } from '@dotaz/shared/types/rpc'
 import type { SQL } from 'bun'
 import { ConnectionPool, type PoolConnectionSnapshot } from '../db/connection-pool'
-import type { DatabaseDriver } from '../db/driver'
+import type { DatabaseDriver, ReserveSessionOptions } from '../db/driver'
 import { mapMysqlError } from '../db/error-mapping'
 import { getAffectedRowCount } from '../db/result-utils'
 import { isConnectionLevelError, safeCloseConnection, syncTxActive } from './driver-utils'
@@ -136,6 +136,7 @@ export class MysqlDriver implements DatabaseDriver {
 	private pool: ConnectionPool | null = null
 	private connected = false
 	private sessions = new Map<string, SessionState>()
+	private readOnlySessions = new Set<string>()
 	private defaultSessionPending = false
 	private poolActiveQueries = new Map<symbol, ReturnType<SQL['unsafe']>>()
 
@@ -176,6 +177,7 @@ export class MysqlDriver implements DatabaseDriver {
 			await safeCloseConnection(session.conn, { rollback: session.txActive })
 		}
 		this.sessions.clear()
+		this.readOnlySessions.clear()
 
 		if (this.pool) {
 			await this.pool.disconnectAll()
@@ -187,16 +189,32 @@ export class MysqlDriver implements DatabaseDriver {
 		return this.connected
 	}
 
-	async reserveSession(sessionId: string): Promise<void> {
+	async reserveSession(sessionId: string, opts?: ReserveSessionOptions): Promise<void> {
 		this.ensureConnected()
 		if (this.sessions.has(sessionId)) {
 			throw new Error(`Session "${sessionId}" already exists`)
 		}
 		const conn = await this.pool!.createConnection()
+		if (opts?.readOnly) {
+			try {
+				// Applies to every transaction started later on this connection.
+				await conn.unsafe('SET SESSION TRANSACTION READ ONLY')
+				const timeoutMs = Math.floor(opts.statementTimeoutMs ?? 0)
+				if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+					await this.setStatementTimeout(conn, timeoutMs)
+				}
+			} catch (err) {
+				await safeCloseConnection(conn)
+				await this.pool!.destroyConnection(conn)
+				throw err instanceof DatabaseError ? err : mapMysqlError(err)
+			}
+			this.readOnlySessions.add(sessionId)
+		}
 		this.sessions.set(sessionId, { conn, txActive: false, iterating: false, activeQueries: new Set() })
 	}
 
 	async releaseSession(sessionId: string): Promise<void> {
+		this.readOnlySessions.delete(sessionId)
 		const session = this.sessions.get(sessionId)
 		if (!session) return // idempotent — already released or never existed
 		this.sessions.delete(sessionId)
@@ -208,6 +226,10 @@ export class MysqlDriver implements DatabaseDriver {
 
 	getSessionIds(): string[] {
 		return [...this.sessions.keys()].filter((id) => id !== DEFAULT_SESSION)
+	}
+
+	isSessionReadOnly(sessionId: string): boolean {
+		return this.readOnlySessions.has(sessionId)
 	}
 
 	async execute(sql: string, params?: unknown[], sessionId?: string, poolQueryKey?: symbol): Promise<QueryResult> {
@@ -690,6 +712,15 @@ export class MysqlDriver implements DatabaseDriver {
 
 	placeholder(_index: number): string {
 		return '?'
+	}
+
+	/** Cap statement runtime (SELECTs only, on both flavours). MariaDB has no MAX_EXECUTION_TIME — it takes seconds instead. */
+	private async setStatementTimeout(conn: SQL, timeoutMs: number): Promise<void> {
+		try {
+			await conn.unsafe(`SET SESSION MAX_EXECUTION_TIME = ${timeoutMs}`)
+		} catch {
+			await conn.unsafe(`SET SESSION max_statement_time = ${timeoutMs / 1000}`)
+		}
 	}
 
 	private ensureConnected(): void {

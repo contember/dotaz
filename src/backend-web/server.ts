@@ -3,11 +3,12 @@
 // Each WebSocket connection gets its own isolated session (AppDatabase, ConnectionManager, handlers)
 
 import type { DatabaseDriver } from '@dotaz/backend-shared/db/driver'
+import { dispatchRpc, invalidJsonResponse, parseRpcRequest } from '@dotaz/backend-shared/rpc/dispatch'
+import type { RpcHandler, RpcHandlerLookup } from '@dotaz/backend-shared/rpc/dispatch'
 import { exportToStream } from '@dotaz/backend-shared/services/export-service'
 import type { ExportParams, ExportWriter } from '@dotaz/backend-shared/services/export-service'
 import { importFromStream } from '@dotaz/backend-shared/services/import-service'
 import type { ImportStreamParams } from '@dotaz/backend-shared/services/import-service'
-import { DatabaseError } from '@dotaz/shared/types/errors'
 import type { ExportFormat } from '@dotaz/shared/types/export'
 import { resolve } from 'node:path'
 import { authorizeApiRequest, createWebAuthConfig, failureResponse, isAllowedHost } from './auth'
@@ -358,59 +359,32 @@ const server = Bun.serve<Session>({
 			await maybeDestroySession(ws.data)
 		},
 		async message(ws, data) {
-			let msg: any
-			try {
-				msg = JSON.parse(typeof data === 'string' ? data : new TextDecoder().decode(data))
-			} catch {
-				ws.send(JSON.stringify({ type: 'response', id: 0, success: false, error: 'Invalid JSON' }))
+			// Bun's Buffer<ArrayBuffer> return type doesn't structurally match the plain Uint8Array dispatch.ts expects
+			const req = parseRpcRequest(typeof data === 'string' ? data : new Uint8Array(data))
+			if (!req) {
+				ws.send(JSON.stringify(invalidJsonResponse()))
 				return
 			}
 
-			if (msg.type === 'request') {
-				// ── Web-specific stream token handlers ─────────
-				if (msg.method === 'stream.createExportToken') {
-					const { connectionId, database, ...exportParams } = msg.params
-					const token = createStreamToken(ws.data, 'export', connectionId, database, exportParams)
-					ws.send(JSON.stringify({ type: 'response', id: msg.id, success: true, payload: { token } }))
-					return
+			// Web-specific stream token handlers — routed through the same lookup as regular handlers
+			const getHandler: RpcHandlerLookup = (method) => {
+				if (method === 'stream.createExportToken') {
+					return (({ connectionId, database, ...exportParams }) => {
+						const token = createStreamToken(ws.data, 'export', connectionId, database, exportParams)
+						return { token }
+					}) satisfies RpcHandler
 				}
-
-				if (msg.method === 'stream.createImportToken') {
-					const { connectionId, database, ...importParams } = msg.params
-					const token = createStreamToken(ws.data, 'import', connectionId, database, importParams)
-					ws.send(JSON.stringify({ type: 'response', id: msg.id, success: true, payload: { token } }))
-					return
+				if (method === 'stream.createImportToken') {
+					return (({ connectionId, database, ...importParams }) => {
+						const token = createStreamToken(ws.data, 'import', connectionId, database, importParams)
+						return { token }
+					}) satisfies RpcHandler
 				}
-
-				const handler = (ws.data.handlers as any)[msg.method]
-				if (!handler) {
-					ws.send(JSON.stringify({
-						type: 'response',
-						id: msg.id,
-						success: false,
-						error: `Unknown method: ${msg.method}`,
-					}))
-					return
-				}
-
-				try {
-					const result = await handler(msg.params)
-					ws.send(JSON.stringify({
-						type: 'response',
-						id: msg.id,
-						success: true,
-						payload: result,
-					}))
-				} catch (err: any) {
-					ws.send(JSON.stringify({
-						type: 'response',
-						id: msg.id,
-						success: false,
-						error: err?.message ?? String(err),
-						errorCode: err instanceof DatabaseError ? err.code : undefined,
-					}))
-				}
+				return (ws.data.handlers as Record<string, RpcHandler>)[method]
 			}
+
+			const res = await dispatchRpc(req, getHandler)
+			ws.send(JSON.stringify(res))
 		},
 	},
 })

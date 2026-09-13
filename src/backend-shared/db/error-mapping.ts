@@ -8,6 +8,12 @@ export function mapPostgresError(err: unknown): DatabaseError {
 	// Bun SQL stores SQLSTATE in errno, postgres.js uses code
 	const pgCode = ((err as any)?.errno ?? (err as any)?.code) as string | undefined
 
+	// Before the generic timeout check — a statement timeout says "timeout" but the
+	// connection is fine, and reporting it as a connection failure misleads callers.
+	if (pgCode === '57014') {
+		return new QueryError('QUERY_CANCELED', message, { cause: err })
+	}
+
 	// Connection errors
 	if (/ECONNREFUSED|connection refused/i.test(message)) {
 		return new ConnectionError('CONNECTION_REFUSED', message, { cause: err })
@@ -136,6 +142,12 @@ export function mapSqliteError(err: unknown): DatabaseError {
 export function mapMysqlError(err: unknown): DatabaseError {
 	const message = err instanceof Error ? err.message : String(err)
 	const errno = (err as any)?.errno as number | undefined
+
+	// 3024 = MySQL MAX_EXECUTION_TIME, 1969 = MariaDB max_statement_time. Checked before the
+	// generic timeout match, which would otherwise report a healthy connection as broken.
+	if (errno === 3024 || errno === 1969) {
+		return new QueryError('QUERY_CANCELED', message, { cause: err })
+	}
 
 	// Connection errors
 	if (/ECONNREFUSED|connection refused/i.test(message) || errno === 2003) {
