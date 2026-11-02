@@ -1,3 +1,4 @@
+import { formatSql } from '@dotaz/backend-shared/services/sql-formatter'
 import {
 	decideProposalMessage,
 	invalidationReason,
@@ -133,6 +134,12 @@ describe('sqlIsPartOfProposal', () => {
 		expect(sqlIsPartOfProposal(proposed, proposed)).toBe(true)
 		expect(sqlIsPartOfProposal('DELETE FROM b WHERE id = 2', proposed)).toBe(true)
 		expect(sqlIsPartOfProposal('  UPDATE a  SET x = 1; ', proposed)).toBe(true)
+	})
+
+	test("formatting the proposal, or one of its statements, does not make it the user's", () => {
+		const lower = 'update a set x=1;\ndelete from b where id=2'
+		expect(sqlIsPartOfProposal(formatSql(lower), lower)).toBe(true)
+		expect(sqlIsPartOfProposal(formatSql('delete from b where id=2'), lower)).toBe(true)
 	})
 
 	test('SQL the user wrote is not', () => {

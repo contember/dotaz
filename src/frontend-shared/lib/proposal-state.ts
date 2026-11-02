@@ -85,10 +85,18 @@ export function sqlMatchesProposal(ran: string, proposed: string): boolean {
 	return normalizeSql(ran) === normalizeSql(proposed)
 }
 
-/** Whether what is about to run is the proposal or a piece of it, rather than SQL the user wrote. */
+/**
+ * Whether what is about to run is the proposal or a piece of it, rather than SQL the user wrote.
+ * Case and all whitespace are ignored so that Format SQL cannot turn a proposal into the user's
+ * own SQL; a false match only refuses a run, which is the safe direction.
+ */
 export function sqlIsPartOfProposal(ran: string, proposed: string): boolean {
-	const piece = normalizeSql(ran)
-	return piece !== '' && normalizeSql(proposed).includes(piece)
+	const piece = foldSql(ran)
+	return piece !== '' && foldSql(proposed).includes(piece)
+}
+
+function foldSql(sql: string): string {
+	return normalizeSql(sql).replace(/\s+/g, '').toLowerCase()
 }
 
 function normalizeSql(sql: string): string {
