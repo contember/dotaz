@@ -530,10 +530,12 @@ describe('RPC Handlers', () => {
 			await handlers['query.execute']({ connectionId, sql: 'CREATE TABLE hist_t (a INTEGER)', queryId: 'h-c' })
 			await handlers['query.execute']({ connectionId, sql: 'INSERT INTO hist_t VALUES (1), (2), (3)', queryId: 'h-i' })
 			await handlers['query.execute']({ connectionId, sql: 'SELECT a FROM hist_t WHERE a > 1', queryId: 'h-s' })
+			await handlers['query.execute']({ connectionId, sql: 'SELECT a FROM hist_t WHERE a > 9', queryId: 'h-e' })
 
 			const bySql = new Map(handlers['history.list']({}).map((entry) => [entry.sql, entry.rowCount]))
 			expect(bySql.get('INSERT INTO hist_t VALUES (1), (2), (3)')).toBe(3)
 			expect(bySql.get('SELECT a FROM hist_t WHERE a > 1')).toBe(2)
+			expect(bySql.get('SELECT a FROM hist_t WHERE a > 9')).toBe(0)
 		})
 
 		test('failed queries are logged with error status', async () => {

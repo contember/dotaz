@@ -12,6 +12,7 @@ src/shared/
   clipboard-paste.ts  ← Clipboard paste parsing
   column-types.ts     ← Column type utilities
   comparison.ts       ← Data comparison logic
+  query-result.ts     ← Row count a statement accounts for (history, session log)
 ```
 
 ## Types (`src/shared/types/`)
