@@ -177,6 +177,17 @@ describe('isSingleStatement — sqlite Tcl-style variables', () => {
 		expect(isSingleStatement('SELECT $a(/*) ; INSERT INTO t VALUES (2) ; SELECT 1 */', 'sqlite')).toBe(false)
 	})
 
+	test('a name containing `$` or starting with `::` fails closed too', () => {
+		for (const prefix of ['@$', '$a$', ':$', '#$', '$::a', '@a::b']) {
+			for (const [opener, closer] of [["'", "'"], ['/*', '*/'], ['"', '"'], ['`', '`'], ['[', ']'], ['--', '']]) {
+				const sql = `SELECT ${prefix}(${opener}) ; INSERT INTO t VALUES (2) ; SELECT 1 ${closer}`
+				expect(isSingleStatement(sql, 'sqlite')).toBe(false)
+				expect(isSingleStatement(sql, undefined)).toBe(false)
+			}
+		}
+		expect(isWhereFragment("@$(')=1) ; INSERT INTO t VALUES (5) ; SELECT ((')", 'sqlite')).toBe(false)
+	})
+
 	test('plain named parameters are still fine', () => {
 		expect(isSingleStatement('SELECT * FROM t WHERE a = :a AND b = $b AND c = @c', 'sqlite')).toBe(true)
 	})

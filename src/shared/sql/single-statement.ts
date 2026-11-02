@@ -191,11 +191,22 @@ function stripQuotesAndComments(sql: string, type: ConnectionType, options: { al
 
 		// ── Tcl-style variables (SQLite) ───────────────────
 		// SQLite lexes `$a(…)` (also `@`, `:`, `#`) as one token running to `)` or whitespace, so it
-		// can swallow a quote or a comment opener the scanner would honor.
-		if (isSqlite && (ch === '$' || ch === '@' || ch === ':' || ch === '#') && isIdentChar(next)) {
+		// can swallow a quote or a comment opener the scanner would honor. Mirrors SQLite's tokenizer:
+		// the name may contain `$` and `::`, and needs one name character before the `(`.
+		if (isSqlite && (ch === '$' || ch === '@' || ch === ':' || ch === '#')) {
 			let j = i + 1
-			while (j < n && (isIdentChar(sql[j]) || (sql[j] === ':' && sql[j + 1] === ':'))) j += sql[j] === ':' ? 2 : 1
-			if (sql[j] === '(') return null
+			let nameChars = 0
+			while (j < n) {
+				if (isIdentChar(sql[j]) || sql[j] === '$') {
+					nameChars++
+					j++
+				} else if (sql[j] === ':' && sql[j + 1] === ':') {
+					j += 2
+				} else {
+					break
+				}
+			}
+			if (sql[j] === '(' && nameChars > 0) return null
 		}
 
 		// ── Single-quoted string ───────────────────────────
