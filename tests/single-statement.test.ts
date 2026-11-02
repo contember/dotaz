@@ -37,6 +37,9 @@ const MYSQL_BYPASSES: Record<string, string> = {
 	'backslash in an identifier under ANSI_QUOTES': `SELECT "\\" ; ${MY_FLIP} ; INSERT INTO t VALUES (1) ; -- "`,
 	'-- followed by a non-ASCII space': `SELECT 1 --\u00a0 FROM (SELECT 2 AS \u00a0) t; ${MY_FLIP}; INSERT INTO t VALUES (1); SELECT 1\n`,
 	'bare carriage return inside a line comment': `SELECT 1 -- x\r' \n; ${MY_FLIP}; INSERT INTO t VALUES (1); SELECT '`,
+	'misplaced optimizer hint': 'SELECT 1 AS `\'`, 2 /*+ " */ ; ' + MY_FLIP + ' ; INSERT INTO t VALUES (1) ; SELECT " */',
+	'version-gated executable comment': 'SELECT 1 AS `\'`, 2 /*!99999 " */ ; ' + MY_FLIP + ' ; INSERT INTO t VALUES (1) ; SELECT " */',
+	'MariaDB executable comment': `SELECT 1 /*M! , 'a*/' */ ; ${MY_FLIP} ; INSERT INTO t VALUES (1) ; SELECT '`,
 }
 
 describe('isSingleStatement — rejects multi-statement bypasses', () => {
@@ -164,5 +167,17 @@ describe('isSingleStatement — postgres dollar quotes', () => {
 	test('a $ that touches an identifier or a number fails closed', () => {
 		expect(isSingleStatement('SELECT 1 AS x$$', 'postgresql')).toBe(false)
 		expect(isSingleStatement('SELECT 1$$x$$', 'postgresql')).toBe(false)
+	})
+})
+
+describe('isSingleStatement — sqlite Tcl-style variables', () => {
+	test('a variable with a parenthesised suffix fails closed', () => {
+		expect(isSingleStatement("SELECT $a(') ; INSERT INTO t VALUES (2) ; SELECT '", 'sqlite')).toBe(false)
+		expect(isSingleStatement("SELECT $a(') ; INSERT INTO t VALUES (2) ; SELECT '", undefined)).toBe(false)
+		expect(isSingleStatement('SELECT $a(/*) ; INSERT INTO t VALUES (2) ; SELECT 1 */', 'sqlite')).toBe(false)
+	})
+
+	test('plain named parameters are still fine', () => {
+		expect(isSingleStatement('SELECT * FROM t WHERE a = :a AND b = $b AND c = @c', 'sqlite')).toBe(true)
 	})
 })

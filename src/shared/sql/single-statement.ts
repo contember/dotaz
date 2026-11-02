@@ -138,15 +138,10 @@ function stripQuotesAndComments(sql: string, type: ConnectionType, options: { al
 
 		// ── Block comments ─────────────────────────────────
 		if (ch === '/' && next === '*') {
-			// Covers MySQL's executable `/*! … */` too.
 			if (!options.allowComments) return null
-			// MySQL executes `/*! … */` and `/*+ … */`; scanning their contents keeps any inner
-			// separator visible, so treat the `/*` as ordinary characters.
-			if (isMysql && (sql[i + 2] === '!' || sql[i + 2] === '+')) {
-				out += ch
-				i++
-				continue
-			}
+			// Whether MySQL/MariaDB run the inside of `/*! … */`, `/*+ … */` or `/*M! … */` depends on
+			// the server's vendor and version and on where the hint sits — neither reading is safe.
+			if (isMysql && /^[!+]|^[Mm]!/.test(sql.slice(i + 2, i + 4))) return null
 			// Postgres nests block comments; the others do not. Getting nesting wrong is only safe
 			// in the closing-early direction, so non-Postgres uses a flat scan and Postgres counts depth.
 			if (isPostgres) {
@@ -192,6 +187,15 @@ function stripQuotesAndComments(sql: string, type: ConnectionType, options: { al
 				i = end + tag.length
 				continue
 			}
+		}
+
+		// ── Tcl-style variables (SQLite) ───────────────────
+		// SQLite lexes `$a(…)` (also `@`, `:`, `#`) as one token running to `)` or whitespace, so it
+		// can swallow a quote or a comment opener the scanner would honor.
+		if (isSqlite && (ch === '$' || ch === '@' || ch === ':' || ch === '#') && isIdentChar(next)) {
+			let j = i + 1
+			while (j < n && (isIdentChar(sql[j]) || (sql[j] === ':' && sql[j + 1] === ':'))) j += sql[j] === ':' ? 2 : 1
+			if (sql[j] === '(') return null
 		}
 
 		// ── Single-quoted string ───────────────────────────

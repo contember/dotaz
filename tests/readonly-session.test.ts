@@ -762,6 +762,10 @@ describe.skipIf(!mysqlReachable)('QueryExecutor read-only bypass — MySQL', () 
 		`SELECT '\\' ; SET SESSION TRANSACTION READ WRITE ; INSERT INTO ro_canary VALUES (1) ; -- '`,
 		// MySQL needs ASCII whitespace after `--`; U+00A0 is an identifier character to it.
 		`SELECT 1 --\u00a0 FROM (SELECT 2 AS \u00a0) t; SET SESSION TRANSACTION READ WRITE; INSERT INTO ro_canary VALUES (1); SELECT 1\n`,
+		// Executable comments: whether the inside runs depends on vendor, version and placement.
+		'SELECT 1 AS `\'`, 2 /*+ " */ ; SET SESSION TRANSACTION READ WRITE ; INSERT INTO ro_canary VALUES (1) ; SELECT " */',
+		'SELECT 1 AS `\'`, 2 /*!99999 " */ ; SET SESSION TRANSACTION READ WRITE ; INSERT INTO ro_canary VALUES (1) ; SELECT " */',
+		"SELECT 1 /*M! , 'a*/' */ ; SET SESSION TRANSACTION READ WRITE ; INSERT INTO ro_canary VALUES (1) ; SELECT '",
 	]
 
 	beforeEach(async () => {
