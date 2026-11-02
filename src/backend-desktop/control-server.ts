@@ -17,8 +17,8 @@ export const CLI_PROTOCOL_VERSION = 1
 // handler. Two CLI paths routinely stay idle longer: `agent.proposals.wait` long-polls in 30s
 // slices, and a read-only `agent.query` may run right up to its statement cap (or with no cap at
 // all when queryTimeout = 0). The CLI enforces its own per-request deadline and closes its side,
-// so this local, token-gated endpoint disables the server idle timeout rather than sever a valid
-// long-poll or a slow-but-legitimate read. 0 = no idle timeout.
+// so this local, token-gated endpoint disables the idle timeout per request rather than sever a
+// valid long-poll or a slow-but-legitimate read. 0 = no idle timeout.
 const CONTROL_IDLE_TIMEOUT = 0
 
 // Layout must match src/cli-agent/endpoint.ts — one file per instance, so two running
@@ -140,7 +140,9 @@ export async function startControlServer(opts: ControlServerOptions): Promise<Co
 	// A socket left behind by a crashed instance would make bind fail
 	if (socketPath) removeIfExists(socketPath)
 
-	const handleRequest = async (req: Request): Promise<Response> => {
+	const handleRequest = async (req: Request, srv: Bun.Server<undefined>): Promise<Response> => {
+		// Per request because bun-types has no `idleTimeout` on the unix-socket serve options.
+		srv.timeout(req, CONTROL_IDLE_TIMEOUT)
 		const url = new URL(req.url)
 
 		if (url.pathname === '/health' && req.method === 'GET') {
@@ -166,16 +168,11 @@ export async function startControlServer(opts: ControlServerOptions): Promise<Co
 	let server: ReturnType<typeof Bun.serve>
 	let address: ControlServerAddress
 	if (socketPath) {
-		// bun-types omits idleTimeout from the unix-socket serve options, though the runtime honors
-		// it the same as on TCP (verified on Bun 1.4). Cast only to reach the field, keeping the rest
-		// of the options type-checked.
-		server = Bun.serve(
-			{ unix: socketPath, fetch: handleRequest, idleTimeout: CONTROL_IDLE_TIMEOUT } as unknown as Bun.Serve.Options<undefined>,
-		)
+		server = Bun.serve({ unix: socketPath, fetch: handleRequest })
 		address = { transport: 'unix', socket: socketPath }
 	} else {
 		// No unix sockets on Windows — an ephemeral loopback port plus the token instead
-		const tcpServer = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: handleRequest, idleTimeout: CONTROL_IDLE_TIMEOUT })
+		const tcpServer = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: handleRequest })
 		server = tcpServer
 		const port = tcpServer.port
 		if (port === undefined) {

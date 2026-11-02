@@ -182,7 +182,8 @@ describe('control server idle timeout', () => {
 	// Bun.serve defaults to a 10s idle timeout and severs an in-flight request past it. The CLI
 	// long-polls `agent.proposals.wait` in 30s slices and runs reads up to the statement cap, so
 	// the server must not cut those off. This drives a handler well past the default and expects a
-	// reply, which fails without an explicit idleTimeout on the serve call.
+	// reply. Bun 1.3 already clears the idle timer once the request body is read, so this only
+	// fails on a runtime that does not; the server disables the timeout per request either way.
 	test('a handler slower than the default idle timeout still completes', async () => {
 		const userDataDir = mkdtempSync(join(tmpdir(), 'dotaz-control-idle-'))
 		// `agent.hello` is on the CLI allowlist; a bespoke method name would be refused by the surface.
