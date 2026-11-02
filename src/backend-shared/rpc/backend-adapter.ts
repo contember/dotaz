@@ -1,3 +1,4 @@
+import { statementRowCount } from '@dotaz/shared/query-result'
 import type { ConnectionConfig, ConnectionInfo, ConnectionSecrets } from '@dotaz/shared/types/connection'
 import { mergeSecrets } from '@dotaz/shared/types/connection'
 import type { DatabaseInfo } from '@dotaz/shared/types/database'
@@ -282,7 +283,7 @@ export class BackendAdapter implements RpcAdapter {
 							stmt.sql,
 							result.error ? 'error' : 'success',
 							durationMs,
-							result.affectedRows ?? result.rowCount,
+							statementRowCount(result),
 							result.error,
 							database,
 							effectiveSessionId,

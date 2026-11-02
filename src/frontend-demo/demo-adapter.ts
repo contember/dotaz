@@ -6,6 +6,7 @@ import type { ExportWriter } from '@dotaz/backend-shared/services/export-service
 import { importFromStream, importPreviewFromStream } from '@dotaz/backend-shared/services/import-service'
 import { searchDatabase } from '@dotaz/backend-shared/services/search-service'
 import { formatSql } from '@dotaz/backend-shared/services/sql-formatter'
+import { statementRowCount } from '@dotaz/shared/query-result'
 import { splitStatements } from '@dotaz/shared/sql/statements'
 import { type ConnectionConfig, type ConnectionInfo, getDefaultDatabase } from '@dotaz/shared/types/connection'
 import type { DatabaseInfo } from '@dotaz/shared/types/database'
@@ -633,7 +634,7 @@ export class DemoAdapter implements RpcAdapter {
 	private logHistory(connectionId: string, sql: string, results: QueryResult[]): void {
 		const hasError = results.some((r) => r.error)
 		const totalDuration = results.reduce((sum, r) => sum + (r.durationMs ?? 0), 0)
-		const totalRows = results.reduce((sum, r) => sum + (r.affectedRows ?? r.rowCount), 0)
+		const totalRows = results.reduce((sum, r) => sum + statementRowCount(r), 0)
 		const errorMessage = results.find((r) => r.error)?.error
 
 		// Add to session log (in-memory)

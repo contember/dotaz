@@ -524,6 +524,18 @@ describe('RPC Handlers', () => {
 			expect(history[0].rowCount).toBe(1)
 		})
 
+		// Drivers report `affectedRows: 0` for a SELECT (MySQL always, PostgreSQL/SQLite since Bun 1.4),
+		// so history must count what a result set returned, and what a write changed.
+		test('history counts returned rows for a read and changed rows for a write', async () => {
+			await handlers['query.execute']({ connectionId, sql: 'CREATE TABLE hist_t (a INTEGER)', queryId: 'h-c' })
+			await handlers['query.execute']({ connectionId, sql: 'INSERT INTO hist_t VALUES (1), (2), (3)', queryId: 'h-i' })
+			await handlers['query.execute']({ connectionId, sql: 'SELECT a FROM hist_t WHERE a > 1', queryId: 'h-s' })
+
+			const bySql = new Map(handlers['history.list']({}).map((entry) => [entry.sql, entry.rowCount]))
+			expect(bySql.get('INSERT INTO hist_t VALUES (1), (2), (3)')).toBe(3)
+			expect(bySql.get('SELECT a FROM hist_t WHERE a > 1')).toBe(2)
+		})
+
 		test('failed queries are logged with error status', async () => {
 			await handlers['query.execute']({
 				connectionId,
