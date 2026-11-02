@@ -551,6 +551,8 @@ export class MysqlDriver implements DatabaseDriver {
 				if (signal?.aborted) {
 					throw new DOMException('Aborted', 'AbortError')
 				}
+				// A reconnect between pages loses the snapshot transaction and the setup with it.
+				if (session && offset > 0) await this.reassertReadOnly(sessionId, conn)
 				const pagedSql = `${sql} LIMIT ? OFFSET ?`
 				const result = await conn.unsafe(pagedSql, [...(params ?? []), batchSize, offset])
 				const rows = [...result] as Record<string, unknown>[]

@@ -277,13 +277,20 @@ export class PostgresDriver implements DatabaseDriver {
 	 * Verified against PostgreSQL 17: re-asserting between statements blocks the write, and a
 	 * single statement cannot both clear the GUC and write under it.
 	 *
-	 * Skipped inside an explicit transaction: session characteristics only affect transactions
-	 * started afterwards, and that transaction already began read-only.
+	 * Also run inside an explicit transaction: Bun.SQL silently reconnects a dropped connection,
+	 * and the new one has neither the transaction nor the setup. An aborted transaction refuses
+	 * the SET along with everything but ROLLBACK, so that one refusal lets the statement through.
 	 */
 	private async reassertReadOnly(sessionId: string, session: SessionState, conn: SQL): Promise<void> {
 		const reassertSql = this.readOnlySessions.get(sessionId)
-		if (!reassertSql || session.txActive) return
-		await conn.unsafe(reassertSql)
+		if (!reassertSql) return
+		try {
+			await conn.unsafe(reassertSql)
+		} catch (err) {
+			const mapped = err instanceof DatabaseError ? err : mapPostgresError(err)
+			if (session.txAborted && mapped.code === 'TRANSACTION_ABORTED') return
+			throw mapped
+		}
 	}
 
 	// --- Query execution ---

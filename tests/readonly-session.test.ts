@@ -673,6 +673,61 @@ describe.skipIf(!pgReachable)('PostgresDriver read-only sessions', () => {
 		}
 	})
 
+	async function backendPid(sessionId: string): Promise<number> {
+		return Number(firstValue((await driver.execute('SELECT pg_backend_pid() AS v', undefined, sessionId)).rows))
+	}
+
+	/** Kill the session's backend, then wait until Bun has reconnected the session. */
+	async function dropSessionConnection(sessionId: string, pid: number): Promise<void> {
+		await driver.execute(`SELECT pg_terminate_backend(${pid})`, undefined, writableId)
+		for (let attempt = 0; attempt < 50; attempt++) {
+			const reconnected = await driver.execute('SELECT 1', undefined, sessionId).then(() => true, () => false)
+			if (reconnected) return
+			await Bun.sleep(20)
+		}
+		throw new Error('the session never reconnected')
+	}
+
+	async function expectReconnectedReadOnly(sessionId: string, oldPid: number): Promise<void> {
+		const after = await driver.execute("SELECT pg_backend_pid() AS pid, current_setting('transaction_read_only') AS ro", undefined, sessionId)
+		expect(Number(after.rows[0].pid)).not.toBe(oldPid)
+		expect(after.rows[0].ro).toBe('on')
+		await expect(driver.execute("INSERT INTO test_schema.users (name, email) VALUES ('Gus', 'gus@example.com')", undefined, sessionId))
+			.rejects.toThrow(/read-only transaction/i)
+	}
+
+	test('a connection dropped inside a transaction and reconnected by Bun stays read-only', async () => {
+		const pid = await backendPid(readOnlyId)
+		await driver.beginTransaction(readOnlyId)
+		try {
+			await dropSessionConnection(readOnlyId, pid)
+			await expectReconnectedReadOnly(readOnlyId, pid)
+		} finally {
+			await driver.rollback(readOnlyId).catch(() => {})
+		}
+	})
+
+	test('a connection dropped inside an aborted transaction stays read-only', async () => {
+		const pid = await backendPid(readOnlyId)
+		await driver.beginTransaction(readOnlyId)
+		try {
+			await expect(driver.execute('SELECT 1 / 0', undefined, readOnlyId)).rejects.toThrow()
+			await dropSessionConnection(readOnlyId, pid)
+			await expectReconnectedReadOnly(readOnlyId, pid)
+		} finally {
+			await driver.rollback(readOnlyId).catch(() => {})
+		}
+	})
+
+	test('an aborted transaction on the session can still be rolled back', async () => {
+		await driver.beginTransaction(readOnlyId)
+		await expect(driver.execute('SELECT 1 / 0', undefined, readOnlyId)).rejects.toThrow()
+		await expect(driver.execute('SELECT 1', undefined, readOnlyId)).rejects.toThrow(/aborted/i)
+		await driver.rollback(readOnlyId)
+		expect(driver.inTransaction(readOnlyId)).toBe(false)
+		expect(firstValue((await driver.execute('SHOW transaction_read_only', undefined, readOnlyId)).rows)).toBe('on')
+	})
+
 	test('the read-only session still reads', async () => {
 		const result = await driver.execute('SELECT count(*)::int AS n FROM test_schema.users', undefined, readOnlyId)
 		expect(Number(result.rows[0].n)).toBeGreaterThan(0)
@@ -879,6 +934,17 @@ describe.skipIf(!mysqlReachable)('MysqlDriver read-only sessions', () => {
 	test('a normal session on the same connection still writes', async () => {
 		const result = await driver.execute("INSERT INTO users (name, email) VALUES ('Frank', 'frank@example.com')", undefined, writableId)
 		expect(result.affectedRows).toBe(1)
+	})
+
+	test('iterate stays read-only when the connection drops between pages', async () => {
+		const connectionId = Number(firstValue((await driver.execute('SELECT CONNECTION_ID() AS v', undefined, readOnlyId)).rows))
+		const pages: number[] = []
+		for await (const page of driver.iterate('SELECT @@session.transaction_read_only AS ro FROM users', undefined, 1, undefined, readOnlyId)) {
+			pages.push(Number(page[0].ro))
+			if (pages.length === 1) await driver.execute(`KILL ${connectionId}`, undefined, writableId)
+			if (pages.length === 2) break
+		}
+		expect(pages).toEqual([1, 1])
 	})
 
 	test('a dropped connection that Bun reconnects stays read-only', async () => {
