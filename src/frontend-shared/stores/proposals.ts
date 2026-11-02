@@ -84,6 +84,63 @@ async function resolve(
  * hit the toolbar Run or Ctrl+Enter instead of the banner button, and it must not run twice.
  */
 let unsubscribeRuns: (() => void) | null = null
+let removeRunGuard: (() => void) | null = null
+
+const EDITED_RUN_MESSAGE = 'Different SQL than the proposal ran in its tab (edited, or only part of it). '
+	+ 'The proposal did not run as submitted, but what ran may have changed data.'
+
+/**
+ * Claim the proposal (`pending → approved`) before anything in its tab reaches the database.
+ * Once claimed, the agent can no longer cancel it and it cannot expire, so the outcome the app
+ * reports afterwards is the one the agent sees. Every run path goes through here, toolbar included.
+ */
+async function guardRun({ tabId }: { tabId: string; sql: string }): Promise<boolean> {
+	const entry = entryForTab(tabId)
+	// No live banner in this tab — the run is not a proposal's business.
+	if (!entry || entry.phase === 'resolved' || entry.phase === 'invalidated') return true
+	const proposalId = entry.proposal.id
+	if (entry.phase !== 'pending') {
+		uiStore.addToast('warning', 'This proposal is already being run.')
+		return false
+	}
+	const blocked = blockedReason(entry)
+	if (blocked) {
+		uiStore.addToast('warning', blocked)
+		return false
+	}
+
+	setState('entries', proposalId, 'phase', 'checking')
+	try {
+		await rpc.agent['proposals.resolve']({ proposalId, status: 'approved' })
+	} catch (err) {
+		if (isStaleProposalError(err)) {
+			await refreshInvalidation(proposalId)
+			return false
+		}
+		uiStore.addToast('error', `Could not claim the proposal: ${friendlyErrorMessage(err)}`)
+		if (state.entries[proposalId]?.phase === 'checking') setState('entries', proposalId, 'phase', 'pending')
+		return false
+	}
+
+	// The claim was async — the tab may have been closed meanwhile. The proposal is ours now, so
+	// settle it rather than leave the agent waiting on an `approved` that never finishes.
+	if (state.entries[proposalId]?.phase !== 'checking') {
+		resolve(proposalId, 'failed', { error: 'The approval tab was closed before the statement ran. Nothing was run.' })
+		return false
+	}
+	setState('entries', proposalId, 'phase', 'running')
+	return true
+}
+
+/** Show why a claim was refused — the `cli.proposal` push may not have arrived yet. */
+async function refreshInvalidation(proposalId: string) {
+	try {
+		const proposal = await rpc.agent['proposals.get']({ proposalId })
+		invalidate(proposalId, proposal.status === 'pending' ? PROPOSAL_ALREADY_RESOLVED_REASON : invalidationReason(proposal.status))
+	} catch {
+		invalidate(proposalId, PROPOSAL_GONE_REASON)
+	}
+}
 
 function handleRunFinished(event: RunFinishedEvent) {
 	const found = Object.entries(state.entries).find(([, entry]) => entry.tabId === event.tabId)
@@ -92,16 +149,19 @@ function handleRunFinished(event: RunFinishedEvent) {
 	// A terminal banner no longer speaks for the proposal, whatever the user runs in the tab.
 	if (entry.phase === 'resolved' || entry.phase === 'invalidated') return
 
-	if (event.skipped) {
-		// Nothing reached the database (read-only connection, destructive warning cancelled).
-		if (entry.phase === 'running') setState('entries', proposalId, 'phase', 'pending')
-		return
-	}
+	// Skipped runs never pass the guard, so only a claimed proposal has an outcome to report.
+	if (event.skipped || entry.phase !== 'running') return
 
 	// Matching on the tab alone would report "executed" for whatever the user actually ran —
 	// an edited buffer, or one statement of a multi-statement proposal run on its own.
 	if (!sqlMatchesProposal(event.sql, entry.proposal.sql)) {
-		const message = 'The SQL in the console was changed before it ran — this proposal was not executed.'
+		setState('entries', proposalId, { phase: 'resolved', outcome: { status: 'failed', message: EDITED_RUN_MESSAGE } })
+		resolve(proposalId, 'failed', { error: EDITED_RUN_MESSAGE })
+		return
+	}
+
+	if (event.error && event.outcomeUnknown) {
+		const message = `The outcome is unknown (${event.error}). The statement may still have committed — check the data before retrying.`
 		setState('entries', proposalId, { phase: 'resolved', outcome: { status: 'failed', message } })
 		resolve(proposalId, 'failed', { error: message })
 		return
@@ -130,6 +190,8 @@ function removeEntry(proposalId: string) {
 	if (unsubscribeRuns && Object.keys(state.entries).length === 0) {
 		unsubscribeRuns()
 		unsubscribeRuns = null
+		removeRunGuard?.()
+		removeRunGuard = null
 	}
 }
 
@@ -155,6 +217,7 @@ function openProposalTab(proposal: Proposal) {
 	setState('entries', proposal.id, { proposal, tabId, phase: 'pending', outcome: null, invalidReason: null })
 	if (!unsubscribeRuns) {
 		unsubscribeRuns = editorStore.onRunFinished(handleRunFinished)
+		removeRunGuard = editorStore.setRunGuard(guardRun)
 	}
 	uiStore.addToast('info', 'An agent proposed a write. Review it before running.')
 }
@@ -178,30 +241,8 @@ function handleProposal(proposal: Proposal) {
 	}
 }
 
-/**
- * Confirm server-side that the proposal is still runnable. The `cli.proposal` message
- * announcing a cancellation or expiry may not have arrived yet, and Run must not beat it.
- */
-async function confirmStillPending(proposalId: string): Promise<boolean> {
-	try {
-		const proposal = await rpc.agent['proposals.get']({ proposalId })
-		if (proposal.status === 'pending') return true
-		invalidate(proposalId, invalidationReason(proposal.status))
-		return false
-	} catch (err) {
-		if (isStaleProposalError(err)) {
-			invalidate(proposalId, PROPOSAL_GONE_REASON)
-			return false
-		}
-		// Could not reach the backend — say so and leave the banner actionable.
-		uiStore.addToast('error', `Could not check the proposal: ${friendlyErrorMessage(err)}`)
-		if (state.entries[proposalId]?.phase === 'checking') setState('entries', proposalId, 'phase', 'pending')
-		return false
-	}
-}
-
-/** Run the proposal through the console's normal execution path. The outcome arrives via handleRunFinished. */
-async function run(proposalId: string) {
+/** Run the proposal through the console's normal execution path — the run guard claims it first. */
+function run(proposalId: string) {
 	const entry = state.entries[proposalId]
 	if (!entry || entry.phase !== 'pending') return
 	if (blockedReason(entry)) return
@@ -212,14 +253,8 @@ async function run(proposalId: string) {
 		return
 	}
 
-	setState('entries', proposalId, 'phase', 'checking')
-	if (!await confirmStillPending(proposalId)) return
-	// The check was async — the entry may have been invalidated or closed meanwhile.
-	if (state.entries[proposalId]?.phase !== 'checking') return
-
-	setState('entries', proposalId, 'phase', 'running')
 	editorStore.executeQuery(entry.tabId).catch((err) => {
-		// The run never started, so no run outcome will arrive — report it here.
+		// Claimed but the run never started, so no run outcome will arrive — report it here.
 		if (state.entries[proposalId]?.phase !== 'running') return
 		const message = friendlyErrorMessage(err)
 		setState('entries', proposalId, { phase: 'resolved', outcome: { status: 'failed', message } })

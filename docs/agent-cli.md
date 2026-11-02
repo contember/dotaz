@@ -229,23 +229,29 @@ Lifecycle:
 1. CLI calls `agent.proposeWrite` → store creates a `pending` proposal, backend emits
    `cli.proposal` to the frontend.
 2. Frontend opens a SQL console tab with the SQL prefilled and a banner offering Run / Reject.
-3. On Run the frontend executes the SQL in the tab's own session, then calls
-   `agent.proposals.resolve` with `executed` (or `failed` + error). On Reject it resolves
-   `rejected`. The run is matched to the proposal by tab _and_ by SQL — if the user edited the
-   console, or ran a single statement of a multi-statement proposal, the proposal resolves
-   `failed` rather than reporting a write that did not happen. So `executed` means the
-   proposed SQL ran, not merely that something ran in that tab.
-4. `agent.proposals.wait` returns as soon as the status leaves `pending`, or on timeout.
+3. Before anything in the proposal's tab reaches the database — banner Run, toolbar Run or
+   Ctrl+Enter alike — the frontend claims the proposal with `agent.proposals.resolve`
+   `approved`. From then on the agent cannot cancel it and it cannot expire. After the run the
+   frontend resolves `executed` (or `failed` + error). On Reject it resolves `rejected`.
+   The run is matched to the proposal by tab _and_ by SQL. If the user edited the console, or
+   ran one statement of a multi-statement proposal, the proposal resolves `failed`, with an
+   error saying that different SQL ran and may have changed data. If the app stopped waiting
+   for the result (timeout, cancel, lost connection), it resolves `failed` with an error saying
+   the outcome is unknown. So `executed` means the proposed SQL ran, not merely that
+   something ran in that tab.
+4. `agent.proposals.wait` returns once the proposal is settled — neither `pending` nor
+   `approved` — or on timeout.
 
-Proposals live in memory for one hour, then become `expired`. `pending` is the only status
-the frontend may act on.
+Proposals live in memory for one hour, then a `pending` one becomes `expired`. `pending` is
+the only status the frontend may claim, and `approved` may only move to `executed` or
+`failed`. At most 20 proposals may be pending at once; `agent.proposeWrite` refuses more.
 
 A proposal can also leave `pending` behind the app's back — the agent cancels it, the TTL
 expires it, or another window resolves it. The backend therefore emits `cli.proposal` on
 every transition, and the app invalidates that banner: the tab stays, Run and Reject go away.
-Because the message may not have arrived yet, Run additionally re-checks the proposal is
-still pending before executing anything. Without both, a click on a stale banner would run a
-write for a proposal that no longer exists.
+Because the message may not have arrived yet, the claim is what decides: it fails for a
+proposal that is no longer `pending`, and nothing runs. Without it, a click on a stale banner
+would run a write for a proposal that no longer exists.
 
 ## CLI
 

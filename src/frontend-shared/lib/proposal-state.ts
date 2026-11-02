@@ -51,6 +51,8 @@ export function decideProposalMessage(entry: { phase: ProposalPhase } | undefine
 	// A proposal this window never opened is not its business — no tab, no banner.
 	if (!entry) return { kind: 'ignore' }
 	switch (entry.phase) {
+		case 'checking':
+			// A claim is in flight: its response decides, and `approved` is usually its own echo.
 		case 'running':
 			// The statement is already in flight; its real outcome settles the proposal.
 			return { kind: 'ignore' }
@@ -59,7 +61,6 @@ export function decideProposalMessage(entry: { phase: ProposalPhase } | undefine
 			// Already terminal — never overwrite an outcome this window produced.
 			return { kind: 'ignore' }
 		case 'pending':
-		case 'checking':
 			return { kind: 'invalidate', reason: invalidationReason(proposal.status) }
 	}
 }

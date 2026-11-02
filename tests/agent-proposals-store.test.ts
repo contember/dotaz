@@ -48,8 +48,10 @@ describe('decideProposalMessage', () => {
 		expect(action.kind === 'invalidate' && action.reason).toContain('another window')
 	})
 
-	test('invalidates while the app is still checking whether it may run', () => {
-		expect(decideProposalMessage(entry('checking'), proposal('cancelled')).kind).toBe('invalidate')
+	test('leaves the decision to the in-flight claim while checking', () => {
+		// The claim's own `approved` echo, or a cancel that lost the race to it — the claim response decides.
+		expect(decideProposalMessage(entry('checking'), proposal('approved')).kind).toBe('ignore')
+		expect(decideProposalMessage(entry('checking'), proposal('cancelled')).kind).toBe('ignore')
 	})
 
 	test('leaves a running entry alone — the statement is already in flight', () => {

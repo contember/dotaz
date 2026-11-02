@@ -200,6 +200,24 @@ export interface RunFinishedEvent {
 	error?: string
 	/** The run never reached the database (read-only connection, destructive warning cancelled). */
 	skipped?: boolean
+	/** The app stopped waiting (timeout, cancel, lost connection) — the statement may still have committed. */
+	outcomeUnknown?: boolean
+}
+
+/**
+ * Consulted after the run is confirmed and before anything is submitted; resolving `false`
+ * drops the run. The CLI proposal banner uses it to claim its proposal before the SQL runs.
+ */
+export type RunGuard = (run: { tabId: string; sql: string }) => Promise<boolean>
+
+let runGuard: RunGuard | null = null
+
+/** Install the run guard. Returns a function that removes it. */
+function setRunGuard(guard: RunGuard): () => void {
+	runGuard = guard
+	return () => {
+		if (runGuard === guard) runGuard = null
+	}
 }
 
 const runListeners = new Set<(event: RunFinishedEvent) => void>()
@@ -317,6 +335,7 @@ function recordHistory(connectionId: string, database: string | undefined, sql: 
 }
 
 async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit = true) {
+	if (runGuard && !await runGuard({ tabId, sql })) return
 	const tab = ensureTab(tabId)
 	const queryId = crypto.randomUUID()
 
@@ -359,6 +378,7 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit =
 
 	const startTime = performance.now()
 	let responseTimer: ReturnType<typeof setTimeout> | undefined
+	let outcomeUnknown = false
 
 	try {
 		// Resolve session (auto-pin if configured)
@@ -382,6 +402,7 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit =
 			responseTimer = setTimeout(() => {
 				if (settled) return
 				settled = true
+				outcomeUnknown = true
 				reject(new Error('Query timed out — no response received from backend'))
 			}, settingsStore.consoleConfig.queryResponseTimeoutMs)
 
@@ -403,6 +424,7 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit =
 			activeQueryRejects.set(queryId, (err) => {
 				if (settled) return
 				settled = true
+				outcomeUnknown = true
 				clearTimeout(responseTimer)
 				unsub()
 				reject(err)
@@ -506,7 +528,7 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit =
 			setTxLogVersion((v) => v + 1)
 		}
 
-		notifyRunFinished({ tabId, sql, error: errorMessage })
+		notifyRunFinished({ tabId, sql, error: errorMessage, outcomeUnknown })
 	} finally {
 		clearTimeout(responseTimer)
 		activeQueryUnsubs.delete(queryId)
@@ -1086,6 +1108,7 @@ export const editorStore = {
 	executeSelected,
 	executeStatement,
 	onRunFinished,
+	setRunGuard,
 	cancelQuery,
 	explainQuery,
 	formatSql,

@@ -6,8 +6,19 @@ export const PROPOSAL_TTL_MS = 60 * 60 * 1000
 /** Upper bound on retained proposals — resolved ones are evicted oldest-first past this. */
 export const MAX_PROPOSALS = 500
 
+/** Each pending proposal opens a tab in the user's window, so an agent cannot queue more than this. */
+export const MAX_PENDING_PROPOSALS = 20
+
 /** Every status a `pending` proposal may transition into — `pending` itself is not one of them. */
 const RESOLVED_STATUSES: readonly ProposalStatus[] = ['approved', 'rejected', 'executed', 'failed', 'cancelled', 'expired']
+
+/** The app claims a proposal as `approved` before running it; only the run's outcome may follow. */
+const AFTER_APPROVED: readonly ProposalStatus[] = ['executed', 'failed']
+
+/** Still in flight: `wait()` keeps polling through these. */
+function isSettled(status: ProposalStatus): boolean {
+	return status !== 'pending' && status !== 'approved'
+}
 
 export interface ProposalStoreOptions {
 	/** Lifetime of a pending proposal. */
@@ -16,7 +27,8 @@ export interface ProposalStoreOptions {
 	now?: () => number
 }
 
-type Waiter = (proposal: Proposal) => void
+/** `final` hands over the current state even when it is not settled (the store is going away). */
+type Waiter = (proposal: Proposal, final?: boolean) => void
 
 /**
  * In-memory registry of writes the CLI submitted for user approval.
@@ -38,6 +50,10 @@ export class ProposalStore {
 	create(params: ProposeWriteParams): Proposal {
 		this.assertUsable()
 		this.sweep()
+		const pending = [...this.proposals.values()].filter((p) => p.status === 'pending').length
+		if (pending >= MAX_PENDING_PROPOSALS) {
+			throw new Error(`${pending} proposals are already waiting for approval — wait for the user or cancel some first`)
+		}
 		const proposal: Proposal = {
 			id: crypto.randomUUID(),
 			connectionId: params.connectionId,
@@ -82,7 +98,8 @@ export class ProposalStore {
 	}
 
 	/**
-	 * Resolves as soon as status leaves 'pending', or on timeout (returns the current state).
+	 * Resolves once the proposal is settled — past `pending` and `approved` — or on timeout
+	 * (returns the current state).
 	 * `async` so a bad id rejects instead of throwing synchronously — the body still registers
 	 * its waiter before returning.
 	 */
@@ -90,11 +107,12 @@ export class ProposalStore {
 		this.assertUsable()
 		this.sweep()
 		const current = this.require(id)
-		if (current.status !== 'pending') return { ...current }
+		if (isSettled(current.status)) return { ...current }
 
 		return new Promise<Proposal>((resolve) => {
 			let timer: ReturnType<typeof setTimeout> | undefined
-			const waiter: Waiter = (proposal) => {
+			const waiter: Waiter = (proposal, final) => {
+				if (!final && !isSettled(proposal.status)) return
 				if (timer !== undefined) clearTimeout(timer)
 				this.removeWaiter(id, waiter)
 				resolve({ ...proposal })
@@ -122,7 +140,7 @@ export class ProposalStore {
 		for (const [id, waiters] of [...this.waiters]) {
 			const proposal = this.proposals.get(id)
 			if (!proposal) continue
-			for (const waiter of [...waiters]) waiter(proposal)
+			for (const waiter of [...waiters]) waiter(proposal, true)
 		}
 		this.waiters.clear()
 		this.observers.clear()
@@ -143,7 +161,8 @@ export class ProposalStore {
 		result?: Proposal['result'],
 		error?: string,
 	): Proposal {
-		if (proposal.status !== 'pending') {
+		const allowed = proposal.status === 'pending' || (proposal.status === 'approved' && AFTER_APPROVED.includes(status))
+		if (!allowed) {
 			throw new Error(`Proposal ${proposal.id} is already ${proposal.status}`)
 		}
 		proposal.status = status
@@ -178,7 +197,7 @@ export class ProposalStore {
 		// Map preserves insertion order, so the oldest resolved entries come first
 		for (const [id, proposal] of this.proposals) {
 			if (this.proposals.size <= MAX_PROPOSALS) return
-			if (proposal.status === 'pending') continue
+			if (!isSettled(proposal.status)) continue
 			this.proposals.delete(id)
 		}
 	}

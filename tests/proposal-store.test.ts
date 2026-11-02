@@ -1,4 +1,4 @@
-import { MAX_PROPOSALS, PROPOSAL_TTL_MS, ProposalStore } from '@dotaz/backend-shared/services/proposal-store'
+import { MAX_PENDING_PROPOSALS, MAX_PROPOSALS, PROPOSAL_TTL_MS, ProposalStore } from '@dotaz/backend-shared/services/proposal-store'
 import type { ProposalStatus } from '@dotaz/shared/types/rpc'
 import { describe, expect, test } from 'bun:test'
 
@@ -332,6 +332,71 @@ describe('ProposalStore', () => {
 
 			expect((await pending).status).toBe('expired')
 			expect(store.waiterCount()).toBe(0)
+			store.dispose()
+		})
+	})
+
+	// The app claims a proposal as `approved` before its SQL runs, so what the agent is told
+	// afterwards is the run's real outcome — not a cancel or expiry that raced the write.
+	describe('claim (approved)', () => {
+		test('a claimed proposal can no longer be cancelled, rejected or expire', () => {
+			const { store, clock } = withClock(60_000)
+			const created = createProposal(store)
+			store.resolve({ proposalId: created.id, status: 'approved' })
+
+			expect(() => store.cancel(created.id)).toThrow(/already approved/)
+			expect(() => store.resolve({ proposalId: created.id, status: 'rejected' })).toThrow(/already approved/)
+			clock.now += 30_000
+			expect(store.get(created.id)?.status).toBe('approved')
+			store.dispose()
+		})
+
+		test('only the run outcome may follow a claim', () => {
+			const { store } = withClock()
+			const executed = createProposal(store)
+			store.resolve({ proposalId: executed.id, status: 'approved' })
+			expect(store.resolve({ proposalId: executed.id, status: 'executed', result: { affectedRows: 2 } }).status).toBe('executed')
+
+			const failed = createProposal(store)
+			store.resolve({ proposalId: failed.id, status: 'approved' })
+			expect(store.resolve({ proposalId: failed.id, status: 'failed', error: 'boom' }).status).toBe('failed')
+			expect(() => store.resolve({ proposalId: failed.id, status: 'executed' })).toThrow(/already failed/)
+			store.dispose()
+		})
+
+		test('a claim of a cancelled proposal is refused', () => {
+			const { store } = withClock()
+			const created = createProposal(store)
+			store.cancel(created.id)
+
+			expect(() => store.resolve({ proposalId: created.id, status: 'approved' })).toThrow(/already cancelled/)
+			store.dispose()
+		})
+
+		test('wait keeps polling through approved and returns the outcome', async () => {
+			const { store } = withClock()
+			const created = createProposal(store)
+
+			const waiting = store.wait(created.id, 5_000)
+			store.resolve({ proposalId: created.id, status: 'approved' })
+			expect(store.waiterCount()).toBe(1)
+			store.resolve({ proposalId: created.id, status: 'executed', result: { affectedRows: 1 } })
+
+			expect((await waiting).status).toBe('executed')
+			expect(store.waiterCount()).toBe(0)
+			store.dispose()
+		})
+	})
+
+	describe('pending cap', () => {
+		test('refuses a new proposal once too many are waiting for the user', () => {
+			const { store } = withClock()
+			for (let i = 0; i < MAX_PENDING_PROPOSALS; i++) createProposal(store)
+
+			expect(() => createProposal(store)).toThrow(/already waiting for approval/)
+			const first = store.list({ status: 'pending' })[0]
+			store.resolve({ proposalId: first.id, status: 'rejected' })
+			expect(createProposal(store).status).toBe('pending')
 			store.dispose()
 		})
 	})
