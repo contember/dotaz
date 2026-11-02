@@ -311,6 +311,12 @@ export function decodeProposalId(payload: unknown): string {
 	return id
 }
 
+/** `query.cancel` — whether the app found a running query to stop. */
+export function decodeCancelResult(payload: unknown): boolean {
+	if (!isRecord(payload) || typeof payload.cancelled !== 'boolean') throw decodeError('query.cancel')
+	return payload.cancelled
+}
+
 export function decodeAgentHello(payload: unknown): AgentHelloResult {
 	if (!isRecord(payload)) throw decodeError('agent.hello')
 	return {

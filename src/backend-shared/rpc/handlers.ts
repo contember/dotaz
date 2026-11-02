@@ -233,7 +233,7 @@ export function createHandlers(adapter: RpcAdapter) {
 			return { queryId }
 		},
 		'query.cancel': async ({ queryId }: { queryId: string }) => {
-			await adapter.cancelQuery(queryId)
+			return { cancelled: await adapter.cancelQuery(queryId) }
 		},
 		'query.format': ({ sql }: { sql: string }) => {
 			return { sql: adapter.formatSql(sql) }

@@ -82,7 +82,8 @@ export interface RpcAdapter {
 		database?: string,
 		sessionId?: string,
 	): Promise<QueryResult[]>
-	cancelQuery(queryId: string): Promise<void>
+	/** Whether a running query with this id was found and told to stop. */
+	cancelQuery(queryId: string): Promise<boolean>
 	/** Fire-and-forget query submission — result delivered via 'query.completed' message. */
 	submitQuery(
 		connectionId: string,

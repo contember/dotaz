@@ -93,6 +93,10 @@ const handlers = {
 				await new Promise<void>((resolve) => sleepingQueries.set(queryId, resolve))
 				sleepingQueries.delete(queryId)
 			}
+			if (/\bstall\b/i.test(sessions.lastSql)) {
+				// Slow before the query is registered — a cancel finds nothing to stop
+				await Bun.sleep(1_500)
+			}
 			return [{
 				columns: [{ name: 'id', dataType: 'integer' }, { name: 'note', dataType: 'text' }],
 				rows: [{ id: 1, note: null }, { id: 2, note: 'NULL' }],
@@ -110,7 +114,9 @@ const handlers = {
 		})),
 	'query.cancel': ({ queryId }: { queryId: string }) => {
 		cancelledQueries.push(queryId)
-		sleepingQueries.get(queryId)?.()
+		const release = sleepingQueries.get(queryId)
+		release?.()
+		return { cancelled: release !== undefined }
 	},
 	'bookmarks.list': ({ connectionId, search }: { connectionId: string; search?: string }) => {
 		bookmarkCalls.push({ connectionId, search })
@@ -473,6 +479,19 @@ describe.skipIf(!runOnUnixSocket)('cli-agent ↔ control server', () => {
 		expect(cancelledQueries).toEqual([sessions.lastQueryId])
 		expect(sessions.destroyed).toBe(before.destroyed + 1)
 		expect(sessions.active).toBe(0)
+	})
+
+	test('a cancel that finds nothing running is not reported as a cancel', async () => {
+		const proc = Bun.spawn(['bun', MAIN, 'query', 'testdb', 'SELECT stall(1)', '--timeout', '500', '--endpoint', server.endpointFile], {
+			stdout: 'pipe',
+			stderr: 'pipe',
+		})
+		const stderr = await new Response(proc.stderr).text()
+		expect(await proc.exited).toBe(EXIT.timeout)
+		expect(stderr).toContain('had no running query')
+		expect(stderr).not.toContain('cancelled in Dotaz')
+		// The stalled handler outlives the CLI; let it finish before the next test counts sessions
+		await waitUntil(() => sessions.active === 0, 'the stalled query to finish')
 	})
 
 	test('SIGINT cancels the running query instead of orphaning it', async () => {

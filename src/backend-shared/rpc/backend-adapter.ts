@@ -410,8 +410,8 @@ export class BackendAdapter implements RpcAdapter {
 			})
 	}
 
-	async cancelQuery(queryId: string): Promise<void> {
-		await this.queryExecutor.cancelQuery(queryId)
+	cancelQuery(queryId: string): Promise<boolean> {
+		return this.queryExecutor.cancelQuery(queryId)
 	}
 
 	// ── Transactions ──────────────────────────────────────

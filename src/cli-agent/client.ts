@@ -2,6 +2,7 @@
 
 import type { DatabaseErrorCode } from '@dotaz/shared/types/errors'
 import { randomUUID } from 'node:crypto'
+import { decodeCancelResult } from './decode'
 import type { EndpointInfo } from './endpoint'
 import { CliError, EXIT, messageOf, notRunningError, readOnlyError, START_DOTAZ_HINT, timeoutError } from './errors'
 
@@ -182,14 +183,22 @@ export class DotazClient {
 	 * Ask the app to stop a running query. Best-effort by contract: the caller is already on an
 	 * error path, and a failed cancel must never replace the error the user has to see.
 	 */
-	async cancelQuery(queryId: string): Promise<boolean> {
+	async cancelQuery(queryId: string): Promise<CancelOutcome> {
 		try {
-			await this.call('query.cancel', { queryId }, { timeoutMs: CANCEL_TIMEOUT_MS })
-			return true
+			return decodeCancelResult(await this.call('query.cancel', { queryId }, { timeoutMs: CANCEL_TIMEOUT_MS })) ? 'cancelled' : 'not-running'
 		} catch {
-			return false
+			return 'unreachable'
 		}
 	}
+}
+
+/** `not-running`: the app knew no such query — not started yet, or already finished. */
+export type CancelOutcome = 'cancelled' | 'not-running' | 'unreachable'
+
+const CANCEL_NOTES: Record<CancelOutcome, (queryId: string) => string> = {
+	cancelled: () => 'the query was cancelled in Dotaz',
+	'not-running': (queryId) => `Dotaz had no running query ${queryId} to cancel — it may not have started yet, or already finished`,
+	unreachable: (queryId) => `could not cancel query ${queryId}, it may still be running in Dotaz`,
 }
 
 export interface QueryExecuteParams {
@@ -219,13 +228,9 @@ export async function executeQuery(client: DotazClient, params: QueryExecutePara
 	} catch (err) {
 		// Both the timeout and the interrupt land on EXIT.timeout — nobody is waiting for the rows
 		if (!(err instanceof CliError) || err.exitCode !== EXIT.timeout) throw err
-		const cancelled = await client.cancelQuery(queryId)
+		const outcome = await client.cancelQuery(queryId)
 		// Same error, same exit code — plus whether the query is actually stopped
-		throw new CliError(
-			err.exitCode,
-			`${err.message} — ${cancelled ? 'the query was cancelled in Dotaz' : `could not cancel query ${queryId}, it may still be running in Dotaz`}`,
-			err.hint,
-		)
+		throw new CliError(err.exitCode, `${err.message} — ${CANCEL_NOTES[outcome](queryId)}`, err.hint)
 	} finally {
 		process.off('SIGINT', onInterrupt)
 	}

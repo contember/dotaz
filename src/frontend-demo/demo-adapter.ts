@@ -302,8 +302,9 @@ export class DemoAdapter implements RpcAdapter {
 			})
 	}
 
-	async cancelQuery(): Promise<void> {
-		// WASM SQLite operations are synchronous; cancellation is a no-op
+	async cancelQuery(): Promise<boolean> {
+		// WASM SQLite operations are synchronous; there is never anything running to cancel
+		return false
 	}
 
 	async explainQuery(connectionId: string, sql: string, _analyze: boolean): Promise<ExplainResult> {
