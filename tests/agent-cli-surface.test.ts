@@ -56,7 +56,33 @@ describe('CLI surface', () => {
 		const handler = lookup('agent.query')
 
 		expect(handler).toBeDefined()
-		expect(await handler!({ sql: 'SELECT 1' })).toEqual({ echoed: 'SELECT 1' })
+		expect(await handler!({ connectionId: 'c1', sql: 'SELECT 1', queryId: 'q1' })).toEqual({ echoed: 'SELECT 1' })
+	})
+
+	test('params are parsed at the boundary — malformed input never reaches the handler', async () => {
+		const seen: unknown[] = []
+		const lookup = createCliHandlerLookup({
+			'agent.query': (params: unknown) => seen.push(params),
+			'agent.search': (params: unknown) => seen.push(params),
+			'agent.proposals.wait': (params: unknown) => seen.push(params),
+		})
+
+		await expect(lookup('agent.query')!({ connectionId: 'c1', sql: 42, queryId: 'q1' })).rejects.toThrow(/sql must be a non-empty string/)
+		await expect(lookup('agent.query')!({ connectionId: 'c1', sql: 'SELECT $1', queryId: 'q1', params: [{ $ne: 1 }] })).rejects.toThrow(
+			/params may only hold/,
+		)
+		await expect(lookup('agent.search')!({ connectionId: 'c1', searchTerm: 'x', scope: 'everything' })).rejects.toThrow(/scope must be one of/)
+		await expect(lookup('agent.proposals.wait')!({ proposalId: 'p1', timeoutMs: '5' })).rejects.toThrow(/timeoutMs must be a finite number/)
+		await expect(lookup('agent.query')!('SELECT 1')).rejects.toThrow(/params must be an object/)
+		expect(seen).toHaveLength(0)
+	})
+
+	test('unknown fields are dropped — connections.connect never sees a client-supplied config', async () => {
+		const seen: unknown[] = []
+		const lookup = createCliHandlerLookup({ 'connections.connect': (params: unknown) => seen.push(params) })
+
+		await lookup('connections.connect')!({ connectionId: 'c1', password: 'x', config: { type: 'sqlite', path: '/etc/passwd' }, encryptedConfig: 'e' })
+		expect(seen).toEqual([{ connectionId: 'c1' }])
 	})
 
 	test('session ids and generic data methods never cross the CLI boundary', () => {
@@ -81,6 +107,15 @@ describe('CLI surface', () => {
 		expect(listed).toMatchObject({ config: { type: 'postgresql', host: 'db.example.com', password: '' } })
 		expect(JSON.stringify(result)).not.toContain('hunter2')
 		expect(JSON.stringify(result)).not.toContain('bastion-secret')
+	})
+
+	test('connections.list never leaks initSql, which may embed credentials', async () => {
+		const withInit = connection({
+			config: { type: 'postgresql', host: 'h', port: 5432, database: 'app', user: 'app', password: '', initSql: "SET app.token = 's3cret'" },
+		})
+		const lookup = createCliHandlerLookup({ 'connections.list': () => [withInit] })
+
+		expect(JSON.stringify(await lookup('connections.list')!({}))).not.toContain('s3cret')
 	})
 
 	test('the write surface stays off the allowlist', () => {

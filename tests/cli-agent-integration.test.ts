@@ -234,7 +234,7 @@ describe.skipIf(!runOnUnixSocket)('cli-agent ↔ control server', () => {
 
 	test('a read-only violation maps to exit 4 with the propose hint', async () => {
 		try {
-			await client().call('agent.query', { sql: 'UPDATE t SET a = 1' })
+			await client().call('agent.query', { connectionId: 'c-test', sql: 'UPDATE t SET a = 1', queryId: 'q-ro' })
 			expect.unreachable()
 		} catch (err) {
 			expect(err instanceof CliError).toBe(true)
