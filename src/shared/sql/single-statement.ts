@@ -107,27 +107,32 @@ function stripQuotesAndComments(sql: string, type: ConnectionType, options: { al
 		const next = i + 1 < n ? sql[i + 1] : ''
 
 		// ── Line comments ──────────────────────────────────
-		// `--`: a comment for Postgres/SQLite always; for MySQL only when followed by whitespace
-		// or end of input (`--x` is an operator there). Unknown dialect uses the MySQL rule so a
-		// same-line separator after `--x` stays visible.
+		// `--`: a comment for Postgres/SQLite always; for MySQL only when followed by an ASCII space
+		// or control character, or end of input (`--x` is an operator there). What MySQL counts as a
+		// space beyond ASCII depends on the connection charset, so a non-ASCII character fails closed.
 		if (ch === '-' && next === '-') {
-			const after = i + 2 < n ? sql[i + 2] : ''
-			const isComment = !dashNeedsWhitespace || after === '' || /\s/.test(after)
+			let isComment = true
+			if (dashNeedsWhitespace && i + 2 < n) {
+				const after = sql.charCodeAt(i + 2)
+				if (after > 0x7f) return null
+				isComment = after <= 0x20 || after === 0x7f
+			}
 			if (isComment) {
 				if (!options.allowComments) return null
-				const eol = sql.indexOf('\n', i)
+				const end = lineCommentEnd(sql, i)
+				if (end === null) return null
 				out += ' '
-				i = eol === -1 ? n : eol + 1
+				i = end
 				continue
 			}
 		}
-		// `#`: a line comment in MySQL. Honored under an unknown dialect too, so a `;` it might carry
-		// cannot be left dangling as content.
+		// `#`: a line comment in MySQL.
 		if (ch === '#' && honorHash) {
 			if (!options.allowComments) return null
-			const eol = sql.indexOf('\n', i)
+			const end = lineCommentEnd(sql, i)
+			if (end === null) return null
 			out += ' '
-			i = eol === -1 ? n : eol + 1
+			i = end
 			continue
 		}
 
@@ -173,19 +178,19 @@ function stripQuotesAndComments(sql: string, type: ConnectionType, options: { al
 		}
 
 		// ── Dollar-quoted strings (Postgres only) ──────────
-		// The opening `$` must not touch an identifier character, or it is part of that identifier
-		// (`x$$` is a name, not a quote). This is the classifier bug the read-only bypass exploited.
+		// A `$` touching an identifier character or another `$` may continue that identifier
+		// (`x$$`, `x$$$` are names) — or, after a number, open a quote (`1$$…$$`). The scanner cannot
+		// tell those apart, so a tag-shaped `$` in that position fails closed.
 		if (ch === '$' && dollarQuotes) {
-			const prev = i > 0 ? sql[i - 1] : ''
-			if (!isIdentChar(prev)) {
-				const tag = matchDollarTag(sql, i)
-				if (tag) {
-					const end = sql.indexOf(tag, i + tag.length)
-					if (end === -1) return null // unterminated dollar-quote
-					out += ' '
-					i = end + tag.length
-					continue
-				}
+			const tag = matchDollarTag(sql, i)
+			if (tag) {
+				const prev = i > 0 ? sql[i - 1] : ''
+				if (isIdentChar(prev) || prev === '$') return null
+				const end = sql.indexOf(tag, i + tag.length)
+				if (end === -1) return null // unterminated dollar-quote
+				out += ' '
+				i = end + tag.length
+				continue
 			}
 		}
 
@@ -232,9 +237,23 @@ function stripQuotesAndComments(sql: string, type: ConnectionType, options: { al
 	return out
 }
 
+/**
+ * Index just past a line comment starting at `start`, or null when its end is ambiguous: a bare
+ * `\r` ends the comment for PostgreSQL but not for MySQL or SQLite. `\r\n` is fine for all three.
+ */
+function lineCommentEnd(sql: string, start: number): number | null {
+	for (let i = start; i < sql.length; i++) {
+		if (sql[i] === '\n') return i + 1
+		if (sql[i] === '\r' && sql[i + 1] !== '\n') return null
+	}
+	return sql.length
+}
+
 /** Match a `$tag$` opener at `start` (tag is a valid Postgres identifier or empty), or null. */
 function matchDollarTag(sql: string, start: number): string | null {
 	if (sql[start] !== '$') return null
+	const first = sql.charCodeAt(start + 1)
+	if (first >= 48 && first <= 57) return null // a tag cannot start with a digit (`$1` is a parameter)
 	let i = start + 1
 	while (i < sql.length && isIdentChar(sql[i])) i++
 	if (sql[i] !== '$') return null

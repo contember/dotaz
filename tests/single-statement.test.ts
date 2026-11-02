@@ -21,6 +21,9 @@ const POSTGRES_BYPASSES: Record<string, string> = {
 	'non-ASCII dollar-quote tag': `SELECT $é$'$é$; ${PG_FLIP}; INSERT INTO t VALUES (1); SELECT '$é$'`,
 	'symmetric escape strings': `SELECT E'\\'' ; ${PG_FLIP} ; INSERT INTO t VALUES (1) ; SELECT E'\\''`,
 	'backslash with standard_conforming_strings off': `SELECT '\\'' ; ${PG_FLIP} ; INSERT INTO t VALUES (1) ; SELECT '\\''`,
+	'$ continuing an identifier (x$$$)': `SELECT 1 AS x$$$ ; ${PG_FLIP} ; INSERT INTO t VALUES (1) ; SELECT 1 AS y$$`,
+	'$ continuing an identifier (x$$a$)': `SELECT 1 AS x$$a$ ; ${PG_FLIP} ; INSERT INTO t VALUES (1) ; SELECT 1 AS y$a$`,
+	'bare carriage return ending a line comment': `SELECT 1 -- x\r; ${PG_FLIP}; INSERT INTO t VALUES (1); -- \n`,
 }
 
 const MYSQL_BYPASSES: Record<string, string> = {
@@ -32,6 +35,8 @@ const MYSQL_BYPASSES: Record<string, string> = {
 	'-- without trailing whitespace is not a comment': `SELECT 1 --'';${MY_FLIP};INSERT INTO t VALUES (1);`,
 	'backslash under NO_BACKSLASH_ESCAPES': `SELECT '\\' ; ${MY_FLIP} ; INSERT INTO t VALUES (1) ; -- '`,
 	'backslash in an identifier under ANSI_QUOTES': `SELECT "\\" ; ${MY_FLIP} ; INSERT INTO t VALUES (1) ; -- "`,
+	'-- followed by a non-ASCII space': `SELECT 1 --\u00a0 FROM (SELECT 2 AS \u00a0) t; ${MY_FLIP}; INSERT INTO t VALUES (1); SELECT 1\n`,
+	'bare carriage return inside a line comment': `SELECT 1 -- x\r' \n; ${MY_FLIP}; INSERT INTO t VALUES (1); SELECT '`,
 }
 
 describe('isSingleStatement — rejects multi-statement bypasses', () => {
@@ -61,6 +66,8 @@ describe('isSingleStatement — accepts a genuine single statement', () => {
 		"SELECT 'it''s; fine' AS s",
 		'SELECT "col;name" FROM t',
 		'WITH t AS (SELECT 1) SELECT * FROM t',
+		'SELECT 1 -- windows line ending\r\n',
+		'SELECT 1 --\tcomment\n',
 	]
 	for (const sql of singles) {
 		test(JSON.stringify(sql), () => {
@@ -115,6 +122,12 @@ describe('isWhereFragment', () => {
 		expect(isWhereFragment(where, undefined)).toBe(false)
 	})
 
+	test('postgres: a $ continuing an identifier cannot open a phantom quote', () => {
+		const where = 'EXISTS (SELECT 1 AS a$$$)) ; INSERT INTO t VALUES (7) ; SELECT 1 WHERE (EXISTS (SELECT 1 AS b$$)'
+		expect(isWhereFragment(where, 'postgresql')).toBe(false)
+		expect(isWhereFragment(where, undefined)).toBe(false)
+	})
+
 	test('mysql: a # comment cannot hide a separator', () => {
 		const where = "1=1 #'\n); INSERT INTO t VALUES (2); SELECT (1 #'"
 		expect(isWhereFragment(where, 'mysql')).toBe(false)
@@ -138,5 +151,18 @@ describe('isWhereFragment', () => {
 			expect(isWhereFragment(where, 'sqlite')).toBe(true)
 			expect(isWhereFragment(where, undefined)).toBe(true)
 		}
+	})
+})
+
+describe('isSingleStatement — postgres dollar quotes', () => {
+	test('genuine dollar-quoted bodies stay one statement', () => {
+		expect(isSingleStatement('SELECT $$a;b$$', 'postgresql')).toBe(true)
+		expect(isSingleStatement('SELECT $tag$x; y$tag$ AS v', 'postgresql')).toBe(true)
+		expect(isSingleStatement('SELECT * FROM t WHERE id = $1 AND b = $2', 'postgresql')).toBe(true)
+	})
+
+	test('a $ that touches an identifier or a number fails closed', () => {
+		expect(isSingleStatement('SELECT 1 AS x$$', 'postgresql')).toBe(false)
+		expect(isSingleStatement('SELECT 1$$x$$', 'postgresql')).toBe(false)
 	})
 })
