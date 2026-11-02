@@ -233,6 +233,9 @@ Lifecycle:
    Ctrl+Enter alike — the frontend claims the proposal with `agent.proposals.resolve`
    `approved`. From then on the agent cannot cancel it and it cannot expire. After the run the
    frontend resolves `executed` (or `failed` + error). On Reject it resolves `rejected`.
+   EXPLAIN ANALYZE, which executes the statement, is refused while the banner is live. Once a
+   banner is invalidated, the unchanged proposal SQL is refused too: confirming a destructive-
+   statement warning opened before the agent cancelled must not run it.
    The run is matched to the proposal by tab _and_ by SQL. If the user edited the console, or
    ran one statement of a multi-statement proposal, the proposal resolves `failed`, with an
    error saying that different SQL ran and may have changed data. If the app stopped waiting
@@ -244,7 +247,8 @@ Lifecycle:
 
 Proposals live in memory for one hour, then a `pending` one becomes `expired`. `pending` is
 the only status the frontend may claim, and `approved` may only move to `executed` or
-`failed`. At most 20 proposals may be pending at once; `agent.proposeWrite` refuses more.
+`failed`. A claim the app never settles (reload, lost reply) becomes `failed` with an
+unknown-outcome error an hour after the claim. At most 20 proposals may be pending at once; `agent.proposeWrite` refuses more.
 
 A proposal can also leave `pending` behind the app's back — the agent cancels it, the TTL
 expires it, or another window resolves it. The backend therefore emits `cli.proposal` on

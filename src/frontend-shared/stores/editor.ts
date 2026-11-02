@@ -208,7 +208,7 @@ export interface RunFinishedEvent {
  * Consulted after the run is confirmed and before anything is submitted; resolving `false`
  * drops the run. The CLI proposal banner uses it to claim its proposal before the SQL runs.
  */
-export type RunGuard = (run: { tabId: string; sql: string }) => Promise<boolean>
+export type RunGuard = (run: { tabId: string; sql: string; kind: 'run' | 'explain-analyze' }) => Promise<boolean>
 
 let runGuard: RunGuard | null = null
 
@@ -335,7 +335,7 @@ function recordHistory(connectionId: string, database: string | undefined, sql: 
 }
 
 async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit = true) {
-	if (runGuard && !await runGuard({ tabId, sql })) return
+	if (runGuard && !await runGuard({ tabId, sql, kind: 'run' })) return
 	const tab = ensureTab(tabId)
 	const queryId = crypto.randomUUID()
 
@@ -732,6 +732,10 @@ async function explainQuery(tabId: string, analyze = false) {
 		sql = result?.text ?? tab.content.trim()
 	}
 	if (!sql) return
+	// Starting now would replace the running query's id and drop its outcome.
+	if (tab.isRunning) return
+	// EXPLAIN ANALYZE executes the statement, so it is a run as far as the guard is concerned.
+	if (analyze && runGuard && !await runGuard({ tabId, sql, kind: 'explain-analyze' })) return
 
 	const queryId = crypto.randomUUID()
 

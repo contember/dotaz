@@ -364,6 +364,20 @@ describe('ProposalStore', () => {
 			store.dispose()
 		})
 
+		test('a claim the app never settles fails with an unknown outcome after the TTL', async () => {
+			const { store, clock } = withClock(60_000)
+			const created = createProposal(store)
+			store.resolve({ proposalId: created.id, status: 'approved' })
+			const waiting = store.wait(created.id, 5_000)
+
+			clock.now += 60_001
+			const settled = store.get(created.id)
+			expect(settled?.status).toBe('failed')
+			expect(settled?.error).toMatch(/never reported the outcome/)
+			expect((await waiting).status).toBe('failed')
+			store.dispose()
+		})
+
 		test('a claim of a cancelled proposal is refused', () => {
 			const { store } = withClock()
 			const created = createProposal(store)

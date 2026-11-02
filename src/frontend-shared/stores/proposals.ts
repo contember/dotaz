@@ -94,10 +94,21 @@ const EDITED_RUN_MESSAGE = 'Different SQL than the proposal ran in its tab (edit
  * Once claimed, the agent can no longer cancel it and it cannot expire, so the outcome the app
  * reports afterwards is the one the agent sees. Every run path goes through here, toolbar included.
  */
-async function guardRun({ tabId }: { tabId: string; sql: string }): Promise<boolean> {
+async function guardRun({ tabId, sql, kind }: { tabId: string; sql: string; kind: 'run' | 'explain-analyze' }): Promise<boolean> {
 	const entry = entryForTab(tabId)
-	// No live banner in this tab — the run is not a proposal's business.
-	if (!entry || entry.phase === 'resolved' || entry.phase === 'invalidated') return true
+	// The user already ran it, or there is no proposal here — the run is the user's own.
+	if (!entry || entry.phase === 'resolved') return true
+	if (entry.phase === 'invalidated') {
+		// The agent's SQL, unchanged, from a proposal that can no longer be claimed — e.g. confirmed
+		// in the destructive-statement dialog after the agent cancelled. Edited, it is the user's own.
+		if (!sqlMatchesProposal(sql, entry.proposal.sql)) return true
+		uiStore.addToast('warning', 'This proposal is no longer pending, so it was not run. Edit the SQL to run it as your own query.')
+		return false
+	}
+	if (kind === 'explain-analyze') {
+		uiStore.addToast('warning', 'EXPLAIN ANALYZE would execute the proposed statement. Use Run or Reject on the banner.')
+		return false
+	}
 	const proposalId = entry.proposal.id
 	if (entry.phase !== 'pending') {
 		uiStore.addToast('warning', 'This proposal is already being run.')
