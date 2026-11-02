@@ -1,3 +1,4 @@
+import { statementRowCount } from '@dotaz/shared/query-result'
 import { parseErrorPosition, splitStatements, stripLiteralsAndComments } from '@dotaz/shared/sql/statements'
 import { DatabaseError } from '@dotaz/shared/types/errors'
 import type { ExplainNode, ExplainResult, QueryResult } from '@dotaz/shared/types/query'
@@ -516,7 +517,7 @@ export class QueryExecutor {
 	private logHistory(connectionId: string, sql: string, results: QueryResult[], database?: string, sessionId?: string): void {
 		const hasError = results.some((r) => r.error)
 		const totalDuration = results.reduce((sum, r) => sum + (r.durationMs ?? 0), 0)
-		const totalRows = results.reduce((sum, r) => sum + (r.affectedRows ?? r.rowCount), 0)
+		const totalRows = results.reduce((sum, r) => sum + statementRowCount(r), 0)
 		const errorMessage = results.find((r) => r.error)?.error
 
 		// Always add to session log (in-memory)

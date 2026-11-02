@@ -1,3 +1,4 @@
+import { statementRowCount } from '@dotaz/shared/query-result'
 import { generateChangesPreview, generateChangeSql } from '@dotaz/shared/sql/builders'
 import { detectDestructiveWithoutWhere, isUnlimitedSelect, splitStatements } from '@dotaz/shared/sql/statements'
 import type { ExplainResult, QueryEditability, QueryResult } from '@dotaz/shared/types/query'
@@ -270,7 +271,7 @@ function setCursorPosition(tabId: string, position: number) {
 function recordHistory(connectionId: string, database: string | undefined, sql: string, results: QueryResult[]) {
 	const hasError = results.some((r) => r.error)
 	const totalDuration = results.reduce((sum, r) => sum + (r.durationMs ?? 0), 0)
-	const totalRows = results.reduce((sum, r) => sum + (r.affectedRows ?? r.rowCount ?? 0), 0)
+	const totalRows = results.reduce((sum, r) => sum + statementRowCount(r), 0)
 	storage.addHistoryEntry({
 		connectionId,
 		database,
