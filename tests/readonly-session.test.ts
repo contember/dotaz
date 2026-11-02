@@ -880,6 +880,21 @@ describe.skipIf(!mysqlReachable)('MysqlDriver read-only sessions', () => {
 		const result = await driver.execute("INSERT INTO users (name, email) VALUES ('Frank', 'frank@example.com')", undefined, writableId)
 		expect(result.affectedRows).toBe(1)
 	})
+
+	test('a dropped connection that Bun reconnects stays read-only', async () => {
+		const connectionId = firstValue((await driver.execute('SELECT CONNECTION_ID() AS v', undefined, readOnlyId)).rows)
+		await driver.execute(`KILL ${Number(connectionId)}`, undefined, writableId)
+		const after = await driver.execute(
+			'SELECT CONNECTION_ID() AS id, @@session.transaction_read_only AS ro, @@session.character_set_client AS cs',
+			undefined,
+			readOnlyId,
+		)
+		expect(Number(after.rows[0].id)).not.toBe(Number(connectionId))
+		expect(Number(after.rows[0].ro)).toBe(1)
+		expect(after.rows[0].cs).toBe('utf8mb4')
+		await expect(driver.execute("INSERT INTO users (name, email) VALUES ('Gus', 'gus@example.com')", undefined, readOnlyId))
+			.rejects.toThrow(/read only transaction/i)
+	})
 })
 
 // Requires `docker compose up -d` — skipped when the container isn't reachable.
