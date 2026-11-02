@@ -797,6 +797,20 @@ describe.skipIf(!mysqlReachable)('QueryExecutor read-only bypass — MySQL', () 
 		const [count] = await qe.executeQuery(connectionId, 'SELECT count(*) AS n FROM ro_canary')
 		expect(Number(count.rows[0].n)).toBe(0)
 	})
+
+	test('a multibyte charset set by initSql cannot hide a separator from the guard', async () => {
+		// Under gbk the byte after 中's lead bytes plus a backtick is one character, so the engine
+		// never sees the backtick the guard does. Read-only sessions are forced back to utf8mb4.
+		const gbkId = cm.createConnection({ name: 'my-gbk', config: { ...mysqlConfig, initSql: 'SET NAMES gbk' } }).id
+		await cm.connect(gbkId)
+		const sessionId = (await sm.createSession(gbkId, undefined, { readOnly: true })).sessionId
+		const sql = "SELECT 1 AS 中` # '\n; SET SESSION TRANSACTION READ WRITE ; INSERT INTO ro_canary VALUES (1) ; SELECT 1 AS ` -- '"
+		await qe.executeQuery(gbkId, sql, undefined, undefined, undefined, undefined, sessionId).catch(() => {})
+		await sm.destroySession(sessionId)
+
+		const [count] = await qe.executeQuery(connectionId, 'SELECT count(*) AS n FROM ro_canary')
+		expect(Number(count.rows[0].n)).toBe(0)
+	})
 })
 
 // Requires `docker compose up -d` — skipped when the container isn't reachable.

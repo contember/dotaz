@@ -199,6 +199,9 @@ export class MysqlDriver implements DatabaseDriver {
 			try {
 				// Applies to every transaction started later on this connection.
 				await conn.unsafe('SET SESSION TRANSACTION READ ONLY')
+				// The single-statement guard lexes UTF-8. Under a multibyte charset such as gbk, a byte
+				// it reads as a backtick can be half of a character, so undo any `SET NAMES` in initSql.
+				await conn.unsafe('SET NAMES utf8mb4')
 				const timeoutMs = Math.floor(opts.statementTimeoutMs ?? 0)
 				if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
 					await this.setStatementTimeout(conn, timeoutMs)

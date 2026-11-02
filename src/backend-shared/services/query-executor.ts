@@ -329,6 +329,11 @@ export class QueryExecutor {
 	): Promise<ExplainResult> {
 		const driver = this.connectionManager.getDriver(connectionId, database)
 		const driverType = driver.getDriverType()
+		// `EXPLAIN ${sql}` goes out in one round trip, so every statement after the first would really
+		// execute — in any session, not only read-only ones.
+		if (!isSingleStatement(sql, driverType)) {
+			throw new Error('EXPLAIN takes a single statement — select the one to explain')
+		}
 		// Only ANALYZE actually runs the statement, so classify the EXPLAIN as executed
 		assertSessionWritable(driver, `EXPLAIN ${analyze ? 'ANALYZE ' : ''}${sql}`, sessionId)
 		const start = performance.now()
