@@ -107,7 +107,7 @@ export interface UiSnapshot {
 
 export type UiCommandPayload =
 	| { kind: 'open-table'; connectionId: string; database?: string; schema: string; table: string; where?: string; limit?: number }
-	| { kind: 'open-console'; connectionId: string; database?: string; sql?: string; run?: boolean }
+	| { kind: 'open-console'; connectionId: string; database?: string; sql?: string }
 
 // ---- Open connection handle diagnostics ----
 

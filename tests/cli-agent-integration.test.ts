@@ -151,11 +151,7 @@ const handlers = {
 		uiCalls.push({ kind: 'open-table', ...params })
 		return { ok: true }
 	},
-	'ui.openConsole': (params: { sql?: string; run?: boolean }) => {
-		// Mirrors the real handler: auto-running a write would bypass the approval flow
-		if (params?.run && !/^\s*SELECT/i.test(params.sql ?? '')) {
-			throw new DatabaseError('READ_ONLY_SESSION', 'Only read-only SQL can be auto-run — submit writes via agent.proposeWrite')
-		}
+	'ui.openConsole': (params: Record<string, unknown>) => {
 		uiCalls.push({ kind: 'open-console', ...params })
 		return { ok: true }
 	},
@@ -379,14 +375,19 @@ describe.skipIf(!runOnUnixSocket)('cli-agent ↔ control server', () => {
 		expect(uiCalls.at(-1)).toMatchObject({ kind: 'open-table', connectionId: 'c-test', schema: 'public', table: 'orders' })
 	})
 
-	test('`dotaz ui console --run` refuses a write with exit 4', async () => {
-		const proc = Bun.spawn(['bun', MAIN, 'ui', 'console', 'testdb', '--sql', 'DELETE FROM orders', '--run', '--endpoint', server.endpointFile], {
+	test('`dotaz ui console --sql` only prefills — there is no way to auto-run', async () => {
+		const prefill = Bun.spawn(['bun', MAIN, 'ui', 'console', 'testdb', '--sql', 'DELETE FROM orders', '--endpoint', server.endpointFile], {
 			stdout: 'pipe',
 			stderr: 'pipe',
 		})
-		const stderr = await new Response(proc.stderr).text()
-		expect(await proc.exited).toBe(EXIT.readOnly)
-		expect(stderr).toContain('dotaz propose')
+		expect(await prefill.exited).toBe(EXIT.ok)
+		expect(uiCalls.at(-1)).toEqual({ kind: 'open-console', connectionId: 'c-test', sql: 'DELETE FROM orders' })
+
+		const run = Bun.spawn(['bun', MAIN, 'ui', 'console', 'testdb', '--sql', 'SELECT 1', '--run', '--endpoint', server.endpointFile], {
+			stdout: 'pipe',
+			stderr: 'pipe',
+		})
+		expect(await run.exited).toBe(EXIT.usage)
 	})
 
 	test('`dotaz history` lists recent queries', async () => {

@@ -181,9 +181,8 @@ describe('isReadOnlySql', () => {
 	})
 })
 
-// Every case below classified as `read` before the review that added them. Where the
-// classifier is the only gate (`ui.openConsole { run: true }`) that meant an auto-run write;
-// on a read-only session it meant a statement that revokes the session's own enforcement.
+// Every case below classified as `read` before the review that added them. On a read-only
+// session that meant a statement that revokes the session's own enforcement.
 describe('read-only escapes the classifier must not wave through', () => {
 	test('a data-modifying CTE is a write even when the tail only selects', () => {
 		// PostgreSQL executes the CTE body regardless of what the tail does with it

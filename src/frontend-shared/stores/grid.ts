@@ -172,6 +172,8 @@ export interface TabGridState {
 	sort: SortColumn[]
 	filters: ColumnFilter[]
 	customFilter: string
+	/** A WHERE fragment the CLI suggested — the filter bar offers it for review; it is never applied unasked. */
+	suggestedCustomFilter: string | null
 	quickSearch: string
 	selection: CellSelection
 	editingCell: EditingCell | null
@@ -220,6 +222,7 @@ function createDefaultTabState(
 		sort: [],
 		filters: [],
 		customFilter: '',
+		suggestedCustomFilter: null,
 		quickSearch: '',
 		selection: createDefaultSelection(),
 		editingCell: null,
@@ -780,6 +783,16 @@ async function setCustomFilter(tabId: string, filter: string) {
 	await fetchData(tabId)
 }
 
+function suggestCustomFilter(tabId: string, filter: string) {
+	ensureTab(tabId)
+	setState('tabs', tabId, 'suggestedCustomFilter', filter)
+}
+
+function clearSuggestedCustomFilter(tabId: string) {
+	if (!state.tabs[tabId]) return
+	setState('tabs', tabId, 'suggestedCustomFilter', null)
+}
+
 async function clearFilters(tabId: string) {
 	ensureTab(tabId)
 	assertCanRequery(tabId)
@@ -1091,6 +1104,8 @@ export const gridStore = {
 	removeFilter,
 	clearFilters,
 	setCustomFilter,
+	suggestCustomFilter,
+	clearSuggestedCustomFilter,
 	setQuickSearch,
 	selectCell: selectionActions.selectCell,
 	extendSelection: selectionActions.extendSelection,

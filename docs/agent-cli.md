@@ -18,9 +18,10 @@ This document is the implementation contract. Everything below is normative.
 1. Every CLI database operation runs in a backend-owned read-only session that is **never**
    switched to read-write. An approved write executes in the frontend's own session, not in
    an agent session.
-   No control-plane method may be used to get around this: `ui.openConsole` will prefill a
-   write, but refuses to auto-run one (`run: true` is rejected unless the SQL is a single
-   read-only statement), and `ui.openTable`'s `where` must be a single boolean expression.
+   No control-plane method may be used to get around this: `ui.openConsole` and
+   `ui.openTable`'s `where` only prefill the console or the filter box. Agent SQL reaches the
+   app's writable session only when the user runs or applies it. `where` must also be a single
+   boolean expression, so applying what looks like a filter cannot run a hidden statement.
 2. Read-only is enforced by the database engine, not by parsing SQL. Statement classification
    exists only to fail fast with a good message. The one thing parsing must get right is that a
    read-only session runs exactly one statement per engine round-trip: a multi-statement string
@@ -133,7 +134,7 @@ Existing handlers are reused wherever possible. New methods:
 | `agent.proposals.resolve` | `{ proposalId, status, result?, error? }`                         | `Proposal` — **frontend only**     |
 | `ui.state`                | —                                                                 | `UiSnapshot`                       |
 | `ui.openTable`            | `{ connectionId, database?, schema, table, where?, limit? }`      | `{ ok: true }`                     |
-| `ui.openConsole`          | `{ connectionId, database?, sql?, run? }`                         | `{ ok: true }`                     |
+| `ui.openConsole`          | `{ connectionId, database?, sql? }`                               | `{ ok: true }`                     |
 | `ui.snapshot.set`         | `{ snapshot }`                                                    | `void` — **frontend only**         |
 
 ### Backend → frontend messages
@@ -269,8 +270,8 @@ dotaz bookmarks list [--conn] [--search]
 dotaz propose <conn[/db]> <sql> [--reason] [--wait [sec]]
 dotaz approvals list | status <id> | wait <id> [--wait sec] | cancel <id>
 dotaz ui state
-dotaz ui open <path> [--where]
-dotaz ui console <conn[/db]> [--sql] [--run]
+dotaz ui open <path> [--where]                 # --where is prefilled, the user applies it
+dotaz ui console <conn[/db]> [--sql]
 ```
 
 Global flags: `--json`, `--format table|json|jsonl|csv|md`, `--max-bytes N` (default 65536),

@@ -249,6 +249,8 @@ export default function DataGridToolbar(props: DataGridToolbarProps) {
 								onRemoveFilter={handleRemoveFilter}
 								onSetCustomFilter={(v) => gridStore.setCustomFilter(props.tabId, v)}
 								onClearAll={handleClearFilters}
+								suggestedCustomFilter={tabState().suggestedCustomFilter}
+								onSuggestionShown={() => gridStore.clearSuggestedCustomFilter(props.tabId)}
 							/>
 							<ColumnManager
 								columns={tabState().columns}

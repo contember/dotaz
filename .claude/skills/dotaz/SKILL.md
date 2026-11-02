@@ -66,6 +66,9 @@ dotaz ui open prod/app/public/orders           # open a data grid tab
 dotaz ui console prod --sql "SELECT …"         # open a SQL console, prefilled
 ```
 
+`ui open --where` and `ui console --sql` only prefill — the user applies or runs them. To read
+data yourself use `dotaz query`; to change it, `dotaz propose`.
+
 `ui state` before `ui open` is usually worth it — it tells you which connection and database
 the user is actually working in, so you can act in their context instead of guessing.
 

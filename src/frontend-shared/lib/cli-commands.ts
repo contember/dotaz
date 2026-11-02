@@ -31,7 +31,7 @@ async function openTable(command: Extract<UiCommandPayload, { kind: 'open-table'
 	// DataGrid connects and loads on its own, and racing that load would drop the filter.
 	if (conn.state !== 'connected') {
 		if (command.where || command.limit) {
-			uiStore.addToast('warning', `${conn.name} is not connected yet — the requested filter was not applied.`)
+			uiStore.addToast('warning', `${conn.name} is not connected yet — the requested filter and page size were not set.`)
 		}
 		connectionsStore.connectTo(conn.id)
 		return
@@ -43,8 +43,9 @@ async function openTable(command: Extract<UiCommandPayload, { kind: 'open-table'
 	if (command.limit) {
 		await gridStore.setPageSize(tabId, command.limit)
 	}
+	// Agent SQL only ever reaches the user's writable session through a click of theirs.
 	if (command.where) {
-		await gridStore.setCustomFilter(tabId, command.where)
+		gridStore.suggestCustomFilter(tabId, command.where)
 	}
 }
 
@@ -63,14 +64,9 @@ function openConsole(command: Extract<UiCommandPayload, { kind: 'open-console' }
 		database: command.database,
 	})
 	editorStore.initTab(tabId, command.connectionId, command.database)
+	// Prefill only — the user runs it, so agent SQL never executes in this session unasked.
 	if (command.sql) {
 		editorStore.setContent(tabId, command.sql)
-	}
-	// Only an explicit `run` executes — a prefilled console never runs by itself.
-	if (command.run && command.sql) {
-		editorStore.executeQuery(tabId).catch((err) => {
-			uiStore.addToast('error', `Failed to run the requested SQL: ${err instanceof Error ? err.message : String(err)}`)
-		})
 	}
 }
 

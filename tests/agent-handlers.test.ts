@@ -216,16 +216,15 @@ describe('Agent CLI handlers', () => {
 	// ── ui.* ─────────────────────────────────────────────
 
 	test('ui.openConsole emits cli.command', () => {
-		const result = ctx.handlers['ui.openConsole']({ connectionId: ctx.connectionId, sql: 'SELECT 1', run: true })
+		const result = ctx.handlers['ui.openConsole']({ connectionId: ctx.connectionId, sql: 'SELECT 1' })
 
 		expect(result).toEqual({ ok: true })
 		const commands = payloadsOn(ctx.emitted, 'cli.command')
 		expect(commands).toHaveLength(1)
-		expect(commands[0]).toMatchObject({ kind: 'open-console', connectionId: ctx.connectionId, sql: 'SELECT 1', run: true })
+		expect(commands[0]).toEqual({ kind: 'open-console', connectionId: ctx.connectionId, database: undefined, sql: 'SELECT 1' })
 	})
 
-	test('ui.openConsole rejects run without sql and unknown connections', () => {
-		expect(() => ctx.handlers['ui.openConsole']({ connectionId: ctx.connectionId, run: true })).toThrow(/run requires sql/)
+	test('ui.openConsole rejects unknown connections', () => {
 		expect(() => ctx.handlers['ui.openConsole']({ connectionId: 'missing' })).toThrow(/Unknown connection/)
 		expect(ctx.emitted).toHaveLength(0)
 	})
@@ -255,27 +254,7 @@ describe('Agent CLI handlers', () => {
 		expect(ctx.emitted).toHaveLength(0)
 	})
 
-	// This guard is the whole of invariant I1 on the auto-run path — the frontend does not
-	// re-check. Every case here reached the database before the review that added them.
-	test.each([
-		['a plain write', 'DELETE FROM orders'],
-		['a data-modifying CTE', "WITH x AS (INSERT INTO users(name) VALUES ('p') RETURNING id) SELECT * FROM x"],
-		['a deleting CTE', 'WITH x AS (DELETE FROM orders RETURNING id) SELECT * FROM x'],
-		['SELECT … INTO', 'SELECT * INTO stolen FROM users'],
-		['INTO OUTFILE', "SELECT * FROM users INTO OUTFILE '/tmp/users'"],
-		['a GUC rewrite', "SELECT set_config('default_transaction_read_only','off',false)"],
-		['a pragma with an argument', 'PRAGMA query_only(0)'],
-		['a trailing statement', 'SELECT 1; DELETE FROM orders'],
-		// Auto-run executes one statement in the app's writable session; even an all-read batch is
-		// refused, so a write cannot ride in behind a leading SELECT the classifier misreads.
-		['a multi-statement batch', 'SELECT 1; SELECT 2'],
-	])('ui.openConsole refuses to auto-run %s', (_label, sql) => {
-		expect(() => ctx.handlers['ui.openConsole']({ connectionId: ctx.connectionId, sql, run: true }))
-			.toThrow(/Only a single read-only statement can be auto-run/)
-		expect(ctx.emitted).toHaveLength(0)
-	})
-
-	test('ui.openConsole still prefills a write when it is not asked to run it', () => {
+	test('ui.openConsole prefills a write — the user decides whether to run it', () => {
 		ctx.handlers['ui.openConsole']({ connectionId: ctx.connectionId, sql: 'DELETE FROM orders' })
 
 		expect(payloadsOn(ctx.emitted, 'cli.command')[0]).toMatchObject({ kind: 'open-console', sql: 'DELETE FROM orders' })

@@ -1,4 +1,4 @@
-import { flagBool, flagNumber, flagString, requirePositiveInt } from '../args'
+import { flagNumber, flagString, requirePositiveInt } from '../args'
 import { decodeUiSnapshot } from '../decode'
 import { usageError } from '../errors'
 import { requireTable, resolvePath, resolveScope } from '../paths'
@@ -50,15 +50,17 @@ function ok(action: string, detail: Record<string, unknown>): CommandResult {
 export const uiCommand: Command = {
 	name: 'ui',
 	flags: {
-		where: { kind: 'string', placeholder: '<sql>', description: 'Filter applied to the opened grid (raw SQL fragment)' },
+		where: { kind: 'string', placeholder: '<sql>', description: "Prefill the grid's WHERE filter for the user to apply (raw SQL fragment)" },
 		limit: { kind: 'number', placeholder: '<n>', description: 'Page size for the opened grid' },
 		sql: { kind: 'string', placeholder: '<sql>', description: 'Prefill the SQL console with this statement' },
-		run: { kind: 'boolean', description: 'Also run the prefilled SQL — read-only statements only' },
 	},
 	help: {
-		usage: 'ui state | open <path> [--where sql] | console <conn[/db]> [--sql text] [--run]',
+		usage: 'ui state | open <path> [--where sql] | console <conn[/db]> [--sql text]',
 		summary: 'read and drive what the user has open in the app',
-		notes: ['`ui console --run` refuses non-read-only SQL and exits 4 — use `dotaz propose` for writes.'],
+		notes: [
+			'`ui open --where` and `ui console --sql` only prefill — nothing runs until the user does it.',
+			'Use `dotaz query` to read, `dotaz propose` to write.',
+		],
 	},
 	async run(ctx) {
 		const [sub, target, ...extra] = ctx.args.positionals
@@ -93,10 +95,8 @@ export const uiCommand: Command = {
 				if (!target) throw usageError('ui console requires a connection path', 'Example: dotaz ui console prod --sql "SELECT 1"')
 				const scope = await resolveScope(target, ctx.app)
 				const sql = flagString(ctx.args, 'sql')
-				const run = flagBool(ctx.args, 'run')
-				if (run && !sql) throw usageError('--run needs --sql')
-				await ctx.client.call('ui.openConsole', { connectionId: scope.connection.id, database: scope.database, sql, run })
-				return ok('open-console', { connection: scope.connection.name, database: scope.database ?? null, run })
+				await ctx.client.call('ui.openConsole', { connectionId: scope.connection.id, database: scope.database, sql })
+				return ok('open-console', { connection: scope.connection.name, database: scope.database ?? null })
 			}
 
 			default:

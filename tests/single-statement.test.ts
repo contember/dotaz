@@ -4,7 +4,7 @@
  * and write (see the bypass payloads below, all confirmed against live Postgres/MySQL). A false
  * rejection of an exotic single statement is acceptable; a false pass is a security hole.
  */
-import { isSingleStatement } from '@dotaz/shared/sql/single-statement'
+import { isSingleStatement, isWhereFragment } from '@dotaz/shared/sql/single-statement'
 import { describe, expect, test } from 'bun:test'
 
 const PG_FLIP = 'SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE; COMMIT'
@@ -19,6 +19,8 @@ const POSTGRES_BYPASSES: Record<string, string> = {
 	'carriage return ending a line comment': `SELECT 1 -- x\r; ${PG_FLIP}; INSERT INTO t VALUES (1); SELECT '\n'`,
 	'nested block comment': `SELECT 1 /* /* */ ' */ ; ${PG_FLIP}; INSERT INTO t VALUES (1); -- '`,
 	'non-ASCII dollar-quote tag': `SELECT $é$'$é$; ${PG_FLIP}; INSERT INTO t VALUES (1); SELECT '$é$'`,
+	'symmetric escape strings': `SELECT E'\\'' ; ${PG_FLIP} ; INSERT INTO t VALUES (1) ; SELECT E'\\''`,
+	'backslash with standard_conforming_strings off': `SELECT '\\'' ; ${PG_FLIP} ; INSERT INTO t VALUES (1) ; SELECT '\\''`,
 }
 
 const MYSQL_BYPASSES: Record<string, string> = {
@@ -28,6 +30,8 @@ const MYSQL_BYPASSES: Record<string, string> = {
 	'quote inside a backtick identifier': "SELECT 1 AS `'`; " + MY_FLIP + `; INSERT INTO t VALUES (1); SELECT 1 AS \`'\``,
 	'# line comment': `SELECT 1 # '\n; ${MY_FLIP}; INSERT INTO t VALUES (1); -- '`,
 	'-- without trailing whitespace is not a comment': `SELECT 1 --'';${MY_FLIP};INSERT INTO t VALUES (1);`,
+	'backslash under NO_BACKSLASH_ESCAPES': `SELECT '\\' ; ${MY_FLIP} ; INSERT INTO t VALUES (1) ; -- '`,
+	'backslash in an identifier under ANSI_QUOTES': `SELECT "\\" ; ${MY_FLIP} ; INSERT INTO t VALUES (1) ; -- "`,
 }
 
 describe('isSingleStatement — rejects multi-statement bypasses', () => {
@@ -99,5 +103,40 @@ describe('isSingleStatement — rejects plain multi-statement input', () => {
 
 	test('fails closed on an unterminated dollar-quote', () => {
 		expect(isSingleStatement('SELECT $$unterminated', 'postgresql')).toBe(false)
+	})
+})
+
+// `ui.openTable --where` splices the fragment into the grid's `WHERE (…)` in the app's writable
+// session, so a separator smuggled past the scan runs as its own statement there.
+describe('isWhereFragment', () => {
+	test('postgres: a dollar-quoted string cannot hide a separator', () => {
+		const where = "$a$'$a$ = $a$x$a$) ; INSERT INTO t VALUES (2) ; SELECT ($a$'$a$"
+		expect(isWhereFragment(where, 'postgresql')).toBe(false)
+		expect(isWhereFragment(where, undefined)).toBe(false)
+	})
+
+	test('mysql: a # comment cannot hide a separator', () => {
+		const where = "1=1 #'\n); INSERT INTO t VALUES (2); SELECT (1 #'"
+		expect(isWhereFragment(where, 'mysql')).toBe(false)
+		expect(isWhereFragment(where, undefined)).toBe(false)
+	})
+
+	test('rejects comments, separators, unbalanced parentheses and backslashes in strings', () => {
+		const bad = ['id > 1 -- ', 'id > 1 /* x */', 'id > 1 /*! 1 */', 'id > 1; DROP TABLE t', 'id > 1)', '(id > 1', "a = E'\\''"]
+		for (const where of bad) {
+			expect(isWhereFragment(where, 'postgresql')).toBe(false)
+			expect(isWhereFragment(where, 'mysql')).toBe(false)
+		}
+		expect(isWhereFragment("a = '\\'", 'mysql')).toBe(false)
+	})
+
+	test('accepts ordinary boolean filters', () => {
+		const good = ["status = 'new'", "name = 'a;b'", 'id > 1 AND (a = 2 OR b = 3)', "note = 'it''s fine'", '"weird;col" = 1']
+		for (const where of good) {
+			expect(isWhereFragment(where, 'postgresql')).toBe(true)
+			expect(isWhereFragment(where, 'mysql')).toBe(true)
+			expect(isWhereFragment(where, 'sqlite')).toBe(true)
+			expect(isWhereFragment(where, undefined)).toBe(true)
+		}
 	})
 })

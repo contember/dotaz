@@ -16,9 +16,10 @@ const ALL_DIALECTS: ConnectionType[] = ['postgresql', 'mysql', 'sqlite']
  *
  * "Fail closed" means every disagreement with the real lexer errs toward rejection: the scanner
  * ends strings and comments as early as it safely can so a separator the engine would honor is
- * never hidden inside a construct the scanner thinks is quoted. It may reject some exotic but
- * legitimate single statements (an `E'…\'…'` escape string, a `#` comment carrying a `;`); a
- * read-only agent query never needs those, and a false rejection is safe where a false pass is not.
+ * never hidden inside a construct the scanner thinks is quoted. Any backslash inside a quoted
+ * string is rejected on PostgreSQL and MySQL: whether it escapes the next quote depends on `E'…'`,
+ * `standard_conforming_strings` or `sql_mode`, none of which the scanner can see. A false rejection
+ * is safe where a false pass is not.
  */
 export function isSingleStatement(sql: string, type?: ConnectionType): boolean {
 	// With no dialect, the same bytes can be a quote on one engine and bare identifier chars on
@@ -29,7 +30,7 @@ export function isSingleStatement(sql: string, type?: ConnectionType): boolean {
 		return ALL_DIALECTS.every((dialect) => isSingleStatement(sql, dialect))
 	}
 
-	const stripped = stripQuotesAndComments(sql, type)
+	const stripped = stripQuotesAndComments(sql, type, { allowComments: true })
 	if (stripped === null) return false // unterminated / ambiguous construct — fail closed
 
 	// A single trailing separator (with only whitespace or stripped comments after it) is fine;
@@ -49,26 +50,48 @@ export function isSingleStatement(sql: string, type?: ConnectionType): boolean {
 }
 
 /**
+ * Whether `fragment` can be spliced into `WHERE (…)` as one boolean expression under the given
+ * dialect: no statement separator, no comment, and parentheses that never close the wrapper.
+ * Uses the same fail-closed lexing as `isSingleStatement`; with no dialect, every one must agree.
+ */
+export function isWhereFragment(fragment: string, type?: ConnectionType): boolean {
+	if (type === undefined) {
+		return ALL_DIALECTS.every((dialect) => isWhereFragment(fragment, dialect))
+	}
+
+	const stripped = stripQuotesAndComments(fragment, type, { allowComments: false })
+	if (stripped === null) return false
+
+	let depth = 0
+	for (const ch of stripped) {
+		if (ch === ';') return false
+		if (ch === '(') depth++
+		if (ch === ')' && --depth < 0) return false
+	}
+	return depth === 0
+}
+
+/**
  * Replace every string, quoted identifier, and comment with spaces so a caller can scan for
  * statement separators without matching one inside a literal. Returns `null` when a construct is
- * left open at end of input, or when a dialect-specific ambiguity means the scanner cannot be sure
- * where a construct ends — both are treated as "not provably single" by the caller.
+ * left open at end of input, when a dialect-specific ambiguity means the scanner cannot be sure
+ * where a construct ends, or when it meets a comment and `allowComments` is off.
  *
  * The rules are dialect-specific because the engines genuinely differ (MySQL honors backslash
  * escapes and `#` comments and reads `$$` as bare text; Postgres nests block comments and has
  * dollar-quotes; SQLite has `[…]` identifiers). `isSingleStatement` handles the no-dialect case
  * itself by requiring all three to agree, so this always receives a concrete type.
  */
-function stripQuotesAndComments(sql: string, type: ConnectionType): string | null {
+function stripQuotesAndComments(sql: string, type: ConnectionType, options: { allowComments: boolean }): string | null {
 	const isMysql = type === 'mysql'
 	const isPostgres = type === 'postgresql'
 	const isSqlite = type === 'sqlite'
 
-	// MySQL treats "…" as a string (with backslash escapes) unless ANSI_QUOTES is set; the others
-	// treat it as an identifier. Either way it is a quoted region, so the only thing that matters
-	// here is honoring backslash escapes when finding its end.
-	const backslashInSingle = isMysql
-	const backslashInDouble = isMysql
+	// Backslash semantics in quoted text depend on server state (MySQL `sql_mode`, PostgreSQL
+	// `E'…'` and `standard_conforming_strings`), so the scanner refuses to guess. PostgreSQL
+	// identifiers never treat a backslash as an escape.
+	const rejectBackslashInSingle = isMysql || isPostgres
+	const rejectBackslashInDouble = isMysql
 	const dollarQuotes = isPostgres
 	const honorBacktick = isMysql || isSqlite
 	const honorBracket = isSqlite
@@ -91,6 +114,7 @@ function stripQuotesAndComments(sql: string, type: ConnectionType): string | nul
 			const after = i + 2 < n ? sql[i + 2] : ''
 			const isComment = !dashNeedsWhitespace || after === '' || /\s/.test(after)
 			if (isComment) {
+				if (!options.allowComments) return null
 				const eol = sql.indexOf('\n', i)
 				out += ' '
 				i = eol === -1 ? n : eol + 1
@@ -100,6 +124,7 @@ function stripQuotesAndComments(sql: string, type: ConnectionType): string | nul
 		// `#`: a line comment in MySQL. Honored under an unknown dialect too, so a `;` it might carry
 		// cannot be left dangling as content.
 		if (ch === '#' && honorHash) {
+			if (!options.allowComments) return null
 			const eol = sql.indexOf('\n', i)
 			out += ' '
 			i = eol === -1 ? n : eol + 1
@@ -108,6 +133,8 @@ function stripQuotesAndComments(sql: string, type: ConnectionType): string | nul
 
 		// ── Block comments ─────────────────────────────────
 		if (ch === '/' && next === '*') {
+			// Covers MySQL's executable `/*! … */` too.
+			if (!options.allowComments) return null
 			// MySQL executes `/*! … */` and `/*+ … */`; scanning their contents keeps any inner
 			// separator visible, so treat the `/*` as ordinary characters.
 			if (isMysql && (sql[i + 2] === '!' || sql[i + 2] === '+')) {
@@ -164,7 +191,7 @@ function stripQuotesAndComments(sql: string, type: ConnectionType): string | nul
 
 		// ── Single-quoted string ───────────────────────────
 		if (ch === "'") {
-			const end = skipQuoted(sql, i, "'", backslashInSingle)
+			const end = skipQuoted(sql, i, "'", rejectBackslashInSingle)
 			if (end === -1) return null
 			out += ' '
 			i = end
@@ -173,7 +200,7 @@ function stripQuotesAndComments(sql: string, type: ConnectionType): string | nul
 
 		// ── Double-quoted string / identifier ──────────────
 		if (ch === '"') {
-			const end = skipQuoted(sql, i, '"', backslashInDouble)
+			const end = skipQuoted(sql, i, '"', rejectBackslashInDouble)
 			if (end === -1) return null
 			out += ' '
 			i = end
@@ -216,17 +243,14 @@ function matchDollarTag(sql: string, start: number): string | null {
 
 /**
  * Index just past a quoted region opened by `quote` at `start`. Honors doubling (`''`, `""`,
- * `` `` ``) and, when `backslash` is set, backslash escapes. Returns -1 when the region is
- * left open — which the caller treats as "not provably single".
+ * `` `` ``). Returns -1 when the region is left open, or when `rejectBackslash` is set and the
+ * region contains a backslash — both of which the caller treats as "not provably single".
  */
-function skipQuoted(sql: string, start: number, quote: string, backslash: boolean): number {
+function skipQuoted(sql: string, start: number, quote: string, rejectBackslash: boolean): number {
 	let i = start + 1
 	while (i < sql.length) {
 		const ch = sql[i]
-		if (backslash && ch === '\\') {
-			i += 2
-			continue
-		}
+		if (rejectBackslash && ch === '\\') return -1
 		if (ch === quote) {
 			if (sql[i + 1] === quote) {
 				i += 2 // doubled quote — an escaped quote, string continues

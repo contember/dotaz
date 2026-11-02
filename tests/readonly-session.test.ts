@@ -571,6 +571,8 @@ describe.skipIf(!pgReachable)('QueryExecutor read-only bypass — PostgreSQL', (
 		`SELECT 1 AS x$$; SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE; COMMIT; INSERT INTO ro_canary VALUES (1); SELECT 1 AS y$$`,
 		`SELECT E'\\''; SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE; COMMIT; INSERT INTO ro_canary VALUES (1); SELECT ''''`,
 		`SELECT 1 /* /* */ ' */ ; SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE; COMMIT; INSERT INTO ro_canary VALUES (1); -- '`,
+		// Symmetric E-strings: a scanner that ignores the backslash pairs the phantom quotes up again.
+		`SELECT E'\\'' ; SET SESSION CHARACTERISTICS AS TRANSACTION READ WRITE ; COMMIT ; INSERT INTO ro_canary VALUES (1) ; SELECT E'\\''`,
 	]
 
 	beforeEach(async () => {
@@ -752,6 +754,8 @@ describe.skipIf(!mysqlReachable)('QueryExecutor read-only bypass — MySQL', () 
 		`SELECT '\\''; SET SESSION TRANSACTION READ WRITE; INSERT INTO ro_canary VALUES (1); SELECT ''''`,
 		`SELECT 1 # '\n; SET SESSION TRANSACTION READ WRITE; INSERT INTO ro_canary VALUES (1); -- '`,
 		`SELECT 1 --'';SET SESSION TRANSACTION READ WRITE;INSERT INTO ro_canary VALUES (1);`,
+		// Under NO_BACKSLASH_ESCAPES the backslash is data and the first `'` closes the string.
+		`SELECT '\\' ; SET SESSION TRANSACTION READ WRITE ; INSERT INTO ro_canary VALUES (1) ; -- '`,
 	]
 
 	beforeEach(async () => {

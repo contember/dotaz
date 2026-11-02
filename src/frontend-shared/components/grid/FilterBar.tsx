@@ -4,7 +4,7 @@ import type { ColumnFilter, FilterOperator, GridColumnDef } from '@dotaz/shared/
 import FilterX from 'lucide-solid/icons/funnel-x'
 import Plus from 'lucide-solid/icons/plus'
 import X from 'lucide-solid/icons/x'
-import { createSignal, For, Show } from 'solid-js'
+import { createEffect, createSignal, For, Show } from 'solid-js'
 import Select from '../common/Select'
 import './FilterBar.css'
 
@@ -17,6 +17,9 @@ interface FilterBarProps {
 	onRemoveFilter: (index: number) => void
 	onSetCustomFilter: (value: string) => void
 	onClearAll: () => void
+	/** Opens the WHERE editor prefilled with this fragment; the user still has to apply it. */
+	suggestedCustomFilter?: string | null
+	onSuggestionShown?: () => void
 }
 
 interface OperatorOption {
@@ -134,6 +137,14 @@ export default function FilterBar(props: FilterBarProps) {
 			resetForm()
 		}
 	}
+
+	createEffect(() => {
+		const suggested = props.suggestedCustomFilter
+		if (!suggested) return
+		setCustomInput(suggested)
+		setEditingCustom(true)
+		props.onSuggestionShown?.()
+	})
 
 	function startEditingCustom() {
 		setCustomInput(props.customFilter)
