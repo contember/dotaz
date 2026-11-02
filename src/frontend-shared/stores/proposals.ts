@@ -8,6 +8,7 @@ import {
 	PROPOSAL_ALREADY_RESOLVED_REASON,
 	PROPOSAL_GONE_REASON,
 	type ProposalPhase,
+	sqlIsPartOfProposal,
 	sqlMatchesProposal,
 } from '../lib/proposal-state'
 import { friendlyErrorMessage, rpc } from '../lib/rpc'
@@ -99,9 +100,10 @@ async function guardRun({ tabId, sql, kind }: { tabId: string; sql: string; kind
 	// The user already ran it, or there is no proposal here — the run is the user's own.
 	if (!entry || entry.phase === 'resolved') return true
 	if (entry.phase === 'invalidated') {
-		// The agent's SQL, unchanged, from a proposal that can no longer be claimed — e.g. confirmed
-		// in the destructive-statement dialog after the agent cancelled. Edited, it is the user's own.
-		if (!sqlMatchesProposal(sql, entry.proposal.sql)) return true
+		// The agent's SQL — whole or one of its statements — from a proposal that can no longer be
+		// claimed, e.g. confirmed in the destructive-statement dialog after the agent cancelled.
+		// Edited, it is the user's own.
+		if (!sqlIsPartOfProposal(sql, entry.proposal.sql)) return true
 		uiStore.addToast('warning', 'This proposal is no longer pending, so it was not run. Edit the SQL to run it as your own query.')
 		return false
 	}
@@ -110,8 +112,8 @@ async function guardRun({ tabId, sql, kind }: { tabId: string; sql: string; kind
 		return false
 	}
 	const proposalId = entry.proposal.id
-	if (entry.phase !== 'pending') {
-		uiStore.addToast('warning', 'This proposal is already being run.')
+	if (entry.phase !== 'pending' || editorStore.getTab(tabId)?.isRunning) {
+		uiStore.addToast('warning', 'Wait for the query running in this tab to finish.')
 		return false
 	}
 	const blocked = blockedReason(entry)

@@ -3,6 +3,7 @@ import {
 	invalidationReason,
 	isStaleProposalError,
 	type ProposalPhase,
+	sqlIsPartOfProposal,
 	sqlMatchesProposal,
 } from '@dotaz/frontend-shared/lib/proposal-state'
 import type { Proposal, ProposalStatus } from '@dotaz/shared/types/rpc'
@@ -122,5 +123,20 @@ describe('sqlMatchesProposal', () => {
 		const multi = 'DELETE FROM a; DELETE FROM b'
 		expect(sqlMatchesProposal('DELETE FROM a', multi)).toBe(false)
 		expect(sqlMatchesProposal(multi, multi)).toBe(true)
+	})
+})
+
+describe('sqlIsPartOfProposal', () => {
+	const proposed = 'UPDATE a SET x = 1;\nDELETE FROM b WHERE id = 2'
+
+	test("the whole proposal, or one of its statements, is the agent's SQL", () => {
+		expect(sqlIsPartOfProposal(proposed, proposed)).toBe(true)
+		expect(sqlIsPartOfProposal('DELETE FROM b WHERE id = 2', proposed)).toBe(true)
+		expect(sqlIsPartOfProposal('  UPDATE a  SET x = 1; ', proposed)).toBe(true)
+	})
+
+	test('SQL the user wrote is not', () => {
+		expect(sqlIsPartOfProposal('SELECT * FROM b', proposed)).toBe(false)
+		expect(sqlIsPartOfProposal('   ', proposed)).toBe(false)
 	})
 })

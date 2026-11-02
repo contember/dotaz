@@ -797,6 +797,8 @@ async function explainQuery(tabId: string, analyze = false) {
 			})
 		})
 
+		// A run started meanwhile owns the tab now; clearing its id would drop its outcome.
+		if (state.tabs[tabId]?.queryId !== queryId) return
 		setState('tabs', tabId, {
 			explainResult,
 			duration: explainResult.durationMs,
@@ -805,7 +807,7 @@ async function explainQuery(tabId: string, analyze = false) {
 			error: explainResult.error ?? null,
 		})
 	} catch (err) {
-		if (!getTab(tabId)) return
+		if (!getTab(tabId) || state.tabs[tabId]?.queryId !== queryId) return
 		const errorMessage = friendlyErrorMessage(err)
 		setState('tabs', tabId, {
 			error: errorMessage,

@@ -82,6 +82,15 @@ export function isStaleProposalError(err: unknown): boolean {
  * reformat those; any other difference is a different statement reaching the database.
  */
 export function sqlMatchesProposal(ran: string, proposed: string): boolean {
-	const normalize = (sql: string) => sql.trim().replace(/\s+/g, ' ').replace(/;$/, '').trim()
-	return normalize(ran) === normalize(proposed)
+	return normalizeSql(ran) === normalizeSql(proposed)
+}
+
+/** Whether what is about to run is the proposal or a piece of it, rather than SQL the user wrote. */
+export function sqlIsPartOfProposal(ran: string, proposed: string): boolean {
+	const piece = normalizeSql(ran)
+	return piece !== '' && normalizeSql(proposed).includes(piece)
+}
+
+function normalizeSql(sql: string): string {
+	return sql.trim().replace(/\s+/g, ' ').replace(/;$/, '').trim()
 }
