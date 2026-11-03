@@ -1,0 +1,65 @@
+// Live implementation of ResolverContext plus the shared connection and schema cache.
+
+import type { DatabaseInfo, SchemaData } from '@dotaz/shared/types/database'
+import type { DotazClient } from './client'
+import { type CliConnection, decodeConnections, decodeDatabases, decodeSchemaData } from './decode'
+import { CliError, databaseError, messageOf } from './errors'
+import type { ResolverContext } from './paths'
+
+export class AppContext implements ResolverContext {
+	private connections: CliConnection[] | null = null
+	private readonly connected = new Set<string>()
+	private readonly schemas = new Map<string, SchemaData>()
+
+	constructor(readonly client: DotazClient) {}
+
+	async listConnections(force = false): Promise<CliConnection[]> {
+		if (!this.connections || force) {
+			this.connections = decodeConnections(await this.client.call('connections.list'))
+		}
+		return this.connections
+	}
+
+	async ensureConnected(connectionId: string): Promise<void> {
+		if (this.connected.has(connectionId)) return
+
+		const connection = (await this.listConnections()).find((c) => c.id === connectionId)
+		if (connection?.state === 'connected') {
+			this.connected.add(connectionId)
+			return
+		}
+
+		try {
+			await this.client.call('connections.connect', { connectionId })
+		} catch (err) {
+			const message = messageOf(err)
+			const name = connection?.name ?? connectionId
+			if (/password/i.test(message) || /auth/i.test(message)) {
+				throw databaseError(
+					`Connection "${name}" needs a password: ${message}`,
+					'Open Dotaz and connect it there once — the CLI cannot prompt for credentials.',
+				)
+			}
+			if (err instanceof CliError) throw err
+			throw databaseError(`Cannot connect "${name}": ${message}`)
+		}
+
+		this.connected.add(connectionId)
+		this.connections = null
+	}
+
+	async listDatabases(connectionId: string): Promise<DatabaseInfo[]> {
+		await this.ensureConnected(connectionId)
+		return decodeDatabases(await this.client.call('databases.list', { connectionId }))
+	}
+
+	async loadSchema(connectionId: string, database?: string): Promise<SchemaData> {
+		await this.ensureConnected(connectionId)
+		const key = `${connectionId}\0${database ?? ''}`
+		const cached = this.schemas.get(key)
+		if (cached) return cached
+		const schema = decodeSchemaData(await this.client.call('agent.schema', { connectionId, database }))
+		this.schemas.set(key, schema)
+		return schema
+	}
+}

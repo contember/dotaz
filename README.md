@@ -43,6 +43,8 @@ A lightweight Bun HTTP server you can self-host or run via Docker. Like [Adminer
 
 **Navigation** — Connection tree with databases, schemas, and tables. Schema viewer showing columns, indexes, and foreign keys. Command palette, query history, saved views, bookmarks, cross-table search. Dark theme throughout.
 
+**Agent CLI** — A `dotaz` command-line client that attaches to the running app so an AI coding agent can work with your databases without ever holding your credentials. Reads run directly against a session the database itself enforces as read-only. Writes go through you: the agent submits the SQL, it opens in the app with Run/Reject, and only your click executes it. Off by default — see [docs/agent-cli.md](docs/agent-cli.md).
+
 ## Install
 
 ### Desktop app
@@ -74,6 +76,17 @@ Request isolation depends on how the server is bound:
 - **Loopback (default)** — the server validates the `Host` header (DNS-rebinding protection) and rejects cross-site browser requests via `Sec-Fetch-Site`/`Origin` checks.
 - **Non-loopback (e.g. `--host 0.0.0.0`)** — `DOTAZ_ENCRYPTION_KEY` is required so saved credentials remain decryptable across restarts. Dotaz still rejects cross-site browser requests, but it does not implement user authentication; put it behind your own auth/proxy if the URL is not trusted.
 - **Behind a reverse proxy** — serve the UI and `/rpc`/`/api` under the same origin. Keep the loopback bind (default); if the proxy preserves a public `Host` header, allow that host with `DOTAZ_ALLOWED_HOSTS`.
+
+### Agent CLI
+
+With the desktop app running and CLI access enabled in Settings:
+
+```sh
+bunx @dotaz/cli status
+bunx @dotaz/cli rows local/users --limit 20
+```
+
+The CLI reads through backend-owned read-only sessions. Writes are submitted to the desktop app for explicit approval.
 
 ### Docker
 

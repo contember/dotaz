@@ -18,6 +18,7 @@ function makeMockDriver(overrides?: Partial<DatabaseDriver>): DatabaseDriver {
 	return {
 		execute: mock(async () => makeSuccessResult()),
 		cancel: mock(async () => {}),
+		isSessionReadOnly: () => false,
 		quoteIdentifier: (name: string) => `"${name}"`,
 		getDriverType: () => 'sqlite' as const,
 		qualifyTable: (schema: string, table: string) => schema === 'main' ? `"${table}"` : `"${schema}"."${table}"`,
@@ -34,6 +35,17 @@ function makeMockConnectionManager(driver: DatabaseDriver): ConnectionManager {
 }
 
 // ── SQLite EXPLAIN QUERY PLAN ─────────────────────────────
+
+describe('QueryExecutor.explainQuery — statement count', () => {
+	// `EXPLAIN ${sql}` is one round trip, so a trailing statement would really execute.
+	test('refuses more than one statement and sends nothing to the driver', async () => {
+		const execute = mock(async () => makeSuccessResult())
+		const executor = new QueryExecutor(makeMockConnectionManager(makeMockDriver({ execute })))
+
+		await expect(executor.explainQuery('conn-1', 'SELECT 1; DELETE FROM users', false)).rejects.toThrow(/single statement/)
+		expect(execute).not.toHaveBeenCalled()
+	})
+})
 
 describe('QueryExecutor.explainQuery — SQLite', () => {
 	test('parses EXPLAIN QUERY PLAN output into tree', async () => {

@@ -187,6 +187,53 @@ function findDestructiveStatements(sql: string): string[] {
 	return statements.filter(detectDestructiveWithoutWhere)
 }
 
+// ── Run completion notifications ──────────────────────────
+
+/** Outcome of one console run, reported to observers such as the CLI proposal banner. */
+export interface RunFinishedEvent {
+	tabId: string
+	/** The SQL that was submitted. */
+	sql: string
+	/** Result sets, when the run reached the database. */
+	results?: QueryResult[]
+	/** Execution error, when the run failed as a whole. */
+	error?: string
+	/** The run never reached the database (read-only connection, destructive warning cancelled). */
+	skipped?: boolean
+	/** The app stopped waiting (timeout, cancel, lost connection) — the statement may still have committed. */
+	outcomeUnknown?: boolean
+}
+
+/**
+ * Consulted after the run is confirmed and before anything is submitted; resolving `false`
+ * drops the run. The CLI proposal banner uses it to claim its proposal before the SQL runs.
+ */
+export type RunGuard = (run: { tabId: string; sql: string; kind: 'run' | 'explain-analyze' }) => Promise<boolean>
+
+let runGuard: RunGuard | null = null
+
+/** Install the run guard. Returns a function that removes it. */
+function setRunGuard(guard: RunGuard): () => void {
+	runGuard = guard
+	return () => {
+		if (runGuard === guard) runGuard = null
+	}
+}
+
+const runListeners = new Set<(event: RunFinishedEvent) => void>()
+
+/** Subscribe to run outcomes. Returns an unsubscribe function. */
+function onRunFinished(listener: (event: RunFinishedEvent) => void): () => void {
+	runListeners.add(listener)
+	return () => runListeners.delete(listener)
+}
+
+function notifyRunFinished(event: RunFinishedEvent) {
+	for (const listener of [...runListeners]) {
+		listener(event)
+	}
+}
+
 /** Track active query message listeners so they can be cleaned up on cancel/new-query. */
 const activeQueryUnsubs = new Map<string, () => void>()
 /** Track active query reject functions so connection-loss can fail pending queries. */
@@ -288,6 +335,7 @@ function recordHistory(connectionId: string, database: string | undefined, sql: 
 }
 
 async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit = true) {
+	if (runGuard && !await runGuard({ tabId, sql, kind: 'run' })) return
 	const tab = ensureTab(tabId)
 	const queryId = crypto.randomUUID()
 
@@ -330,6 +378,7 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit =
 
 	const startTime = performance.now()
 	let responseTimer: ReturnType<typeof setTimeout> | undefined
+	let outcomeUnknown = false
 
 	try {
 		// Resolve session (auto-pin if configured)
@@ -353,6 +402,7 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit =
 			responseTimer = setTimeout(() => {
 				if (settled) return
 				settled = true
+				outcomeUnknown = true
 				reject(new Error('Query timed out — no response received from backend'))
 			}, settingsStore.consoleConfig.queryResponseTimeoutMs)
 
@@ -374,6 +424,7 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit =
 			activeQueryRejects.set(queryId, (err) => {
 				if (settled) return
 				settled = true
+				outcomeUnknown = true
 				clearTimeout(responseTimer)
 				unsub()
 				reject(err)
@@ -440,6 +491,8 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit =
 
 		// Auto-unpin after commit/rollback if configured
 		sessionStore.checkAutoUnpin(tabId, sql).catch(() => {})
+
+		notifyRunFinished({ tabId, sql, results })
 	} catch (err) {
 		// Discard if tab was removed or a newer query was started
 		if (!getTab(tabId) || state.tabs[tabId]?.queryId !== queryId) return
@@ -474,6 +527,8 @@ async function runQuery(tabId: string, sql: string, baseOffset = 0, applyLimit =
 		} else {
 			setTxLogVersion((v) => v + 1)
 		}
+
+		notifyRunFinished({ tabId, sql, error: errorMessage, outcomeUnknown })
 	} finally {
 		clearTimeout(responseTimer)
 		activeQueryUnsubs.delete(queryId)
@@ -485,6 +540,7 @@ function checkAndRunQuery(tabId: string, sql: string, baseOffset = 0) {
 	const tab = getTab(tabId)
 	if (tab && connectionsStore.isReadOnly(tab.connectionId) && containsDmlStatements(sql)) {
 		uiStore.addToast('warning', 'This connection is read-only. DML/DDL statements are not allowed.')
+		notifyRunFinished({ tabId, sql, skipped: true })
 		return
 	}
 	if (!suppressDestructiveWarning) {
@@ -540,7 +596,11 @@ function confirmDestructiveQuery(suppressForSession = false) {
 }
 
 function cancelDestructiveQuery() {
+	const pending = pendingDestructiveQuery()
 	setPendingDestructiveQuery(null)
+	if (pending) {
+		notifyRunFinished({ tabId: pending.tabId, sql: pending.sql, skipped: true })
+	}
 }
 
 async function cancelQuery(tabId: string) {
@@ -672,6 +732,10 @@ async function explainQuery(tabId: string, analyze = false) {
 		sql = result?.text ?? tab.content.trim()
 	}
 	if (!sql) return
+	// Starting now would replace the running query's id and drop its outcome.
+	if (tab.isRunning) return
+	// EXPLAIN ANALYZE executes the statement, so it is a run as far as the guard is concerned.
+	if (analyze && runGuard && !await runGuard({ tabId, sql, kind: 'explain-analyze' })) return
 
 	const queryId = crypto.randomUUID()
 
@@ -733,6 +797,8 @@ async function explainQuery(tabId: string, analyze = false) {
 			})
 		})
 
+		// A run started meanwhile owns the tab now; clearing its id would drop its outcome.
+		if (state.tabs[tabId]?.queryId !== queryId) return
 		setState('tabs', tabId, {
 			explainResult,
 			duration: explainResult.durationMs,
@@ -741,7 +807,7 @@ async function explainQuery(tabId: string, analyze = false) {
 			error: explainResult.error ?? null,
 		})
 	} catch (err) {
-		if (!getTab(tabId)) return
+		if (!getTab(tabId) || state.tabs[tabId]?.queryId !== queryId) return
 		const errorMessage = friendlyErrorMessage(err)
 		setState('tabs', tabId, {
 			error: errorMessage,
@@ -1047,6 +1113,8 @@ export const editorStore = {
 	executeQuery,
 	executeSelected,
 	executeStatement,
+	onRunFinished,
+	setRunGuard,
 	cancelQuery,
 	explainQuery,
 	formatSql,

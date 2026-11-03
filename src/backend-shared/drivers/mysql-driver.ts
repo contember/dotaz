@@ -6,7 +6,7 @@ import type { QueryResult, QueryResultColumn } from '@dotaz/shared/types/query'
 import type { DriverConnectionHandleInfo } from '@dotaz/shared/types/rpc'
 import type { SQL } from 'bun'
 import { ConnectionPool, type PoolConnectionSnapshot } from '../db/connection-pool'
-import type { DatabaseDriver } from '../db/driver'
+import type { DatabaseDriver, ReserveSessionOptions } from '../db/driver'
 import { mapMysqlError } from '../db/error-mapping'
 import { getAffectedRowCount } from '../db/result-utils'
 import { isConnectionLevelError, safeCloseConnection, syncTxActive } from './driver-utils'
@@ -136,6 +136,8 @@ export class MysqlDriver implements DatabaseDriver {
 	private pool: ConnectionPool | null = null
 	private connected = false
 	private sessions = new Map<string, SessionState>()
+	/** Read-only session id → the statements that set it up, re-run before each statement. */
+	private readOnlySessions = new Map<string, string[]>()
 	private defaultSessionPending = false
 	private poolActiveQueries = new Map<symbol, ReturnType<SQL['unsafe']>>()
 
@@ -176,6 +178,7 @@ export class MysqlDriver implements DatabaseDriver {
 			await safeCloseConnection(session.conn, { rollback: session.txActive })
 		}
 		this.sessions.clear()
+		this.readOnlySessions.clear()
 
 		if (this.pool) {
 			await this.pool.disconnectAll()
@@ -187,16 +190,36 @@ export class MysqlDriver implements DatabaseDriver {
 		return this.connected
 	}
 
-	async reserveSession(sessionId: string): Promise<void> {
+	async reserveSession(sessionId: string, opts?: ReserveSessionOptions): Promise<void> {
 		this.ensureConnected()
 		if (this.sessions.has(sessionId)) {
 			throw new Error(`Session "${sessionId}" already exists`)
 		}
 		const conn = await this.pool!.createConnection()
+		if (opts?.readOnly) {
+			// Applies to every transaction started later on this connection.
+			const setup = ['SET SESSION TRANSACTION READ ONLY']
+			// The single-statement guard lexes UTF-8. Under a multibyte charset such as gbk, a byte
+			// it reads as a backtick can be half of a character, so undo any `SET NAMES` in initSql.
+			setup.push('SET NAMES utf8mb4')
+			try {
+				for (const statement of setup) await conn.unsafe(statement)
+				const timeoutMs = Math.floor(opts.statementTimeoutMs ?? 0)
+				if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+					setup.push(await this.setStatementTimeout(conn, timeoutMs))
+				}
+			} catch (err) {
+				await safeCloseConnection(conn)
+				await this.pool!.destroyConnection(conn)
+				throw err instanceof DatabaseError ? err : mapMysqlError(err)
+			}
+			this.readOnlySessions.set(sessionId, setup)
+		}
 		this.sessions.set(sessionId, { conn, txActive: false, iterating: false, activeQueries: new Set() })
 	}
 
 	async releaseSession(sessionId: string): Promise<void> {
+		this.readOnlySessions.delete(sessionId)
 		const session = this.sessions.get(sessionId)
 		if (!session) return // idempotent — already released or never existed
 		this.sessions.delete(sessionId)
@@ -210,11 +233,31 @@ export class MysqlDriver implements DatabaseDriver {
 		return [...this.sessions.keys()].filter((id) => id !== DEFAULT_SESSION)
 	}
 
+	isSessionReadOnly(sessionId: string): boolean {
+		return this.readOnlySessions.has(sessionId)
+	}
+
+	/**
+	 * Re-apply a read-only session's setup before each statement.
+	 *
+	 * Bun.SQL silently reconnects a dropped connection, and the new connection starts read-write
+	 * with the server's default charset. Re-running the setup — also inside a transaction, which
+	 * MySQL allows for `SET SESSION` — keeps a reconnected session read-only.
+	 */
+	private async reassertReadOnly(sessionId: string | undefined, conn: SQL): Promise<void> {
+		const setup = sessionId === undefined ? undefined : this.readOnlySessions.get(sessionId)
+		if (!setup) return
+		for (const statement of setup) await conn.unsafe(statement)
+	}
+
 	async execute(sql: string, params?: unknown[], sessionId?: string, poolQueryKey?: symbol): Promise<QueryResult> {
 		this.ensureConnected()
 		const session = this.resolveSession(sessionId)
 		const conn = session ? session.conn : await this.pool!.acquireConnection()
 		const releaseConn = !session
+		if (session) {
+			await this.reassertReadOnly(sessionId, conn)
+		}
 		const start = performance.now()
 		const query = conn.unsafe(sql, params ?? [])
 		const effectiveQueryKey = session ? undefined : (poolQueryKey ?? Symbol())
@@ -501,12 +544,15 @@ export class MysqlDriver implements DatabaseDriver {
 			session.iterating = true
 		}
 		try {
+			if (session) await this.reassertReadOnly(sessionId, conn)
 			await conn.unsafe('START TRANSACTION WITH CONSISTENT SNAPSHOT')
 			let offset = 0
 			while (true) {
 				if (signal?.aborted) {
 					throw new DOMException('Aborted', 'AbortError')
 				}
+				// A reconnect between pages loses the snapshot transaction and the setup with it.
+				if (session && offset > 0) await this.reassertReadOnly(sessionId, conn)
 				const pagedSql = `${sql} LIMIT ? OFFSET ?`
 				const result = await conn.unsafe(pagedSql, [...(params ?? []), batchSize, offset])
 				const rows = [...result] as Record<string, unknown>[]
@@ -690,6 +736,20 @@ export class MysqlDriver implements DatabaseDriver {
 
 	placeholder(_index: number): string {
 		return '?'
+	}
+
+	/** Cap statement runtime (SELECTs only, on both flavours). MariaDB has no MAX_EXECUTION_TIME — it takes seconds instead. */
+	/** Set the timeout with whichever variable the server knows, and return the statement used. */
+	private async setStatementTimeout(conn: SQL, timeoutMs: number): Promise<string> {
+		const mysql = `SET SESSION MAX_EXECUTION_TIME = ${timeoutMs}`
+		try {
+			await conn.unsafe(mysql)
+			return mysql
+		} catch {
+			const mariadb = `SET SESSION max_statement_time = ${timeoutMs / 1000}`
+			await conn.unsafe(mariadb)
+			return mariadb
+		}
 	}
 
 	private ensureConnected(): void {

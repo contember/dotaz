@@ -1,4 +1,5 @@
 import type { SessionInfo } from '@dotaz/shared/types/rpc'
+import type { DatabaseDriver } from '../db/driver'
 import type { AppDatabase } from '../storage/app-db'
 import { DEFAULT_SETTINGS } from '../storage/app-db'
 import type { ConnectionManager } from './connection-manager'
@@ -20,7 +21,7 @@ export class SessionManager {
 	// Track label counters per connection for auto-naming
 	private labelCounters = new Map<string, number>()
 	// Saved session metadata for restoration after reconnect
-	private pendingRestore = new Map<string, Array<{ database?: string; label: string }>>()
+	private pendingRestore = new Map<string, Array<{ database?: string; label: string; readOnly?: boolean }>>()
 	// Track when we first observed a session with an active transaction
 	private txFirstSeen = new Map<string, number>()
 	private idleCheckTimer: ReturnType<typeof setInterval> | null = null
@@ -42,7 +43,11 @@ export class SessionManager {
 		this.stopIdleTransactionCheck()
 	}
 
-	async createSession(connectionId: string, database?: string): Promise<SessionInfo> {
+	async createSession(
+		connectionId: string,
+		database?: string,
+		opts?: { readOnly?: boolean; label?: string },
+	): Promise<SessionInfo> {
 		const maxSessions = this.appDb.getNumberSetting('maxSessionsPerConnection')
 			?? Number(DEFAULT_SETTINGS.maxSessionsPerConnection)
 		const connSessions = this.sessions.get(connectionId)
@@ -56,7 +61,11 @@ export class SessionManager {
 
 		const sessionId = crypto.randomUUID()
 		const driver = this.cm.getDriver(connectionId, database)
-		await driver.reserveSession(sessionId)
+		await driver.reserveSession(sessionId, {
+			readOnly: opts?.readOnly,
+			statementTimeoutMs: opts?.readOnly ? this.readOnlyStatementTimeoutMs() : undefined,
+		})
+		const readOnly = await this.confirmReadOnly(driver, sessionId, opts?.readOnly)
 
 		const counter = (this.labelCounters.get(connectionId) ?? 0) + 1
 		this.labelCounters.set(connectionId, counter)
@@ -65,10 +74,11 @@ export class SessionManager {
 			sessionId,
 			connectionId,
 			database,
-			label: `Session ${counter}`,
+			label: opts?.label ?? `Session ${counter}`,
 			inTransaction: false,
 			txAborted: false,
 			createdAt: Date.now(),
+			readOnly,
 		}
 
 		if (!this.sessions.has(connectionId)) {
@@ -77,6 +87,28 @@ export class SessionManager {
 		this.sessions.get(connectionId)!.set(sessionId, info)
 
 		return info
+	}
+
+	/**
+	 * Report read-only as the driver sees it, not as the caller asked for it.
+	 *
+	 * Agent handlers require `SessionInfo.readOnly === true`, so echoing the request would make
+	 * a driver that accepts `readOnly` and ignores it look enforced. A requested-but-unconfirmed
+	 * session is released and refused rather than handed over.
+	 */
+	private async confirmReadOnly(
+		driver: DatabaseDriver,
+		sessionId: string,
+		requested: boolean | undefined,
+	): Promise<boolean | undefined> {
+		const actual = driver.isSessionReadOnly(sessionId)
+		if (requested && !actual) {
+			try {
+				await driver.releaseSession(sessionId)
+			} catch { /* best effort — the session is being refused either way */ }
+			throw new Error('The driver did not open this session read-only')
+		}
+		return requested ? true : undefined
 	}
 
 	async destroySession(sessionId: string): Promise<void> {
@@ -185,7 +217,7 @@ export class SessionManager {
 			if (connSessions.size > 0) {
 				this.pendingRestore.set(
 					connectionId,
-					Array.from(connSessions.values()).map((s) => ({ database: s.database, label: s.label })),
+					Array.from(connSessions.values()).map((s) => ({ database: s.database, label: s.label, readOnly: s.readOnly })),
 				)
 			}
 		}
@@ -212,8 +244,13 @@ export class SessionManager {
 			try {
 				driver = this.cm.getDriver(connectionId, spec.database)
 				sessionId = crypto.randomUUID()
-				await driver.reserveSession(sessionId)
+				// A restored agent session must never come back writable — or uncapped
+				await driver.reserveSession(sessionId, {
+					readOnly: spec.readOnly,
+					statementTimeoutMs: spec.readOnly ? this.readOnlyStatementTimeoutMs() : undefined,
+				})
 				reserved = true
+				const readOnly = await this.confirmReadOnly(driver, sessionId, spec.readOnly)
 
 				const info: SessionInfo = {
 					sessionId,
@@ -223,6 +260,7 @@ export class SessionManager {
 					inTransaction: false,
 					txAborted: false,
 					createdAt: Date.now(),
+					readOnly,
 				}
 
 				if (!this.sessions.has(connectionId)) {
@@ -251,6 +289,12 @@ export class SessionManager {
 		this.labelCounters.set(connectionId, maxLabel)
 
 		return restored
+	}
+
+	/** Statement cap for read-only (agent) sessions — read-only is not the same as cheap. 0 means uncapped. */
+	private readOnlyStatementTimeoutMs(): number | undefined {
+		const timeoutMs = this.appDb.getNumberSetting('queryTimeout') ?? Number(DEFAULT_SETTINGS.queryTimeout)
+		return timeoutMs > 0 ? timeoutMs : undefined
 	}
 
 	private startIdleTransactionCheck(): void {

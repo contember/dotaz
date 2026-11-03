@@ -1,18 +1,20 @@
 import type { AiProvider, ColorTheme, FormatProfile } from '@dotaz/shared/types/settings'
 import { createEffect, createMemo, createSignal, Show } from 'solid-js'
 import { createStore, reconcile, unwrap } from 'solid-js/store'
+import { getCapabilities } from '../../lib/capabilities'
 import { formatDateWithProfile, formatNumberWithProfile } from '../../lib/cell-formatters'
 import type { SessionConfig } from '../../stores/settings'
 import { settingsStore } from '../../stores/settings'
 import Dialog from './Dialog'
 import SettingsAI from './SettingsAI'
 import SettingsAppearance from './SettingsAppearance'
+import SettingsCli from './SettingsCli'
 import SettingsDataFormat from './SettingsDataFormat'
 import './SettingsDialog.css'
 import SettingsGrid from './SettingsGrid'
 import SettingsSession from './SettingsSession'
 
-export type SettingsSection = 'appearance' | 'data-format' | 'ai' | 'session' | 'grid'
+export type SettingsSection = 'appearance' | 'data-format' | 'ai' | 'session' | 'grid' | 'cli'
 
 interface SettingsDialogProps {
 	open: boolean
@@ -35,6 +37,10 @@ export default function SettingsDialog(props: SettingsDialogProps) {
 	const [ai, setAi] = createStore({ provider: 'anthropic' as AiProvider, apiKey: '', model: '', endpoint: '' })
 	const [session, setSession] = createStore<SessionConfig>({ defaultConnectionMode: 'pool', autoPin: 'on-begin', autoUnpin: 'never' })
 	const [grid, setGrid] = createStore({ autoCount: false })
+	const [cli, setCli] = createStore({ enabled: false })
+
+	// The CLI control endpoint only exists in the desktop app.
+	const cliAvailable = () => getCapabilities().isDesktop
 
 	// Load all values when dialog opens
 	createEffect(() => {
@@ -46,6 +52,7 @@ export default function SettingsDialog(props: SettingsDialogProps) {
 			setAi(reconcile({ ...unwrap(settingsStore.aiConfig) }))
 			setSession(reconcile({ ...unwrap(settingsStore.sessionConfig) }))
 			setGrid(reconcile({ autoCount: settingsStore.gridConfig.autoCount }))
+			setCli(reconcile({ enabled: settingsStore.cliConfig.enabled }))
 		}
 	})
 
@@ -85,6 +92,9 @@ export default function SettingsDialog(props: SettingsDialogProps) {
 		settingsStore.saveAiConfig({ ...unwrap(ai) })
 		settingsStore.saveSessionConfig({ ...unwrap(session) })
 		settingsStore.saveGridConfig({ autoCount: grid.autoCount })
+		if (cliAvailable()) {
+			settingsStore.saveCliConfig({ enabled: cli.enabled })
+		}
 		props.onClose()
 	}
 
@@ -127,6 +137,15 @@ export default function SettingsDialog(props: SettingsDialogProps) {
 					>
 						Grid
 					</button>
+					<Show when={cliAvailable()}>
+						<button
+							class="settings-nav__item"
+							classList={{ 'settings-nav__item--active': section() === 'cli' }}
+							onClick={() => setSection('cli')}
+						>
+							CLI
+						</button>
+					</Show>
 				</nav>
 
 				<div class="settings-content">
@@ -186,6 +205,12 @@ export default function SettingsDialog(props: SettingsDialogProps) {
 						<SettingsGrid
 							autoCount={grid.autoCount}
 							setAutoCount={(v) => setGrid('autoCount', v)}
+						/>
+					</Show>
+					<Show when={section() === 'cli' && cliAvailable()}>
+						<SettingsCli
+							enabled={cli.enabled}
+							setEnabled={(v) => setCli('enabled', v)}
 						/>
 					</Show>
 				</div>

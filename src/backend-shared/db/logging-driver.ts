@@ -2,7 +2,7 @@ import type { ConnectionConfig, ConnectionType } from '@dotaz/shared/types/conne
 import type { SchemaData } from '@dotaz/shared/types/database'
 import type { QueryResult } from '@dotaz/shared/types/query'
 import type { DriverConnectionHandleInfo } from '@dotaz/shared/types/rpc'
-import type { DatabaseDriver } from './driver'
+import type { DatabaseDriver, ReserveSessionOptions } from './driver'
 
 /**
  * A DatabaseDriver wrapper that logs all SQL queries to the console.
@@ -79,14 +79,17 @@ export class LoggingDriver implements DatabaseDriver {
 	isConnected(): boolean {
 		return this.inner.isConnected()
 	}
-	reserveSession(sessionId: string): Promise<void> {
-		return this.inner.reserveSession(sessionId)
+	reserveSession(sessionId: string, opts?: ReserveSessionOptions): Promise<void> {
+		return this.inner.reserveSession(sessionId, opts)
 	}
 	releaseSession(sessionId: string): Promise<void> {
 		return this.inner.releaseSession(sessionId)
 	}
 	getSessionIds(): string[] {
 		return this.inner.getSessionIds()
+	}
+	isSessionReadOnly(sessionId: string): boolean {
+		return this.inner.isSessionReadOnly(sessionId)
 	}
 	cancel(sessionId?: string, poolQueryKey?: symbol): Promise<void> {
 		return this.inner.cancel(sessionId, poolQueryKey)
