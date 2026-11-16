@@ -7,6 +7,7 @@ import {
 	CHALLENGE_TTL_MS,
 	MAX_OUTSTANDING_CHALLENGES,
 	MAX_PAIRING_REQUESTS_PER_HOUR,
+	PAIRING_COOLDOWN_MS,
 	PAIRING_TTL_MS,
 	RemoteApprovals,
 } from '@dotaz/backend-shared/services/remote-approvals'
@@ -172,14 +173,17 @@ describe('Remote approvals (handlers, SQLite)', () => {
 		for (const params of bad) {
 			await expect(ctx.cli('approvers.request', params)).rejects.toMatchObject({ code: 'PAIRING_REFUSED' })
 		}
-		// localhost over plain http is a secure context, so it is allowed
-		const local = new TestPasskey('localhost', 'http://localhost:5173')
-		await expect(ctx.cli('approvers.request', local.pairingParams())).resolves.toHaveProperty('requestId')
-	})
-
-	test('an already paired key cannot be paired again', async () => {
-		await pair(ctx, passkey)
-		await expect(ctx.cli('approvers.request', passkey.pairingParams())).rejects.toThrow(/already paired/)
+		// Any local program can serve a page on localhost or a loopback address, so neither may approve.
+		const local: Array<[string, string]> = [
+			['localhost', 'http://localhost:5173'],
+			['localhost', 'https://localhost'],
+			['app.localhost', 'https://app.localhost'],
+			['127.0.0.1', 'https://127.0.0.1'],
+		]
+		for (const [rpId, origin] of local) {
+			await expect(ctx.cli('approvers.request', new TestPasskey(rpId, origin).pairingParams())).rejects.toMatchObject({ code: 'PAIRING_REFUSED' })
+		}
+		expect(ctx.handlers['approvers.pending']()).toBeNull()
 	})
 
 	// ── Approving ───────────────────────────────────────
@@ -254,9 +258,9 @@ describe('Remote approvals (handlers, SQLite)', () => {
 		await pair(ctx, passkey)
 		const proposalId = await propose(ctx, 'DELETE FROM items')
 
-		// Its own key, never confirmed in the window
+		// Its own key, never confirmed in the window (asking right after a pairing is refused anyway)
 		const attacker = new TestPasskey(passkey.rpId, passkey.origin)
-		await ctx.cli('approvers.request', attacker.pairingParams('Totally my phone'))
+		await expect(ctx.cli('approvers.request', attacker.pairingParams('Totally my phone'))).rejects.toMatchObject({ code: 'PAIRING_REFUSED' })
 		const own = await sign(ctx, attacker, proposalId, 'approve')
 		await expect(ctx.cli('agent.approvals.redeem', own.params)).rejects.toThrow(/not paired/)
 
@@ -481,7 +485,7 @@ function service(opts: { execute?: (p: Proposal) => Promise<{ affectedRows: numb
 		const bytes = await approvalChallengeBytes(challenge.nonce, decision, challenge.proposal)
 		return { proposalId, decision, nonce: challenge.nonce, ...passkey.assert(bytes) }
 	}
-	return { approvals, clock, proposals, storage, pairKey, newProposal, signed, runs: () => runs }
+	return { approvals, clock, proposals, storage, passkey, pairKey, newProposal, signed, runs: () => runs }
 }
 
 describe('Remote approvals (service)', () => {
@@ -515,11 +519,33 @@ describe('Remote approvals (service)', () => {
 		s.approvals.dispose()
 	})
 
+	test('a new pairing request cannot take the place of a settled or expired one right away', async () => {
+		const s = service()
+		const first = await s.approvals.requestApprover(new TestPasskey().pairingParams())
+		s.approvals.declineRequest(first.requestId)
+		await expect(s.approvals.requestApprover(new TestPasskey().pairingParams())).rejects.toThrow(/just settled/)
+
+		s.clock.now += PAIRING_COOLDOWN_MS
+		await s.approvals.requestApprover(new TestPasskey().pairingParams())
+		s.clock.now += PAIRING_TTL_MS
+		expect(s.approvals.pendingRequest()).toBeNull()
+		await expect(s.approvals.requestApprover(new TestPasskey().pairingParams())).rejects.toThrow(/just settled/)
+		s.approvals.dispose()
+	})
+
+	test('an already paired key cannot be paired again', async () => {
+		const s = service()
+		await s.pairKey()
+		s.clock.now += PAIRING_COOLDOWN_MS
+		await expect(s.approvals.requestApprover(s.passkey.pairingParams())).rejects.toThrow(/already paired/)
+	})
+
 	test(`at most ${MAX_PAIRING_REQUESTS_PER_HOUR} pairing requests per hour`, async () => {
 		const s = service()
 		for (let i = 0; i < MAX_PAIRING_REQUESTS_PER_HOUR; i++) {
 			const { requestId } = await s.approvals.requestApprover(new TestPasskey().pairingParams())
 			s.approvals.declineRequest(requestId)
+			s.clock.now += PAIRING_COOLDOWN_MS
 		}
 		await expect(s.approvals.requestApprover(new TestPasskey().pairingParams())).rejects.toThrow(/per hour/)
 		s.clock.now += 60 * 60 * 1000

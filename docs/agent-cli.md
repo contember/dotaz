@@ -314,9 +314,15 @@ COSE_Key from the credential's attested data. `approvers.list` returns everythin
 public key.
 
 Pairing request rules: one request at a time (a second one is refused, never replaces the first),
-expires after 5 minutes, at most 5 per hour, at most 20 paired keys. `origin` must be an
-`https` origin whose host is `rpId` or a subdomain of it (or `http://localhost…` for rpId
-`localhost`). The public key must parse as exactly one COSE EC2 P-256 ES256 map.
+expires after 5 minutes, and after a request is settled or expires the next one is refused for
+10 seconds, so a new request can never take the place of the one on screen as the user clicks.
+At most 5 requests per hour, at most 20 paired keys. The window's Pair button stays disabled for a
+moment after a request appears, and confirms only the request id and fingerprint it displayed.
+
+`origin` must be an `https` origin whose host is `rpId` or a subdomain of it. `localhost`,
+`*.localhost` and IP addresses are refused as RP ids: any program on this machine can serve a page
+there and ask the user's passkey to sign. The public key must parse as exactly one COSE EC2 P-256
+ES256 map.
 
 **Fingerprint:** the first 16 characters (80 bits) of RFC 4648 base32 (uppercase, no padding)
 of `SHA-256(credentialId bytes || publicKey bytes)`. The window shows it in groups of four.

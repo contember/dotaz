@@ -41,6 +41,11 @@ export const MAX_OUTSTANDING_CHALLENGES = 16
 export const PAIRING_TTL_MS = 5 * 60 * 1000
 /** Pairing requests accepted per rolling hour. */
 export const MAX_PAIRING_REQUESTS_PER_HOUR = 5
+/**
+ * After a request is settled or expires, the next one waits this long, so a new request can
+ * never take the place of the one the user is looking at just as they click.
+ */
+export const PAIRING_COOLDOWN_MS = 10 * 1000
 export const MAX_APPROVERS = 20
 export const MAX_APPROVER_LABEL_LENGTH = 64
 
@@ -99,7 +104,18 @@ function publicApprover(approver: StoredApprover): RemoteApprover {
 	return rest
 }
 
-/** WebAuthn's rule: the origin's host is the RP id or a subdomain of it. Plain http only for localhost. */
+/**
+ * A relying party only a remote server can hold. Any program on this machine can open a port on
+ * localhost and serve a page there, so a key paired for localhost or a loopback address could be
+ * asked to sign by a page the user did not mean to trust. IP literals are not valid RP ids anyway.
+ */
+function isRemoteRpId(rpId: string): boolean {
+	if (rpId === 'localhost' || rpId.endsWith('.localhost')) return false
+	if (/^[0-9.]+$/.test(rpId)) return false
+	return rpId.includes('.')
+}
+
+/** https only, and WebAuthn's rule: the origin's host is the RP id or a subdomain of it. */
 function originMatchesRpId(origin: string, rpId: string): boolean {
 	let url: URL
 	try {
@@ -107,9 +123,7 @@ function originMatchesRpId(origin: string, rpId: string): boolean {
 	} catch {
 		return false
 	}
-	if (url.origin !== origin) return false
-	if (url.protocol === 'http:') return url.hostname === 'localhost' && rpId === 'localhost'
-	if (url.protocol !== 'https:') return false
+	if (url.origin !== origin || url.protocol !== 'https:') return false
 	return url.hostname === rpId || url.hostname.endsWith(`.${rpId}`)
 }
 
@@ -124,6 +138,7 @@ export class RemoteApprovals {
 	private pairing: PendingPairing | null = null
 	private pairingTimer: ReturnType<typeof setTimeout> | null = null
 	private pairingRequestTimes: number[] = []
+	private pairingSettledAt = Number.NEGATIVE_INFINITY
 
 	constructor(opts: RemoteApprovalsOptions) {
 		this.storage = opts.storage
@@ -148,7 +163,7 @@ export class RemoteApprovals {
 	async requestApprover(params: ApproverRequestParams): Promise<ApproverRequestResult> {
 		const now = this.now()
 		this.sweepPairing()
-		if (this.pairing) throw pairingRefused('Another pairing request is already waiting for the user. Try again when it is settled.')
+		this.assertPairingSlotFree(now)
 		this.pairingRequestTimes = this.pairingRequestTimes.filter((t) => t > now - HOUR_MS)
 		if (this.pairingRequestTimes.length >= MAX_PAIRING_REQUESTS_PER_HOUR) {
 			throw pairingRefused(`At most ${MAX_PAIRING_REQUESTS_PER_HOUR} pairing requests per hour. Try again later.`)
@@ -158,9 +173,11 @@ export class RemoteApprovals {
 		if (!isSafeLabel(label, MAX_APPROVER_LABEL_LENGTH)) {
 			throw pairingRefused(`label must be 1 to ${MAX_APPROVER_LABEL_LENGTH} printable characters on one line`)
 		}
-		if (!RP_ID.test(params.rpId)) throw pairingRefused('rpId must be a lowercase domain name')
+		if (!RP_ID.test(params.rpId) || !isRemoteRpId(params.rpId)) {
+			throw pairingRefused('rpId must be a lowercase domain name, not localhost or an IP address')
+		}
 		if (!originMatchesRpId(params.origin, params.rpId)) {
-			throw pairingRefused('origin must be an https origin on rpId or a subdomain of it (or http://localhost for rpId localhost)')
+			throw pairingRefused('origin must be an https origin on rpId or a subdomain of it')
 		}
 		let credentialId: Uint8Array
 		try {
@@ -177,7 +194,7 @@ export class RemoteApprovals {
 
 		const fingerprint = await approverFingerprint(params.credentialId, params.publicKey)
 		// Re-check after the await: two requests may have raced through the checks above.
-		if (this.pairing) throw pairingRefused('Another pairing request is already waiting for the user. Try again when it is settled.')
+		this.assertPairingSlotFree(this.now())
 
 		this.pairingRequestTimes.push(now)
 		this.pairing = {
@@ -371,6 +388,13 @@ export class RemoteApprovals {
 		}
 	}
 
+	private assertPairingSlotFree(now: number): void {
+		if (this.pairing) throw pairingRefused('Another pairing request is already waiting for the user. Try again when it is settled.')
+		if (now < this.pairingSettledAt + PAIRING_COOLDOWN_MS) {
+			throw pairingRefused('A pairing request was just settled. Try again in a few seconds.')
+		}
+	}
+
 	private sweepPairing(): void {
 		if (this.pairing && this.pairing.expiresAt <= this.now()) {
 			this.clearPairing()
@@ -380,15 +404,18 @@ export class RemoteApprovals {
 
 	private schedulePairingExpiry(): void {
 		if (!this.pairing) return
-		const timer = setTimeout(() => {
+		const delay = Math.max(0, this.pairing.expiresAt - this.now()) + 50
+		const timer: { unref?: () => void } = setTimeout(() => {
 			this.pairingTimer = null
 			this.sweepPairing()
-		}, Math.max(0, this.pairing.expiresAt - this.now()) + 50) // Never keep the process alive just to expire a request.
-		;(timer as { unref?: () => void }).unref?.()
-		this.pairingTimer = timer
+		}, delay)
+		// Never keep the process alive just to expire a request.
+		timer.unref?.()
+		this.pairingTimer = timer as ReturnType<typeof setTimeout>
 	}
 
 	private clearPairing(): void {
+		if (this.pairing) this.pairingSettledAt = this.now()
 		this.pairing = null
 		if (this.pairingTimer !== null) clearTimeout(this.pairingTimer)
 		this.pairingTimer = null
