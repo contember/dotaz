@@ -16,8 +16,9 @@ This document is the implementation contract. Everything below is normative.
 ## Invariants
 
 1. Every CLI database operation runs in a backend-owned read-only session that is **never**
-   switched to read-write. An approved write executes in the frontend's own session, not in
-   an agent session.
+   switched to read-write. An approved write runs in the console tab (a click in the app's window) or
+   in a session created only after a verified remote approval (see
+   [Remote approvals](#remote-approvals)), never in an agent session.
    No control-plane method may be used to get around this: `ui.openConsole` and
    `ui.openTable`'s `where` only prefill the console or the filter box. Agent SQL reaches the
    app's writable session only when the user runs or applies it. `where` must also be a single
@@ -126,7 +127,7 @@ Existing handlers are reused wherever possible. New methods:
 | `agent.schema`            | `{ connectionId, database? }`                                     | `SchemaData`                       |
 | `agent.query`             | `{ connectionId, database?, sql, queryId, params?, searchPath? }` | `QueryResult[]`                    |
 | `agent.search`            | `{ connectionId, database?, searchTerm, scope, … }`               | `SearchDatabaseResult`             |
-| `agent.proposeWrite`      | `{ connectionId, database?, sql, reason? }`                       | `{ proposalId }`                   |
+| `agent.proposeWrite`      | `{ connectionId, database?, sql, reason?, requestedBy? }`         | `{ proposalId }`                   |
 | `agent.proposals.list`    | `{ status?, connectionId? }`                                      | `Proposal[]`                       |
 | `agent.proposals.get`     | `{ proposalId }`                                                  | `Proposal`                         |
 | `agent.proposals.wait`    | `{ proposalId, timeoutMs? }`                                      | `Proposal` (long-poll)             |
@@ -137,12 +138,26 @@ Existing handlers are reused wherever possible. New methods:
 | `ui.openConsole`          | `{ connectionId, database?, sql? }`                               | `{ ok: true }`                     |
 | `ui.snapshot.set`         | `{ snapshot }`                                                    | `void` — **frontend only**         |
 
+Remote approvals add these (see [Remote approvals](#remote-approvals)):
+
+| Method                      | Params                                                                                        | Returns                                      |
+| --------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `approvers.request`         | `{ label, rpId, origin, credentialId, publicKey }`                                            | `{ requestId, fingerprint, expiresAt }`      |
+| `approvers.list`            | (none)                                                                                        | `RemoteApprover[]` (public data only)        |
+| `agent.approvals.challenge` | `{ proposalId, decision: 'approve' \| 'reject' }`                                             | `ApprovalChallenge`                          |
+| `agent.approvals.redeem`    | `{ proposalId, decision, nonce, credentialId, authenticatorData, clientDataJSON, signature }` | `Proposal` (settled)                         |
+| `approvers.pending`         | (none)                                                                                        | `ApproverRequest \| null`, **frontend only** |
+| `approvers.confirm`         | `{ requestId, fingerprint }`                                                                  | `RemoteApprover`, **frontend only**          |
+| `approvers.decline`         | `{ requestId }`                                                                               | `void`, **frontend only**                    |
+| `approvers.remove`          | `{ id }`                                                                                      | `void`, **frontend only**                    |
+
 ### Backend → frontend messages
 
-| Channel        | Payload                                                       |
-| -------------- | ------------------------------------------------------------- |
-| `cli.proposal` | `Proposal` — emitted on every state change, not only creation |
-| `cli.command`  | `{ kind: 'open-table' \| 'open-console', … }`                 |
+| Channel             | Payload                                                       |
+| ------------------- | ------------------------------------------------------------- |
+| `cli.proposal`      | `Proposal` — emitted on every state change, not only creation |
+| `cli.command`       | `{ kind: 'open-table' \| 'open-console', … }`                 |
+| `approvers.changed` | `{ request, approvers }`: a pairing request or the key list   |
 
 ## Read-only sessions
 
@@ -213,12 +228,16 @@ type ProposalStatus =
 interface Proposal {
 	id: string
 	connectionId: string
+	connectionName: string // frozen at creation
 	database?: string
-	sql: string
+	sql: string // frozen at creation: exactly what is shown, signed and run
 	reason?: string
+	requestedBy?: string // free text from the CLI, unverified
 	status: ProposalStatus
 	createdAt: number
 	resolvedAt?: number
+	resolvedVia?: 'app' | 'remote'
+	approver?: string // label of the paired key that decided remotely
 	result?: { affectedRows?: number; statements?: number }
 	error?: string
 }
@@ -257,6 +276,129 @@ Because the message may not have arrived yet, the claim is what decides: it fail
 proposal that is no longer `pending`, and nothing runs. Without it, a click on a stale banner
 would run a write for a proposal that no longer exists.
 
+## Remote approvals
+
+Approve or reject a proposal with a passkey from a paired device (a phone with Face ID, a laptop
+with Touch ID), without a click in the app's window. Off in practice until the user pairs a key:
+with no paired keys every challenge is refused and nothing changes.
+
+### Threat model
+
+The endpoint token is readable by any process running as the user, so everything on the CLI
+surface is open to every such process. Remote approvals keep invariant 1 against that caller:
+
+- **The signature is the proof, not the caller.** Dotaz runs a write only for a WebAuthn
+  assertion, made with user verification, by a key the user paired, over a challenge Dotaz
+  recomputes from its own one-time nonce and its own stored proposal. The private key never
+  leaves the authenticator, so nothing on this machine can produce that assertion.
+- **The CLI can ask to pair a key, never add one.** `approvers.request` only creates a request.
+  The app's window shows it with its label, origin, relying party and fingerprint; the user
+  compares the fingerprint with the one the requesting device shows and clicks Pair. Confirming,
+  declining and removing keys are frontend-only methods, absent from the CLI allowlist.
+- **What is signed is what runs.** The signed bytes cover the SQL hash, the connection and the
+  database. A page that showed different SQL produces a signature that does not verify, and the
+  proposal's SQL is frozen when it is created.
+- **Another page cannot borrow the key.** The browser writes the true origin into
+  `clientDataJSON`; Dotaz accepts only the origin the key was paired with, and the relying
+  party hash in the authenticator data must match the paired RP id.
+
+Not covered: a process that edits Dotaz's app database or binary, or drives its window through
+accessibility APIs. Such a process could equally read the saved credentials and connect to the
+database directly; the gate cannot be stronger than the user account.
+
+### Approver keys
+
+Stored in the app database (`remote_approvers`): `{ id, label, rpId, origin, credentialId,
+publicKey, fingerprint, addedAt }`. ES256 (ECDSA P-256) only; `publicKey` is the base64url
+COSE_Key from the credential's attested data. `approvers.list` returns everything except the
+public key.
+
+Pairing request rules: one request at a time (a second one is refused, never replaces the first),
+expires after 5 minutes, at most 5 per hour, at most 20 paired keys. `origin` must be an
+`https` origin whose host is `rpId` or a subdomain of it (or `http://localhost…` for rpId
+`localhost`). The public key must parse as exactly one COSE EC2 P-256 ES256 map.
+
+**Fingerprint:** the first 16 characters (80 bits) of RFC 4648 base32 (uppercase, no padding)
+of `SHA-256(credentialId bytes || publicKey bytes)`. The window shows it in groups of four.
+
+### Challenge and signed bytes
+
+`agent.approvals.challenge` returns:
+
+```ts
+interface ApprovalChallenge {
+	nonce: string // base64url, 32 random bytes
+	expiresAt: number
+	proposal: {
+		id: string
+		connectionId: string
+		connectionName: string
+		database: string | null
+		sql: string
+		sqlSha256: string // lowercase hex over the UTF-8 bytes of sql
+		reason: string | null
+		requestedBy: string | null
+		createdAt: number
+		statements: number
+	}
+	allowCredentials: string[] // base64url credential ids of paired keys
+}
+```
+
+A nonce is bound to one proposal and one decision, good for 2 minutes and for one redeem attempt,
+good or bad. At most 16 may be outstanding. Anyone may ask for one: a challenge by itself does
+nothing.
+
+The WebAuthn challenge is the 32-byte digest
+
+```
+SHA-256(UTF-8("dotaz-approval/v1\n" + JSON.stringify([nonce, decision, id, connectionId,
+        connectionName, database, sqlSha256, reason, requestedBy, createdAt])))
+```
+
+with `null` for absent optional fields. `sqlSha256` is over the exact stored string: nothing is
+trimmed or normalised anywhere. `approvalChallengeBytes()` in `shared/remote-approval.ts` is the
+reference implementation and runs in a browser. An approving page should compute these bytes
+itself from the fields it renders, not take them from a server.
+
+### Redeem
+
+`agent.approvals.redeem` takes the assertion fields base64url-encoded. Dotaz checks, in order:
+the nonce is its own, unused and unexpired, and was issued for this proposal and decision; the
+credential id belongs to a paired key; the proposal is still `pending`; `clientDataJSON.type` is
+`webauthn.get`, its `challenge` equals the bytes above recomputed from the stored proposal, its
+`origin` equals the key's paired origin and `crossOrigin` is not true; the authenticator data's
+RP id hash matches the key's `rpId`; the user-present and user-verified flags are set; the ES256
+signature over `authenticatorData || SHA-256(clientDataJSON)` verifies with the paired key.
+
+Only then does it act:
+
+- **reject**: `pending → rejected`. Nothing runs.
+- **approve**: claims the proposal atomically (`pending → approved`), so a click in the window
+  and a remote approval can never both run it, and the window can no longer settle it. It then
+  runs the frozen `proposal.sql` in a read-write session created for this run only, in one
+  transaction, and resolves `executed` with `affectedRows`, or `failed` with the error after a
+  rollback. No rows are ever returned. The run is recorded in Query History.
+
+Both record `resolvedVia: 'remote'` and the key's label in `approver`. Refusals carry
+`errorCode` `APPROVAL_UNAVAILABLE` (no keys paired) or `APPROVAL_REFUSED` (anything else; the
+message names the check). Pairing refusals carry `PAIRING_REFUSED`.
+
+### Never approved remotely
+
+Approving is refused (at the challenge and again at redeem) when the SQL is over 64 KB of UTF-8,
+or the SQL, the reason or the database name contains bidirectional or invisible format characters
+(`\p{Cf}`), U+2028/U+2029, or C0/C1 control characters other than tab, line feed and carriage
+return; when the SQL contains its own transaction control (`BEGIN`, `COMMIT`, `ROLLBACK`, …);
+or when the connection is gone, not connected or marked read-only in Dotaz. Rejecting such a
+proposal remotely is allowed, and it can still be run from the app's window.
+
+### Who asked
+
+`dotaz propose --by <label>` (or `DOTAZ_REQUESTED_BY` in the environment) stores a free-text
+label on the proposal: up to 120 characters on one line, no control or format characters. The
+approver is shown it as unverified.
+
 ## CLI
 
 Public package `@dotaz/cli`, binary `dotaz`. Its private source workspace lives in
@@ -277,7 +419,7 @@ dotaz explain <conn[/db]> <sql> [--analyze]
 dotaz search <conn[/db]> <term> [--scope database|schema|table]
 dotaz history [--conn] [--limit]
 dotaz bookmarks list [--conn] [--search]
-dotaz propose <conn[/db]> <sql> [--reason] [--wait [sec]]
+dotaz propose <conn[/db]> <sql> [--reason] [--by label] [--wait [sec]]
 dotaz approvals list | status <id> | wait <id> [--wait sec] | cancel <id>
 dotaz ui state
 dotaz ui open <path> [--where]                 # --where is prefilled, the user applies it
