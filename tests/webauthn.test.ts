@@ -204,6 +204,44 @@ describe('what is never approved remotely', () => {
 		expect(remoteApprovalRefusal({ sql: 'ž'.repeat(MAX_REMOTE_SQL_BYTES / 2 + 1) })).toMatch(/64 KB/)
 	})
 
+	test('comment syntax anywhere, because some engines execute what looks like a comment', () => {
+		const refused = [
+			"UPDATE orders SET status = 'paid' WHERE id = 5 /*!50000 OR 1=1 */",
+			'UPDATE t SET a = 1 /*+ hint */',
+			'UPDATE t SET a = 1 --x',
+			'UPDATE t SET a = 1 -- note',
+			'UPDATE t SET a = 1 # note',
+			"UPDATE t SET a = '-- not really a comment'",
+		]
+		for (const sql of refused) expect(remoteApprovalRefusal({ sql })).toMatch(/comment/)
+		expect(remoteApprovalRefusal({ sql: "UPDATE t SET a = a - 1, b = 'x/y*z' WHERE id = 5" })).toBeNull()
+	})
+
+	test('a bare carriage return, which ends a comment for the engine but may render as nothing', () => {
+		expect(remoteApprovalRefusal({ sql: 'UPDATE t SET a = 1\rWHERE id = 2' })).toMatch(/carriage-return/)
+		expect(remoteApprovalRefusal({ sql: 'UPDATE t SET a = 1\r\nWHERE id = 2' })).toBeNull()
+		expect(remoteApprovalRefusal({ sql: 'DELETE FROM t WHERE id = 1', reason: 'fix\rtypo' })).toMatch(/reason/)
+	})
+
+	test('transaction or session control, found even where an engine escapes quotes differently', () => {
+		const refused = [
+			'BEGIN; UPDATE t SET a = 1; COMMIT',
+			"UPDATE t SET a = '\\''; COMMIT; UPDATE t SET b = 'y'",
+			'UPDATE t SET a = 1; SET autocommit = 1',
+			'UPDATE t SET a = 1;\n  rollback',
+			'LOCK TABLES t WRITE; UPDATE t SET a = 1',
+			'CALL purge_everything()',
+			"UPDATE t SET note = 'x;commit'",
+		]
+		for (const sql of refused) expect(remoteApprovalRefusal({ sql })).toMatch(/transactions/)
+		const allowed = [
+			'UPDATE t SET a = CASE WHEN b THEN 1 ELSE 2 END WHERE id = 3',
+			"UPDATE t SET a = 1 WHERE id = 1; DELETE FROM u WHERE name = 'begin'",
+			"INSERT INTO t (a) VALUES ('commit')",
+		]
+		for (const sql of allowed) expect(remoteApprovalRefusal({ sql })).toBeNull()
+	})
+
 	test('deceptive characters in the reason or database name too', () => {
 		expect(remoteApprovalRefusal({ sql: 'DELETE FROM t', reason: `fix ${RLO}` })).toMatch(/reason/)
 		expect(remoteApprovalRefusal({ sql: 'DELETE FROM t', database: `app${ZWSP}` })).toMatch(/database/)

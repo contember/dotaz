@@ -151,6 +151,12 @@
 	color: var(--ink);
 }
 
+.settings-approvers__code {
+	font-family: var(--font-mono);
+	font-size: var(--font-size-lg);
+	letter-spacing: 0.2em;
+}
+
 .settings-approvers__meta {
 	font-size: var(--font-size-sm);
 	color: var(--ink-muted);

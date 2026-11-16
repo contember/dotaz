@@ -13,6 +13,7 @@ import type {
 	ApproverRequest,
 	ApproverRequestParams,
 	ApproverRequestResult,
+	ApproversState,
 	ConnectionHandleInfo,
 	HistoryListParams,
 	OpenDialogParams,
@@ -186,6 +187,9 @@ export interface RpcAdapter {
 	requestApprover?(params: ApproverRequestParams): Promise<ApproverRequestResult>
 	listApprovers?(): RemoteApprover[]
 	getApproverRequest?(): ApproverRequest | null
+	getApproversState?(): ApproversState
+	armPairing?(): { code: string; expiresAt: number }
+	disarmPairing?(): void
 	confirmApproverRequest?(requestId: string, fingerprint: string): RemoteApprover
 	declineApproverRequest?(requestId: string): void
 	removeApprover?(id: string): void

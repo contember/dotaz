@@ -60,8 +60,7 @@ function PairingPrompt(props: { request: ApproverRequest }) {
 					{formatFingerprint(shown.fingerprint)}
 				</div>
 				<p class="approver-request-dialog__warning">
-					Pair it only if you started this yourself and the device shows exactly this fingerprint. Any program on this computer can ask; only you can
-					accept.
+					It sent the pairing code shown in Settings. Pair it only if the device you are pairing shows exactly this fingerprint.
 				</p>
 				<div class="approver-request-dialog__actions">
 					<button type="button" class="btn btn--secondary" onClick={() => void approversStore.decline(shown)}>

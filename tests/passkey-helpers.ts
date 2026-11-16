@@ -64,8 +64,8 @@ export class TestPasskey {
 		this.credentialId = bytesToBase64Url(crypto.getRandomValues(new Uint8Array(32)))
 	}
 
-	pairingParams(label = 'Phone') {
-		return { label, rpId: this.rpId, origin: this.origin, credentialId: this.credentialId, publicKey: this.publicKey }
+	pairingParams(label = 'Phone', pairingCode = '000000') {
+		return { label, rpId: this.rpId, origin: this.origin, credentialId: this.credentialId, publicKey: this.publicKey, pairingCode }
 	}
 
 	/** An assertion over `challenge`, base64url-encoded the way a page would send it. */

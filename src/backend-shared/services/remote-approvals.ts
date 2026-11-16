@@ -35,21 +35,21 @@ import { parseCoseEs256, verifyAssertion, WebAuthnError } from './webauthn'
 
 /** A challenge is good for this long, and for one redeem attempt. */
 export const CHALLENGE_TTL_MS = 2 * 60 * 1000
-/** Unredeemed, unexpired challenges allowed at once. More are refused until some expire. */
-export const MAX_OUTSTANDING_CHALLENGES = 16
+/**
+ * Unredeemed, unexpired challenges allowed per proposal. Per proposal rather than global, so a
+ * caller flooding one proposal cannot keep the user from approving another.
+ */
+export const MAX_CHALLENGES_PER_PROPOSAL = 4
 /** A pairing request waits this long for the user. */
 export const PAIRING_TTL_MS = 5 * 60 * 1000
-/** Pairing requests accepted per rolling hour. */
-export const MAX_PAIRING_REQUESTS_PER_HOUR = 5
-/**
- * After a request is settled or expires, the next one waits this long, so a new request can
- * never take the place of the one the user is looking at just as they click.
- */
-export const PAIRING_COOLDOWN_MS = 10 * 1000
+/** A pairing code shown in the window is good for this long, and for one request. */
+export const PAIRING_CODE_TTL_MS = 5 * 60 * 1000
+/** Wrong codes allowed before the window's code is withdrawn. */
+export const PAIRING_CODE_ATTEMPTS = 5
+export const PAIRING_CODE_DIGITS = 6
 export const MAX_APPROVERS = 20
 export const MAX_APPROVER_LABEL_LENGTH = 64
 
-const HOUR_MS = 60 * 60 * 1000
 const RP_ID = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/
 
 export interface ApproverStorage {
@@ -99,6 +99,14 @@ function decode(value: string, field: string): Uint8Array {
 	}
 }
 
+/** Constant-time comparison of two short strings. */
+function sameText(a: string, b: string): boolean {
+	if (typeof a !== 'string' || a.length !== b.length) return false
+	let diff = 0
+	for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+	return diff === 0
+}
+
 function publicApprover(approver: StoredApprover): RemoteApprover {
 	const { publicKey: _publicKey, ...rest } = approver
 	return rest
@@ -137,8 +145,8 @@ export class RemoteApprovals {
 	private challenges = new Map<string, IssuedChallenge>()
 	private pairing: PendingPairing | null = null
 	private pairingTimer: ReturnType<typeof setTimeout> | null = null
-	private pairingRequestTimes: number[] = []
-	private pairingSettledAt = Number.NEGATIVE_INFINITY
+	/** The code the window shows after "Pair a device"; a request without it is refused. */
+	private armed: { code: string; expiresAt: number; wrongAttempts: number } | null = null
 
 	constructor(opts: RemoteApprovalsOptions) {
 		this.storage = opts.storage
@@ -155,18 +163,51 @@ export class RemoteApprovals {
 		return this.storage.listRemoteApprovers().map(publicApprover)
 	}
 
+	/** App window only: includes the pairing code, which must never reach the CLI. */
 	state(): ApproversState {
-		return { request: this.pendingRequest(), approvers: this.listApprovers() }
+		const armed = this.armedCode()
+		return {
+			request: this.pendingRequest(),
+			approvers: this.listApprovers(),
+			armed: armed ? { code: armed.code, expiresAt: armed.expiresAt } : null,
+		}
 	}
 
-	/** CLI: ask to pair a key. Only the user can accept it, in the app's window. */
+	/**
+	 * App window only: the user clicked "Pair a device". Shows a one-time code the device must
+	 * send with its request, so a process that cannot see the screen cannot even ask.
+	 */
+	armPairing(): { code: string; expiresAt: number } {
+		let value: number
+		const limit = 10 ** PAIRING_CODE_DIGITS
+		// Rejection sampling keeps every code equally likely.
+		const ceiling = Math.floor(0x1_0000_0000 / limit) * limit
+		do {
+			value = crypto.getRandomValues(new Uint32Array(1))[0]
+		} while (value >= ceiling)
+		const code = String(value % limit).padStart(PAIRING_CODE_DIGITS, '0')
+		this.armed = { code, expiresAt: this.now() + PAIRING_CODE_TTL_MS, wrongAttempts: 0 }
+		this.emit()
+		return { code, expiresAt: this.armed.expiresAt }
+	}
+
+	/** App window only. */
+	disarmPairing(): void {
+		if (!this.armed) return
+		this.armed = null
+		this.emit()
+	}
+
+	/**
+	 * CLI: ask to pair a key, with the code the window shows. The user then still confirms the
+	 * request, with its fingerprint, in the window.
+	 */
 	async requestApprover(params: ApproverRequestParams): Promise<ApproverRequestResult> {
 		const now = this.now()
 		this.sweepPairing()
-		this.assertPairingSlotFree(now)
-		this.pairingRequestTimes = this.pairingRequestTimes.filter((t) => t > now - HOUR_MS)
-		if (this.pairingRequestTimes.length >= MAX_PAIRING_REQUESTS_PER_HOUR) {
-			throw pairingRefused(`At most ${MAX_PAIRING_REQUESTS_PER_HOUR} pairing requests per hour. Try again later.`)
+		if (this.pairing) throw pairingRefused('A pairing request is already waiting for the user.')
+		if (!this.armedCode()) {
+			throw pairingRefused('Pairing is not open. In Dotaz, choose Settings > CLI > Pair a device and send the code it shows.')
 		}
 
 		const label = params.label.trim()
@@ -193,10 +234,10 @@ export class RemoteApprovals {
 		if (approvers.length >= MAX_APPROVERS) throw pairingRefused(`At most ${MAX_APPROVERS} keys can be paired. Remove one in the app first.`)
 
 		const fingerprint = await approverFingerprint(params.credentialId, params.publicKey)
-		// Re-check after the await: two requests may have raced through the checks above.
-		this.assertPairingSlotFree(this.now())
+		// Checked after the await, with nothing async after it: the code is consumed atomically.
+		if (this.pairing) throw pairingRefused('A pairing request is already waiting for the user.')
+		this.consumeCode(params.pairingCode)
 
-		this.pairingRequestTimes.push(now)
 		this.pairing = {
 			requestId: crypto.randomUUID(),
 			label,
@@ -279,8 +320,9 @@ export class RemoteApprovals {
 
 		const now = this.now()
 		this.sweepChallenges(now)
-		if (this.challenges.size >= MAX_OUTSTANDING_CHALLENGES) {
-			throw refused('Too many approval challenges are outstanding. Try again in a few minutes.')
+		const forProposal = [...this.challenges.values()].filter((c) => c.proposalId === proposal.id).length
+		if (forProposal >= MAX_CHALLENGES_PER_PROPOSAL) {
+			throw refused('Too many approval challenges are outstanding for this proposal. Try again in a few minutes.')
 		}
 		const nonce = bytesToBase64Url(crypto.getRandomValues(new Uint8Array(32)))
 		const expiresAt = now + CHALLENGE_TTL_MS
@@ -388,11 +430,25 @@ export class RemoteApprovals {
 		}
 	}
 
-	private assertPairingSlotFree(now: number): void {
-		if (this.pairing) throw pairingRefused('Another pairing request is already waiting for the user. Try again when it is settled.')
-		if (now < this.pairingSettledAt + PAIRING_COOLDOWN_MS) {
-			throw pairingRefused('A pairing request was just settled. Try again in a few seconds.')
+	private armedCode(): { code: string; expiresAt: number; wrongAttempts: number } | null {
+		if (this.armed && this.armed.expiresAt <= this.now()) this.armed = null
+		return this.armed
+	}
+
+	/** One request per code. Too many wrong codes withdraw it; the user can show a new one. */
+	private consumeCode(code: string): void {
+		const armed = this.armedCode()
+		if (!armed) throw pairingRefused('Pairing is not open. In Dotaz, choose Settings > CLI > Pair a device.')
+		if (!sameText(code, armed.code)) {
+			armed.wrongAttempts++
+			if (armed.wrongAttempts >= PAIRING_CODE_ATTEMPTS) {
+				this.armed = null
+				this.emit()
+				throw pairingRefused('Wrong pairing code too many times. Show a new code in Dotaz.')
+			}
+			throw pairingRefused('Wrong pairing code.')
 		}
+		this.armed = null
 	}
 
 	private sweepPairing(): void {
@@ -415,7 +471,6 @@ export class RemoteApprovals {
 	}
 
 	private clearPairing(): void {
-		if (this.pairing) this.pairingSettledAt = this.now()
 		this.pairing = null
 		if (this.pairingTimer !== null) clearTimeout(this.pairingTimer)
 		this.pairingTimer = null

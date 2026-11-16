@@ -35,6 +35,7 @@ import type {
 	ApproverRequest,
 	ApproverRequestParams,
 	ApproverRequestResult,
+	ApproversState,
 	RemoteApprover,
 } from '@dotaz/shared/types/rpc'
 import { settingsToAiConfig } from '@dotaz/shared/types/settings'
@@ -46,7 +47,7 @@ import type { EncryptionService } from '../services/encryption'
 import { buildExportSelectQuery, exportPreview, exportToFile } from '../services/export-service'
 import { importFromStream, importPreviewFromStream } from '../services/import-service'
 import { ProposalStore } from '../services/proposal-store'
-import { assertSessionWritable, isTopLevelTransactionControl } from '../services/query-executor'
+import { assertSessionWritable } from '../services/query-executor'
 import type { QueryExecutor } from '../services/query-executor'
 import { RemoteApprovals } from '../services/remote-approvals'
 import { searchDatabase } from '../services/search-service'
@@ -888,6 +889,18 @@ export class BackendAdapter implements RpcAdapter {
 		return this.remoteApprovals.pendingRequest()
 	}
 
+	getApproversState(): ApproversState {
+		return this.remoteApprovals.state()
+	}
+
+	armPairing(): { code: string; expiresAt: number } {
+		return this.remoteApprovals.armPairing()
+	}
+
+	disarmPairing(): void {
+		this.remoteApprovals.disarmPairing()
+	}
+
 	confirmApproverRequest(requestId: string, fingerprint: string): RemoteApprover {
 		return this.remoteApprovals.confirmRequest(requestId, fingerprint)
 	}
@@ -914,11 +927,8 @@ export class BackendAdapter implements RpcAdapter {
 		if (!connection) return 'The connection this proposal targets no longer exists.'
 		if (connection.state !== 'connected') return `Connection "${connection.name}" is not connected in Dotaz.`
 		if (connection.readOnly) return `Connection "${connection.name}" is marked read-only in Dotaz.`
-		// The run is wrapped in a transaction of its own; SQL that manages one could leave it
-		// open (reported as executed, then rolled back) or commit half of it.
-		if (splitStatements(proposal.sql).some(isTopLevelTransactionControl)) {
-			return 'The SQL contains transaction control (BEGIN, COMMIT, ROLLBACK). Approve it in the Dotaz window.'
-		}
+		// Transaction control in the SQL itself is refused by remoteApprovalRefusal(), so the run
+		// below is the only transaction.
 		return null
 	}
 

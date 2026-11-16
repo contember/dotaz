@@ -31,9 +31,30 @@ export default function SettingsCli(props: {
 				<h4 class="settings-form__section-title">Remote approvals</h4>
 				<div class="settings-form__preview">
 					Passkeys paired here can approve or reject a proposal from another device. Dotaz verifies each signature itself, over exactly the SQL, connection
-					and database it will run, so nothing on this computer can approve on their behalf. A device asks to be paired through the CLI; you accept it here
-					after comparing its fingerprint.
+					and database it will run, so a program that only has CLI access cannot approve anything. It does not protect against a program that can change
+					Dotaz's own files (its database or the app itself): such a program can also read your saved connection passwords. To pair, choose Pair a device,
+					enter the code on the device, then compare the fingerprint here.
 				</div>
+				<Show
+					when={approversStore.armed}
+					fallback={
+						<button type="button" class="btn btn--secondary btn--sm" onClick={() => void approversStore.openPairing()}>
+							Pair a device
+						</button>
+					}
+				>
+					{(armed) => (
+						<div class="settings-approvers__item">
+							<div class="settings-approvers__text">
+								<span>Pairing code, valid until {new Date(armed().expiresAt).toLocaleTimeString()}:</span>
+								<strong class="settings-approvers__code">{armed().code}</strong>
+							</div>
+							<button type="button" class="btn btn--secondary btn--sm" onClick={() => void approversStore.cancelPairing()}>
+								Cancel
+							</button>
+						</div>
+					)}
+				</Show>
 				<Show when={approversStore.approvers.length > 0} fallback={<p class="settings-form__label">No keys paired.</p>}>
 					<ul class="settings-approvers">
 						<For each={approversStore.approvers}>

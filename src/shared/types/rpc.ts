@@ -84,6 +84,8 @@ export interface ApproverRequestParams {
 	credentialId: string
 	/** base64url COSE_Key, ES256 on P-256 */
 	publicKey: string
+	/** The one-time code the app's window shows after the user chose "Pair a device". */
+	pairingCode: string
 }
 
 export interface ApproverRequestResult {
@@ -108,6 +110,8 @@ export interface ApproverRequest {
 export interface ApproversState {
 	request: ApproverRequest | null
 	approvers: RemoteApprover[]
+	/** The pairing code on screen, if the user opened pairing. Never sent to the CLI. */
+	armed: { code: string; expiresAt: number } | null
 }
 
 export type ApprovalDecision = 'approve' | 'reject'

@@ -97,7 +97,7 @@ const TRANSACTION_LOG_STATUSES: readonly TransactionLogStatus[] = ['success', 'e
  *
  * Deliberately absent: everything that mutates stored connections, imports or exports data,
  * writes settings, or decrypts secrets. `ui.snapshot.set`, `agent.proposals.resolve` and
- * `approvers.pending|confirm|decline|remove` are absent too: those belong to the frontend,
+ * `approvers.pending|state|arm|disarm|confirm|decline|remove` are absent too: those belong to the frontend,
  * which reaches handlers directly.
  */
 const CLI_METHODS: { [M in keyof Handlers]?: (raw: unknown) => ParamsOf<M> } = {
@@ -192,9 +192,10 @@ const CLI_METHODS: { [M in keyof Handlers]?: (raw: unknown) => ParamsOf<M> } = {
 			requestedBy: optionalString(f, 'requestedBy', m),
 		}
 	},
-	// Remote approvals. A device may ask to be paired and anyone may fetch a challenge; neither
-	// does anything by itself. Confirming a pairing request, removing a key and the pending
-	// request itself are frontend-only: the user decides those in the app's window.
+	// Remote approvals. A device may ask to be paired only with the code the app's window shows,
+	// and anyone may fetch a challenge; neither does anything by itself. Opening pairing (and its
+	// code), confirming a request and removing a key are frontend-only: the user decides those in
+	// the app's window.
 	'approvers.request': (raw) => {
 		const m = 'approvers.request'
 		const f = fields(raw, m)
@@ -204,6 +205,7 @@ const CLI_METHODS: { [M in keyof Handlers]?: (raw: unknown) => ParamsOf<M> } = {
 			origin: requiredString(f, 'origin', m),
 			credentialId: requiredString(f, 'credentialId', m),
 			publicKey: requiredString(f, 'publicKey', m),
+			pairingCode: requiredString(f, 'pairingCode', m),
 		}
 	},
 	'approvers.list': () => undefined,

@@ -96,6 +96,9 @@ function remote(adapter: RpcAdapter): Required<
 		| 'requestApprover'
 		| 'listApprovers'
 		| 'getApproverRequest'
+		| 'getApproversState'
+		| 'armPairing'
+		| 'disarmPairing'
 		| 'confirmApproverRequest'
 		| 'declineApproverRequest'
 		| 'removeApprover'
@@ -561,6 +564,15 @@ export function createHandlers(adapter: RpcAdapter) {
 		// Frontend only: what the user sees and decides in the app's own window.
 		'approvers.pending': () => {
 			return remote(adapter).getApproverRequest()
+		},
+		'approvers.state': () => {
+			return remote(adapter).getApproversState()
+		},
+		'approvers.arm': () => {
+			return remote(adapter).armPairing()
+		},
+		'approvers.disarm': () => {
+			remote(adapter).disarmPairing()
 		},
 		'approvers.confirm': ({ requestId, fingerprint }: { requestId: string; fingerprint: string }) => {
 			if (!requestId || !fingerprint) throw new Error('requestId and fingerprint are required')

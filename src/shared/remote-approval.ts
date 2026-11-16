@@ -141,8 +141,33 @@ export function formatFingerprint(fingerprint: string): string {
 // biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the point
 const DECEPTIVE_CHARS = /[\p{Cf}\p{Zl}\p{Zp}\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/u
 
+/**
+ * A carriage return not followed by a line feed. Engines end a `--` comment at a bare CR, while a
+ * page may render it as nothing, so text after it would look like part of the comment.
+ */
+const LONE_CR = /\r(?!\n)/
+
 export function hasDeceptiveCharacters(text: string): boolean {
-	return DECEPTIVE_CHARS.test(text)
+	return DECEPTIVE_CHARS.test(text) || LONE_CR.test(text)
+}
+
+/**
+ * Comment syntax of any supported engine, anywhere in the text, string literals included. What
+ * reads as a comment is not always one: MySQL runs `/*! … *\/` and `/*+ … *\/`, and treats `--`
+ * as a comment only when whitespace follows. Matching inside literals too keeps this independent
+ * of each engine's quoting and escaping rules; a false match only means "approve in the window".
+ */
+const COMMENT_MARKERS = /--|\/\*|\*\/|#/
+
+/**
+ * Statements that end or open a transaction, or commit implicitly on MySQL. Checked on every
+ * piece between semicolons, string literals included: a `;` inside a literal only adds pieces,
+ * so this can refuse more than needed, never less, whatever an engine's escaping rules.
+ */
+const TRANSACTION_CONTROL = /^(?:BEGIN|START|COMMIT|END|ROLLBACK|ABORT|SAVEPOINT|RELEASE|XA|SET|LOCK|UNLOCK|PREPARE|EXECUTE|DEALLOCATE|DO|CALL)\b/i
+
+function hasTransactionControl(sql: string): boolean {
+	return sql.split(';').some((piece) => TRANSACTION_CONTROL.test(piece.trimStart().replace(/^\(+\s*/, '')))
 }
 
 /**
@@ -154,13 +179,19 @@ export function remoteApprovalRefusal(proposal: Pick<SignedProposalFields, 'sql'
 		return `The SQL is longer than ${MAX_REMOTE_SQL_BYTES / 1024} KB. Approve it in the Dotaz window.`
 	}
 	if (hasDeceptiveCharacters(proposal.sql)) {
-		return 'The SQL contains invisible, bidirectional or control characters. Approve it in the Dotaz window.'
+		return 'The SQL contains invisible, bidirectional, control or bare carriage-return characters. Approve it in the Dotaz window.'
+	}
+	if (COMMENT_MARKERS.test(proposal.sql)) {
+		return 'The SQL contains comment syntax (--, /* */ or #), which some engines execute. Approve it in the Dotaz window.'
+	}
+	if (hasTransactionControl(proposal.sql)) {
+		return 'The SQL controls transactions or session state (BEGIN, COMMIT, SET, LOCK, CALL, …). Approve it in the Dotaz window.'
 	}
 	if (proposal.reason && hasDeceptiveCharacters(proposal.reason)) {
-		return 'The reason contains invisible, bidirectional or control characters. Approve it in the Dotaz window.'
+		return 'The reason contains invisible, bidirectional, control or bare carriage-return characters. Approve it in the Dotaz window.'
 	}
 	if (proposal.database && hasDeceptiveCharacters(proposal.database)) {
-		return 'The database name contains invisible, bidirectional or control characters. Approve it in the Dotaz window.'
+		return 'The database name contains invisible, bidirectional, control or bare carriage-return characters. Approve it in the Dotaz window.'
 	}
 	return null
 }

@@ -142,11 +142,14 @@ Remote approvals add these (see [Remote approvals](#remote-approvals)):
 
 | Method                      | Params                                                                                        | Returns                                      |
 | --------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| `approvers.request`         | `{ label, rpId, origin, credentialId, publicKey }`                                            | `{ requestId, fingerprint, expiresAt }`      |
+| `approvers.request`         | `{ label, rpId, origin, credentialId, publicKey, pairingCode }`                               | `{ requestId, fingerprint, expiresAt }`      |
 | `approvers.list`            | (none)                                                                                        | `RemoteApprover[]` (public data only)        |
 | `agent.approvals.challenge` | `{ proposalId, decision: 'approve' \| 'reject' }`                                             | `ApprovalChallenge`                          |
 | `agent.approvals.redeem`    | `{ proposalId, decision, nonce, credentialId, authenticatorData, clientDataJSON, signature }` | `Proposal` (settled)                         |
 | `approvers.pending`         | (none)                                                                                        | `ApproverRequest \| null`, **frontend only** |
+| `approvers.state`           | (none)                                                                                        | `ApproversState`, **frontend only**          |
+| `approvers.arm`             | (none)                                                                                        | `{ code, expiresAt }`, **frontend only**     |
+| `approvers.disarm`          | (none)                                                                                        | `void`, **frontend only**                    |
 | `approvers.confirm`         | `{ requestId, fingerprint }`                                                                  | `RemoteApprover`, **frontend only**          |
 | `approvers.decline`         | `{ requestId }`                                                                               | `void`, **frontend only**                    |
 | `approvers.remove`          | `{ id }`                                                                                      | `void`, **frontend only**                    |
@@ -291,10 +294,12 @@ surface is open to every such process. Remote approvals keep invariant 1 against
   assertion, made with user verification, by a key the user paired, over a challenge Dotaz
   recomputes from its own one-time nonce and its own stored proposal. The private key never
   leaves the authenticator, so nothing on this machine can produce that assertion.
-- **The CLI can ask to pair a key, never add one.** `approvers.request` only creates a request.
-  The app's window shows it with its label, origin, relying party and fingerprint; the user
-  compares the fingerprint with the one the requesting device shows and clicks Pair. Confirming,
-  declining and removing keys are frontend-only methods, absent from the CLI allowlist.
+- **Pairing starts in the window, and the CLI can never add a key.** The user chooses Pair a
+  device in Settings, which shows a one-time code; `approvers.request` is refused without it, so
+  a process that cannot see the screen cannot even ask. The request then appears in the window
+  with its label, origin, relying party and fingerprint; the user compares the fingerprint with
+  the one the device shows and clicks Pair. Opening pairing, confirming, declining and removing
+  keys are frontend-only methods, absent from the CLI allowlist.
 - **What is signed is what runs.** The signed bytes cover the SQL hash, the connection and the
   database. A page that showed different SQL produces a signature that does not verify, and the
   proposal's SQL is frozen when it is created.
@@ -302,9 +307,26 @@ surface is open to every such process. Remote approvals keep invariant 1 against
   `clientDataJSON`; Dotaz accepts only the origin the key was paired with, and the relying
   party hash in the authenticator data must match the paired RP id.
 
-Not covered: a process that edits Dotaz's app database or binary, or drives its window through
-accessibility APIs. Such a process could equally read the saved credentials and connect to the
-database directly; the gate cannot be stronger than the user account.
+Not covered, so not claimed:
+
+- **A process that can write Dotaz's files or run its code.** The paired keys live in the app
+  database, and the backend is JavaScript run by the stock `bun` binary. A process running as
+  the user can add a row to the database, patch the app, or run `bun` itself, and every
+  official `bun` binary shares one code-signing identity, so whatever Dotaz keeps in the
+  keychain through `Bun.secrets` (including the key that encrypts saved passwords) is readable
+  by any `bun` process without a prompt. Such a process can already decrypt the saved
+  connection passwords and write to the databases directly. Closing this needs a signed,
+  notarized app whose key list is guarded by a separately signed component; until then, keep
+  untrusted processes away from Dotaz's data folder and app bundle.
+- **A process that drives the window** through accessibility APIs: it can click Run on a
+  proposal, or Pair.
+- **The approving page.** The passkey prompt shows the relying party, not the SQL, so whoever
+  can change that page's code gets a signature over any proposal at the next Face ID. Serve it
+  as a static page with no third-party scripts and a strict Content Security Policy, and have it
+  compute the signed bytes from what it renders.
+- **Every device of the passkey's sync account.** The signature counter and backup flags are
+  not checked (synced passkeys report 0, and nonces are single use), so any device signed in to
+  the account that holds a synced passkey can approve with it.
 
 ### Approver keys
 
@@ -313,11 +335,11 @@ publicKey, fingerprint, addedAt }`. ES256 (ECDSA P-256) only; `publicKey` is the
 COSE_Key from the credential's attested data. `approvers.list` returns everything except the
 public key.
 
-Pairing request rules: one request at a time (a second one is refused, never replaces the first),
-expires after 5 minutes, and after a request is settled or expires the next one is refused for
-10 seconds, so a new request can never take the place of the one on screen as the user clicks.
-At most 5 requests per hour, at most 20 paired keys. The window's Pair button stays disabled for a
-moment after a request appears, and confirms only the request id and fingerprint it displayed.
+Pairing rules: the window's Pair a device shows a 6-digit code, good for 5 minutes and one
+request; 5 wrong codes withdraw it. `approvers.request` must carry it, as `pairingCode`. One
+request waits at a time (a second one is refused, never replaces the first) and expires after 5
+minutes. At most 20 paired keys. The window's Pair button stays disabled for a moment after a
+request appears, and confirms only the request id and fingerprint it displayed.
 
 `origin` must be an `https` origin whose host is `rpId` or a subdomain of it. `localhost`,
 `*.localhost` and IP addresses are refused as RP ids: any program on this machine can serve a page
@@ -352,8 +374,8 @@ interface ApprovalChallenge {
 ```
 
 A nonce is bound to one proposal and one decision, good for 2 minutes and for one redeem attempt,
-good or bad. At most 16 may be outstanding. Anyone may ask for one: a challenge by itself does
-nothing.
+good or bad. At most 4 may be outstanding per proposal, so flooding one proposal does not block
+another. Anyone may ask for one: a challenge by itself does nothing.
 
 The WebAuthn challenge is the 32-byte digest
 
@@ -392,12 +414,28 @@ message names the check). Pairing refusals carry `PAIRING_REFUSED`.
 
 ### Never approved remotely
 
-Approving is refused (at the challenge and again at redeem) when the SQL is over 64 KB of UTF-8,
-or the SQL, the reason or the database name contains bidirectional or invisible format characters
-(`\p{Cf}`), U+2028/U+2029, or C0/C1 control characters other than tab, line feed and carriage
-return; when the SQL contains its own transaction control (`BEGIN`, `COMMIT`, `ROLLBACK`, …);
-or when the connection is gone, not connected or marked read-only in Dotaz. Rejecting such a
-proposal remotely is allowed, and it can still be run from the app's window.
+Approving is refused (at the challenge and again at redeem) when:
+
+- the SQL is over 64 KB of UTF-8;
+- the SQL, the reason or the database name contains bidirectional or invisible format
+  characters (`\p{Cf}`), U+2028/U+2029, C0/C1 control characters other than tab, line feed and
+  carriage return, or a carriage return not followed by a line feed (engines end a `--` comment
+  there, a page may render it as nothing);
+- the SQL contains comment syntax anywhere, string literals included: `--`, `/*`, `*/` or `#`.
+  What reads as a comment can run: MySQL executes `/*! … */` and `/*+ … */`, and treats `--` as a
+  comment only before whitespace;
+- any piece of the SQL between semicolons, string literals included, starts with transaction or
+  session control (`BEGIN`, `START`, `COMMIT`, `END`, `ROLLBACK`, `ABORT`, `SAVEPOINT`,
+  `RELEASE`, `XA`, `SET`, `LOCK`, `UNLOCK`, `PREPARE`, `EXECUTE`, `DEALLOCATE`, `DO`, `CALL`).
+  Splitting on every semicolon can only add pieces, so this cannot miss a statement whatever an
+  engine's quoting and escaping rules;
+- the connection is gone, not connected or marked read-only in Dotaz.
+
+These rules over-refuse on purpose (a `#` inside a string literal is enough); a false match only
+means the proposal has to be approved in the window. `remoteApprovalRefusal()` in
+`shared/remote-approval.ts` is the reference, so a page can refuse the same proposals. Rejecting
+any proposal remotely is allowed. On MySQL, DDL in an approved proposal commits implicitly, so
+"one transaction" holds only for DML there.
 
 ### Who asked
 

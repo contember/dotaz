@@ -7,25 +7,39 @@ import { createStore, reconcile } from 'solid-js/store'
 import { friendlyErrorMessage, rpc } from '../lib/rpc'
 import { uiStore } from './ui'
 
-interface ApproversStoreState {
-	request: ApproverRequest | null
-	approvers: RemoteApprover[]
-}
-
-const [state, setState] = createStore<ApproversStoreState>({ request: null, approvers: [] })
+const [state, setState] = createStore<ApproversState>({ request: null, approvers: [], armed: null })
 
 function apply(next: ApproversState) {
 	setState('request', next.request)
+	setState('armed', next.armed)
 	setState('approvers', reconcile(next.approvers))
 }
 
 /** Load the current state once the transport is up. Desktop only: other modes have no CLI. */
 async function load() {
 	try {
-		const [request, approvers] = await Promise.all([rpc.approvers.pending(), rpc.approvers.list()])
-		apply({ request, approvers })
+		apply(await rpc.approvers.state())
 	} catch (err) {
 		console.debug('Remote approvals unavailable:', err)
+	}
+}
+
+/** "Pair a device": show a one-time code the device must send with its request. */
+async function openPairing() {
+	try {
+		await rpc.approvers.arm()
+	} catch (err) {
+		uiStore.addToast('error', friendlyErrorMessage(err))
+	} finally {
+		await load()
+	}
+}
+
+async function cancelPairing() {
+	try {
+		await rpc.approvers.disarm()
+	} finally {
+		await load()
 	}
 }
 
@@ -73,8 +87,13 @@ export const approversStore = {
 	get approvers() {
 		return state.approvers
 	},
+	get armed() {
+		return state.armed
+	},
 	apply,
 	load,
+	openPairing,
+	cancelPairing,
 	confirm,
 	decline,
 	remove,

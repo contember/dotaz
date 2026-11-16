@@ -5,9 +5,9 @@ import { ConnectionManager } from '@dotaz/backend-shared/services/connection-man
 import { ProposalStore } from '@dotaz/backend-shared/services/proposal-store'
 import {
 	CHALLENGE_TTL_MS,
-	MAX_OUTSTANDING_CHALLENGES,
-	MAX_PAIRING_REQUESTS_PER_HOUR,
-	PAIRING_COOLDOWN_MS,
+	MAX_CHALLENGES_PER_PROPOSAL,
+	PAIRING_CODE_ATTEMPTS,
+	PAIRING_CODE_TTL_MS,
 	PAIRING_TTL_MS,
 	RemoteApprovals,
 } from '@dotaz/backend-shared/services/remote-approvals'
@@ -69,9 +69,18 @@ async function names(ctx: Ctx): Promise<string[]> {
 	return results[0].rows.map((row) => String(row.name))
 }
 
-/** Pair a key the way it is meant to happen: the CLI asks, the user confirms in the window. */
+/** The user clicks "Pair a device" in the window, which shows a one-time code. */
+function openPairing(ctx: Ctx): string {
+	return ctx.handlers['approvers.arm']().code
+}
+
+/**
+ * Pair a key the way it is meant to happen: the user opens pairing in the window, the device
+ * sends the code with its request, the user confirms the fingerprint in the window.
+ */
 async function pair(ctx: Ctx, passkey: TestPasskey, label = 'Phone') {
-	const { requestId, fingerprint } = await ctx.cli('approvers.request', passkey.pairingParams(label))
+	const code = openPairing(ctx)
+	const { requestId, fingerprint } = await ctx.cli('approvers.request', passkey.pairingParams(label, code))
 	return ctx.handlers['approvers.confirm']({ requestId, fingerprint })
 }
 
@@ -115,8 +124,39 @@ describe('Remote approvals (handlers, SQLite)', () => {
 
 	// ── Pairing ─────────────────────────────────────────
 
-	test('a pairing request from the CLI adds nothing until the user confirms it in the window', async () => {
-		const request = await ctx.cli('approvers.request', passkey.pairingParams('Phone'))
+	test('without "Pair a device" in the window, the CLI cannot even ask to pair', async () => {
+		await expect(ctx.cli('approvers.request', passkey.pairingParams('Phone'))).rejects.toThrow(/not open/)
+		expect(ctx.handlers['approvers.pending']()).toBeNull()
+	})
+
+	test('a wrong code is refused, and too many wrong codes close pairing', async () => {
+		const code = openPairing(ctx)
+		const wrong = code === '000000' ? '000001' : '000000'
+		for (let i = 0; i < PAIRING_CODE_ATTEMPTS - 1; i++) {
+			await expect(ctx.cli('approvers.request', passkey.pairingParams('Phone', wrong))).rejects.toThrow(/Wrong pairing code\./)
+		}
+		await expect(ctx.cli('approvers.request', passkey.pairingParams('Phone', wrong))).rejects.toThrow(/too many/)
+		// Even the right code no longer works: the user has to show a new one.
+		await expect(ctx.cli('approvers.request', passkey.pairingParams('Phone', code))).rejects.toThrow(/not open/)
+	})
+
+	test('a code is good for one request only', async () => {
+		const code = openPairing(ctx)
+		const { requestId } = await ctx.cli('approvers.request', passkey.pairingParams('Phone', code))
+		ctx.handlers['approvers.decline']({ requestId })
+		await expect(ctx.cli('approvers.request', new TestPasskey().pairingParams('Phone', code))).rejects.toThrow(/not open/)
+	})
+
+	test('the pairing code reaches the window, never the CLI', async () => {
+		const code = openPairing(ctx)
+		expect(ctx.handlers['approvers.state']().armed?.code).toBe(code)
+		const pushed = ctx.emitted.filter((m) => m.channel === 'approvers.changed').map((m) => m.payload as ApproversState)
+		expect(pushed.at(-1)?.armed?.code).toBe(code)
+		expect(JSON.stringify(await ctx.cli('approvers.list'))).not.toContain(code)
+	})
+
+	test('a pairing request adds nothing until the user confirms it in the window', async () => {
+		const request = await ctx.cli('approvers.request', passkey.pairingParams('Phone', openPairing(ctx)))
 		expect(request.fingerprint).toMatch(/^[A-Z2-7]{16}$/)
 		expect(await ctx.cli('approvers.list')).toEqual([])
 
@@ -132,33 +172,44 @@ describe('Remote approvals (handlers, SQLite)', () => {
 		expect(listed[0]).not.toHaveProperty('publicKey')
 	})
 
-	test('the CLI cannot confirm, decline or remove keys, see the pending request, or resolve proposals', () => {
-		for (const method of ['approvers.confirm', 'approvers.decline', 'approvers.remove', 'approvers.pending', 'agent.proposals.resolve']) {
-			expect(ctx.lookup(method)).toBeUndefined()
-		}
+	test('the CLI cannot open pairing, see its code, confirm, decline or remove keys, or resolve proposals', () => {
+		const windowOnly = [
+			'approvers.arm',
+			'approvers.disarm',
+			'approvers.state',
+			'approvers.confirm',
+			'approvers.decline',
+			'approvers.remove',
+			'approvers.pending',
+			'agent.proposals.resolve',
+		]
+		for (const method of windowOnly) expect(ctx.lookup(method)).toBeUndefined()
 	})
 
 	test('confirming needs the fingerprint the window showed', async () => {
-		const { requestId } = await ctx.cli('approvers.request', passkey.pairingParams())
+		const { requestId } = await ctx.cli('approvers.request', passkey.pairingParams('Phone', openPairing(ctx)))
 		expect(() => ctx.handlers['approvers.confirm']({ requestId, fingerprint: 'AAAAAAAAAAAAAAAA' })).toThrow(/no longer waiting/)
 		expect(await ctx.cli('approvers.list')).toEqual([])
 	})
 
 	test('a declined request is gone and adds nothing', async () => {
-		const { requestId, fingerprint } = await ctx.cli('approvers.request', passkey.pairingParams())
+		const { requestId, fingerprint } = await ctx.cli('approvers.request', passkey.pairingParams('Phone', openPairing(ctx)))
 		ctx.handlers['approvers.decline']({ requestId })
 		expect(ctx.handlers['approvers.pending']()).toBeNull()
 		expect(() => ctx.handlers['approvers.confirm']({ requestId, fingerprint })).toThrow(/no longer waiting/)
 	})
 
 	test('only one pairing request at a time, and a second one never replaces the first', async () => {
-		const first = await ctx.cli('approvers.request', passkey.pairingParams('Mine'))
-		await expect(ctx.cli('approvers.request', new TestPasskey().pairingParams('Mine'))).rejects.toMatchObject({ code: 'PAIRING_REFUSED' })
+		const first = await ctx.cli('approvers.request', passkey.pairingParams('Mine', openPairing(ctx)))
+		const second = new TestPasskey().pairingParams('Mine', openPairing(ctx))
+		await expect(ctx.cli('approvers.request', second)).rejects.toThrow(/already waiting/)
 		expect(ctx.handlers['approvers.pending']()?.fingerprint).toBe(first.fingerprint)
 	})
 
 	test('pairing refuses keys and origins that could not be verified safely', async () => {
-		const base = passkey.pairingParams()
+		// Invalid requests are refused before the code is checked, so one code serves the whole loop.
+		const code = openPairing(ctx)
+		const base = passkey.pairingParams('Phone', code)
 		const bad: Array<Record<string, string>> = [
 			{ ...base, origin: 'http://approve.example.com' },
 			{ ...base, origin: 'https://evil.example.org' },
@@ -181,7 +232,9 @@ describe('Remote approvals (handlers, SQLite)', () => {
 			['127.0.0.1', 'https://127.0.0.1'],
 		]
 		for (const [rpId, origin] of local) {
-			await expect(ctx.cli('approvers.request', new TestPasskey(rpId, origin).pairingParams())).rejects.toMatchObject({ code: 'PAIRING_REFUSED' })
+			await expect(ctx.cli('approvers.request', new TestPasskey(rpId, origin).pairingParams('Phone', code))).rejects.toMatchObject({
+				code: 'PAIRING_REFUSED',
+			})
 		}
 		expect(ctx.handlers['approvers.pending']()).toBeNull()
 	})
@@ -413,7 +466,8 @@ describe('Remote approvals (handlers, SQLite)', () => {
 			// Untyped wire payloads.
 			const call = (method: string, params?: unknown) => client.call(method, params) as Promise<any>
 
-			const request = await call('approvers.request', passkey.pairingParams('Laptop'))
+			await expect(call('approvers.arm')).rejects.toThrow(/Unknown method/)
+			const request = await call('approvers.request', passkey.pairingParams('Laptop', openPairing(ctx)))
 			await expect(call('approvers.confirm', { requestId: request.requestId, fingerprint: request.fingerprint })).rejects.toThrow(/Unknown method/)
 			expect(await call('approvers.list')).toEqual([])
 			ctx.handlers['approvers.confirm']({ requestId: request.requestId, fingerprint: request.fingerprint })
@@ -475,8 +529,10 @@ function service(opts: { execute?: (p: Proposal) => Promise<{ affectedRows: numb
 		now: () => clock.now,
 	})
 	const passkey = new TestPasskey()
+	/** A request carrying a fresh code from the window. */
+	const request = (key: TestPasskey) => approvals.requestApprover(key.pairingParams('Phone', approvals.armPairing().code))
 	const pairKey = async () => {
-		const { requestId, fingerprint } = await approvals.requestApprover(passkey.pairingParams())
+		const { requestId, fingerprint } = await request(passkey)
 		approvals.confirmRequest(requestId, fingerprint)
 	}
 	const newProposal = () => proposals.create({ connectionId: 'c1', connectionName: 'main', sql: 'DELETE FROM t' })
@@ -485,7 +541,7 @@ function service(opts: { execute?: (p: Proposal) => Promise<{ affectedRows: numb
 		const bytes = await approvalChallengeBytes(challenge.nonce, decision, challenge.proposal)
 		return { proposalId, decision, nonce: challenge.nonce, ...passkey.assert(bytes) }
 	}
-	return { approvals, clock, proposals, storage, passkey, pairKey, newProposal, signed, runs: () => runs }
+	return { approvals, clock, proposals, storage, passkey, request, pairKey, newProposal, signed, runs: () => runs }
 }
 
 describe('Remote approvals (service)', () => {
@@ -499,58 +555,51 @@ describe('Remote approvals (service)', () => {
 		expect(s.runs()).toBe(0)
 	})
 
-	test(`at most ${MAX_OUTSTANDING_CHALLENGES} challenges are outstanding`, async () => {
+	test(`at most ${MAX_CHALLENGES_PER_PROPOSAL} outstanding challenges per proposal, so flooding one blocks no other`, async () => {
 		const s = service()
 		await s.pairKey()
-		const proposal = s.newProposal()
-		for (let i = 0; i < MAX_OUTSTANDING_CHALLENGES; i++) await s.approvals.challenge({ proposalId: proposal.id, decision: 'approve' })
-		await expect(s.approvals.challenge({ proposalId: proposal.id, decision: 'approve' })).rejects.toThrow(/Too many/)
+		const flooded = s.newProposal()
+		const other = s.newProposal()
+		for (let i = 0; i < MAX_CHALLENGES_PER_PROPOSAL; i++) await s.approvals.challenge({ proposalId: flooded.id, decision: 'approve' })
+		await expect(s.approvals.challenge({ proposalId: flooded.id, decision: 'reject' })).rejects.toThrow(/Too many/)
+		await expect(s.approvals.challenge({ proposalId: other.id, decision: 'approve' })).resolves.toHaveProperty('nonce')
 		s.clock.now += CHALLENGE_TTL_MS
-		await expect(s.approvals.challenge({ proposalId: proposal.id, decision: 'approve' })).resolves.toHaveProperty('nonce')
+		await expect(s.approvals.challenge({ proposalId: flooded.id, decision: 'approve' })).resolves.toHaveProperty('nonce')
 	})
 
 	test('a pairing request expires after five minutes', async () => {
 		const s = service()
-		const passkey = new TestPasskey()
-		const { requestId, fingerprint } = await s.approvals.requestApprover(passkey.pairingParams())
+		const { requestId, fingerprint } = await s.request(new TestPasskey())
 		s.clock.now += PAIRING_TTL_MS
 		expect(s.approvals.pendingRequest()).toBeNull()
 		expect(() => s.approvals.confirmRequest(requestId, fingerprint)).toThrow(/no longer waiting/)
 		s.approvals.dispose()
 	})
 
-	test('a new pairing request cannot take the place of a settled or expired one right away', async () => {
+	test('a pairing code expires after five minutes, and Cancel withdraws it', async () => {
 		const s = service()
-		const first = await s.approvals.requestApprover(new TestPasskey().pairingParams())
-		s.approvals.declineRequest(first.requestId)
-		await expect(s.approvals.requestApprover(new TestPasskey().pairingParams())).rejects.toThrow(/just settled/)
+		const { code } = s.approvals.armPairing()
+		s.clock.now += PAIRING_CODE_TTL_MS
+		await expect(s.approvals.requestApprover(new TestPasskey().pairingParams('Phone', code))).rejects.toThrow(/not open/)
+		expect(s.approvals.state().armed).toBeNull()
 
-		s.clock.now += PAIRING_COOLDOWN_MS
-		await s.approvals.requestApprover(new TestPasskey().pairingParams())
-		s.clock.now += PAIRING_TTL_MS
-		expect(s.approvals.pendingRequest()).toBeNull()
-		await expect(s.approvals.requestApprover(new TestPasskey().pairingParams())).rejects.toThrow(/just settled/)
-		s.approvals.dispose()
+		const second = s.approvals.armPairing()
+		s.approvals.disarmPairing()
+		await expect(s.approvals.requestApprover(new TestPasskey().pairingParams('Phone', second.code))).rejects.toThrow(/not open/)
+	})
+
+	test('pairing codes are six digits and not repeated', () => {
+		const s = service()
+		const codes = new Set<string>()
+		for (let i = 0; i < 50; i++) codes.add(s.approvals.armPairing().code)
+		for (const code of codes) expect(code).toMatch(/^[0-9]{6}$/)
+		expect(codes.size).toBeGreaterThan(45)
 	})
 
 	test('an already paired key cannot be paired again', async () => {
 		const s = service()
 		await s.pairKey()
-		s.clock.now += PAIRING_COOLDOWN_MS
-		await expect(s.approvals.requestApprover(s.passkey.pairingParams())).rejects.toThrow(/already paired/)
-	})
-
-	test(`at most ${MAX_PAIRING_REQUESTS_PER_HOUR} pairing requests per hour`, async () => {
-		const s = service()
-		for (let i = 0; i < MAX_PAIRING_REQUESTS_PER_HOUR; i++) {
-			const { requestId } = await s.approvals.requestApprover(new TestPasskey().pairingParams())
-			s.approvals.declineRequest(requestId)
-			s.clock.now += PAIRING_COOLDOWN_MS
-		}
-		await expect(s.approvals.requestApprover(new TestPasskey().pairingParams())).rejects.toThrow(/per hour/)
-		s.clock.now += 60 * 60 * 1000
-		await expect(s.approvals.requestApprover(new TestPasskey().pairingParams())).resolves.toHaveProperty('requestId')
-		s.approvals.dispose()
+		await expect(s.request(s.passkey)).rejects.toThrow(/already paired/)
 	})
 
 	test('two valid approvals racing for one proposal run it once', async () => {
@@ -593,7 +642,8 @@ describe('Remote approvals (service)', () => {
 
 	test('a key with another algorithm cannot even ask to be paired', async () => {
 		const s = service()
-		await expect(s.approvals.requestApprover({ ...new TestPasskey().pairingParams(), publicKey: 'pAEDAzkBACBZAQA' })).rejects.toThrow(/Invalid key/)
+		const params = { ...new TestPasskey().pairingParams('Phone', s.approvals.armPairing().code), publicKey: 'pAEDAzkBACBZAQA' }
+		await expect(s.approvals.requestApprover(params)).rejects.toThrow(/Invalid key/)
 		expect(s.storage.approvers).toHaveLength(0)
 	})
 })
