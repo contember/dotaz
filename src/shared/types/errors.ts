@@ -25,6 +25,10 @@ export type DatabaseErrorCode =
 	| 'STATEMENT_UNCERTAIN'
 	| 'QUERY_CANCELED'
 	| 'READ_ONLY_SESSION'
+	// Remote approvals (docs/agent-cli.md)
+	| 'APPROVAL_UNAVAILABLE'
+	| 'APPROVAL_REFUSED'
+	| 'PAIRING_REFUSED'
 	| 'UNKNOWN'
 
 /** Base domain error with a typed code for programmatic handling */
@@ -141,6 +145,11 @@ export function friendlyMessageForCode(code: DatabaseErrorCode, rawMessage: stri
 			return 'Query cancelled — it hit the statement timeout or was cancelled explicitly'
 		case 'READ_ONLY_SESSION':
 			return 'This session is read-only — writes must be proposed for approval'
+		case 'APPROVAL_UNAVAILABLE':
+		case 'APPROVAL_REFUSED':
+		case 'PAIRING_REFUSED':
+			// The message already says exactly which check refused.
+			return rawMessage
 		case 'UNKNOWN':
 			return rawMessage || 'An unexpected error occurred'
 	}

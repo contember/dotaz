@@ -118,7 +118,7 @@ interface RunningQuery {
 	poolQueryKey?: symbol
 }
 
-function isTopLevelTransactionControl(statement: string): boolean {
+export function isTopLevelTransactionControl(statement: string): boolean {
 	const normalized = stripLiteralsAndComments(statement).replace(/\s+/g, ' ').trim().toUpperCase()
 
 	// ABORT is Postgres' synonym for ROLLBACK and poisons the pool the same way.

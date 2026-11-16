@@ -61,8 +61,16 @@ export function decideProposalMessage(entry: { phase: ProposalPhase } | undefine
 			// Already terminal — never overwrite an outcome this window produced.
 			return { kind: 'ignore' }
 		case 'pending':
-			return { kind: 'invalidate', reason: invalidationReason(proposal.status) }
+			return { kind: 'invalidate', reason: remoteDecisionReason(proposal) ?? invalidationReason(proposal.status) }
 	}
+}
+
+/** Banner copy for a proposal decided with a paired key from another device, or null. */
+export function remoteDecisionReason(proposal: Proposal): string | null {
+	if (proposal.resolvedVia !== 'remote') return null
+	const key = proposal.approver ? `"${proposal.approver}"` : 'a paired key'
+	if (proposal.status === 'rejected') return `Rejected remotely with ${key}. Nothing was run.`
+	return `Approved remotely with ${key}. Dotaz runs it outside this tab; the outcome is in Query History.`
 }
 
 /** The backend refuses to touch a proposal that already left `pending` — expected, not a failure. */

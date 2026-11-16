@@ -161,6 +161,24 @@ const migrations: Migration[] = [
 			db.run('ALTER TABLE connections_new RENAME TO connections')
 		},
 	},
+	{
+		version: 10,
+		description: 'Create remote_approvers table (passkeys allowed to approve agent proposals)',
+		up: (db) => {
+			db.run(`
+				CREATE TABLE remote_approvers (
+					id TEXT PRIMARY KEY,
+					label TEXT NOT NULL,
+					rp_id TEXT NOT NULL,
+					origin TEXT NOT NULL,
+					credential_id TEXT NOT NULL UNIQUE,
+					public_key TEXT NOT NULL,
+					fingerprint TEXT NOT NULL,
+					added_at INTEGER NOT NULL
+				)
+			`)
+		},
+	},
 ]
 
 /**

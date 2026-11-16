@@ -639,7 +639,8 @@ export class DemoAdapter implements RpcAdapter {
 	}
 
 	proposeWrite(params: ProposeWriteParams): Proposal {
-		const proposal = this.proposals.create(params)
+		const connectionName = this.listConnections().find((c) => c.id === params.connectionId)?.name ?? params.connectionId
+		const proposal = this.proposals.create({ ...params, connectionName })
 		this.emitMessage('cli.proposal', proposal)
 		return proposal
 	}

@@ -1,3 +1,4 @@
+import { isSafeLabel, MAX_REQUESTED_BY_LENGTH } from '@dotaz/shared/remote-approval'
 import { isWhereFragment } from '@dotaz/shared/sql/single-statement'
 import type { ConnectionConfig, ConnectionType } from '@dotaz/shared/types/connection'
 import { DatabaseError } from '@dotaz/shared/types/errors'
@@ -8,6 +9,9 @@ import type {
 	AgentSchemaParams,
 	AgentSearchParams,
 	AiGenerateSqlParams,
+	ApprovalChallengeParams,
+	ApprovalRedeemParams,
+	ApproverRequestParams,
 	HistoryListParams,
 	OpenDialogParams,
 	ProposalListParams,
@@ -83,6 +87,26 @@ async function withAgentReadOnlySession<T>(
 	} finally {
 		await destroyAgentSession(adapter, session.sessionId)
 	}
+}
+
+/** The adapter, if this mode supports remote approvals (demo mode has no CLI and no keys). */
+function remote(adapter: RpcAdapter): Required<
+	Pick<
+		RpcAdapter,
+		| 'requestApprover'
+		| 'listApprovers'
+		| 'getApproverRequest'
+		| 'confirmApproverRequest'
+		| 'declineApproverRequest'
+		| 'removeApprover'
+		| 'approvalChallenge'
+		| 'redeemApproval'
+	>
+> {
+	if (!adapter.redeemApproval || !adapter.listApprovers) {
+		throw new DatabaseError('APPROVAL_UNAVAILABLE', 'Remote approvals are not available in this mode')
+	}
+	return adapter as never
 }
 
 function clampProposalWait(timeoutMs?: number): number {
@@ -461,16 +485,21 @@ export function createHandlers(adapter: RpcAdapter) {
 				return adapter.searchDatabase({ ...params, sessionId })
 			})
 		},
-		'agent.proposeWrite': ({ connectionId, database, sql, reason }: ProposeWriteParams) => {
+		'agent.proposeWrite': ({ connectionId, database, sql, reason, requestedBy }: ProposeWriteParams) => {
 			requireKnownConnection(adapter, connectionId)
 			if (!sql?.trim()) {
 				throw new Error('sql is required')
+			}
+			const by = requestedBy?.trim() || undefined
+			if (by !== undefined && !isSafeLabel(by, MAX_REQUESTED_BY_LENGTH)) {
+				throw new Error(`requestedBy must be at most ${MAX_REQUESTED_BY_LENGTH} printable characters on one line`)
 			}
 			const proposal = adapter.proposeWrite({
 				connectionId,
 				database,
 				sql: sql.trim(),
 				reason: reason?.trim() || undefined,
+				requestedBy: by,
 			})
 			return { proposalId: proposal.id }
 		},
@@ -508,6 +537,42 @@ export function createHandlers(adapter: RpcAdapter) {
 				throw new Error('status is required')
 			}
 			return adapter.resolveProposal({ proposalId, status, result, error })
+		},
+
+		// ── Remote approvals (docs/agent-cli.md) ──────────
+		// On the CLI surface: asking to pair, listing keys, challenges and signed decisions.
+		// A signed decision is verified against a key the user paired; the caller proves nothing.
+		'approvers.request': (params: ApproverRequestParams) => {
+			return remote(adapter).requestApprover(params)
+		},
+		'approvers.list': () => {
+			return remote(adapter).listApprovers()
+		},
+		'agent.approvals.challenge': ({ proposalId, decision }: ApprovalChallengeParams) => {
+			if (!proposalId) throw new Error('proposalId is required')
+			if (decision !== 'approve' && decision !== 'reject') throw new Error('decision must be approve or reject')
+			return remote(adapter).approvalChallenge({ proposalId, decision })
+		},
+		'agent.approvals.redeem': (params: ApprovalRedeemParams) => {
+			if (!params.proposalId) throw new Error('proposalId is required')
+			if (params.decision !== 'approve' && params.decision !== 'reject') throw new Error('decision must be approve or reject')
+			return remote(adapter).redeemApproval(params)
+		},
+		// Frontend only: what the user sees and decides in the app's own window.
+		'approvers.pending': () => {
+			return remote(adapter).getApproverRequest()
+		},
+		'approvers.confirm': ({ requestId, fingerprint }: { requestId: string; fingerprint: string }) => {
+			if (!requestId || !fingerprint) throw new Error('requestId and fingerprint are required')
+			return remote(adapter).confirmApproverRequest(requestId, fingerprint)
+		},
+		'approvers.decline': ({ requestId }: { requestId: string }) => {
+			if (!requestId) throw new Error('requestId is required')
+			remote(adapter).declineApproverRequest(requestId)
+		},
+		'approvers.remove': ({ id }: { id: string }) => {
+			if (!id) throw new Error('id is required')
+			remote(adapter).removeApprover(id)
 		},
 
 		// ── UI control ────────────────────────────────────

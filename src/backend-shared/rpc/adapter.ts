@@ -7,6 +7,12 @@ import type {
 	AgentHelloResult,
 	AiGenerateSqlParams,
 	AiGenerateSqlResult,
+	ApprovalChallenge,
+	ApprovalChallengeParams,
+	ApprovalRedeemParams,
+	ApproverRequest,
+	ApproverRequestParams,
+	ApproverRequestResult,
 	ConnectionHandleInfo,
 	HistoryListParams,
 	OpenDialogParams,
@@ -15,6 +21,7 @@ import type {
 	ProposalResolveParams,
 	ProposeWriteParams,
 	QueryBookmark,
+	RemoteApprover,
 	SaveDialogParams,
 	SavedView,
 	SavedViewConfig,
@@ -174,6 +181,16 @@ export interface RpcAdapter {
 	waitForProposal(proposalId: string, timeoutMs: number): Promise<Proposal>
 	cancelProposal(proposalId: string): Proposal
 	resolveProposal(params: ProposalResolveParams): Proposal
+
+	// ── Remote approvals (optional, absent in demo mode) ──
+	requestApprover?(params: ApproverRequestParams): Promise<ApproverRequestResult>
+	listApprovers?(): RemoteApprover[]
+	getApproverRequest?(): ApproverRequest | null
+	confirmApproverRequest?(requestId: string, fingerprint: string): RemoteApprover
+	declineApproverRequest?(requestId: string): void
+	removeApprover?(id: string): void
+	approvalChallenge?(params: ApprovalChallengeParams): Promise<ApprovalChallenge>
+	redeemApproval?(params: ApprovalRedeemParams): Promise<Proposal>
 
 	// ── UI control ────────────────────────────────────────
 	getUiSnapshot(): UiSnapshot

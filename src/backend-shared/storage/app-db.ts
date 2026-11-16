@@ -1,7 +1,7 @@
 import type { ConnectionConfig, ConnectionInfo } from '@dotaz/shared/types/connection'
 import { isServerConfig } from '@dotaz/shared/types/connection'
 import type { QueryHistoryEntry, QueryHistoryStatus } from '@dotaz/shared/types/query'
-import type { HistoryListParams, QueryBookmark, SavedView, SavedViewConfig } from '@dotaz/shared/types/rpc'
+import type { HistoryListParams, QueryBookmark, RemoteApprover, SavedView, SavedViewConfig } from '@dotaz/shared/types/rpc'
 import Database from 'bun:sqlite'
 import { encryptLocalPassword, isEncryptedPassword, tryDecryptLocalPassword } from '../services/encryption'
 import { runMigrations } from './migrations'
@@ -532,6 +532,63 @@ export class AppDatabase {
 	loadWorkspace(): string | null {
 		const row = this.db.prepare("SELECT data FROM workspace WHERE id = 'default'").get() as { data: string } | null
 		return row?.data ?? null
+	}
+
+	// ── Remote approvers ─────────────────────────────────────
+	// Written only from the app's own window (docs/agent-cli.md, "Remote approvals").
+
+	listRemoteApprovers(): StoredApprover[] {
+		const rows = this.db.prepare('SELECT * FROM remote_approvers ORDER BY added_at, id').all() as ApproverRow[]
+		return rows.map(rowToApprover)
+	}
+
+	addRemoteApprover(approver: StoredApprover): void {
+		this.db.prepare(
+			'INSERT INTO remote_approvers (id, label, rp_id, origin, credential_id, public_key, fingerprint, added_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+		).run(
+			approver.id,
+			approver.label,
+			approver.rpId,
+			approver.origin,
+			approver.credentialId,
+			approver.publicKey,
+			approver.fingerprint,
+			approver.addedAt,
+		)
+	}
+
+	removeRemoteApprover(id: string): boolean {
+		return this.db.prepare('DELETE FROM remote_approvers WHERE id = ?').run(id).changes > 0
+	}
+}
+
+/** A paired approver key, including the public key the verifier needs. */
+export interface StoredApprover extends RemoteApprover {
+	/** base64url COSE_Key */
+	publicKey: string
+}
+
+interface ApproverRow {
+	id: string
+	label: string
+	rp_id: string
+	origin: string
+	credential_id: string
+	public_key: string
+	fingerprint: string
+	added_at: number
+}
+
+function rowToApprover(row: ApproverRow): StoredApprover {
+	return {
+		id: row.id,
+		label: row.label,
+		rpId: row.rp_id,
+		origin: row.origin,
+		credentialId: row.credential_id,
+		publicKey: row.public_key,
+		fingerprint: row.fingerprint,
+		addedAt: row.added_at,
 	}
 }
 

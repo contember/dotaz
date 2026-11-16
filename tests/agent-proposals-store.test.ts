@@ -11,7 +11,7 @@ import type { Proposal, ProposalStatus } from '@dotaz/shared/types/rpc'
 import { describe, expect, test } from 'bun:test'
 
 function proposal(status: ProposalStatus): Proposal {
-	return { id: 'p1', connectionId: 'c1', sql: 'delete from users', status, createdAt: 1717430000000 }
+	return { id: 'p1', connectionId: 'c1', connectionName: 'main', sql: 'delete from users', status, createdAt: 1717430000000 }
 }
 
 function entry(phase: ProposalPhase): { phase: ProposalPhase } {
@@ -48,6 +48,13 @@ describe('decideProposalMessage', () => {
 		const action = decideProposalMessage(entry('pending'), proposal('executed'))
 		expect(action.kind).toBe('invalidate')
 		expect(action.kind === 'invalidate' && action.reason).toContain('another window')
+	})
+
+	test('says so when a paired key approved or rejected it remotely', () => {
+		const approved = decideProposalMessage(entry('pending'), { ...proposal('approved'), resolvedVia: 'remote', approver: 'Phone' })
+		expect(approved.kind === 'invalidate' && approved.reason).toContain('Approved remotely with "Phone"')
+		const rejected = decideProposalMessage(entry('pending'), { ...proposal('rejected'), resolvedVia: 'remote', approver: 'Phone' })
+		expect(rejected.kind === 'invalidate' && rejected.reason).toContain('Rejected remotely')
 	})
 
 	test('leaves the decision to the in-flight claim while checking', () => {

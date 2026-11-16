@@ -1,4 +1,5 @@
 import { statementRowCount } from '@dotaz/shared/query-result'
+import { splitStatements } from '@dotaz/shared/sql/statements'
 import type { ConnectionConfig, ConnectionInfo, ConnectionSecrets } from '@dotaz/shared/types/connection'
 import { mergeSecrets } from '@dotaz/shared/types/connection'
 import type { DatabaseInfo } from '@dotaz/shared/types/database'
@@ -27,6 +28,15 @@ import type {
 	UiCommandPayload,
 	UiSnapshot,
 } from '@dotaz/shared/types/rpc'
+import type {
+	ApprovalChallenge,
+	ApprovalChallengeParams,
+	ApprovalRedeemParams,
+	ApproverRequest,
+	ApproverRequestParams,
+	ApproverRequestResult,
+	RemoteApprover,
+} from '@dotaz/shared/types/rpc'
 import { settingsToAiConfig } from '@dotaz/shared/types/settings'
 import type { DatabaseDriver } from '../db/driver'
 import { withEphemeralSession } from '../db/ephemeral-session'
@@ -36,8 +46,9 @@ import type { EncryptionService } from '../services/encryption'
 import { buildExportSelectQuery, exportPreview, exportToFile } from '../services/export-service'
 import { importFromStream, importPreviewFromStream } from '../services/import-service'
 import { ProposalStore } from '../services/proposal-store'
-import { assertSessionWritable } from '../services/query-executor'
+import { assertSessionWritable, isTopLevelTransactionControl } from '../services/query-executor'
 import type { QueryExecutor } from '../services/query-executor'
+import { RemoteApprovals } from '../services/remote-approvals'
 import { searchDatabase } from '../services/search-service'
 import type { SessionManager } from '../services/session-manager'
 import { formatSql } from '../services/sql-formatter'
@@ -75,6 +86,7 @@ export class BackendAdapter implements RpcAdapter {
 	private mode: 'desktop' | 'web' | 'demo'
 	private proposals = new ProposalStore()
 	private unsubscribeProposals: () => void
+	private remoteApprovals: RemoteApprovals
 	/** Last snapshot published by the frontend — absent until the UI reports in. */
 	private uiSnapshot: UiSnapshot | null = null
 
@@ -98,6 +110,13 @@ export class BackendAdapter implements RpcAdapter {
 		// or expired elsewhere must stop being actionable.
 		this.unsubscribeProposals = this.proposals.onChange((proposal) => {
 			this.emitMessage?.('cli.proposal', proposal)
+		})
+		this.remoteApprovals = new RemoteApprovals({
+			storage: appDb,
+			proposals: this.proposals,
+			connectionBlock: (proposal) => this.remoteRunBlock(proposal),
+			execute: (proposal) => this.runApprovedProposal(proposal),
+			onChange: (state) => this.emitMessage?.('approvers.changed', state),
 		})
 	}
 
@@ -829,7 +848,10 @@ export class BackendAdapter implements RpcAdapter {
 	}
 
 	proposeWrite(params: ProposeWriteParams): Proposal {
-		return this.proposals.create(params)
+		const connection = this.cm.listConnections().find((c) => c.id === params.connectionId)
+		if (!connection) throw new Error(`Unknown connection: ${params.connectionId}`)
+		// Frozen with the proposal: a remote approver signs over the name it was shown.
+		return this.proposals.create({ ...params, connectionName: connection.name })
 	}
 
 	listProposals(filter?: ProposalListParams): Proposal[] {
@@ -850,6 +872,116 @@ export class BackendAdapter implements RpcAdapter {
 
 	resolveProposal(params: ProposalResolveParams): Proposal {
 		return this.proposals.resolve(params)
+	}
+
+	// ── Remote approvals ──────────────────────────────────
+
+	requestApprover(params: ApproverRequestParams): Promise<ApproverRequestResult> {
+		return this.remoteApprovals.requestApprover(params)
+	}
+
+	listApprovers(): RemoteApprover[] {
+		return this.remoteApprovals.listApprovers()
+	}
+
+	getApproverRequest(): ApproverRequest | null {
+		return this.remoteApprovals.pendingRequest()
+	}
+
+	confirmApproverRequest(requestId: string, fingerprint: string): RemoteApprover {
+		return this.remoteApprovals.confirmRequest(requestId, fingerprint)
+	}
+
+	declineApproverRequest(requestId: string): void {
+		this.remoteApprovals.declineRequest(requestId)
+	}
+
+	removeApprover(id: string): void {
+		this.remoteApprovals.removeApprover(id)
+	}
+
+	approvalChallenge(params: ApprovalChallengeParams): Promise<ApprovalChallenge> {
+		return this.remoteApprovals.challenge(params)
+	}
+
+	redeemApproval(params: ApprovalRedeemParams): Promise<Proposal> {
+		return this.remoteApprovals.redeem(params)
+	}
+
+	/** Why a remotely approved proposal cannot run right now. Checked before the claim. */
+	private remoteRunBlock(proposal: Proposal): string | null {
+		const connection = this.cm.listConnections().find((c) => c.id === proposal.connectionId)
+		if (!connection) return 'The connection this proposal targets no longer exists.'
+		if (connection.state !== 'connected') return `Connection "${connection.name}" is not connected in Dotaz.`
+		if (connection.readOnly) return `Connection "${connection.name}" is marked read-only in Dotaz.`
+		// The run is wrapped in a transaction of its own; SQL that manages one could leave it
+		// open (reported as executed, then rolled back) or commit half of it.
+		if (splitStatements(proposal.sql).some(isTopLevelTransactionControl)) {
+			return 'The SQL contains transaction control (BEGIN, COMMIT, ROLLBACK). Approve it in the Dotaz window.'
+		}
+		return null
+	}
+
+	/**
+	 * Run a remotely approved proposal: its frozen SQL, in a read-write session created for this
+	 * run only (never an agent session), in one transaction where the engine allows. Returns
+	 * counts, never rows.
+	 */
+	private async runApprovedProposal(proposal: Proposal): Promise<{ affectedRows: number; statements: number }> {
+		const { connectionId, database, sql } = proposal
+		const statements = splitStatements(sql)
+		let session: SessionInfo
+		try {
+			session = await this.createSession(connectionId, database, { label: 'remote approval' })
+		} catch (err) {
+			throw new Error(`Could not open a session: ${err instanceof Error ? err.message : String(err)}. Nothing was run.`)
+		}
+		const sessionId = session.sessionId
+		const driver = this.cm.getDriver(connectionId, database)
+		const start = performance.now()
+		let affectedRows = 0
+		let error: string | undefined
+		try {
+			await driver.beginTransaction(sessionId)
+			try {
+				for (const statement of statements) {
+					const result = await driver.execute(statement, undefined, sessionId)
+					if (result.error) throw new Error(result.error)
+					affectedRows += result.affectedRows ?? 0
+				}
+				await driver.commit(sessionId)
+			} catch (err) {
+				if (driver.inTransaction(sessionId)) {
+					try {
+						await driver.rollback(sessionId)
+					} catch (rollbackError) {
+						console.debug('Rollback after a failed remote approval run failed:', rollbackError)
+					}
+				}
+				throw err
+			}
+			return { affectedRows, statements: statements.length }
+		} catch (err) {
+			error = err instanceof Error ? err.message : String(err)
+			throw err
+		} finally {
+			try {
+				this.appDb.addHistory({
+					connectionId,
+					database,
+					sql,
+					status: error === undefined ? 'success' : 'error',
+					durationMs: Math.round(performance.now() - start),
+					rowCount: affectedRows,
+					errorMessage: error,
+				})
+			} catch (historyError) {
+				console.debug('Could not record a remote approval run in history:', historyError)
+			}
+			await this.destroySession(sessionId).catch((destroyError) => {
+				console.warn(`Failed to destroy remote approval session ${sessionId}`, destroyError)
+			})
+		}
 	}
 
 	// ── UI control ────────────────────────────────────────
@@ -873,6 +1005,7 @@ export class BackendAdapter implements RpcAdapter {
 	}
 
 	dispose(): void {
+		this.remoteApprovals.dispose()
 		this.unsubscribeProposals()
 		this.proposals.dispose()
 	}

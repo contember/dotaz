@@ -131,9 +131,11 @@ const handlers = {
 			updatedAt: '2024-05-06T10:00:00.000Z',
 		}]
 	},
-	'agent.proposeWrite': ({ connectionId, sql, reason }: { connectionId: string; sql: string; reason?: string }) => {
+	'agent.proposeWrite': (
+		{ connectionId, sql, reason, requestedBy }: { connectionId: string; sql: string; reason?: string; requestedBy?: string },
+	) => {
 		const id = `p-${proposals.size + 1}`
-		proposals.set(id, { id, connectionId, sql, reason, status: 'pending', createdAt: Date.now() })
+		proposals.set(id, { id, connectionId, connectionName: 'test', sql, reason, requestedBy, status: 'pending', createdAt: Date.now() })
 		return { proposalId: id }
 	},
 	'agent.proposals.get': ({ proposalId }: { proposalId: string }) => {
@@ -345,10 +347,26 @@ describe.skipIf(!runOnUnixSocket)('cli-agent ↔ control server', () => {
 		expect(proposals.get(parsed.id)?.reason).toBe('test')
 	})
 
+	test('`dotaz propose` sends who asked: --by, else DOTAZ_REQUESTED_BY', async () => {
+		const run = async (args: string[], env: Record<string, string>) => {
+			const proc = Bun.spawn(['bun', MAIN, 'propose', 'testdb', "UPDATE orders SET note='x'", ...args, '--json', '--endpoint', server.endpointFile], {
+				stdout: 'pipe',
+				stderr: 'pipe',
+				env: { ...process.env, ...env },
+			})
+			const stdout = await new Response(proc.stdout).text()
+			await proc.exited
+			return proposals.get(JSON.parse(stdout).id)?.requestedBy
+		}
+		expect(await run(['--by', 'flag label'], { DOTAZ_REQUESTED_BY: 'env label' })).toBe('flag label')
+		expect(await run([], { DOTAZ_REQUESTED_BY: 'env label' })).toBe('env label')
+	})
+
 	test('`dotaz approvals status` reports a rejected proposal with exit 8', async () => {
 		proposals.set('p-rejected', {
 			id: 'p-rejected',
 			connectionId: 'c-test',
+			connectionName: 'test',
 			sql: 'DELETE FROM orders',
 			status: 'rejected',
 			createdAt: Date.now(),
@@ -361,7 +379,14 @@ describe.skipIf(!runOnUnixSocket)('cli-agent ↔ control server', () => {
 	})
 
 	test('`dotaz approvals cancel` exits 0', async () => {
-		proposals.set('p-cancel', { id: 'p-cancel', connectionId: 'c-test', sql: 'DELETE FROM orders', status: 'pending', createdAt: Date.now() })
+		proposals.set('p-cancel', {
+			id: 'p-cancel',
+			connectionId: 'c-test',
+			connectionName: 'test',
+			sql: 'DELETE FROM orders',
+			status: 'pending',
+			createdAt: Date.now(),
+		})
 		const proc = Bun.spawn(['bun', MAIN, 'approvals', 'cancel', 'p-cancel', '--endpoint', server.endpointFile], { stdout: 'pipe', stderr: 'pipe' })
 		expect(await proc.exited).toBe(EXIT.ok)
 		expect(proposals.get('p-cancel')?.status).toBe('cancelled')

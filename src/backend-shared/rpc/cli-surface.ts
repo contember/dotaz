@@ -8,7 +8,7 @@
 
 import type { ConnectionInfo } from '@dotaz/shared/types/connection'
 import { stripSecrets } from '@dotaz/shared/types/connection'
-import type { ProposalStatus, SearchScope, TransactionLogStatus } from '@dotaz/shared/types/rpc'
+import type { ApprovalDecision, ProposalStatus, SearchScope, TransactionLogStatus } from '@dotaz/shared/types/rpc'
 import type { RpcHandler, RpcHandlerLookup } from './dispatch'
 import type { createHandlers } from './handlers'
 
@@ -78,6 +78,14 @@ function optionalScalarArray(f: Fields, key: string, method: string): Array<stri
 	})
 }
 
+const DECISIONS: readonly ApprovalDecision[] = ['approve', 'reject']
+
+function requiredDecision(f: Fields, method: string): ApprovalDecision {
+	const decision = optionalOneOf(f, 'decision', DECISIONS, method)
+	if (decision === undefined) throw new CliParamsError(`${method}: decision is required`)
+	return decision
+}
+
 const PROPOSAL_STATUSES: readonly ProposalStatus[] = ['pending', 'approved', 'rejected', 'executed', 'failed', 'cancelled', 'expired']
 const SEARCH_SCOPES: readonly SearchScope[] = ['database', 'schema', 'tables']
 const TRANSACTION_LOG_STATUSES: readonly TransactionLogStatus[] = ['success', 'error']
@@ -88,8 +96,9 @@ const TRANSACTION_LOG_STATUSES: readonly TransactionLogStatus[] = ['success', 'e
  * dropped, so e.g. `connections.connect` never sees a client-supplied config or password.
  *
  * Deliberately absent: everything that mutates stored connections, imports or exports data,
- * writes settings, or decrypts secrets. `ui.snapshot.set` and `agent.proposals.resolve` are
- * absent too — those belong to the frontend, which reaches handlers directly.
+ * writes settings, or decrypts secrets. `ui.snapshot.set`, `agent.proposals.resolve` and
+ * `approvers.pending|confirm|decline|remove` are absent too: those belong to the frontend,
+ * which reaches handlers directly.
  */
 const CLI_METHODS: { [M in keyof Handlers]?: (raw: unknown) => ParamsOf<M> } = {
 	// Discovery
@@ -180,6 +189,40 @@ const CLI_METHODS: { [M in keyof Handlers]?: (raw: unknown) => ParamsOf<M> } = {
 			database: optionalString(f, 'database', m),
 			sql: requiredString(f, 'sql', m),
 			reason: optionalString(f, 'reason', m),
+			requestedBy: optionalString(f, 'requestedBy', m),
+		}
+	},
+	// Remote approvals. A device may ask to be paired and anyone may fetch a challenge; neither
+	// does anything by itself. Confirming a pairing request, removing a key and the pending
+	// request itself are frontend-only: the user decides those in the app's window.
+	'approvers.request': (raw) => {
+		const m = 'approvers.request'
+		const f = fields(raw, m)
+		return {
+			label: requiredString(f, 'label', m),
+			rpId: requiredString(f, 'rpId', m),
+			origin: requiredString(f, 'origin', m),
+			credentialId: requiredString(f, 'credentialId', m),
+			publicKey: requiredString(f, 'publicKey', m),
+		}
+	},
+	'approvers.list': () => undefined,
+	'agent.approvals.challenge': (raw) => {
+		const m = 'agent.approvals.challenge'
+		const f = fields(raw, m)
+		return { proposalId: requiredString(f, 'proposalId', m), decision: requiredDecision(f, m) }
+	},
+	'agent.approvals.redeem': (raw) => {
+		const m = 'agent.approvals.redeem'
+		const f = fields(raw, m)
+		return {
+			proposalId: requiredString(f, 'proposalId', m),
+			decision: requiredDecision(f, m),
+			nonce: requiredString(f, 'nonce', m),
+			credentialId: requiredString(f, 'credentialId', m),
+			authenticatorData: requiredString(f, 'authenticatorData', m),
+			clientDataJSON: requiredString(f, 'clientDataJSON', m),
+			signature: requiredString(f, 'signature', m),
 		}
 	},
 	'agent.proposals.list': (raw) => {

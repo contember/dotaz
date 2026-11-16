@@ -1,0 +1,49 @@
+.approver-request-dialog {
+	max-width: 480px;
+}
+
+.approver-request-dialog__content p {
+	margin: 0 0 var(--spacing-md);
+	color: var(--ink);
+	line-height: 1.5;
+}
+
+.approver-request-dialog__details {
+	display: grid;
+	grid-template-columns: max-content 1fr;
+	gap: var(--spacing-xs) var(--spacing-md);
+	margin: 0 0 var(--spacing-md);
+}
+
+.approver-request-dialog__details dt {
+	color: var(--ink-secondary);
+}
+
+.approver-request-dialog__details dd {
+	margin: 0;
+	color: var(--ink);
+	overflow-wrap: anywhere;
+}
+
+.approver-request-dialog__fingerprint {
+	margin: 0 0 var(--spacing-md);
+	padding: var(--spacing-md);
+	border: 1px solid var(--edge);
+	border-radius: var(--radius-md);
+	background: var(--surface-inset);
+	color: var(--ink);
+	font-family: var(--font-mono);
+	font-size: var(--font-size-lg);
+	letter-spacing: 0.08em;
+	text-align: center;
+}
+
+.approver-request-dialog__content .approver-request-dialog__warning {
+	color: var(--ink-secondary);
+}
+
+.approver-request-dialog__actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: var(--spacing-sm);
+}
