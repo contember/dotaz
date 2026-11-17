@@ -61,7 +61,7 @@ jobs:
           - os: ubuntu-24.04-arm
             platform: linux-arm64
             artifact: dotaz-linux-arm64
-          - os: macos-14
+          - os: macos-15
             platform: macos-arm64
             artifact: dotaz-macos-arm64
           - os: windows-latest
