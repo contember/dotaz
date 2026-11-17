@@ -288,12 +288,17 @@ export function decodeProposal(payload: unknown): Proposal {
 	return {
 		id: str(payload.id),
 		connectionId: str(payload.connectionId),
+		// Absent from apps older than remote approvals.
+		connectionName: optStr(payload.connectionName) ?? '',
 		database: optStr(payload.database),
 		sql: str(payload.sql),
 		reason: optStr(payload.reason),
+		requestedBy: optStr(payload.requestedBy),
 		status: oneOf(payload.status, PROPOSAL_STATUSES, 'pending'),
 		createdAt: num(payload.createdAt),
 		resolvedAt: optNum(payload.resolvedAt),
+		resolvedVia: payload.resolvedVia === 'app' || payload.resolvedVia === 'remote' ? payload.resolvedVia : undefined,
+		approver: optStr(payload.approver),
 		result,
 		error: optStr(payload.error),
 	}

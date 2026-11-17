@@ -15,6 +15,7 @@ import { applyUpdate, friendlyErrorMessage, messages, setWindowTitle } from '../
 import { formatWindowTitle } from '../../lib/tab-context'
 import { initUiSnapshotPublisher } from '../../lib/ui-snapshot-publisher'
 import { loadWorkspace, saveWorkspaceNow, scheduleWorkspaceSave, setWorkspaceStateCollector } from '../../lib/workspace'
+import { approversStore } from '../../stores/approvers'
 import { getComparisonParams, setComparisonParams } from '../../stores/comparison'
 import { connectionsStore } from '../../stores/connections'
 import { editorStore } from '../../stores/editor'
@@ -26,6 +27,7 @@ import { settingsStore } from '../../stores/settings'
 import { tabsStore } from '../../stores/tabs'
 import { uiStore } from '../../stores/ui'
 import { viewsStore } from '../../stores/views'
+import ApproverRequestDialog from '../agent/ApproverRequestDialog'
 import ProposalBanner from '../agent/ProposalBanner'
 import BookmarksDialog from '../bookmarks/BookmarksDialog'
 import CommandPalette from '../common/CommandPalette'
@@ -178,6 +180,7 @@ export default function AppShell() {
 	let removeResizeListener: (() => void) | undefined
 	let removeProposalListener: (() => void) | undefined
 	let removeCliCommandListener: (() => void) | undefined
+	let removeApproversListener: (() => void) | undefined
 
 	// ── Global error handlers ─────────────────────────────
 	function handleUnhandledError(event: ErrorEvent) {
@@ -278,6 +281,13 @@ export default function AppShell() {
 		removeCliCommandListener = messages.onCliCommand((command) => {
 			handleUiCommand(command)
 		})
+		// Pairing requests for remote approver keys are decided here, in the app's own window.
+		if (getCapabilities().isDesktop) {
+			removeApproversListener = messages.onApproversChanged((state) => {
+				approversStore.apply(state)
+			})
+			void approversStore.load()
+		}
 
 		// Global error catching — prevents app crash on unhandled errors
 		window.addEventListener('error', handleUnhandledError)
@@ -342,6 +352,7 @@ export default function AppShell() {
 		removeResizeListener?.()
 		removeProposalListener?.()
 		removeCliCommandListener?.()
+		removeApproversListener?.()
 		tabsStore.setBeforeCloseHook(null)
 		connectionsStore.setBeforeDisconnectHook(null)
 		window.removeEventListener('error', handleUnhandledError)
@@ -790,6 +801,9 @@ export default function AppShell() {
 				onClose={() => setModal(null)}
 			/>
 
+			<Show when={getCapabilities().isDesktop}>
+				<ApproverRequestDialog />
+			</Show>
 			<ConfirmDialog />
 			<PromptDialog />
 			<ToastContainer />

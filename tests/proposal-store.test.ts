@@ -12,6 +12,7 @@ function withClock(ttlMs = PROPOSAL_TTL_MS) {
 function createProposal(store: ProposalStore, overrides: Partial<{ connectionId: string; sql: string; database: string; reason: string }> = {}) {
 	return store.create({
 		connectionId: overrides.connectionId ?? 'conn-1',
+		connectionName: 'main',
 		database: overrides.database,
 		sql: overrides.sql ?? 'DELETE FROM users WHERE id = 1',
 		reason: overrides.reason,
@@ -202,9 +203,9 @@ describe('ProposalStore', () => {
 			const seen: ProposalStatus[] = []
 			store.onChange((p) => seen.push(p.status))
 
-			const created = store.create({ connectionId: 'c1', sql: 'DELETE FROM t' })
+			const created = store.create({ connectionId: 'c1', connectionName: 'main', sql: 'DELETE FROM t' })
 			store.cancel(created.id)
-			const second = store.create({ connectionId: 'c1', sql: 'DELETE FROM t' })
+			const second = store.create({ connectionId: 'c1', connectionName: 'main', sql: 'DELETE FROM t' })
 			store.resolve({ proposalId: second.id, status: 'executed' })
 
 			expect(seen).toEqual(['pending', 'cancelled', 'pending', 'executed'])
@@ -229,7 +230,7 @@ describe('ProposalStore', () => {
 			const seen: ProposalStatus[] = []
 			const off = store.onChange((p) => seen.push(p.status))
 			off()
-			store.create({ connectionId: 'c1', sql: 'DELETE FROM t' })
+			store.create({ connectionId: 'c1', connectionName: 'main', sql: 'DELETE FROM t' })
 
 			expect(seen).toEqual([])
 			store.dispose()

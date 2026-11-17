@@ -5,7 +5,7 @@ import type { NamespacedRpcClient } from '@dotaz/backend-types'
 import type { ConnectionState } from '@dotaz/shared/types/connection'
 import type { DatabaseErrorCode } from '@dotaz/shared/types/errors'
 import type { QueryCompletedEvent } from '@dotaz/shared/types/query'
-import type { Proposal, SessionInfo, UiCommandPayload } from '@dotaz/shared/types/rpc'
+import type { ApproversState, Proposal, SessionInfo, UiCommandPayload } from '@dotaz/shared/types/rpc'
 import { transport } from './transport'
 
 export { friendlyErrorMessage, RpcError } from './rpc-errors'
@@ -65,6 +65,12 @@ export const messages = {
 		handler: (proposal: Proposal) => void,
 	) => {
 		return transport.addMessageListener('cli.proposal', handler)
+	},
+	/** A pairing request for a remote approver key arrived or went away, or the key list changed. */
+	onApproversChanged: (
+		handler: (state: ApproversState) => void,
+	) => {
+		return transport.addMessageListener('approvers.changed', handler)
 	},
 	/** A UI action requested by the CLI — open a tab, run a command. */
 	onCliCommand: (

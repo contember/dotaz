@@ -118,7 +118,8 @@ describe('exitCodeForProposal', () => {
 
 	test('every status has a human-readable note', () => {
 		for (const [status] of cases) {
-			expect(proposalNote({ id: 'p1', connectionId: 'c1', sql: 'UPDATE t SET a=1', status, createdAt: 0 }).length).toBeGreaterThan(0)
+			expect(proposalNote({ id: 'p1', connectionId: 'c1', connectionName: 'main', sql: 'UPDATE t SET a=1', status, createdAt: 0 }).length)
+				.toBeGreaterThan(0)
 		}
 	})
 })

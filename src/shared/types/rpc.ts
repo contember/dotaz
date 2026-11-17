@@ -33,12 +33,21 @@ export type ProposalStatus =
 export interface Proposal {
 	id: string
 	connectionId: string
+	/** The connection's name when the proposal was made. Part of what a remote approver signs. */
+	connectionName: string
 	database?: string
+	/** Frozen at creation: this exact string is what gets shown, signed and run. */
 	sql: string
 	reason?: string
+	/** Free-text label of whoever asked, as the CLI reported it. Unverified. */
+	requestedBy?: string
 	status: ProposalStatus
 	createdAt: number
 	resolvedAt?: number
+	/** Where the decision was made: the app's own window, or a remote approval with a paired key. */
+	resolvedVia?: 'app' | 'remote'
+	/** Label of the paired key that approved or rejected remotely. */
+	approver?: string
 	result?: { affectedRows?: number; statements?: number }
 	error?: string
 }
@@ -48,6 +57,100 @@ export interface ProposeWriteParams {
 	database?: string
 	sql: string
 	reason?: string
+	requestedBy?: string
+}
+
+// ---- Remote approvals (see docs/agent-cli.md) ----
+
+/** A passkey allowed to approve proposals from a paired device. Public data only. */
+export interface RemoteApprover {
+	id: string
+	label: string
+	rpId: string
+	origin: string
+	/** base64url */
+	credentialId: string
+	/** 16 base32 characters, see `approverFingerprint()` */
+	fingerprint: string
+	addedAt: number
+}
+
+/** What a device sends to ask to be paired. The user confirms it in the app's window. */
+export interface ApproverRequestParams {
+	label: string
+	rpId: string
+	origin: string
+	/** base64url */
+	credentialId: string
+	/** base64url COSE_Key, ES256 on P-256 */
+	publicKey: string
+	/** The one-time code the app's window shows after the user chose "Pair a device". */
+	pairingCode: string
+}
+
+export interface ApproverRequestResult {
+	requestId: string
+	fingerprint: string
+	expiresAt: number
+}
+
+/** A pairing request waiting for the user's decision in the app's window. */
+export interface ApproverRequest {
+	requestId: string
+	label: string
+	rpId: string
+	origin: string
+	credentialId: string
+	fingerprint: string
+	requestedAt: number
+	expiresAt: number
+}
+
+/** Pushed to the frontend on `approvers.changed`. */
+export interface ApproversState {
+	request: ApproverRequest | null
+	approvers: RemoteApprover[]
+	/** The pairing code on screen, if the user opened pairing. Never sent to the CLI. */
+	armed: { code: string; expiresAt: number } | null
+}
+
+export type ApprovalDecision = 'approve' | 'reject'
+
+export interface ApprovalChallengeParams {
+	proposalId: string
+	decision: ApprovalDecision
+}
+
+export interface ApprovalChallenge {
+	/** base64url, 32 random bytes. Good for one redeem attempt. */
+	nonce: string
+	expiresAt: number
+	proposal: {
+		id: string
+		connectionId: string
+		connectionName: string
+		database: string | null
+		sql: string
+		/** Lowercase hex SHA-256 over the UTF-8 bytes of `sql`. */
+		sqlSha256: string
+		reason: string | null
+		requestedBy: string | null
+		createdAt: number
+		statements: number
+	}
+	/** base64url credential ids of the paired keys. */
+	allowCredentials: string[]
+}
+
+/** All binary fields base64url, as the browser's `PublicKeyCredential` returned them. */
+export interface ApprovalRedeemParams {
+	proposalId: string
+	decision: ApprovalDecision
+	nonce: string
+	credentialId: string
+	authenticatorData: string
+	clientDataJSON: string
+	signature: string
 }
 
 export interface ProposalListParams {

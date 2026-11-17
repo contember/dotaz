@@ -76,6 +76,9 @@ export default function ProposalBanner(props: ProposalBannerProps) {
 						<Show when={e().proposal.reason}>
 							{(reason) => <p class="proposal-banner__reason">“{reason()}”</p>}
 						</Show>
+						<Show when={e().proposal.requestedBy}>
+							{(by) => <p class="proposal-banner__reason">Requested by {by()} (as reported by the agent, not verified)</p>}
+						</Show>
 						<Show when={e().invalidReason}>
 							{(reason) => (
 								<p class="proposal-banner__invalid">

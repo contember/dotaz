@@ -20,6 +20,9 @@ function isSettled(status: ProposalStatus): boolean {
 	return status !== 'pending' && status !== 'approved'
 }
 
+/** What the store needs to create a proposal: the request plus the connection's current name. */
+export type NewProposal = ProposeWriteParams & { connectionName: string }
+
 export interface ProposalStoreOptions {
 	/** Lifetime of a pending proposal. */
 	ttlMs?: number
@@ -47,7 +50,7 @@ export class ProposalStore {
 		this.now = opts?.now ?? (() => Date.now())
 	}
 
-	create(params: ProposeWriteParams): Proposal {
+	create(params: NewProposal): Proposal {
 		this.assertUsable()
 		this.sweep()
 		const pending = [...this.proposals.values()].filter((p) => p.status === 'pending').length
@@ -57,9 +60,11 @@ export class ProposalStore {
 		const proposal: Proposal = {
 			id: crypto.randomUUID(),
 			connectionId: params.connectionId,
+			connectionName: params.connectionName,
 			database: params.database,
 			sql: params.sql,
 			reason: params.reason,
+			requestedBy: params.requestedBy,
 			status: 'pending',
 			createdAt: this.now(),
 		}
@@ -82,13 +87,50 @@ export class ProposalStore {
 		return items.map((p) => ({ ...p }))
 	}
 
+	/** The app window's path: claim (`approved`), reject, or report the outcome of its own run. */
 	resolve(params: ProposalResolveParams): Proposal {
 		this.assertUsable()
 		this.sweep()
 		if (!RESOLVED_STATUSES.includes(params.status)) {
 			throw new Error(`Cannot resolve a proposal to status "${params.status}"`)
 		}
-		return this.transition(this.require(params.proposalId), params.status, params.result, params.error)
+		const proposal = this.require(params.proposalId)
+		// A remote approval runs the statement itself; only it may report how that went.
+		if (proposal.status === 'approved' && proposal.resolvedVia === 'remote') {
+			throw new Error(`Proposal ${proposal.id} is already approved remotely`)
+		}
+		return this.transition(proposal, params.status, params.result, params.error, { via: 'app' })
+	}
+
+	/**
+	 * Remote approval's claim (`pending → approved`). Synchronous, so a click in the app's window
+	 * and a remote approval can never both claim the same proposal: whichever comes second fails.
+	 */
+	claimRemote(id: string, approver: string): Proposal {
+		this.assertUsable()
+		this.sweep()
+		const proposal = this.require(id)
+		if (proposal.status !== 'pending') throw new Error(`Proposal ${id} is already ${proposal.status}`)
+		return this.transition(proposal, 'approved', undefined, undefined, { via: 'remote', approver })
+	}
+
+	/** Remote approval's rejection (`pending → rejected`). */
+	rejectRemote(id: string, approver: string): Proposal {
+		this.assertUsable()
+		this.sweep()
+		const proposal = this.require(id)
+		if (proposal.status !== 'pending') throw new Error(`Proposal ${id} is already ${proposal.status}`)
+		return this.transition(proposal, 'rejected', undefined, undefined, { via: 'remote', approver })
+	}
+
+	/** The outcome of a run that a remote approval claimed, never one the app claimed. */
+	settleRemote(id: string, status: 'executed' | 'failed', result?: Proposal['result'], error?: string): Proposal {
+		this.assertUsable()
+		const proposal = this.require(id)
+		if (proposal.status !== 'approved' || proposal.resolvedVia !== 'remote') {
+			throw new Error(`Proposal ${id} was not claimed by a remote approval`)
+		}
+		return this.transition(proposal, status, result, error)
 	}
 
 	cancel(id: string): Proposal {
@@ -160,10 +202,16 @@ export class ProposalStore {
 		status: ProposalStatus,
 		result?: Proposal['result'],
 		error?: string,
+		decidedBy?: { via: 'app' | 'remote'; approver?: string },
 	): Proposal {
 		const allowed = proposal.status === 'pending' || (proposal.status === 'approved' && AFTER_APPROVED.includes(status))
 		if (!allowed) {
 			throw new Error(`Proposal ${proposal.id} is already ${proposal.status}`)
+		}
+		// Who decided is recorded once, when the proposal leaves `pending` by someone's decision.
+		if (proposal.status === 'pending' && decidedBy && (status === 'approved' || status === 'rejected')) {
+			proposal.resolvedVia = decidedBy.via
+			if (decidedBy.approver !== undefined) proposal.approver = decidedBy.approver
 		}
 		proposal.status = status
 		proposal.resolvedAt = this.now()
@@ -188,6 +236,8 @@ export class ProposalStore {
 			// Claimed, but the app never reported back (reloaded, lost the reply). Settle it so a
 			// waiting agent gets an answer instead of a proposal that silently disappears.
 			if (proposal.status === 'approved') {
+				// A remote run is settled by the backend itself when it ends, however long it takes.
+				if (proposal.resolvedVia === 'remote') continue
 				if ((proposal.resolvedAt ?? proposal.createdAt) > cutoff) continue
 				proposal.status = 'failed'
 				proposal.error = 'The app claimed this proposal but never reported the outcome. The statement may have run — check the data.'

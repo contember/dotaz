@@ -30,12 +30,12 @@ describe('AppDatabase', () => {
 
 	test('migrations run automatically on initialization', () => {
 		const version = getSchemaVersion(appDb.db)
-		expect(version).toBe(9)
+		expect(version).toBe(10)
 	})
 
 	test('schema_version table tracks current version', () => {
 		const rows = appDb.db.prepare('SELECT version FROM schema_version ORDER BY version').all() as { version: number }[]
-		expect(rows.map(r => r.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9])
+		expect(rows.map(r => r.version)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
 	})
 
 	test('migration 002 converts boolean SSL to SSLMode string', () => {
@@ -179,10 +179,10 @@ describe('AppDatabase', () => {
 			"INSERT INTO saved_views (id, connection_id, schema_name, table_name, name, config) VALUES ('sv-1', 'conn-1', 'public', 'users', 'My View', '{}')",
 		)
 
-		// Run remaining migrations (should apply migration 9)
+		// Run remaining migrations (should apply migrations 9 and 10)
 		const applied = runMigrations(db)
-		expect(applied).toBe(1)
-		expect(getSchemaVersion(db)).toBe(9)
+		expect(applied).toBe(2)
+		expect(getSchemaVersion(db)).toBe(10)
 
 		// Verify connection data preserved
 		const conns = db.prepare('SELECT * FROM connections').all() as any[]

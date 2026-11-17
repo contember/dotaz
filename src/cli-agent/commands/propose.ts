@@ -5,14 +5,22 @@ import { resolveScope } from '../paths'
 import { DEFAULT_WAIT_SECONDS, exitCodeForProposal, proposalOutput, waitForProposal } from '../proposals'
 import type { Command } from './types'
 
+/** Environment fallback for `--by`, so a supervisor can label every proposal its agents make. */
+const REQUESTED_BY_ENV = 'DOTAZ_REQUESTED_BY'
+
 export const proposeCommand: Command = {
 	name: 'propose',
 	flags: {
 		reason: { kind: 'string', placeholder: '<text>', description: 'Why the write is needed — shown to the user' },
+		by: {
+			kind: 'string',
+			placeholder: '<label>',
+			description: `Who is asking, shown to the approver as unverified (default $${REQUESTED_BY_ENV})`,
+		},
 		wait: { kind: 'optionalNumber', placeholder: '[sec]', description: `Block until the user decides (default ${DEFAULT_WAIT_SECONDS}s)` },
 	},
 	help: {
-		usage: 'propose <connection[/database]> <sql> [--reason text] [--wait [sec]]',
+		usage: 'propose <connection[/database]> <sql> [--reason text] [--by label] [--wait [sec]]',
 		summary: 'submit a write for the user to approve in the app',
 		notes: [
 			'The CLI never executes writes. Without --wait it prints the proposal id and exits 7.',
@@ -33,6 +41,7 @@ export const proposeCommand: Command = {
 				database: scope.database,
 				sql,
 				reason: flagString(ctx.args, 'reason'),
+				requestedBy: flagString(ctx.args, 'by') ?? (process.env[REQUESTED_BY_ENV] || undefined),
 			}),
 		)
 
