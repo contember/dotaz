@@ -283,13 +283,26 @@ describe('what is never approved remotely', () => {
 		for (const sql of allowed) expect(remoteApprovalRefusal({ sql })).toBeNull()
 	})
 
-	test('a semicolon inside a literal, where engines disagree on statement boundaries', () => {
+	test('backticks, backslashes and dollar signs, which engines quote differently', () => {
 		const refused = [
 			// MySQL reads \' as an escaped quote: to it this is three statements, to a standard parser one
 			"UPDATE t SET a = 'x\\''; DELETE FROM users; SELECT '1'''",
+			// a backtick-quoted ")" moves the standard reader's paren depth, so it would take the
+			// alias `delete` for the tail while MySQL runs a SELECT … INTO OUTFILE
+			"WITH x AS (SELECT `(`) SELECT 1 INTO OUTFILE '/tmp/f' FROM `)` `delete`",
+			"UPDATE t SET a = E'it\\'s'",
+			// Postgres reads $$…$$ as a string, MySQL as plain text
+			'DELETE FROM t WHERE body = $$a;b$$',
+			'WITH x AS (SELECT 1 $$) SELECT f() $$) DELETE FROM t',
+			'UPDATE `orders` SET a = 1',
+		]
+		for (const sql of refused) expect(remoteApprovalRefusal({ sql })).toMatch(/backtick, backslash or dollar/)
+	})
+
+	test('a semicolon inside a literal, where engines disagree on statement boundaries', () => {
+		const refused = [
 			"UPDATE t SET note = 'x;y'",
 			'UPDATE "we;ird" SET a = 1',
-			'DELETE FROM t WHERE body = $$a;b$$',
 		]
 		for (const sql of refused) expect(remoteApprovalRefusal({ sql })).toMatch(/semicolon inside/)
 		expect(remoteApprovalRefusal({ sql: "UPDATE t SET a = 'it''s'; DELETE FROM u WHERE id = 2" })).toBeNull()

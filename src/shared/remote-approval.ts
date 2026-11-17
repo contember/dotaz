@@ -162,6 +162,15 @@ export function hasDeceptiveCharacters(text: string): boolean {
 const COMMENT_MARKERS = /--|\/\*|\*\/|#/
 
 /**
+ * Characters whose quoting engines disagree on: MySQL quotes identifiers with backticks, MySQL
+ * strings and Postgres `E''` strings take backslash escapes, and Postgres reads `$$…$$` (or
+ * `$tag$…$tag$`) as a string where MySQL sees plain text. The statement and CTE-tail checks
+ * below read SQL by standard quoting only, so text with any of these could mean something else
+ * to the engine than to them. Refused outright, literals included.
+ */
+const QUOTING_HAZARDS = /[`\\$]/
+
+/**
  * The only statements a remote approval may run: data manipulation. An allowlist, so a statement
  * nobody thought of (DDL that commits implicitly on MySQL, `USE`, `PRAGMA`, `ATTACH`, `SET`,
  * `CALL`, transaction control, …) is refused rather than missed.
@@ -241,6 +250,9 @@ export function remoteApprovalRefusal(proposal: Pick<SignedProposalFields, 'sql'
 	}
 	if (COMMENT_MARKERS.test(proposal.sql)) {
 		return 'The SQL contains comment syntax (--, /* */ or #), which some engines execute. Approve it in the Dotaz window.'
+	}
+	if (QUOTING_HAZARDS.test(proposal.sql)) {
+		return 'The SQL contains a backtick, backslash or dollar sign, which engines quote differently. Approve it in the Dotaz window.'
 	}
 	if (hasSemicolonInLiteral(proposal.sql)) {
 		return 'The SQL has a semicolon inside a quoted string or identifier. Approve it in the Dotaz window.'
