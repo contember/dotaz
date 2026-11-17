@@ -4,7 +4,7 @@
 // Browser-safe on purpose: an approving page should compute the signed bytes from the very
 // fields it renders, with this same definition, instead of trusting a ready-made challenge.
 
-import { splitStatements } from './sql/statements'
+import { splitStatements, stripLiteralsAndComments } from './sql/statements'
 
 /** Domain separator, so an assertion made for anything else can never verify here. */
 export const APPROVAL_DOMAIN = 'dotaz-approval/v1\n'
@@ -183,8 +183,49 @@ function hasSemicolonInLiteral(sql: string): boolean {
 	return splitStatements(sql).length !== semicolonPieces(sql).length
 }
 
+/** Keywords that can start the statement following a CTE list. */
+const CTE_TAILS = new Set(['SELECT', 'VALUES', 'TABLE', 'INSERT', 'UPDATE', 'DELETE', 'MERGE', 'REPLACE'])
+const DML_TAILS = new Set(['INSERT', 'UPDATE', 'DELETE', 'MERGE', 'REPLACE'])
+
+/**
+ * The statement a `WITH …` runs after its CTE list, with literals blanked out first. CTE bodies
+ * are always parenthesised, so the tail is the first word right after a closing parenthesis at
+ * depth 0, other than `AS` (which follows a column list) and the `,` between CTEs. Taking it from
+ * that position, not from the first keyword seen, keeps a CTE named `update` or `insert` (both
+ * legal names in Postgres) from passing for the tail. Null when the word there is not a statement
+ * keyword (e.g. a `SEARCH` or `CYCLE` clause) or there is none: refused either way.
+ */
+function cteTail(statement: string): string | null {
+	const text = stripLiteralsAndComments(statement).toUpperCase()
+	let depth = 0
+	let afterClose = false
+	for (const [token] of text.matchAll(/[(),]|[A-Z_][A-Z0-9_]*/g)) {
+		if (token === '(') {
+			depth++
+			afterClose = false
+		} else if (token === ')') {
+			depth--
+			afterClose = depth === 0
+		} else if (depth === 0 && afterClose) {
+			if (token === 'AS' || token === ',') {
+				afterClose = false
+				continue
+			}
+			return CTE_TAILS.has(token) ? token : null
+		}
+	}
+	return null
+}
+
 function hasNonDmlStatement(sql: string): boolean {
-	return semicolonPieces(sql).some((piece) => !DML_START.test(piece.replace(/^[(\s]+/, '')))
+	return semicolonPieces(sql).some((piece) => {
+		const statement = piece.replace(/^[(\s]+/, '')
+		if (!DML_START.test(statement)) return true
+		if (!/^WITH\b/i.test(statement)) return false
+		// `WITH … SELECT f()` would otherwise pass on its first word and run any function.
+		const tail = cteTail(statement)
+		return tail === null || !DML_TAILS.has(tail)
+	})
 }
 
 /**

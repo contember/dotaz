@@ -254,6 +254,35 @@ describe('what is never approved remotely', () => {
 		for (const sql of allowed) expect(remoteApprovalRefusal({ sql })).toBeNull()
 	})
 
+	test('a WITH statement counts by what follows its CTE list, not by its first word', () => {
+		const refused = [
+			'WITH x AS (SELECT 1) SELECT pg_terminate_backend(42)',
+			'with x as (select 1) values (1)',
+			'WITH x AS (SELECT 1) TABLE x',
+			// a data-modifying CTE with a reading tail is refused too: fail closed
+			'WITH d AS (DELETE FROM t RETURNING id) SELECT * FROM d',
+			// no statement after the CTE list at all
+			'WITH x AS (DELETE FROM t)',
+			// keywords inside literals and CTE bodies do not count as the tail
+			"WITH x AS (SELECT 'insert') SELECT 'update' FROM x",
+			'(WITH x AS (SELECT 1) SELECT 1)',
+			// Postgres lets a CTE be named like a DML keyword; the name is not the tail
+			'WITH update AS (SELECT 1) SELECT pg_terminate_backend(42)',
+			'WITH a AS (SELECT 1), delete AS (SELECT 2) SELECT f()',
+			'WITH insert (n) AS (SELECT 1) SELECT f()',
+			// a clause between the CTE list and the tail fails closed
+			'WITH RECURSIVE x (id) AS (SELECT 1) SEARCH DEPTH FIRST BY id SET ord DELETE FROM t',
+		]
+		for (const sql of refused) expect(remoteApprovalRefusal({ sql })).toMatch(/Only INSERT, UPDATE, DELETE/)
+		const allowed = [
+			'WITH gone AS (DELETE FROM t WHERE id = 1 RETURNING id) INSERT INTO log (id) SELECT id FROM gone',
+			'WITH RECURSIVE x (n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM x WHERE n < 3) DELETE FROM t WHERE id IN (SELECT n FROM x)',
+			'WITH a AS (SELECT 1), b AS MATERIALIZED (SELECT 2) UPDATE t SET v = 1',
+			'with x as (select 1) merge into t using x on true when matched then delete',
+		]
+		for (const sql of allowed) expect(remoteApprovalRefusal({ sql })).toBeNull()
+	})
+
 	test('a semicolon inside a literal, where engines disagree on statement boundaries', () => {
 		const refused = [
 			// MySQL reads \' as an escaped quote: to it this is three statements, to a standard parser one

@@ -432,7 +432,10 @@ Approving is refused (at the challenge and again at redeem) when:
 - any statement does not start, after leading `(`, with `INSERT`, `UPDATE`, `DELETE`,
   `REPLACE`, `MERGE` or `WITH`. An allowlist, so DDL (which commits implicitly on MySQL), `USE`,
   `PRAGMA`, `ATTACH`, `SET`, `RESET`, `CALL`, transaction control and anything not yet thought
-  of are refused rather than missed. This is also what keeps a remote run to one transaction;
+  of are refused rather than missed. A `WITH` statement counts by the statement that follows its
+  CTE list (the word after the last CTE body's closing parenthesis), which must be one of the
+  above; `WITH … SELECT …`, even with a data-modifying CTE, is refused. This is also what keeps a
+  remote run to one transaction;
 - the connection is gone, not connected or marked read-only in Dotaz.
 
 These rules over-refuse on purpose (a `#` inside a string literal is enough); a false match only
