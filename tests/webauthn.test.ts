@@ -314,6 +314,25 @@ describe('what is never approved remotely', () => {
 		expect(remoteApprovalRefusal({ sql: "UPDATE t SET a = 'it''s'; DELETE FROM u WHERE id = 2" })).toBeNull()
 	})
 
+	test('every Unicode format, control, line or paragraph separator character is refused, in every field', () => {
+		const category = /[\p{Cf}\p{Cc}\p{Zl}\p{Zp}]/u
+		let checked = 0
+		for (let code = 0; code <= 0x10ffff; code++) {
+			if (code >= 0xd800 && code <= 0xdfff) continue // lone surrogates are not characters
+			const ch = String.fromCodePoint(code)
+			if (!category.test(ch)) continue
+			checked++
+			// tab and line feed are ordinary SQL whitespace; CR only as part of CRLF
+			if (ch === '\t' || ch === '\n') continue
+			const sql = `UPDATE t SET a = 'x${ch}y' WHERE id = 1`
+			expect(remoteApprovalRefusal({ sql })).not.toBeNull()
+			expect(remoteApprovalRefusal({ sql: 'DELETE FROM t WHERE id = 1', reason: `fix${ch}typo` })).not.toBeNull()
+			expect(remoteApprovalRefusal({ sql: 'DELETE FROM t WHERE id = 1', database: `app${ch}` })).not.toBeNull()
+		}
+		// sanity: the sweep really covered the bidi, zero-width and separator ranges
+		expect(checked).toBeGreaterThan(200)
+	})
+
 	test('deceptive characters in the reason or database name too', () => {
 		expect(remoteApprovalRefusal({ sql: 'DELETE FROM t', reason: `fix ${RLO}` })).toMatch(/reason/)
 		expect(remoteApprovalRefusal({ sql: 'DELETE FROM t', database: `app${ZWSP}` })).toMatch(/database/)
