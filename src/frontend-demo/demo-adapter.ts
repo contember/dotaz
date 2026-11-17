@@ -11,6 +11,7 @@ import { statementRowCount } from '@dotaz/shared/query-result'
 import { splitStatements } from '@dotaz/shared/sql/statements'
 import { type ConnectionConfig, type ConnectionInfo, getDefaultDatabase } from '@dotaz/shared/types/connection'
 import type { DatabaseInfo } from '@dotaz/shared/types/database'
+import { DatabaseError } from '@dotaz/shared/types/errors'
 import type { ExportOptions, ExportPreviewRequest, ExportRawPreviewRequest, ExportRawPreviewResponse, ExportResult } from '@dotaz/shared/types/export'
 import type { ImportOptions, ImportPreviewRequest, ImportPreviewResult, ImportResult } from '@dotaz/shared/types/import'
 import type { ExplainNode, ExplainResult, QueryHistoryEntry, QueryHistoryStatus, QueryResult } from '@dotaz/shared/types/query'
@@ -38,6 +39,10 @@ import type {
 } from '@dotaz/shared/types/rpc'
 import { settingsToAiConfig } from '@dotaz/shared/types/settings'
 import type { DemoAppState } from './demo-state'
+
+function remoteApprovalsUnavailable(): never {
+	throw new DatabaseError('APPROVAL_UNAVAILABLE', 'Remote approvals are not available in demo mode')
+}
 type EmitMessage = (channel: string, payload: any) => void
 
 export class DemoAdapter implements RpcAdapter {
@@ -663,6 +668,52 @@ export class DemoAdapter implements RpcAdapter {
 
 	resolveProposal(params: ProposalResolveParams): Proposal {
 		return this.proposals.resolve(params)
+	}
+
+	// ── Remote approvals (no CLI and no paired keys in demo mode) ──
+
+	requestApprover(): never {
+		return remoteApprovalsUnavailable()
+	}
+
+	listApprovers(): never {
+		return remoteApprovalsUnavailable()
+	}
+
+	getApproverRequest(): never {
+		return remoteApprovalsUnavailable()
+	}
+
+	getApproversState(): never {
+		return remoteApprovalsUnavailable()
+	}
+
+	armPairing(): never {
+		return remoteApprovalsUnavailable()
+	}
+
+	disarmPairing(): never {
+		return remoteApprovalsUnavailable()
+	}
+
+	confirmApproverRequest(): never {
+		return remoteApprovalsUnavailable()
+	}
+
+	declineApproverRequest(): never {
+		return remoteApprovalsUnavailable()
+	}
+
+	removeApprover(): never {
+		return remoteApprovalsUnavailable()
+	}
+
+	approvalChallenge(): never {
+		return remoteApprovalsUnavailable()
+	}
+
+	redeemApproval(): never {
+		return remoteApprovalsUnavailable()
 	}
 
 	// ── UI control ────────────────────────────────────────

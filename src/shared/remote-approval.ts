@@ -4,6 +4,8 @@
 // Browser-safe on purpose: an approving page should compute the signed bytes from the very
 // fields it renders, with this same definition, instead of trusting a ready-made challenge.
 
+import { splitStatements } from './sql/statements'
+
 /** Domain separator, so an assertion made for anything else can never verify here. */
 export const APPROVAL_DOMAIN = 'dotaz-approval/v1\n'
 
@@ -160,14 +162,29 @@ export function hasDeceptiveCharacters(text: string): boolean {
 const COMMENT_MARKERS = /--|\/\*|\*\/|#/
 
 /**
- * Statements that end or open a transaction, or commit implicitly on MySQL. Checked on every
- * piece between semicolons, string literals included: a `;` inside a literal only adds pieces,
- * so this can refuse more than needed, never less, whatever an engine's escaping rules.
+ * The only statements a remote approval may run: data manipulation. An allowlist, so a statement
+ * nobody thought of (DDL that commits implicitly on MySQL, `USE`, `PRAGMA`, `ATTACH`, `SET`,
+ * `CALL`, transaction control, …) is refused rather than missed.
  */
-const TRANSACTION_CONTROL = /^(?:BEGIN|START|COMMIT|END|ROLLBACK|ABORT|SAVEPOINT|RELEASE|XA|SET|LOCK|UNLOCK|PREPARE|EXECUTE|DEALLOCATE|DO|CALL)\b/i
+const DML_START = /^(?:INSERT|UPDATE|DELETE|REPLACE|MERGE|WITH)\b/i
 
-function hasTransactionControl(sql: string): boolean {
-	return sql.split(';').some((piece) => TRANSACTION_CONTROL.test(piece.trimStart().replace(/^\(+\s*/, '')))
+/** Every piece between semicolons, trimmed, empty ones dropped. */
+function semicolonPieces(sql: string): string[] {
+	return sql.split(';').map((piece) => piece.trim()).filter((piece) => piece !== '')
+}
+
+/**
+ * Whether a `;` sits inside a string literal, quoted identifier or dollar-quoted body. Engines
+ * disagree on where those end (MySQL and Postgres `E''` strings treat `\'` as an escaped quote,
+ * standard SQL does not), so the statement boundaries Dotaz sees could differ from the server's.
+ * Refusing these makes the pieces between semicolons exactly the statements, for every engine.
+ */
+function hasSemicolonInLiteral(sql: string): boolean {
+	return splitStatements(sql).length !== semicolonPieces(sql).length
+}
+
+function hasNonDmlStatement(sql: string): boolean {
+	return semicolonPieces(sql).some((piece) => !DML_START.test(piece.replace(/^[(\s]+/, '')))
 }
 
 /**
@@ -184,8 +201,11 @@ export function remoteApprovalRefusal(proposal: Pick<SignedProposalFields, 'sql'
 	if (COMMENT_MARKERS.test(proposal.sql)) {
 		return 'The SQL contains comment syntax (--, /* */ or #), which some engines execute. Approve it in the Dotaz window.'
 	}
-	if (hasTransactionControl(proposal.sql)) {
-		return 'The SQL controls transactions or session state (BEGIN, COMMIT, SET, LOCK, CALL, …). Approve it in the Dotaz window.'
+	if (hasSemicolonInLiteral(proposal.sql)) {
+		return 'The SQL has a semicolon inside a quoted string or identifier. Approve it in the Dotaz window.'
+	}
+	if (hasNonDmlStatement(proposal.sql)) {
+		return 'Only INSERT, UPDATE, DELETE, REPLACE, MERGE and WITH statements can be approved remotely. Approve it in the Dotaz window.'
 	}
 	if (proposal.reason && hasDeceptiveCharacters(proposal.reason)) {
 		return 'The reason contains invisible, bidirectional, control or bare carriage-return characters. Approve it in the Dotaz window.'

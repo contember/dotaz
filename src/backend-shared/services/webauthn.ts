@@ -139,7 +139,10 @@ export function verifyAssertion(input: AssertionInput): void {
 		throw new WebAuthnError('clientDataJSON is not valid JSON')
 	}
 	if (typeof clientData !== 'object' || clientData === null) throw new WebAuthnError('clientDataJSON is not an object')
-	const { type, challenge, origin, crossOrigin } = clientData as Record<string, unknown>
+	const type = 'type' in clientData ? clientData.type : undefined
+	const challenge = 'challenge' in clientData ? clientData.challenge : undefined
+	const origin = 'origin' in clientData ? clientData.origin : undefined
+	const crossOrigin = 'crossOrigin' in clientData ? clientData.crossOrigin : undefined
 
 	if (type !== 'webauthn.get') throw new WebAuthnError('clientDataJSON.type is not webauthn.get')
 	if (typeof challenge !== 'string') throw new WebAuthnError('clientDataJSON.challenge is missing')

@@ -461,13 +461,12 @@ export class RemoteApprovals {
 	private schedulePairingExpiry(): void {
 		if (!this.pairing) return
 		const delay = Math.max(0, this.pairing.expiresAt - this.now()) + 50
-		const timer: { unref?: () => void } = setTimeout(() => {
+		this.pairingTimer = setTimeout(() => {
 			this.pairingTimer = null
 			this.sweepPairing()
 		}, delay)
 		// Never keep the process alive just to expire a request.
-		timer.unref?.()
-		this.pairingTimer = timer as ReturnType<typeof setTimeout>
+		this.pairingTimer.unref()
 	}
 
 	private clearPairing(): void {

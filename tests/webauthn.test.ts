@@ -196,7 +196,7 @@ describe('what is never approved remotely', () => {
 	})
 
 	test('SQL over 64 KB, measured in UTF-8 bytes', () => {
-		const ascii = `SELECT '${'a'.repeat(MAX_REMOTE_SQL_BYTES - 9)}'`
+		const ascii = `UPDATE t SET a = '${'a'.repeat(MAX_REMOTE_SQL_BYTES - 19)}'`
 		expect(new TextEncoder().encode(ascii).length).toBe(MAX_REMOTE_SQL_BYTES)
 		expect(remoteApprovalRefusal({ sql: ascii })).toBeNull()
 		expect(remoteApprovalRefusal({ sql: `${ascii} ` })).toMatch(/64 KB/)
@@ -223,23 +223,47 @@ describe('what is never approved remotely', () => {
 		expect(remoteApprovalRefusal({ sql: 'DELETE FROM t WHERE id = 1', reason: 'fix\rtypo' })).toMatch(/reason/)
 	})
 
-	test('transaction or session control, found even where an engine escapes quotes differently', () => {
+	test('only data manipulation statements, so nothing unlisted slips through', () => {
 		const refused = [
+			// DDL commits implicitly on MySQL, so the DELETE would stay even if a later statement failed
+			'DELETE FROM a WHERE id = 1; CREATE TABLE b (id int); UPDATE c SET x = 1/0',
+			// the DELETE would run in another database than the one signed
+			'USE other_db; DELETE FROM users',
 			'BEGIN; UPDATE t SET a = 1; COMMIT',
-			"UPDATE t SET a = '\\''; COMMIT; UPDATE t SET b = 'y'",
 			'UPDATE t SET a = 1; SET autocommit = 1',
 			'UPDATE t SET a = 1;\n  rollback',
 			'LOCK TABLES t WRITE; UPDATE t SET a = 1',
 			'CALL purge_everything()',
-			"UPDATE t SET note = 'x;commit'",
+			'PRAGMA foreign_keys = OFF; DELETE FROM t',
+			"ATTACH '/tmp/x.db' AS x",
+			'RESET ROLE; DELETE FROM t',
+			'TRUNCATE t',
+			'SELECT 1',
 		]
-		for (const sql of refused) expect(remoteApprovalRefusal({ sql })).toMatch(/transactions/)
+		for (const sql of refused) expect(remoteApprovalRefusal({ sql })).toMatch(/Only INSERT, UPDATE, DELETE/)
 		const allowed = [
 			'UPDATE t SET a = CASE WHEN b THEN 1 ELSE 2 END WHERE id = 3',
-			"UPDATE t SET a = 1 WHERE id = 1; DELETE FROM u WHERE name = 'begin'",
+			"UPDATE t SET a = 1 WHERE id = 1; DELETE FROM u WHERE name = 'begin';",
 			"INSERT INTO t (a) VALUES ('commit')",
+			'(DELETE FROM t WHERE id = 1)',
+			'WITH gone AS (DELETE FROM t WHERE id = 1 RETURNING id) INSERT INTO log (id) SELECT id FROM gone',
+			'REPLACE INTO t (id, a) VALUES (1, 2)',
+			'MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET a = s.a',
+			'  insert into t (a) values (1)',
 		]
 		for (const sql of allowed) expect(remoteApprovalRefusal({ sql })).toBeNull()
+	})
+
+	test('a semicolon inside a literal, where engines disagree on statement boundaries', () => {
+		const refused = [
+			// MySQL reads \' as an escaped quote: to it this is three statements, to a standard parser one
+			"UPDATE t SET a = 'x\\''; DELETE FROM users; SELECT '1'''",
+			"UPDATE t SET note = 'x;y'",
+			'UPDATE "we;ird" SET a = 1',
+			'DELETE FROM t WHERE body = $$a;b$$',
+		]
+		for (const sql of refused) expect(remoteApprovalRefusal({ sql })).toMatch(/semicolon inside/)
+		expect(remoteApprovalRefusal({ sql: "UPDATE t SET a = 'it''s'; DELETE FROM u WHERE id = 2" })).toBeNull()
 	})
 
 	test('deceptive characters in the reason or database name too', () => {

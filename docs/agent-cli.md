@@ -424,18 +424,21 @@ Approving is refused (at the challenge and again at redeem) when:
 - the SQL contains comment syntax anywhere, string literals included: `--`, `/*`, `*/` or `#`.
   What reads as a comment can run: MySQL executes `/*! … */` and `/*+ … */`, and treats `--` as a
   comment only before whitespace;
-- any piece of the SQL between semicolons, string literals included, starts with transaction or
-  session control (`BEGIN`, `START`, `COMMIT`, `END`, `ROLLBACK`, `ABORT`, `SAVEPOINT`,
-  `RELEASE`, `XA`, `SET`, `LOCK`, `UNLOCK`, `PREPARE`, `EXECUTE`, `DEALLOCATE`, `DO`, `CALL`).
-  Splitting on every semicolon can only add pieces, so this cannot miss a statement whatever an
-  engine's quoting and escaping rules;
+- a `;` sits inside a string literal, quoted identifier or dollar-quoted body (detected as
+  `splitStatements()` finding fewer statements than there are non-empty pieces between
+  semicolons). Engines disagree on where literals end (MySQL and Postgres `E''` strings treat
+  `\'` as an escaped quote), so the statement boundaries Dotaz runs could differ from the
+  server's. With this refused, the pieces between semicolons are exactly the statements;
+- any statement does not start, after leading `(`, with `INSERT`, `UPDATE`, `DELETE`,
+  `REPLACE`, `MERGE` or `WITH`. An allowlist, so DDL (which commits implicitly on MySQL), `USE`,
+  `PRAGMA`, `ATTACH`, `SET`, `RESET`, `CALL`, transaction control and anything not yet thought
+  of are refused rather than missed. This is also what keeps a remote run to one transaction;
 - the connection is gone, not connected or marked read-only in Dotaz.
 
 These rules over-refuse on purpose (a `#` inside a string literal is enough); a false match only
 means the proposal has to be approved in the window. `remoteApprovalRefusal()` in
 `shared/remote-approval.ts` is the reference, so a page can refuse the same proposals. Rejecting
-any proposal remotely is allowed. On MySQL, DDL in an approved proposal commits implicitly, so
-"one transaction" holds only for DML there.
+any proposal remotely is allowed.
 
 ### Who asked
 

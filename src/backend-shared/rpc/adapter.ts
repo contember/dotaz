@@ -183,18 +183,18 @@ export interface RpcAdapter {
 	cancelProposal(proposalId: string): Proposal
 	resolveProposal(params: ProposalResolveParams): Proposal
 
-	// ── Remote approvals (optional, absent in demo mode) ──
-	requestApprover?(params: ApproverRequestParams): Promise<ApproverRequestResult>
-	listApprovers?(): RemoteApprover[]
-	getApproverRequest?(): ApproverRequest | null
-	getApproversState?(): ApproversState
-	armPairing?(): { code: string; expiresAt: number }
-	disarmPairing?(): void
-	confirmApproverRequest?(requestId: string, fingerprint: string): RemoteApprover
-	declineApproverRequest?(requestId: string): void
-	removeApprover?(id: string): void
-	approvalChallenge?(params: ApprovalChallengeParams): Promise<ApprovalChallenge>
-	redeemApproval?(params: ApprovalRedeemParams): Promise<Proposal>
+	// ── Remote approvals (demo mode throws APPROVAL_UNAVAILABLE) ──
+	requestApprover(params: ApproverRequestParams): Promise<ApproverRequestResult>
+	listApprovers(): RemoteApprover[]
+	getApproverRequest(): ApproverRequest | null
+	getApproversState(): ApproversState
+	armPairing(): { code: string; expiresAt: number }
+	disarmPairing(): void
+	confirmApproverRequest(requestId: string, fingerprint: string): RemoteApprover
+	declineApproverRequest(requestId: string): void
+	removeApprover(id: string): void
+	approvalChallenge(params: ApprovalChallengeParams): Promise<ApprovalChallenge>
+	redeemApproval(params: ApprovalRedeemParams): Promise<Proposal>
 
 	// ── UI control ────────────────────────────────────────
 	getUiSnapshot(): UiSnapshot

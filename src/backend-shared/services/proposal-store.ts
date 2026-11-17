@@ -236,6 +236,8 @@ export class ProposalStore {
 			// Claimed, but the app never reported back (reloaded, lost the reply). Settle it so a
 			// waiting agent gets an answer instead of a proposal that silently disappears.
 			if (proposal.status === 'approved') {
+				// A remote run is settled by the backend itself when it ends, however long it takes.
+				if (proposal.resolvedVia === 'remote') continue
 				if ((proposal.resolvedAt ?? proposal.createdAt) > cutoff) continue
 				proposal.status = 'failed'
 				proposal.error = 'The app claimed this proposal but never reported the outcome. The statement may have run — check the data.'

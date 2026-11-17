@@ -89,29 +89,6 @@ async function withAgentReadOnlySession<T>(
 	}
 }
 
-/** The adapter, if this mode supports remote approvals (demo mode has no CLI and no keys). */
-function remote(adapter: RpcAdapter): Required<
-	Pick<
-		RpcAdapter,
-		| 'requestApprover'
-		| 'listApprovers'
-		| 'getApproverRequest'
-		| 'getApproversState'
-		| 'armPairing'
-		| 'disarmPairing'
-		| 'confirmApproverRequest'
-		| 'declineApproverRequest'
-		| 'removeApprover'
-		| 'approvalChallenge'
-		| 'redeemApproval'
-	>
-> {
-	if (!adapter.redeemApproval || !adapter.listApprovers) {
-		throw new DatabaseError('APPROVAL_UNAVAILABLE', 'Remote approvals are not available in this mode')
-	}
-	return adapter as never
-}
-
 function clampProposalWait(timeoutMs?: number): number {
 	if (timeoutMs === undefined) return DEFAULT_PROPOSAL_WAIT_MS
 	if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
@@ -546,45 +523,45 @@ export function createHandlers(adapter: RpcAdapter) {
 		// On the CLI surface: asking to pair, listing keys, challenges and signed decisions.
 		// A signed decision is verified against a key the user paired; the caller proves nothing.
 		'approvers.request': (params: ApproverRequestParams) => {
-			return remote(adapter).requestApprover(params)
+			return adapter.requestApprover(params)
 		},
 		'approvers.list': () => {
-			return remote(adapter).listApprovers()
+			return adapter.listApprovers()
 		},
 		'agent.approvals.challenge': ({ proposalId, decision }: ApprovalChallengeParams) => {
 			if (!proposalId) throw new Error('proposalId is required')
 			if (decision !== 'approve' && decision !== 'reject') throw new Error('decision must be approve or reject')
-			return remote(adapter).approvalChallenge({ proposalId, decision })
+			return adapter.approvalChallenge({ proposalId, decision })
 		},
 		'agent.approvals.redeem': (params: ApprovalRedeemParams) => {
 			if (!params.proposalId) throw new Error('proposalId is required')
 			if (params.decision !== 'approve' && params.decision !== 'reject') throw new Error('decision must be approve or reject')
-			return remote(adapter).redeemApproval(params)
+			return adapter.redeemApproval(params)
 		},
 		// Frontend only: what the user sees and decides in the app's own window.
 		'approvers.pending': () => {
-			return remote(adapter).getApproverRequest()
+			return adapter.getApproverRequest()
 		},
 		'approvers.state': () => {
-			return remote(adapter).getApproversState()
+			return adapter.getApproversState()
 		},
 		'approvers.arm': () => {
-			return remote(adapter).armPairing()
+			return adapter.armPairing()
 		},
 		'approvers.disarm': () => {
-			remote(adapter).disarmPairing()
+			adapter.disarmPairing()
 		},
 		'approvers.confirm': ({ requestId, fingerprint }: { requestId: string; fingerprint: string }) => {
 			if (!requestId || !fingerprint) throw new Error('requestId and fingerprint are required')
-			return remote(adapter).confirmApproverRequest(requestId, fingerprint)
+			return adapter.confirmApproverRequest(requestId, fingerprint)
 		},
 		'approvers.decline': ({ requestId }: { requestId: string }) => {
 			if (!requestId) throw new Error('requestId is required')
-			remote(adapter).declineApproverRequest(requestId)
+			adapter.declineApproverRequest(requestId)
 		},
 		'approvers.remove': ({ id }: { id: string }) => {
 			if (!id) throw new Error('id is required')
-			remote(adapter).removeApprover(id)
+			adapter.removeApprover(id)
 		},
 
 		// ── UI control ────────────────────────────────────

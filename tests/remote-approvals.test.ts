@@ -2,7 +2,7 @@ import { createCliHandlerLookup } from '@dotaz/backend-shared/rpc/cli-surface'
 import type { RpcHandler } from '@dotaz/backend-shared/rpc/dispatch'
 import { createHandlers } from '@dotaz/backend-shared/rpc/rpc-handlers'
 import { ConnectionManager } from '@dotaz/backend-shared/services/connection-manager'
-import { ProposalStore } from '@dotaz/backend-shared/services/proposal-store'
+import { PROPOSAL_TTL_MS, ProposalStore } from '@dotaz/backend-shared/services/proposal-store'
 import {
 	CHALLENGE_TTL_MS,
 	MAX_CHALLENGES_PER_PROPOSAL,
@@ -638,6 +638,29 @@ describe('Remote approvals (service)', () => {
 
 		release()
 		expect(await running).toMatchObject({ status: 'executed', result: { affectedRows: 4 } })
+	})
+
+	test('a remote run longer than the proposal TTL is not swept, and settles with its real outcome', async () => {
+		let release!: () => void
+		const gate = new Promise<void>((resolve) => {
+			release = resolve
+		})
+		const s = service({
+			execute: async () => {
+				await gate
+				return { affectedRows: 7, statements: 1 }
+			},
+		})
+		await s.pairKey()
+		const proposal = s.newProposal()
+		const running = s.approvals.redeem(await s.signed(proposal.id))
+		while (s.proposals.get(proposal.id)?.status !== 'approved') await Bun.sleep(1)
+
+		s.clock.now += PROPOSAL_TTL_MS * 2
+		expect(s.proposals.get(proposal.id)?.status).toBe('approved')
+
+		release()
+		expect(await running).toMatchObject({ status: 'executed', result: { affectedRows: 7 } })
 	})
 
 	test('a key with another algorithm cannot even ask to be paired', async () => {
