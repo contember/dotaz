@@ -295,8 +295,14 @@ describe('what is never approved remotely', () => {
 			'DELETE FROM t WHERE body = $$a;b$$',
 			'WITH x AS (SELECT 1 $$) SELECT f() $$) DELETE FROM t',
 			'UPDATE `orders` SET a = 1',
+			// SQLite quotes identifiers with [...], so "[)]" moves the paren depth the same way
+			'WITH x AS (SELECT [(]) SELECT f() FROM [)] [delete]',
+			// Postgres array subscripts are refused too: fail closed
+			'UPDATE t SET a[1] = 2',
 		]
-		for (const sql of refused) expect(remoteApprovalRefusal({ sql })).toMatch(/backtick, backslash or dollar/)
+		for (const sql of refused) expect(remoteApprovalRefusal({ sql })).toMatch(/backtick, backslash, dollar sign or square bracket/)
+		// every other printable ASCII character, and non-ASCII text, is allowed
+		expect(remoteApprovalRefusal({ sql: "UPDATE t SET a = '!\"%&*+,-./:<=>?@^_{|}~ žluťoučký' WHERE id = 1" })).toBeNull()
 	})
 
 	test('a semicolon inside a literal, where engines disagree on statement boundaries', () => {

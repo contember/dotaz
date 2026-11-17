@@ -162,13 +162,22 @@ export function hasDeceptiveCharacters(text: string): boolean {
 const COMMENT_MARKERS = /--|\/\*|\*\/|#/
 
 /**
- * Characters whose quoting engines disagree on: MySQL quotes identifiers with backticks, MySQL
- * strings and Postgres `E''` strings take backslash escapes, and Postgres reads `$$…$$` (or
- * `$tag$…$tag$`) as a string where MySQL sees plain text. The statement and CTE-tail checks
- * below read SQL by standard quoting only, so text with any of these could mean something else
- * to the engine than to them. Refused outright, literals included.
+ * The only ASCII characters remote SQL may contain: letters, digits, whitespace and the
+ * punctuation no supported engine uses for quoting. An allowlist, because engines quote with more
+ * than the standard `'` and `"`: MySQL backtick identifiers, SQLite `[…]` identifiers, backslash
+ * escapes in MySQL and Postgres `E''` strings, Postgres `$$…$$` strings that MySQL reads as plain
+ * text. The statement and CTE-tail checks below read SQL by standard quoting only, so any of those
+ * could make the engine run something else than they saw. Literals included; non-ASCII text is
+ * left alone (invisible and bidi characters are refused separately).
  */
-const QUOTING_HAZARDS = /[`\\$]/
+const SAFE_ASCII = /^[\t\n\r A-Za-z0-9!"#%&'()*+,\-./:;<=>?@^_{|}~]$/
+
+function hasQuotingHazard(sql: string): boolean {
+	for (const ch of sql) {
+		if (ch.charCodeAt(0) < 0x80 && !SAFE_ASCII.test(ch)) return true
+	}
+	return false
+}
 
 /**
  * The only statements a remote approval may run: data manipulation. An allowlist, so a statement
@@ -251,8 +260,8 @@ export function remoteApprovalRefusal(proposal: Pick<SignedProposalFields, 'sql'
 	if (COMMENT_MARKERS.test(proposal.sql)) {
 		return 'The SQL contains comment syntax (--, /* */ or #), which some engines execute. Approve it in the Dotaz window.'
 	}
-	if (QUOTING_HAZARDS.test(proposal.sql)) {
-		return 'The SQL contains a backtick, backslash or dollar sign, which engines quote differently. Approve it in the Dotaz window.'
+	if (hasQuotingHazard(proposal.sql)) {
+		return 'The SQL contains a backtick, backslash, dollar sign or square bracket, which engines quote differently. Approve it in the Dotaz window.'
 	}
 	if (hasSemicolonInLiteral(proposal.sql)) {
 		return 'The SQL has a semicolon inside a quoted string or identifier. Approve it in the Dotaz window.'

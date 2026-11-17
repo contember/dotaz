@@ -424,10 +424,13 @@ Approving is refused (at the challenge and again at redeem) when:
 - the SQL contains comment syntax anywhere, string literals included: `--`, `/*`, `*/` or `#`.
   What reads as a comment can run: MySQL executes `/*! … */` and `/*+ … */`, and treats `--` as a
   comment only before whitespace;
-- the SQL contains a backtick, a backslash or a dollar sign anywhere, literals included. Engines
-  quote these differently (MySQL backtick identifiers, backslash escapes in MySQL and Postgres
+- the SQL contains any ASCII character outside letters, digits, whitespace and
+  `!"#%&'()*+,-./:;<=>?@^_{|}~`, literals included: in practice a backtick, backslash,
+  dollar sign or square bracket. An allowlist, because engines quote with more than `'` and `"`
+  (MySQL backtick identifiers, SQLite `[…]` identifiers, backslash escapes in MySQL and Postgres
   `E''` strings, Postgres `$$…$$` strings that MySQL reads as plain text), and the checks below
-  read SQL by standard quoting only;
+  read SQL by standard quoting only. Postgres array subscripts (`a[1]`) are refused with them.
+  Non-ASCII text is allowed;
 - a `;` sits inside a string literal, quoted identifier or dollar-quoted body (detected as
   `splitStatements()` finding fewer statements than there are non-empty pieces between
   semicolons). Engines disagree on where literals end (MySQL and Postgres `E''` strings treat
