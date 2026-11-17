@@ -235,12 +235,27 @@ function cteTail(statement: string): string | null {
 	return null
 }
 
+/**
+ * Non-ASCII outside `'…'` literals and `"…"` identifiers. All supported engines read any non-ASCII
+ * character as part of an unquoted name, so one that renders as a space (U+00A0, U+3164, U+2800,
+ * …; no Unicode category test catches them all) joins the words around it into one identifier:
+ * `DELETE FROM users AS u<NBSP>WHERE<NBSP>archived` reads as filtered and deletes every row. The
+ * same rule refuses homoglyph keywords and names. Inside quotes, non-ASCII can only change data
+ * (in a literal) or is visibly quoted (in an identifier), so it stays allowed. Run after the
+ * quoting check, so the literals stripped here are the literals every engine sees.
+ */
+function hasNonAsciiOutsideQuotes(sql: string): boolean {
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: the range starts at \x00 on purpose
+	return /[^\x00-\x7F]/.test(stripLiteralsAndComments(sql))
+}
+
 function hasNonDmlStatement(sql: string): boolean {
 	return semicolonPieces(sql).some((piece) => {
 		const statement = piece.replace(/^[(\s]+/, '')
 		if (!DML_START.test(statement)) return true
 		if (!/^WITH\b/i.test(statement)) return false
-		// `WITH … SELECT f()` would otherwise pass on its first word and run any function.
+		// The tail check keeps a remote run to DML, and so to one transaction. It does not limit
+		// which functions run: `INSERT INTO t SELECT f()` passes, and the approver sees `f()`.
 		const tail = cteTail(statement)
 		return tail === null || !DML_TAILS.has(tail)
 	})
@@ -262,6 +277,9 @@ export function remoteApprovalRefusal(proposal: Pick<SignedProposalFields, 'sql'
 	}
 	if (hasQuotingHazard(proposal.sql)) {
 		return 'The SQL contains a backtick, backslash, dollar sign or square bracket, which engines quote differently. Approve it in the Dotaz window.'
+	}
+	if (hasNonAsciiOutsideQuotes(proposal.sql)) {
+		return 'The SQL contains non-ASCII characters outside quoted strings and identifiers. Approve it in the Dotaz window.'
 	}
 	if (hasSemicolonInLiteral(proposal.sql)) {
 		return 'The SQL has a semicolon inside a quoted string or identifier. Approve it in the Dotaz window.'

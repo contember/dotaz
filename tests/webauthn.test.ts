@@ -305,6 +305,28 @@ describe('what is never approved remotely', () => {
 		expect(remoteApprovalRefusal({ sql: "UPDATE t SET a = '!\"%&*+,-./:<=>?@^_{|}~ žluťoučký' WHERE id = 1" })).toBeNull()
 	})
 
+	test('non-ASCII outside quotes, where a blank-looking character joins words into one name', () => {
+		const NBSP = String.fromCharCode(0x00a0)
+		const HANGUL_FILLER = String.fromCharCode(0x3164)
+		const BRAILLE_BLANK = String.fromCharCode(0x2800)
+		const CYRILLIC_E = String.fromCharCode(0x0435)
+		const refused = [
+			// reads as "delete the archived users", runs as DELETE FROM users AS "u WHERE archived"
+			`DELETE FROM users AS u${NBSP}WHERE${NBSP}archived`,
+			`DELETE FROM users AS u${HANGUL_FILLER}WHERE${HANGUL_FILLER}archived`,
+			`DELETE FROM users u${BRAILLE_BLANK}WHERE archived`,
+			// a homoglyph keyword or name
+			`UPDATE t SET nam${CYRILLIC_E} = 'x' WHERE id = 1`,
+		]
+		for (const sql of refused) expect(remoteApprovalRefusal({ sql })).toMatch(/non-ASCII characters outside quoted/)
+		const allowed = [
+			"UPDATE t SET name = 'Žluťoučký kůň' WHERE id = 1",
+			'UPDATE "uživatelé" SET a = 1',
+			`UPDATE t SET note = 'a${NBSP}b' WHERE id = 1`,
+		]
+		for (const sql of allowed) expect(remoteApprovalRefusal({ sql })).toBeNull()
+	})
+
 	test('a semicolon inside a literal, where engines disagree on statement boundaries', () => {
 		const refused = [
 			"UPDATE t SET note = 'x;y'",

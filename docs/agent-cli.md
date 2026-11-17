@@ -429,8 +429,13 @@ Approving is refused (at the challenge and again at redeem) when:
   dollar sign or square bracket. An allowlist, because engines quote with more than `'` and `"`
   (MySQL backtick identifiers, SQLite `[…]` identifiers, backslash escapes in MySQL and Postgres
   `E''` strings, Postgres `$$…$$` strings that MySQL reads as plain text), and the checks below
-  read SQL by standard quoting only. Postgres array subscripts (`a[1]`) are refused with them.
-  Non-ASCII text is allowed;
+  read SQL by standard quoting only. Postgres array subscripts (`a[1]`) are refused with them;
+- the SQL contains any non-ASCII character outside `'…'` literals and `"…"` identifiers. Every
+  supported engine reads non-ASCII as part of an unquoted name, so a character that renders as a
+  space (U+00A0, U+3164, U+2800, …) joins the words around it into one identifier:
+  `DELETE FROM users AS u<U+00A0>WHERE<U+00A0>archived` reads as filtered and deletes every
+  row. The same rule refuses homoglyph keywords and names. Non-ASCII text inside quotes is
+  allowed;
 - a `;` sits inside a string literal, quoted identifier or dollar-quoted body (detected as
   `splitStatements()` finding fewer statements than there are non-empty pieces between
   semicolons). Engines disagree on where literals end (MySQL and Postgres `E''` strings treat
@@ -442,7 +447,10 @@ Approving is refused (at the challenge and again at redeem) when:
   of are refused rather than missed. A `WITH` statement counts by the statement that follows its
   CTE list (the word after the last CTE body's closing parenthesis), which must be one of the
   above; `WITH … SELECT …`, even with a data-modifying CTE, is refused. This is also what keeps a
-  remote run to one transaction;
+  remote run to one transaction. It limits statement kinds, not which functions run:
+  `INSERT INTO t SELECT f()` passes, and the approver sees `f()`. What the engine itself does not
+  roll back stays done when a later statement fails: MySQL MyISAM and MEMORY tables, Postgres
+  sequences, and work done through `dblink` or similar;
 - the connection is gone, not connected or marked read-only in Dotaz.
 
 These rules over-refuse on purpose (a `#` inside a string literal is enough); a false match only
