@@ -1,6 +1,7 @@
 import { createHandlers } from '@dotaz/backend-shared/rpc/rpc-handlers'
 import { ConnectionManager } from '@dotaz/backend-shared/services/connection-manager'
-import { createLocalKey, loadOrCreateMasterKey } from '@dotaz/backend-shared/services/encryption'
+import { createLocalKey } from '@dotaz/backend-shared/services/encryption'
+import { bunSecretStore, keyItemFor, readDesignatedRequirement, setupMasterKey, siblingAppDatabases } from '@dotaz/backend-shared/services/master-key'
 import { AppDatabase, setDefaultDbPath } from '@dotaz/backend-shared/storage/app-db'
 import type { DotazRPC } from '@dotaz/backend-types'
 import { ApplicationMenu, BrowserView, BrowserWindow, Updater, Utils } from 'electrobun/bun'
@@ -39,18 +40,22 @@ setDefaultDbPath(() => {
 
 // Initialize backend services
 const appDb = AppDatabase.getInstance()
-// Master key lives in the OS keychain (Bun.secrets). The legacy hostname-derived
-// key is passed in so existing entries from older versions get re-encrypted on
-// first launch.
-const masterKey = await loadOrCreateMasterKey()
-if (masterKey) {
-	appDb.setLocalKey(masterKey, createLocalKey())
-}
+const userDataDir = Utils.paths.userData
+// The key that encrypts saved passwords lives in the OS keychain, in an item only
+// the program running this backend may read without a prompt (docs/keychain.md).
+// Older items and the legacy hostname-derived key are migrated on first launch.
+const masterKeyOutcome = await setupMasterKey({
+	appDb,
+	store: bunSecretStore(),
+	item: keyItemFor(readDesignatedRequirement()),
+	fallbackKey: createLocalKey(),
+	siblingDatabases: siblingAppDatabases(userDataDir, 'dotaz.db'),
+})
+if (masterKeyOutcome !== 'current') console.log(`Master key: ${masterKeyOutcome}`)
 const connectionManager = new ConnectionManager(appDb)
 
 // Create RPC handlers with deferred message emitter (set after window creation)
 let emitToFrontend: ((channel: string, payload: unknown) => void) | undefined
-const userDataDir = Utils.paths.userData
 // Demo DB: try dev-time path first, then bundled resource next to the executable
 const devDemoPath = resolve(import.meta.dir, '../../scripts/seed/bookstore.db')
 const bundledDemoPath = resolve(import.meta.dir, '../resources/bookstore.db')

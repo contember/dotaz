@@ -1,0 +1,338 @@
+import { encryptLocalPassword, tryDecryptLocalPassword } from '@dotaz/backend-shared/services/encryption'
+import {
+	KEY_ITEM_SETTING,
+	keyItemFor,
+	LEGACY_KEY_ITEM,
+	parseDesignatedRequirement,
+	readDesignatedRequirement,
+	type SecretStore,
+	setupMasterKey,
+	siblingAppDatabases,
+} from '@dotaz/backend-shared/services/master-key'
+import { AppDatabase, databaseUsesKey } from '@dotaz/backend-shared/storage/app-db'
+import type { PostgresConnectionConfig } from '@dotaz/shared/types/connection'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+// A stand-in for the keychain. Items listed in `refuse` throw on read, the way
+// Bun.secrets does when the user clicks Deny on the macOS prompt.
+class FakeStore implements SecretStore {
+	items = new Map<string, string>()
+	refuse = new Set<string>()
+	unavailable = false
+	reads: string[] = []
+
+	async get(name: string): Promise<string | null> {
+		this.reads.push(name)
+		if (this.unavailable || this.refuse.has(name)) throw new Error('Keychain access denied')
+		return this.items.get(name) ?? null
+	}
+	async set(name: string, value: string): Promise<void> {
+		if (this.unavailable) throw new Error('Keychain access denied')
+		this.items.set(name, value)
+	}
+	async delete(name: string): Promise<boolean> {
+		if (this.unavailable) throw new Error('Keychain access denied')
+		return this.items.delete(name)
+	}
+}
+
+const BUN_REQUIREMENT = 'identifier bun and anchor apple generic and certificate leaf[subject.OU] = "7FRXF46ZSN"'
+const APP_REQUIREMENT = 'identifier bun and anchor apple generic and certificate leaf[subject.OU] = "ABCDE12345"'
+
+const pgConfig: PostgresConnectionConfig = {
+	type: 'postgresql',
+	host: 'localhost',
+	port: 5432,
+	database: 'app',
+	user: 'admin',
+	password: 'db-secret',
+	sshTunnel: {
+		enabled: true,
+		host: 'bastion',
+		port: 22,
+		username: 'me',
+		authMethod: 'key',
+		keyPath: '/keys/id',
+		keyPassphrase: 'ssh-secret',
+	},
+}
+
+function randomKey(): Uint8Array {
+	return crypto.getRandomValues(new Uint8Array(32))
+}
+
+function encodeKey(key: Uint8Array): string {
+	return Buffer.from(key).toString('base64')
+}
+
+function rawConfig(db: AppDatabase, id: string): PostgresConnectionConfig {
+	const row = db.db.prepare('SELECT config FROM connections WHERE id = ?').get(id) as { config: string }
+	return JSON.parse(row.config) as PostgresConnectionConfig
+}
+
+let root: string
+const open: AppDatabase[] = []
+
+/** An app database in its own channel folder under one app-data root, like Electrobun lays them out. */
+function channelDb(channel: string): { db: AppDatabase; dir: string; path: string } {
+	const dir = join(root, channel)
+	mkdirSync(dir, { recursive: true })
+	const path = join(dir, 'dotaz.db')
+	const db = AppDatabase.create(path)
+	open.push(db)
+	return { db, dir, path }
+}
+
+/** A database from a version that kept the key in the legacy item. */
+function legacyChannel(channel: string, store: FakeStore, legacyKey: Uint8Array) {
+	store.items.set(LEGACY_KEY_ITEM, encodeKey(legacyKey))
+	const ch = channelDb(channel)
+	ch.db.setLocalKey(legacyKey)
+	const conn = ch.db.createConnection({ name: 'Prod', config: pgConfig })
+	return { ...ch, connId: conn.id }
+}
+
+beforeEach(() => {
+	root = mkdtempSync(join(tmpdir(), 'dotaz-master-key-'))
+})
+
+afterEach(() => {
+	for (const db of open.splice(0)) db.close()
+	rmSync(root, { recursive: true, force: true })
+})
+
+describe('keyItemFor', () => {
+	test('names the item after the designated requirement', () => {
+		expect(keyItemFor(APP_REQUIREMENT)).toBe(keyItemFor(APP_REQUIREMENT))
+		expect(keyItemFor(APP_REQUIREMENT)).not.toBe(keyItemFor(BUN_REQUIREMENT))
+		expect(keyItemFor(APP_REQUIREMENT)).toMatch(/^app-encryption-key-v2-[0-9a-f]{16}$/)
+	})
+
+	test('keeps the legacy item when the requirement is unknown (Linux, Windows, no codesign)', () => {
+		expect(keyItemFor(null)).toBe(LEGACY_KEY_ITEM)
+	})
+})
+
+describe('parseDesignatedRequirement', () => {
+	test('reads an explicit requirement', () => {
+		expect(parseDesignatedRequirement(`Executable=/x/bun\ndesignated => ${BUN_REQUIREMENT}\n`)).toBe(BUN_REQUIREMENT)
+	})
+
+	test('reads the implicit requirement of an ad-hoc signature', () => {
+		expect(parseDesignatedRequirement('# designated => cdhash H"d066c5b9b11ed38994139e2dc35dbe03d762c654"\n'))
+			.toBe('cdhash H"d066c5b9b11ed38994139e2dc35dbe03d762c654"')
+	})
+
+	test('returns null for unsigned code', () => {
+		expect(parseDesignatedRequirement('code object is not signed at all\n')).toBeNull()
+	})
+
+	test.skipIf(process.platform !== 'darwin')('reads the requirement of the running bun through codesign', () => {
+		const requirement = readDesignatedRequirement(process.execPath)
+		expect(requirement).not.toBeNull()
+		expect(requirement!).not.toContain('\n')
+		expect(keyItemFor(requirement)).toMatch(/^app-encryption-key-v2-/)
+	})
+})
+
+describe('setupMasterKey', () => {
+	test('a fresh install creates the bound item and records it', async () => {
+		const store = new FakeStore()
+		const { db } = channelDb('Dotaz')
+		const item = keyItemFor(APP_REQUIREMENT)
+
+		const outcome = await setupMasterKey({ appDb: db, store, item, fallbackKey: randomKey(), siblingDatabases: [] })
+
+		expect(outcome).toBe('current')
+		expect(store.items.has(item)).toBe(true)
+		expect(db.getSetting(KEY_ITEM_SETTING)).toBe(item)
+	})
+
+	test('moves the key out of the legacy item, re-encrypts every secret and removes the old item', async () => {
+		const store = new FakeStore()
+		const legacyKey = randomKey()
+		const { db, connId } = legacyChannel('Dotaz', store, legacyKey)
+		const item = keyItemFor(APP_REQUIREMENT)
+
+		const outcome = await setupMasterKey({ appDb: db, store, item, fallbackKey: randomKey(), siblingDatabases: [] })
+
+		expect(outcome).toBe('migrated')
+		expect(store.items.has(LEGACY_KEY_ITEM)).toBe(false)
+		expect(db.getSetting(KEY_ITEM_SETTING)).toBe(item)
+
+		const found = db.getConnectionById(connId)!.config as PostgresConnectionConfig
+		expect(found.password).toBe('db-secret')
+		expect(found.sshTunnel?.keyPassphrase).toBe('ssh-secret')
+
+		const raw = rawConfig(db, connId)
+		expect(tryDecryptLocalPassword(raw.password, legacyKey)).toBeNull()
+		expect(tryDecryptLocalPassword(raw.sshTunnel!.keyPassphrase!, legacyKey)).toBeNull()
+		const newKey = new Uint8Array(Buffer.from(store.items.get(item)!, 'base64'))
+		expect(tryDecryptLocalPassword(raw.password, newKey)).toBe('db-secret')
+	})
+
+	test('the next start reads only the bound item', async () => {
+		const store = new FakeStore()
+		const { db } = legacyChannel('Dotaz', store, randomKey())
+		const item = keyItemFor(APP_REQUIREMENT)
+		await setupMasterKey({ appDb: db, store, item, fallbackKey: randomKey(), siblingDatabases: [] })
+		store.reads = []
+
+		const outcome = await setupMasterKey({ appDb: db, store, item, fallbackKey: randomKey(), siblingDatabases: [] })
+
+		expect(outcome).toBe('current')
+		expect(store.reads).toEqual([item])
+	})
+
+	test('when the old item is refused, nothing is lost and the next start tries again', async () => {
+		const store = new FakeStore()
+		const legacyKey = randomKey()
+		const { db, connId } = legacyChannel('Dotaz', store, legacyKey)
+		const item = keyItemFor(APP_REQUIREMENT)
+		store.refuse.add(LEGACY_KEY_ITEM)
+
+		const refused = await setupMasterKey({ appDb: db, store, item, fallbackKey: randomKey(), siblingDatabases: [] })
+
+		expect(refused).toBe('previous-unreadable')
+		expect(store.items.has(LEGACY_KEY_ITEM)).toBe(true)
+		expect(db.getSetting(KEY_ITEM_SETTING)).toBeNull()
+		expect(tryDecryptLocalPassword(rawConfig(db, connId).password, legacyKey)).toBe('db-secret')
+
+		store.refuse.clear()
+		const retried = await setupMasterKey({ appDb: db, store, item, fallbackKey: randomKey(), siblingDatabases: [] })
+
+		expect(retried).toBe('migrated')
+		expect((db.getConnectionById(connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
+	})
+
+	test('a password saved while the old item was refused survives the later migration', async () => {
+		const store = new FakeStore()
+		const { db, connId } = legacyChannel('Dotaz', store, randomKey())
+		const item = keyItemFor(APP_REQUIREMENT)
+		store.refuse.add(LEGACY_KEY_ITEM)
+		await setupMasterKey({ appDb: db, store, item, fallbackKey: randomKey(), siblingDatabases: [] })
+		const added = db.createConnection({ name: 'New', config: { ...pgConfig, password: 'added-later' } })
+
+		store.refuse.clear()
+		await setupMasterKey({ appDb: db, store, item, fallbackKey: randomKey(), siblingDatabases: [] })
+
+		expect((db.getConnectionById(connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
+		expect((db.getConnectionById(added.id)!.config as PostgresConnectionConfig).password).toBe('added-later')
+	})
+
+	test('keeps the old item while another channel still needs it, and the last channel to move removes it', async () => {
+		const store = new FakeStore()
+		const legacyKey = randomKey()
+		const stable = legacyChannel('Dotaz', store, legacyKey)
+		const dev = legacyChannel('Dotaz-dev', store, legacyKey)
+
+		const first = await setupMasterKey({
+			appDb: stable.db,
+			store,
+			item: keyItemFor(APP_REQUIREMENT),
+			fallbackKey: randomKey(),
+			siblingDatabases: siblingAppDatabases(stable.dir, 'dotaz.db'),
+		})
+		expect(first).toBe('migrated-kept-previous')
+		expect(store.items.has(LEGACY_KEY_ITEM)).toBe(true)
+
+		const second = await setupMasterKey({
+			appDb: dev.db,
+			store,
+			item: keyItemFor(BUN_REQUIREMENT),
+			fallbackKey: randomKey(),
+			siblingDatabases: siblingAppDatabases(dev.dir, 'dotaz.db'),
+		})
+		expect(second).toBe('migrated')
+		expect(store.items.has(LEGACY_KEY_ITEM)).toBe(false)
+		expect((stable.db.getConnectionById(stable.connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
+		expect((dev.db.getConnectionById(dev.connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
+	})
+
+	test('moves again when the program identity changes later', async () => {
+		const store = new FakeStore()
+		const { db, connId } = legacyChannel('Dotaz', store, randomKey())
+		const unsigned = keyItemFor(BUN_REQUIREMENT)
+		const signed = keyItemFor(APP_REQUIREMENT)
+		await setupMasterKey({ appDb: db, store, item: unsigned, fallbackKey: randomKey(), siblingDatabases: [] })
+
+		const outcome = await setupMasterKey({ appDb: db, store, item: signed, fallbackKey: randomKey(), siblingDatabases: [] })
+
+		expect(outcome).toBe('migrated')
+		expect([...store.items.keys()]).toEqual([signed])
+		expect((db.getConnectionById(connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
+	})
+
+	test('still re-encrypts secrets left under the hostname-derived key', async () => {
+		const store = new FakeStore()
+		const hostKey = randomKey()
+		const { db } = channelDb('Dotaz')
+		const conn = db.createConnection({ name: 'Old', config: pgConfig })
+		db.db.prepare('UPDATE connections SET config = ? WHERE id = ?')
+			.run(JSON.stringify({ ...pgConfig, password: encryptLocalPassword('db-secret', hostKey), sshTunnel: undefined }), conn.id)
+
+		await setupMasterKey({ appDb: db, store, item: keyItemFor(APP_REQUIREMENT), fallbackKey: hostKey, siblingDatabases: [] })
+
+		expect(tryDecryptLocalPassword(rawConfig(db, conn.id).password, hostKey)).toBeNull()
+		expect((db.getConnectionById(conn.id)!.config as PostgresConnectionConfig).password).toBe('db-secret')
+	})
+
+	test('falls back to the machine-derived key when the keychain is unavailable, touching no items', async () => {
+		const store = new FakeStore()
+		const legacyKey = randomKey()
+		const { db } = legacyChannel('Dotaz', store, legacyKey)
+		store.unavailable = true
+		const hostKey = randomKey()
+
+		const outcome = await setupMasterKey({ appDb: db, store, item: keyItemFor(APP_REQUIREMENT), fallbackKey: hostKey, siblingDatabases: [] })
+
+		expect(outcome).toBe('fallback')
+		expect(store.items.get(LEGACY_KEY_ITEM)).toBe(encodeKey(legacyKey))
+		expect(db.getSetting(KEY_ITEM_SETTING)).toBeNull()
+		const added = db.createConnection({ name: 'Offline', config: pgConfig })
+		expect(tryDecryptLocalPassword(rawConfig(db, added.id).password, hostKey)).toBe('db-secret')
+	})
+
+	test('leaves the legacy item in place where there is no code identity to bind to', async () => {
+		const store = new FakeStore()
+		const legacyKey = randomKey()
+		const { db, connId } = legacyChannel('Dotaz', store, legacyKey)
+
+		const outcome = await setupMasterKey({ appDb: db, store, item: keyItemFor(null), fallbackKey: randomKey(), siblingDatabases: [] })
+
+		expect(outcome).toBe('current')
+		expect(store.items.get(LEGACY_KEY_ITEM)).toBe(encodeKey(legacyKey))
+		expect(tryDecryptLocalPassword(rawConfig(db, connId).password, legacyKey)).toBe('db-secret')
+	})
+})
+
+describe('databaseUsesKey', () => {
+	test('tells whether a database still holds a secret for the key', () => {
+		const key = randomKey()
+		const { db, path } = channelDb('Dotaz')
+		db.setLocalKey(key)
+		db.createConnection({ name: 'Prod', config: pgConfig })
+
+		expect(databaseUsesKey(path, key)).toBe(true)
+		expect(databaseUsesKey(path, randomKey())).toBe(false)
+	})
+
+	test('answers yes for a file it cannot read, so the key is kept', () => {
+		const path = join(root, 'broken.db')
+		writeFileSync(path, 'not a database')
+		expect(databaseUsesKey(path, randomKey())).toBe(true)
+	})
+})
+
+describe('siblingAppDatabases', () => {
+	test('lists the other channels that have a database, not this one', () => {
+		const stable = channelDb('Dotaz')
+		const canary = channelDb('Dotaz-canary')
+		mkdirSync(join(root, 'Dotaz-dev'))
+
+		expect(siblingAppDatabases(stable.dir, 'dotaz.db')).toEqual([canary.path])
+	})
+})

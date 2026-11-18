@@ -89,13 +89,14 @@ export class AppDatabase {
 	/**
 	 * Set the local encryption key and migrate any existing plaintext passwords.
 	 *
-	 * `legacyKey` (optional) is used during migration from the previous
-	 * hostname-derived key to a keychain-backed random key — entries that fail
-	 * to decrypt with `key` are retried with `legacyKey` and re-encrypted.
+	 * `legacyKeys` are keys the stored secrets may still be encrypted with (the
+	 * previous keychain item, the old hostname-derived key): entries that fail to
+	 * decrypt with `key` are retried with each of them in turn and re-encrypted.
 	 */
-	setLocalKey(key: Uint8Array, legacyKey?: Uint8Array | null): void {
+	setLocalKey(key: Uint8Array, legacyKeys?: Uint8Array | null | readonly (Uint8Array | null)[]): void {
 		this.localKey = key
-		this.migratePasswords(legacyKey ?? null)
+		const list = Array.isArray(legacyKeys) ? legacyKeys : [legacyKeys]
+		this.migratePasswords(list.filter((k): k is Uint8Array => k instanceof Uint8Array))
 	}
 
 	private encryptConfigJson(config: ConnectionConfig): string {
@@ -139,7 +140,7 @@ export class AppDatabase {
 		return config
 	}
 
-	private migratePasswords(legacyKey: Uint8Array | null): void {
+	private migratePasswords(legacyKeys: Uint8Array[]): void {
 		if (!this.localKey) return
 		const key = this.localKey
 		// Re-encode plaintext OR re-encrypt entries that were encrypted with the legacy key.
@@ -150,14 +151,14 @@ export class AppDatabase {
 			if (tryDecryptLocalPassword(value, key) !== null) {
 				return { value, changed: false }
 			}
-			if (legacyKey) {
+			for (const legacyKey of legacyKeys) {
 				const plaintext = tryDecryptLocalPassword(value, legacyKey)
 				if (plaintext !== null) {
 					return { value: encryptLocalPassword(plaintext, key), changed: true }
 				}
 			}
-			// Entry can't be decrypted by either key — leave it alone; the user will see a
-			// decryption error and can re-enter the password.
+			// Entry can't be decrypted by any key — leave it alone; the user will see an
+			// empty password and can re-enter it, or a later start with the right key fixes it.
 			return { value, changed: false }
 		}
 
@@ -704,4 +705,42 @@ function getDefaultDbPath(): string {
 		throw new Error('Default DB path not configured. Call setDefaultDbPath() first.')
 	}
 	return defaultDbPathFn()
+}
+
+/**
+ * Whether the app database at `dbPath` still holds a saved secret that `key`
+ * decrypts. Opens the file read-only and touches nothing else, so it is safe
+ * to point at another channel's database, even one in use or on an older schema.
+ * Answers true when the file can't be read: the caller uses this to decide
+ * whether a key may be thrown away.
+ */
+export function databaseUsesKey(dbPath: string, key: Uint8Array): boolean {
+	let db: Database | null = null
+	try {
+		db = new Database(dbPath, { readonly: true })
+		const rows = db.prepare('SELECT config FROM connections').all() as { config: string }[]
+		for (const row of rows) {
+			let config: ConnectionConfig
+			try {
+				config = JSON.parse(row.config) as ConnectionConfig
+			} catch {
+				continue
+			}
+			if (!isServerConfig(config)) continue
+			const secrets = [config.password]
+			if (config.type === 'postgresql' && config.sshTunnel) {
+				secrets.push(config.sshTunnel.password ?? '', config.sshTunnel.keyPassphrase ?? '')
+			}
+			for (const secret of secrets) {
+				if (secret && isEncryptedPassword(secret) && tryDecryptLocalPassword(secret, key) !== null) {
+					return true
+				}
+			}
+		}
+		return false
+	} catch {
+		return true
+	} finally {
+		db?.close()
+	}
 }
