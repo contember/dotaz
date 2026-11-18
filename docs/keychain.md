@@ -46,6 +46,14 @@ means the v1 item). When the item for the running program differs from the recor
 4. Record the new item, then delete the old one, unless another channel still needs it
    (below).
 
+Any program may add an item under a name nobody holds yet, and the new name is
+predictable. So in step 1 an item already under the new name is used only when one of
+Dotaz's databases (this one or another channel's) is already encrypted with its key;
+anything else could have been planted with a key another program knows and is deleted
+and recreated. If it can't be deleted, the key stays in the recorded item. The database
+also keeps a fingerprint of its key (setting `keychain.masterKeyCheck`) and refuses a
+different key found later under the recorded name.
+
 If step 2 is refused, nothing is recorded or deleted: the saved secrets stay encrypted with
 the old key, the connections show without passwords for that session, and the next start
 asks again. A password saved in the meantime is encrypted with the new key and survives the

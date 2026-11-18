@@ -99,6 +99,11 @@ export class AppDatabase {
 		this.migratePasswords(list.filter((k): k is Uint8Array => k instanceof Uint8Array))
 	}
 
+	/** Whether a saved secret in this database decrypts with `key`. */
+	usesKey(key: Uint8Array): boolean {
+		return connectionsUseKey(this.db, key)
+	}
+
 	private encryptConfigJson(config: ConnectionConfig): string {
 		if (this.localKey && isServerConfig(config)) {
 			let encrypted: ConnectionConfig = { ...config, password: encryptLocalPassword(config.password, this.localKey) }
@@ -718,29 +723,33 @@ export function databaseUsesKey(dbPath: string, key: Uint8Array): boolean {
 	let db: Database | null = null
 	try {
 		db = new Database(dbPath, { readonly: true })
-		const rows = db.prepare('SELECT config FROM connections').all() as { config: string }[]
-		for (const row of rows) {
-			let config: ConnectionConfig
-			try {
-				config = JSON.parse(row.config) as ConnectionConfig
-			} catch {
-				continue
-			}
-			if (!isServerConfig(config)) continue
-			const secrets = [config.password]
-			if (config.type === 'postgresql' && config.sshTunnel) {
-				secrets.push(config.sshTunnel.password ?? '', config.sshTunnel.keyPassphrase ?? '')
-			}
-			for (const secret of secrets) {
-				if (secret && isEncryptedPassword(secret) && tryDecryptLocalPassword(secret, key) !== null) {
-					return true
-				}
-			}
-		}
-		return false
+		return connectionsUseKey(db, key)
 	} catch {
 		return true
 	} finally {
 		db?.close()
 	}
+}
+
+function connectionsUseKey(db: Database, key: Uint8Array): boolean {
+	const rows = db.prepare('SELECT config FROM connections').all() as { config: string }[]
+	for (const row of rows) {
+		let config: ConnectionConfig
+		try {
+			config = JSON.parse(row.config) as ConnectionConfig
+		} catch {
+			continue
+		}
+		if (!isServerConfig(config)) continue
+		const secrets = [config.password]
+		if (config.type === 'postgresql' && config.sshTunnel) {
+			secrets.push(config.sshTunnel.password ?? '', config.sshTunnel.keyPassphrase ?? '')
+		}
+		for (const secret of secrets) {
+			if (secret && isEncryptedPassword(secret) && tryDecryptLocalPassword(secret, key) !== null) {
+				return true
+			}
+		}
+	}
+	return false
 }

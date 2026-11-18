@@ -25,6 +25,8 @@ export const KEYCHAIN_SERVICE = 'dotaz'
 export const LEGACY_KEY_ITEM = 'app-encryption-key-v1'
 /** App setting naming the item that holds the key this database is encrypted with. */
 export const KEY_ITEM_SETTING = 'keychain.masterKeyItem'
+/** App setting holding `keyFingerprint` of that key, so a substituted key is refused. */
+export const KEY_CHECK_SETTING = 'keychain.masterKeyCheck'
 
 const KEY_BYTES = 32
 
@@ -112,26 +114,73 @@ export type MasterKeyOutcome =
 	| 'migrated-delete-failed'
 	/** The old item could not be read; it will be asked for again on the next start. */
 	| 'previous-unreadable'
+	/**
+	 * An item Dotaz can't vouch for sits under the new name and could not be
+	 * removed; the key stays where it was.
+	 */
+	| 'item-occupied'
+	/** The keychain holds a different key than the one this database recorded; it was refused. */
+	| 'key-mismatch'
 	/** The keychain could not be used; the machine-derived key is in use. */
 	| 'fallback'
 
 export async function setupMasterKey(options: MasterKeyOptions): Promise<MasterKeyOutcome> {
-	const { appDb, store, item, fallbackKey } = options
+	const { appDb, store, item, fallbackKey, siblingDatabases } = options
 	const log = options.log ?? ((message: string) => console.warn(message))
 	const recorded = appDb.getSetting(KEY_ITEM_SETTING) ?? LEGACY_KEY_ITEM
 
-	let key: Uint8Array
-	try {
-		key = await getOrCreateKey(store, item)
-	} catch (err) {
+	const fallBack = (err: unknown): MasterKeyOutcome => {
 		log(`Keychain unavailable, falling back to machine-derived key: ${errorMessage(err)}`)
 		if (fallbackKey) appDb.setLocalKey(fallbackKey)
 		return 'fallback'
 	}
 
+	let existing: Uint8Array | null
+	try {
+		existing = decodeKey(await store.get(item))
+	} catch (err) {
+		return fallBack(err)
+	}
+
 	if (recorded === item) {
+		let key = existing
+		if (key) {
+			// Anyone may add an item under a name nobody holds, so a key that differs
+			// from the one this database recorded may be a planted one: never encrypt with it.
+			const check = appDb.getSetting(KEY_CHECK_SETTING)
+			if (check && check !== keyFingerprint(key)) {
+				log(`The master key in "${item}" is not the one this database was encrypted with; refusing it`)
+				if (fallbackKey) appDb.setLocalKey(fallbackKey)
+				return 'key-mismatch'
+			}
+		} else {
+			try {
+				key = await createKey(store, item)
+			} catch (err) {
+				return fallBack(err)
+			}
+		}
 		appDb.setLocalKey(key, [fallbackKey])
+		appDb.setSetting(KEY_CHECK_SETTING, keyFingerprint(key))
 		return 'current'
+	}
+
+	// Moving the key to `item`. An item already under that name is used only when
+	// a database of ours is encrypted with it (another channel with the same
+	// identity moved first, or an earlier attempt here was interrupted). Anything
+	// else could have been planted by another program, with a key it knows and an
+	// access list that lets it read the item, so it is replaced.
+	let key: Uint8Array
+	if (existing && (appDb.usesKey(existing) || siblingDatabases.some((path) => databaseUsesKey(path, existing)))) {
+		key = existing
+	} else {
+		try {
+			if (existing) await store.delete(item)
+			key = await createKey(store, item)
+		} catch (err) {
+			log(`Could not create the master key item "${item}": ${errorMessage(err)}`)
+			return keepPrevious(options, recorded, log)
+		}
 	}
 
 	let previous: Uint8Array | null
@@ -147,9 +196,10 @@ export async function setupMasterKey(options: MasterKeyOptions): Promise<MasterK
 
 	appDb.setLocalKey(key, [previous, fallbackKey])
 	appDb.setSetting(KEY_ITEM_SETTING, item)
+	appDb.setSetting(KEY_CHECK_SETTING, keyFingerprint(key))
 
 	if (!previous) return 'current'
-	const stillNeeded = options.siblingDatabases.some((path) => databaseUsesKey(path, previous))
+	const stillNeeded = siblingDatabases.some((path) => databaseUsesKey(path, previous))
 	if (stillNeeded) return 'migrated-kept-previous'
 	try {
 		await store.delete(recorded)
@@ -160,12 +210,36 @@ export async function setupMasterKey(options: MasterKeyOptions): Promise<MasterK
 	}
 }
 
-async function getOrCreateKey(store: SecretStore, item: string): Promise<Uint8Array> {
-	const existing = decodeKey(await store.get(item))
-	if (existing) return existing
+/** The move could not happen: carry on with the recorded item, as before this version. */
+async function keepPrevious(options: MasterKeyOptions, recorded: string, log: (message: string) => void): Promise<MasterKeyOutcome> {
+	const { appDb, store, fallbackKey } = options
+	try {
+		const previous = decodeKey(await store.get(recorded))
+		if (previous) {
+			appDb.setLocalKey(previous, [fallbackKey])
+			return 'item-occupied'
+		}
+	} catch (err) {
+		log(`Could not read the previous master key "${recorded}": ${errorMessage(err)}`)
+	}
+	if (fallbackKey) appDb.setLocalKey(fallbackKey)
+	return 'item-occupied'
+}
+
+/**
+ * Adds a new item with a fresh key. Refuses when an item already exists:
+ * `set` would then only replace the value and keep that item's access list.
+ */
+async function createKey(store: SecretStore, item: string): Promise<Uint8Array> {
+	if ((await store.get(item)) !== null) throw new Error(`keychain item "${item}" already exists`)
 	const fresh = crypto.getRandomValues(new Uint8Array(KEY_BYTES))
 	await store.set(item, Buffer.from(fresh).toString('base64'))
 	return fresh
+}
+
+/** A one-way fingerprint of the key, stored in the app database to recognise it later. */
+export function keyFingerprint(key: Uint8Array): string {
+	return createHash('sha256').update('dotaz-master-key-check:').update(key).digest('hex')
 }
 
 function decodeKey(stored: string | null): Uint8Array | null {

@@ -33,8 +33,10 @@ class FakeStore implements SecretStore {
 		if (this.unavailable) throw new Error('Keychain access denied')
 		this.items.set(name, value)
 	}
+	undeletable = new Set<string>()
+
 	async delete(name: string): Promise<boolean> {
-		if (this.unavailable) throw new Error('Keychain access denied')
+		if (this.unavailable || this.undeletable.has(name)) throw new Error('Keychain access denied')
 		return this.items.delete(name)
 	}
 }
@@ -250,6 +252,80 @@ describe('setupMasterKey', () => {
 		expect(store.items.has(LEGACY_KEY_ITEM)).toBe(false)
 		expect((stable.db.getConnectionById(stable.connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
 		expect((dev.db.getConnectionById(dev.connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
+	})
+
+	test('replaces an item planted under the new name instead of encrypting with its key', async () => {
+		const store = new FakeStore()
+		const { db, connId } = legacyChannel('Dotaz', store, randomKey())
+		const item = keyItemFor(APP_REQUIREMENT)
+		const planted = randomKey()
+		store.items.set(item, encodeKey(planted))
+
+		const outcome = await setupMasterKey({ appDb: db, store, item, fallbackKey: randomKey(), siblingDatabases: [] })
+
+		expect(outcome).toBe('migrated')
+		expect(store.items.get(item)).not.toBe(encodeKey(planted))
+		expect(tryDecryptLocalPassword(rawConfig(db, connId).password, planted)).toBeNull()
+		expect((db.getConnectionById(connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
+	})
+
+	test('keeps the old item when a planted item cannot be removed', async () => {
+		const store = new FakeStore()
+		const legacyKey = randomKey()
+		const { db, connId } = legacyChannel('Dotaz', store, legacyKey)
+		const item = keyItemFor(APP_REQUIREMENT)
+		const planted = randomKey()
+		store.items.set(item, encodeKey(planted))
+		store.undeletable.add(item)
+
+		const outcome = await setupMasterKey({ appDb: db, store, item, fallbackKey: randomKey(), siblingDatabases: [] })
+
+		expect(outcome).toBe('item-occupied')
+		expect(db.getSetting(KEY_ITEM_SETTING)).toBeNull()
+		expect(store.items.get(LEGACY_KEY_ITEM)).toBe(encodeKey(legacyKey))
+		expect(tryDecryptLocalPassword(rawConfig(db, connId).password, legacyKey)).toBe('db-secret')
+		const added = db.createConnection({ name: 'New', config: pgConfig })
+		expect(tryDecryptLocalPassword(rawConfig(db, added.id).password, planted)).toBeNull()
+		expect(tryDecryptLocalPassword(rawConfig(db, added.id).password, legacyKey)).toBe('db-secret')
+	})
+
+	test('refuses a key swapped into the recorded item', async () => {
+		const store = new FakeStore()
+		const { db, connId } = legacyChannel('Dotaz', store, randomKey())
+		const item = keyItemFor(APP_REQUIREMENT)
+		await setupMasterKey({ appDb: db, store, item, fallbackKey: randomKey(), siblingDatabases: [] })
+		const real = new Uint8Array(Buffer.from(store.items.get(item)!, 'base64'))
+		const planted = randomKey()
+		store.items.set(item, encodeKey(planted))
+
+		const outcome = await setupMasterKey({ appDb: db, store, item, fallbackKey: randomKey(), siblingDatabases: [] })
+
+		expect(outcome).toBe('key-mismatch')
+		expect(tryDecryptLocalPassword(rawConfig(db, connId).password, real)).toBe('db-secret')
+		const added = db.createConnection({ name: 'New', config: pgConfig })
+		expect(tryDecryptLocalPassword(rawConfig(db, added.id).password, planted)).toBeNull()
+	})
+
+	test('a channel with the same identity reuses the item another channel already moved to', async () => {
+		const store = new FakeStore()
+		const legacyKey = randomKey()
+		const stable = legacyChannel('Dotaz', store, legacyKey)
+		const canary = legacyChannel('Dotaz-canary', store, legacyKey)
+		const item = keyItemFor(APP_REQUIREMENT)
+
+		await setupMasterKey({ appDb: canary.db, store, item, fallbackKey: randomKey(), siblingDatabases: siblingAppDatabases(canary.dir, 'dotaz.db') })
+		const outcome = await setupMasterKey({
+			appDb: stable.db,
+			store,
+			item,
+			fallbackKey: randomKey(),
+			siblingDatabases: siblingAppDatabases(stable.dir, 'dotaz.db'),
+		})
+
+		expect(outcome).toBe('migrated')
+		expect([...store.items.keys()]).toEqual([item])
+		expect((canary.db.getConnectionById(canary.connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
+		expect((stable.db.getConnectionById(stable.connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
 	})
 
 	test('moves again when the program identity changes later', async () => {
