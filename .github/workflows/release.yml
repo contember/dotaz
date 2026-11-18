@@ -68,6 +68,10 @@ jobs:
             platform: win-x64
             artifact: dotaz-win-x64
     runs-on: ${{ matrix.os }}
+    env:
+      # The macOS app is signed only when the repository holds a Developer ID
+      # certificate; without it the build stays unsigned, as before.
+      MACOS_SIGNING: ${{ secrets.MACOS_CERTIFICATE_P12 != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -97,10 +101,70 @@ jobs:
       - name: Build frontend
         run: bunx vite build
 
+      # The Developer ID signature gives the bundled backend an identity of its own,
+      # which the keychain binds the saved-password key to (docs/keychain.md).
+      # electrobun.config.ts turns on codesign/notarize when these variables are set.
+      - name: Import Developer ID certificate (macOS)
+        if: runner.os == 'macOS' && env.MACOS_SIGNING == 'true'
+        env:
+          CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          DEVELOPER_ID: ${{ secrets.MACOS_DEVELOPER_ID }}
+          API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          printf '%s' "$CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/certificate.p12"
+          echo "ELECTROBUN_DEVELOPER_ID=$DEVELOPER_ID" >> "$GITHUB_ENV"
+          if [ -n "$API_KEY_P8" ]; then
+            printf '%s\n' "$API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+            {
+              echo "ELECTROBUN_APPLEAPIKEYPATH=$RUNNER_TEMP/AuthKey.p8"
+              echo "ELECTROBUN_APPLEAPIKEY=$API_KEY_ID"
+              echo "ELECTROBUN_APPLEAPIISSUER=$API_ISSUER"
+            } >> "$GITHUB_ENV"
+          fi
+
       - name: Build desktop app
         run: bunx electrobun build --env=${{ needs.prepare.outputs.electrobun-env }}
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
+
+      - name: Check the backend signature (macOS)
+        if: runner.os == 'macOS' && env.MACOS_SIGNING == 'true'
+        run: |
+          BUILD_DIR="build/${{ needs.prepare.outputs.electrobun-env }}-${{ matrix.platform }}"
+          BUN=$(find "$BUILD_DIR" -path "*.app/Contents/MacOS/bun" -type f | head -1)
+          if [ -z "$BUN" ]; then
+            echo "::warning::No .app/Contents/MacOS/bun under $BUILD_DIR; backend signature not checked"
+            exit 0
+          fi
+          codesign --verify --strict --verbose=2 "${BUN%/Contents/MacOS/bun}"
+          # The keychain binds the saved-password key to this requirement, so it must
+          # name the release team, not Bun's.
+          TEAM="${ELECTROBUN_DEVELOPER_ID##*(}"
+          TEAM="${TEAM%)}"
+          REQUIREMENT=$(codesign -d -r- "$BUN" 2>&1)
+          echo "$REQUIREMENT"
+          case "$REQUIREMENT" in
+            *"subject.OU] = \"$TEAM\""* | *"subject.OU] = $TEAM"*) ;;
+            *) echo "::error::Contents/MacOS/bun is not signed with the release Developer ID"; exit 1 ;;
+          esac
+
+      - name: Remove signing keychain (macOS)
+        if: always() && runner.os == 'macOS' && env.MACOS_SIGNING == 'true'
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
+          rm -f "$RUNNER_TEMP/AuthKey.p8"
 
       - name: Extract app from Electrobun installer (Linux)
         if: runner.os == 'Linux'

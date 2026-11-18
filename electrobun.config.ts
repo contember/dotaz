@@ -1,6 +1,12 @@
 import type { ElectrobunConfig } from 'electrobun'
 import pkg from './package.json'
 
+// Signing gives the bundled backend a code identity of its own, which the macOS
+// keychain binds the saved-password key to (docs/keychain.md). It runs only when
+// the release workflow provides a Developer ID; other builds stay unsigned.
+const macSign = Boolean(process.env.ELECTROBUN_DEVELOPER_ID)
+const macNotarize = macSign && Boolean(process.env.ELECTROBUN_APPLEAPIKEY || process.env.ELECTROBUN_APPLEID)
+
 export default {
 	app: {
 		name: 'Dotaz',
@@ -20,6 +26,8 @@ export default {
 		},
 		watchIgnore: ['dist/**'],
 		mac: {
+			codesign: macSign,
+			notarize: macNotarize,
 			bundleCEF: false,
 			icons: 'assets/icon.iconset',
 		},
