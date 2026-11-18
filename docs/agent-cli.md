@@ -311,13 +311,15 @@ Not covered, so not claimed:
 
 - **A process that can write Dotaz's files or run its code.** The paired keys live in the app
   database, and the backend is JavaScript run by the stock `bun` binary. A process running as
-  the user can add a row to the database, patch the app, or run `bun` itself, and every
-  official `bun` binary shares one code-signing identity, so whatever Dotaz keeps in the
-  keychain through `Bun.secrets` (including the key that encrypts saved passwords) is readable
-  by any `bun` process without a prompt. Such a process can already decrypt the saved
-  connection passwords and write to the databases directly. Closing this needs a signed,
-  notarized app whose key list is guarded by a separately signed component; until then, keep
-  untrusted processes away from Dotaz's data folder and app bundle.
+  the user can add a row to the database, patch the app, or run `bun` itself. The key that
+  encrypts saved passwords is bound to the code signature of the backend binary
+  (`docs/keychain.md`): in unsigned builds that is Bun's own signature, shared by every
+  official `bun`, and in signed releases it is Dotaz's, but even then a process can run
+  Dotaz's bundled `bun` with its own script and read the key without a prompt. Such a process
+  can decrypt the saved connection passwords and write to the databases directly. Closing
+  this needs a backend that runs only its own code and a key list guarded by a separately
+  signed component; until then, keep untrusted processes away from Dotaz's data folder and
+  app bundle.
 - **A process that drives the window** through accessibility APIs: it can click Run on a
   proposal, or Pair.
 - **The approving page.** The passkey prompt shows the relying party, not the SQL, so whoever
