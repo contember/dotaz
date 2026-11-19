@@ -247,9 +247,13 @@ async function moveKey(options: MasterKeyOptions, recorded: string, item: string
 		return 'previous-unreadable'
 	}
 
-	appDb.setLocalKey(key, [previous, fallbackKey])
-	appDb.setSetting(KEY_ITEM_SETTING, item)
-	appDb.setSetting(KEY_CHECK_SETTING, keyFingerprint(key))
+	// One transaction: a start that dies part-way must not record the new item with
+	// the old fingerprint (refused for good) or leave secrets under an unrecorded key.
+	appDb.transaction(() => {
+		appDb.setLocalKey(key, [previous, fallbackKey])
+		appDb.setSetting(KEY_ITEM_SETTING, item)
+		appDb.setSetting(KEY_CHECK_SETTING, keyFingerprint(key))
+	})
 
 	if (!previous) return 'current'
 	// Kept while another channel holds secrets under it or still records it as its

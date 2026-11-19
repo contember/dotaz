@@ -47,8 +47,10 @@ means the v1 item). When the item for the running program differs from the recor
    the recorded item belongs to the previous identity.
 3. Re-encrypt every saved secret under the new key. Secrets still under the old
    hostname-derived key are re-encrypted too.
-4. Record the new item, then delete the old one, unless another channel still needs it
-   (below).
+4. Record the new item and its key's fingerprint, then delete the old one, unless another
+   channel still needs it (below). Steps 3 and 4 up to the deletion are one database
+   transaction, so a start that dies part-way leaves the old item recorded with every
+   secret still under its key, and the next start repeats the move.
 
 Any program may add an item under a name nobody holds yet, and the new name is
 predictable. So in step 1 an item already under the new name is used only when one of
