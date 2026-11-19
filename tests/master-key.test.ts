@@ -230,7 +230,9 @@ describe('setupMasterKey', () => {
 			expect([LEGACY_KEY_ITEM, item]).toContain(recorded)
 			const recordedKey = new Uint8Array(Buffer.from(store.items.get(recorded)!, 'base64'))
 			expect(restarted.getSetting(KEY_CHECK_SETTING)).toBe(keyFingerprint(recordedKey))
-			expect(tryDecryptLocalPassword(rawConfig(restarted, connId).password, recordedKey)).toBe('db-secret')
+			const raw = rawConfig(restarted, connId)
+			expect(tryDecryptLocalPassword(raw.password, recordedKey)).toBe('db-secret')
+			expect(tryDecryptLocalPassword(raw.sshTunnel!.keyPassphrase!, recordedKey)).toBe('ssh-secret')
 
 			expect(await setupMasterKey({ appDb: restarted, store, item, fallbackKey: null, siblingDatabases: [] })).toBe('migrated')
 			const found = restarted.getConnectionById(connId)!.config as PostgresConnectionConfig
