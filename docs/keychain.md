@@ -106,8 +106,10 @@ lock file next to the channel folders (`master-key.lock`, holding the holder's p
 so two channels started at the same moment don't each create that item. The holder may sit
 on the keychain prompt for as long as the user takes, so its lock is never taken over while
 the process lives: a channel that has waited 30 seconds keeps its recorded item for this
-start (`move-deferred`) and moves on a later one. A lock whose process is gone is left over
-from a crash and is taken over. Dev builds are never signed (Hutch skips signing for them),
+start (`move-deferred`) and moves on a later one. A lock whose process is gone (or belongs
+to another user), or that is older than ten minutes, is left over from a crash and is taken
+over: process IDs are reused, so an old lock's ID may name an unrelated process. A deferred
+start still refuses a key that doesn't match the recorded fingerprint. Dev builds are never signed (Hutch skips signing for them),
 so a dev build keeps using the v1 item, which then stays in the keychain.
 
 ## Release signing

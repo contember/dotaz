@@ -278,6 +278,16 @@ async function keepPrevious(
 	try {
 		const previous = decodeKey(await store.get(recorded))
 		if (previous) {
+			// Same check as keepRecordedItem: never encrypt with a substituted key.
+			const check = appDb.getSetting(KEY_CHECK_SETTING)
+			if (check && check !== keyFingerprint(previous)) {
+				log(
+					`The master key in keychain item "${recorded}" is not the one this database was encrypted with, so it is refused `
+						+ 'and saved passwords are unavailable. See "Resetting the key" in docs/keychain.md.',
+				)
+				if (fallbackKey) appDb.setLocalKey(fallbackKey)
+				return 'key-mismatch'
+			}
 			appDb.setLocalKey(previous, [fallbackKey])
 			return outcome
 		}
@@ -299,6 +309,7 @@ function siblingVouchesFor(path: string, key: Uint8Array): boolean {
 
 const LOCK_WAIT_MS = 30_000
 const LOCK_UNWRITTEN_STALE_MS = 60_000
+const LOCK_MAX_AGE_MS = 10 * 60_000
 
 /**
  * Runs `fn` holding a lock file, waiting for another holder to finish. The
@@ -357,20 +368,25 @@ function readLock(lockPath: string): string | null {
 function lockHolderAlive(lockPath: string): boolean {
 	const content = readLock(lockPath)
 	if (content === null) return false
-	const pid = Number.parseInt(content.split(' ')[0] ?? '', 10)
-	if (!Number.isInteger(pid) || pid <= 0) {
-		// Created but not written yet, or garbage: trust it only while it is fresh.
-		try {
-			return Date.now() - statSync(lockPath).mtimeMs < LOCK_UNWRITTEN_STALE_MS
-		} catch {
-			return false
-		}
+	let age: number
+	try {
+		age = Date.now() - statSync(lockPath).mtimeMs
+	} catch {
+		return false
 	}
+	// A process ID is reused after the holder dies (across a reboot, say), so no
+	// lock is honoured for longer than anyone plausibly leaves the prompt open.
+	if (age > LOCK_MAX_AGE_MS) return false
+	const pid = Number.parseInt(content.split(' ')[0] ?? '', 10)
+	// Created but not written yet, or garbage: trust it only while it is fresh.
+	if (!Number.isInteger(pid)) return age < LOCK_UNWRITTEN_STALE_MS
+	if (pid <= 1) return false
 	try {
 		process.kill(pid, 0)
 		return true
-	} catch (err) {
-		return (err as NodeJS.ErrnoException).code === 'EPERM'
+	} catch {
+		// ESRCH: gone. EPERM: another user's process, so not a Dotaz of this user.
+		return false
 	}
 }
 

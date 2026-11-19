@@ -16,7 +16,7 @@ import {
 import { AppDatabase, databaseUsesKey } from '@dotaz/backend-shared/storage/app-db'
 import type { PostgresConnectionConfig } from '@dotaz/shared/types/connection'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync as dirFiles, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -483,6 +483,52 @@ describe('setupMasterKey', () => {
 
 		expect(outcome).toBe('migrated')
 		expect(existsSync(lockPath)).toBe(false)
+	})
+
+	test('a lock is taken over once it is older than anyone leaves the prompt open, or names pid 1', async () => {
+		for (const [content, ageMinutes] of [[`${process.pid} reused-pid`, 11], ['1 init', 0]] as const) {
+			const store = new FakeStore()
+			const { db } = legacyChannel(`Dotaz-${ageMinutes}`, store, randomKey())
+			const lockPath = join(root, `master-key-${ageMinutes}.lock`)
+			writeFileSync(lockPath, content)
+			const then = new Date(Date.now() - ageMinutes * 60_000)
+			utimesSync(lockPath, then, then)
+
+			const outcome = await setupMasterKey({
+				appDb: db,
+				store,
+				item: keyItemFor(APP_REQUIREMENT),
+				fallbackKey: randomKey(),
+				siblingDatabases: [],
+				lockPath,
+				lockWaitMs: 150,
+			})
+
+			expect(outcome).toBe('migrated')
+		}
+		expect(dirFiles(root).filter((name) => name.endsWith('.lock'))).toEqual([])
+	})
+
+	test('a deferred start still refuses a key swapped into the recorded item', async () => {
+		const store = new FakeStore()
+		const legacyKey = randomKey()
+		const { db, dir } = legacyChannel('Dotaz', store, legacyKey)
+		db.setSetting(KEY_CHECK_SETTING, keyFingerprint(legacyKey))
+		store.items.set(LEGACY_KEY_ITEM, encodeKey(randomKey()))
+		const lockPath = join(root, 'master-key.lock')
+		writeFileSync(lockPath, `${process.pid} someone-else`)
+
+		const outcome = await setupMasterKey({
+			appDb: db,
+			store,
+			item: keyItemFor(APP_REQUIREMENT),
+			fallbackKey: randomKey(),
+			siblingDatabases: siblingAppDatabases(dir, 'dotaz.db'),
+			lockPath,
+			lockWaitMs: 150,
+		})
+
+		expect(outcome).toBe('key-mismatch')
 	})
 
 	test('an unreadable file in another channel folder does not vouch for a planted item', async () => {
