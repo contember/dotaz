@@ -172,10 +172,20 @@ jobs:
           # team, not Bun's.
           TEAM="${ELECTROBUN_DEVELOPER_ID##*(}"
           TEAM="${TEAM%)}"
+          # An empty or malformed MACOS_DEVELOPER_ID turns signing off in
+          # electrobun.config.ts and would make the pattern below match anything.
+          if ! printf '%s' "$TEAM" | grep -Eq '^[A-Z0-9]{10}$'; then
+            echo "::error::MACOS_DEVELOPER_ID must end in '(<10-character team ID>)', got '${ELECTROBUN_DEVELOPER_ID}'"
+            exit 1
+          fi
+          if [ "$TEAM" = "7FRXF46ZSN" ]; then
+            echo "::error::MACOS_DEVELOPER_ID names Bun's team, not ours"
+            exit 1
+          fi
           REQUIREMENT=$(codesign -d -r- "$BUN" 2>&1)
           echo "$REQUIREMENT"
           case "$REQUIREMENT" in
-            *"subject.OU] = \"$TEAM\""* | *"subject.OU] = $TEAM"*) ;;
+            *"certificate leaf[subject.OU] = \"$TEAM\""* | *"certificate leaf[subject.OU] = $TEAM"*) ;;
             *) echo "::error::Contents/MacOS/bun is not signed with the release Developer ID"; exit 1 ;;
           esac
 
