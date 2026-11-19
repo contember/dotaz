@@ -254,6 +254,21 @@ describe('setupMasterKey', () => {
 		expect((dev.db.getConnectionById(dev.connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
 	})
 
+	test('an unreadable file in another channel folder does not vouch for a planted item', async () => {
+		const store = new FakeStore()
+		const { db, dir, connId } = legacyChannel('Dotaz', store, randomKey())
+		mkdirSync(join(root, 'Dotaz-junk'))
+		writeFileSync(join(root, 'Dotaz-junk', 'dotaz.db'), 'not a database')
+		const item = keyItemFor(APP_REQUIREMENT)
+		const planted = randomKey()
+		store.items.set(item, encodeKey(planted))
+
+		await setupMasterKey({ appDb: db, store, item, fallbackKey: randomKey(), siblingDatabases: siblingAppDatabases(dir, 'dotaz.db') })
+
+		expect(store.items.get(item)).not.toBe(encodeKey(planted))
+		expect(tryDecryptLocalPassword(rawConfig(db, connId).password, planted)).toBeNull()
+	})
+
 	test('replaces an item planted under the new name instead of encrypting with its key', async () => {
 		const store = new FakeStore()
 		const { db, connId } = legacyChannel('Dotaz', store, randomKey())
@@ -392,14 +407,15 @@ describe('databaseUsesKey', () => {
 		db.setLocalKey(key)
 		db.createConnection({ name: 'Prod', config: pgConfig })
 
-		expect(databaseUsesKey(path, key)).toBe(true)
-		expect(databaseUsesKey(path, randomKey())).toBe(false)
+		expect(databaseUsesKey(path, key, false)).toBe(true)
+		expect(databaseUsesKey(path, randomKey(), true)).toBe(false)
 	})
 
-	test('answers yes for a file it cannot read, so the key is kept', () => {
+	test("gives the caller's answer for a file it cannot read", () => {
 		const path = join(root, 'broken.db')
 		writeFileSync(path, 'not a database')
-		expect(databaseUsesKey(path, randomKey())).toBe(true)
+		expect(databaseUsesKey(path, randomKey(), true)).toBe(true)
+		expect(databaseUsesKey(path, randomKey(), false)).toBe(false)
 	})
 })
 

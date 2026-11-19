@@ -716,16 +716,17 @@ function getDefaultDbPath(): string {
  * Whether the app database at `dbPath` still holds a saved secret that `key`
  * decrypts. Opens the file read-only and touches nothing else, so it is safe
  * to point at another channel's database, even one in use or on an older schema.
- * Answers true when the file can't be read: the caller uses this to decide
- * whether a key may be thrown away.
+ * `ifUnreadable` is the answer when the file can't be read: true when deciding
+ * whether a key may be thrown away (keep it), false when deciding whether a key
+ * can be trusted (only a secret that actually decrypts counts).
  */
-export function databaseUsesKey(dbPath: string, key: Uint8Array): boolean {
+export function databaseUsesKey(dbPath: string, key: Uint8Array, ifUnreadable: boolean): boolean {
 	let db: Database | null = null
 	try {
 		db = new Database(dbPath, { readonly: true })
 		return connectionsUseKey(db, key)
 	} catch {
-		return true
+		return ifUnreadable
 	} finally {
 		db?.close()
 	}

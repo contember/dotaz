@@ -171,7 +171,7 @@ export async function setupMasterKey(options: MasterKeyOptions): Promise<MasterK
 	// else could have been planted by another program, with a key it knows and an
 	// access list that lets it read the item, so it is replaced.
 	let key: Uint8Array
-	if (existing && (appDb.usesKey(existing) || siblingDatabases.some((path) => databaseUsesKey(path, existing)))) {
+	if (existing && (appDb.usesKey(existing) || siblingDatabases.some((path) => databaseUsesKey(path, existing, false)))) {
 		key = existing
 	} else {
 		try {
@@ -199,7 +199,7 @@ export async function setupMasterKey(options: MasterKeyOptions): Promise<MasterK
 	appDb.setSetting(KEY_CHECK_SETTING, keyFingerprint(key))
 
 	if (!previous) return 'current'
-	const stillNeeded = siblingDatabases.some((path) => databaseUsesKey(path, previous))
+	const stillNeeded = siblingDatabases.some((path) => databaseUsesKey(path, previous, true))
 	if (stillNeeded) return 'migrated-kept-previous'
 	try {
 		await store.delete(recorded)
