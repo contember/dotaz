@@ -207,6 +207,40 @@ describe('setupMasterKey', () => {
 		expect(tryDecryptLocalPassword(raw.password, newKey)).toBe('db-secret')
 	})
 
+	test.each([KEY_ITEM_SETTING, KEY_CHECK_SETTING])(
+		'a move interrupted while writing %s leaves one consistent key and every password readable',
+		async (interruptedSetting) => {
+			const store = new FakeStore()
+			const { db, path, connId } = legacyChannel('Dotaz', store, randomKey())
+			// An earlier start on the legacy item recorded that item's fingerprint.
+			expect(await setupMasterKey({ appDb: db, store, item: LEGACY_KEY_ITEM, fallbackKey: null, siblingDatabases: [] })).toBe('current')
+			const item = keyItemFor(APP_REQUIREMENT)
+
+			// The process dies (power loss, kill) while this setting is written.
+			const setSetting = db.setSetting.bind(db)
+			db.setSetting = (key, value) => {
+				if (key === interruptedSetting) throw new Error('process killed')
+				setSetting(key, value)
+			}
+			await expect(setupMasterKey({ appDb: db, store, item, fallbackKey: null, siblingDatabases: [] })).rejects.toThrow('process killed')
+
+			const restarted = AppDatabase.create(path)
+			open.push(restarted)
+			const recorded = restarted.getSetting(KEY_ITEM_SETTING) ?? LEGACY_KEY_ITEM
+			expect([LEGACY_KEY_ITEM, item]).toContain(recorded)
+			const recordedKey = new Uint8Array(Buffer.from(store.items.get(recorded)!, 'base64'))
+			expect(restarted.getSetting(KEY_CHECK_SETTING)).toBe(keyFingerprint(recordedKey))
+			const raw = rawConfig(restarted, connId)
+			expect(tryDecryptLocalPassword(raw.password, recordedKey)).toBe('db-secret')
+			expect(tryDecryptLocalPassword(raw.sshTunnel!.keyPassphrase!, recordedKey)).toBe('ssh-secret')
+
+			expect(await setupMasterKey({ appDb: restarted, store, item, fallbackKey: null, siblingDatabases: [] })).toBe('migrated')
+			const found = restarted.getConnectionById(connId)!.config as PostgresConnectionConfig
+			expect(found.password).toBe('db-secret')
+			expect(found.sshTunnel?.keyPassphrase).toBe('ssh-secret')
+		},
+	)
+
 	test('the next start reads only the bound item', async () => {
 		const store = new FakeStore()
 		const { db } = legacyChannel('Dotaz', store, randomKey())

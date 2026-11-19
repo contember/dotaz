@@ -219,10 +219,10 @@ async function moveKey(options: MasterKeyOptions, recorded: string, item: string
 	}
 
 	// An item already under the new name is used only when a database of ours
-	// vouches for it: another channel with the same identity moved first, or an
-	// earlier attempt here was interrupted. Anything else could have been planted
-	// by another program, with a key it knows and an access list that lets it
-	// read the item, so it is replaced.
+	// vouches for it: another channel with the same identity moved first, or a
+	// password was saved here while the old item was refused. Anything else could
+	// have been planted by another program, with a key it knows and an access list
+	// that lets it read the item, so it is replaced.
 	let key: Uint8Array
 	if (existing && (appDb.usesKey(existing) || siblingDatabases.some((path) => siblingVouchesFor(path, existing)))) {
 		key = existing
@@ -247,9 +247,13 @@ async function moveKey(options: MasterKeyOptions, recorded: string, item: string
 		return 'previous-unreadable'
 	}
 
-	appDb.setLocalKey(key, [previous, fallbackKey])
-	appDb.setSetting(KEY_ITEM_SETTING, item)
-	appDb.setSetting(KEY_CHECK_SETTING, keyFingerprint(key))
+	// One transaction: a start that dies part-way must not record the new item with
+	// the old fingerprint (refused for good) or leave secrets under an unrecorded key.
+	appDb.transaction(() => {
+		appDb.setLocalKey(key, [previous, fallbackKey])
+		appDb.setSetting(KEY_ITEM_SETTING, item)
+		appDb.setSetting(KEY_CHECK_SETTING, keyFingerprint(key))
+	})
 
 	if (!previous) return 'current'
 	// Kept while another channel holds secrets under it or still records it as its
