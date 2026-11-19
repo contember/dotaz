@@ -459,7 +459,7 @@ describe('setupMasterKey', () => {
 		store.holdNext.set(LEGACY_KEY_ITEM, new Promise<void>((resolve) => (answerPrompt = resolve)))
 
 		const stableStart = start(stable)
-		await Bun.sleep(50)
+		await Bun.sleep(250)
 		const stableItemValue = store.items.get(item)
 		const canaryStart = await start(canary)
 
