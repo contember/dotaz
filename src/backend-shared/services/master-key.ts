@@ -15,8 +15,8 @@
 // Reading the old item is the one moment macOS may ask the user.
 
 import { spawnSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
-import { closeSync, existsSync, openSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { createHash, randomUUID } from 'node:crypto'
+import { closeSync, existsSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { type AppDatabase, databaseUsesKey, readDatabaseSetting } from '../storage/app-db'
 
@@ -127,6 +127,8 @@ export interface MasterKeyOptions {
 	 * at once don't each create the shared item. No lock when absent.
 	 */
 	lockPath?: string
+	/** How long to wait for another start's move before leaving this one to a later start. */
+	lockWaitMs?: number
 	log?: (message: string) => void
 }
 
@@ -147,6 +149,8 @@ export type MasterKeyOutcome =
 	 * the key stays where it was.
 	 */
 	| 'item-unavailable'
+	/** Another start was still moving the key (its keychain prompt open, say); the key stays where it was until the next start. */
+	| 'move-deferred'
 	/** The keychain holds a different key than the one this database recorded; it was refused. */
 	| 'key-mismatch'
 	/** The keychain could not be used; the machine-derived key is in use. */
@@ -159,7 +163,15 @@ export async function setupMasterKey(options: MasterKeyOptions): Promise<MasterK
 	const recorded = options.appDb.getSetting(KEY_ITEM_SETTING) ?? LEGACY_KEY_ITEM
 	const item = options.item ?? recorded
 	if (item === recorded) return keepRecordedItem(options, item, log)
-	return withLock(options.lockPath, () => moveKey(options, recorded, item, log))
+	return withLock(
+		options.lockPath,
+		options.lockWaitMs ?? LOCK_WAIT_MS,
+		() => moveKey(options, recorded, item, log),
+		() => {
+			log(`Another Dotaz is moving the master key; keeping "${recorded}" for now`)
+			return keepPrevious(options, recorded, log, 'move-deferred')
+		},
+	)
 }
 
 function fallBack(options: MasterKeyOptions, err: unknown, log: Log): MasterKeyOutcome {
@@ -256,19 +268,24 @@ async function moveKey(options: MasterKeyOptions, recorded: string, item: string
 }
 
 /** The move could not happen: carry on with the recorded item, as before this version. */
-async function keepPrevious(options: MasterKeyOptions, recorded: string, log: Log): Promise<MasterKeyOutcome> {
+async function keepPrevious(
+	options: MasterKeyOptions,
+	recorded: string,
+	log: Log,
+	outcome: MasterKeyOutcome = 'item-unavailable',
+): Promise<MasterKeyOutcome> {
 	const { appDb, store, fallbackKey } = options
 	try {
 		const previous = decodeKey(await store.get(recorded))
 		if (previous) {
 			appDb.setLocalKey(previous, [fallbackKey])
-			return 'item-unavailable'
+			return outcome
 		}
 	} catch (err) {
 		log(`Could not read the previous master key "${recorded}": ${errorMessage(err)}`)
 	}
 	if (fallbackKey) appDb.setLocalKey(fallbackKey)
-	return 'item-unavailable'
+	return outcome
 }
 
 /**
@@ -281,43 +298,79 @@ function siblingVouchesFor(path: string, key: Uint8Array): boolean {
 }
 
 const LOCK_WAIT_MS = 30_000
-const LOCK_STALE_MS = 60_000
+const LOCK_UNWRITTEN_STALE_MS = 60_000
 
 /**
- * Runs `fn` holding a lock file, waiting for another holder to finish. A lock
- * older than a minute is left over from a crash and is taken over. If the lock
- * can't be created at all (no permission, say), `fn` runs without it.
+ * Runs `fn` holding a lock file, waiting for another holder to finish. The
+ * holder may sit on the keychain prompt for as long as the user takes, so a
+ * live holder's lock is never taken over: when the wait runs out, `onBusy` runs
+ * instead and the move is left to a later start. A lock whose holder process is
+ * gone is left over from a crash and is taken over. If the lock can't be created
+ * at all (no permission, say), `fn` runs without it.
  */
-async function withLock<T>(lockPath: string | undefined, fn: () => Promise<T>): Promise<T> {
+async function withLock<T>(
+	lockPath: string | undefined,
+	waitMs: number,
+	fn: () => Promise<T>,
+	onBusy: () => Promise<T>,
+): Promise<T> {
+	if (!lockPath) return fn()
+	const token = `${process.pid} ${randomUUID()}`
+	const deadline = Date.now() + waitMs
 	let held = false
-	if (lockPath) {
-		const deadline = Date.now() + LOCK_WAIT_MS
-		while (!held) {
+	for (;;) {
+		try {
+			const fd = openSync(lockPath, 'wx')
 			try {
-				closeSync(openSync(lockPath, 'wx'))
-				held = true
-			} catch (err) {
-				if ((err as NodeJS.ErrnoException).code !== 'EEXIST') break
-				if (Date.now() > deadline || lockAge(lockPath) > LOCK_STALE_MS) {
-					rmSync(lockPath, { force: true })
-					continue
-				}
-				await Bun.sleep(100)
+				writeSync(fd, token)
+			} finally {
+				closeSync(fd)
 			}
+			held = true
+			break
+		} catch (err) {
+			if ((err as NodeJS.ErrnoException).code !== 'EEXIST') break
+			if (!lockHolderAlive(lockPath)) {
+				rmSync(lockPath, { force: true })
+				continue
+			}
+			if (Date.now() > deadline) return onBusy()
+			await Bun.sleep(100)
 		}
 	}
 	try {
 		return await fn()
 	} finally {
-		if (held && lockPath) rmSync(lockPath, { force: true })
+		// Remove only our own lock, never one another start took over.
+		if (held && readLock(lockPath) === token) rmSync(lockPath, { force: true })
 	}
 }
 
-function lockAge(lockPath: string): number {
+function readLock(lockPath: string): string | null {
 	try {
-		return Date.now() - statSync(lockPath).mtimeMs
+		return readFileSync(lockPath, 'utf8')
 	} catch {
-		return 0
+		return null
+	}
+}
+
+function lockHolderAlive(lockPath: string): boolean {
+	const content = readLock(lockPath)
+	if (content === null) return false
+	const pid = Number.parseInt(content.split(' ')[0] ?? '', 10)
+	if (!Number.isInteger(pid) || pid <= 0) {
+		// Created but not written yet, or garbage: trust it only while it is fresh.
+		try {
+			return Date.now() - statSync(lockPath).mtimeMs < LOCK_UNWRITTEN_STALE_MS
+		} catch {
+			return false
+		}
+	}
+	try {
+		process.kill(pid, 0)
+		return true
+	} catch (err) {
+		return (err as NodeJS.ErrnoException).code === 'EPERM'
 	}
 }
 

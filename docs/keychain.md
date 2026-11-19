@@ -102,9 +102,13 @@ you use has moved, it can be removed by hand:
 `security delete-generic-password -s dotaz -a app-encryption-key-v1`.
 
 Signed stable and canary builds share one requirement and therefore one item. Moves take a
-lock file next to the channel folders (`master-key.lock`), so two channels started at the
-same moment don't each create that item. Dev builds are never signed (Hutch skips signing
-for them), so a dev build keeps using the v1 item, which then stays in the keychain.
+lock file next to the channel folders (`master-key.lock`, holding the holder's process ID),
+so two channels started at the same moment don't each create that item. The holder may sit
+on the keychain prompt for as long as the user takes, so its lock is never taken over while
+the process lives: a channel that has waited 30 seconds keeps its recorded item for this
+start (`move-deferred`) and moves on a later one. A lock whose process is gone is left over
+from a crash and is taken over. Dev builds are never signed (Hutch skips signing for them),
+so a dev build keeps using the v1 item, which then stays in the keychain.
 
 ## Release signing
 

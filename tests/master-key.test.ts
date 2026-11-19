@@ -16,7 +16,7 @@ import {
 import { AppDatabase, databaseUsesKey } from '@dotaz/backend-shared/storage/app-db'
 import type { PostgresConnectionConfig } from '@dotaz/shared/types/connection'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -27,9 +27,16 @@ class FakeStore implements SecretStore {
 	refuse = new Set<string>()
 	unavailable = false
 	reads: string[] = []
+	/** The next read of each item waits for its promise, like a keychain prompt nobody has answered yet. */
+	holdNext = new Map<string, Promise<void>>()
 
 	async get(name: string): Promise<string | null> {
 		this.reads.push(name)
+		const hold = this.holdNext.get(name)
+		if (hold) {
+			this.holdNext.delete(name)
+			await hold
+		}
 		if (this.unavailable || this.refuse.has(name)) throw new Error('Keychain access denied')
 		return this.items.get(name) ?? null
 	}
@@ -395,6 +402,87 @@ describe('setupMasterKey', () => {
 		expect(existsSync(lockPath)).toBe(false)
 		expect((stable.db.getConnectionById(stable.connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
 		expect((canary.db.getConnectionById(canary.connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
+	})
+
+	test('a channel waiting on another one that sits on the keychain prompt defers its move instead of taking over', async () => {
+		const store = new FakeStore()
+		const legacyKey = randomKey()
+		const stable = legacyChannel('Dotaz', store, legacyKey)
+		const canary = legacyChannel('Dotaz-canary', store, legacyKey)
+		const item = keyItemFor(APP_REQUIREMENT)
+		const lockPath = join(root, 'master-key.lock')
+		const start = (ch: typeof stable) =>
+			setupMasterKey({
+				appDb: ch.db,
+				store,
+				item,
+				fallbackKey: randomKey(),
+				siblingDatabases: siblingAppDatabases(ch.dir, 'dotaz.db'),
+				lockPath,
+				lockWaitMs: 200,
+			})
+		let answerPrompt!: () => void
+		store.holdNext.set(LEGACY_KEY_ITEM, new Promise<void>((resolve) => (answerPrompt = resolve)))
+
+		const stableStart = start(stable)
+		await Bun.sleep(50)
+		const stableItemValue = store.items.get(item)
+		const canaryStart = await start(canary)
+
+		expect(canaryStart).toBe('move-deferred')
+		expect(store.items.get(item)).toBe(stableItemValue!)
+		expect(canary.db.getSetting(KEY_ITEM_SETTING)).toBeNull()
+		expect((canary.db.getConnectionById(canary.connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
+
+		answerPrompt()
+		expect(await stableStart).toBe('migrated-kept-previous')
+		expect(await start(canary)).toBe('migrated')
+		expect(await start(stable)).toBe('current')
+		expect(store.items.has(LEGACY_KEY_ITEM)).toBe(false)
+		expect(existsSync(lockPath)).toBe(false)
+		expect((stable.db.getConnectionById(stable.connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
+		expect((canary.db.getConnectionById(canary.connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
+	})
+
+	test('a lock held by a live process is left alone', async () => {
+		const store = new FakeStore()
+		const { db, dir } = legacyChannel('Dotaz', store, randomKey())
+		const lockPath = join(root, 'master-key.lock')
+		writeFileSync(lockPath, `${process.pid} someone-else`)
+
+		const outcome = await setupMasterKey({
+			appDb: db,
+			store,
+			item: keyItemFor(APP_REQUIREMENT),
+			fallbackKey: randomKey(),
+			siblingDatabases: siblingAppDatabases(dir, 'dotaz.db'),
+			lockPath,
+			lockWaitMs: 150,
+		})
+
+		expect(outcome).toBe('move-deferred')
+		expect(readFileSync(lockPath, 'utf8')).toBe(`${process.pid} someone-else`)
+	})
+
+	test('a lock left by a process that is gone is taken over', async () => {
+		const store = new FakeStore()
+		const { db, dir } = legacyChannel('Dotaz', store, randomKey())
+		const lockPath = join(root, 'master-key.lock')
+		const gone = Bun.spawnSync(['true']).pid
+		writeFileSync(lockPath, `${gone} crashed`)
+
+		const outcome = await setupMasterKey({
+			appDb: db,
+			store,
+			item: keyItemFor(APP_REQUIREMENT),
+			fallbackKey: randomKey(),
+			siblingDatabases: siblingAppDatabases(dir, 'dotaz.db'),
+			lockPath,
+			lockWaitMs: 150,
+		})
+
+		expect(outcome).toBe('migrated')
+		expect(existsSync(lockPath)).toBe(false)
 	})
 
 	test('an unreadable file in another channel folder does not vouch for a planted item', async () => {
