@@ -122,6 +122,8 @@ jobs:
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          # Splitting is intended: each existing keychain becomes its own argument.
+          # shellcheck disable=SC2046
           security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
           rm "$RUNNER_TEMP/certificate.p12"
           echo "ELECTROBUN_DEVELOPER_ID=$DEVELOPER_ID" >> "$GITHUB_ENV"
@@ -143,14 +145,31 @@ jobs:
         if: runner.os == 'macOS' && env.MACOS_SIGNING == 'true'
         run: |
           BUILD_DIR="build/${{ needs.prepare.outputs.electrobun-env }}-${{ matrix.platform }}"
-          BUN=$(find "$BUILD_DIR" -path "*.app/Contents/MacOS/bun" -type f | head -1)
-          if [ -z "$BUN" ]; then
-            echo "::warning::No .app/Contents/MacOS/bun under $BUILD_DIR; backend signature not checked"
-            exit 0
+          WRAPPER=$(find "$BUILD_DIR" -maxdepth 1 -type d -name "*.app" | head -1)
+          if [ -z "$WRAPPER" ]; then
+            echo "::error::No .app bundle under $BUILD_DIR"
+            exit 1
           fi
-          codesign --verify --strict --verbose=2 "${BUN%/Contents/MacOS/bun}"
-          # The keychain binds the saved-password key to this requirement, so it must
-          # name the release team, not Bun's.
+          codesign --verify --strict --verbose=2 "$WRAPPER"
+          # Release builds ship a self-extracting wrapper; the real app, with the
+          # backend's bun, is the .tar.zst in its Resources (as in the Linux step).
+          APP="$WRAPPER"
+          ARCHIVE=$(find "$WRAPPER/Contents/Resources" -maxdepth 1 -name "*.tar.zst" | head -1)
+          if [ -n "$ARCHIVE" ]; then
+            command -v zstd > /dev/null || brew install zstd
+            INNER=$(mktemp -d)
+            zstd -dc "$ARCHIVE" | tar -xf - -C "$INNER"
+            APP=$(find "$INNER" -maxdepth 1 -type d -name "*.app" | head -1)
+          fi
+          BUN="$APP/Contents/MacOS/bun"
+          if [ ! -f "$BUN" ]; then
+            echo "::error::No Contents/MacOS/bun in the built app; cannot check the backend signature"
+            exit 1
+          fi
+          codesign --verify --strict --verbose=2 "$APP"
+          # Electrobun logs a failed signature and carries on, and the keychain binds
+          # the saved-password key to this requirement, so it must name the release
+          # team, not Bun's.
           TEAM="${ELECTROBUN_DEVELOPER_ID##*(}"
           TEAM="${TEAM%)}"
           REQUIREMENT=$(codesign -d -r- "$BUN" 2>&1)
