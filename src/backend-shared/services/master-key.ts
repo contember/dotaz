@@ -314,6 +314,7 @@ function siblingVouchesFor(path: string, key: Uint8Array): boolean {
 const LOCK_WAIT_MS = 30_000
 const LOCK_UNWRITTEN_STALE_MS = 60_000
 const LOCK_MAX_AGE_MS = 10 * 60_000
+const LOCK_SETTLE_MS = 100
 
 /**
  * Runs `fn` holding a lock file, waiting for another holder to finish. The
@@ -341,6 +342,11 @@ async function withLock<T>(
 			} finally {
 				closeSync(fd)
 			}
+			// Taking over a stale lock is check-then-remove, so another start that
+			// read the same stale lock may remove this fresh one and create its own.
+			// Let that settle, and carry on only if the lock is still ours.
+			await Bun.sleep(LOCK_SETTLE_MS)
+			if (readLock(lockPath) !== token) continue
 			held = true
 			break
 		} catch (err) {
