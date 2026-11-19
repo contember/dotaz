@@ -1,7 +1,13 @@
 import { createHandlers } from '@dotaz/backend-shared/rpc/rpc-handlers'
 import { ConnectionManager } from '@dotaz/backend-shared/services/connection-manager'
 import { createLocalKey } from '@dotaz/backend-shared/services/encryption'
-import { bunSecretStore, keyItemFor, readDesignatedRequirement, setupMasterKey, siblingAppDatabases } from '@dotaz/backend-shared/services/master-key'
+import {
+	bunSecretStore,
+	keyItemForPlatform,
+	readDesignatedRequirement,
+	setupMasterKey,
+	siblingAppDatabases,
+} from '@dotaz/backend-shared/services/master-key'
 import { AppDatabase, setDefaultDbPath } from '@dotaz/backend-shared/storage/app-db'
 import type { DotazRPC } from '@dotaz/backend-types'
 import { ApplicationMenu, BrowserView, BrowserWindow, Updater, Utils } from 'electrobun/bun'
@@ -47,9 +53,12 @@ const userDataDir = Utils.paths.userData
 const masterKeyOutcome = await setupMasterKey({
 	appDb,
 	store: bunSecretStore(),
-	item: keyItemFor(readDesignatedRequirement()),
+	item: keyItemForPlatform(readDesignatedRequirement()),
 	fallbackKey: createLocalKey(),
 	siblingDatabases: siblingAppDatabases(userDataDir, 'dotaz.db'),
+	// Shared by every channel's data folder, which all sit in the same parent.
+	lockPath: join(userDataDir, '..', 'master-key.lock'),
+	log: (message) => console.error(message),
 })
 if (masterKeyOutcome !== 'current') console.log(`Master key: ${masterKeyOutcome}`)
 const connectionManager = new ConnectionManager(appDb)

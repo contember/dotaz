@@ -732,6 +732,23 @@ export function databaseUsesKey(dbPath: string, key: Uint8Array, ifUnreadable: b
 	}
 }
 
+/**
+ * One setting from the app database at `dbPath`, opened read-only like
+ * `databaseUsesKey`. Null when it is not set or the file can't be read.
+ */
+export function readDatabaseSetting(dbPath: string, key: string): string | null {
+	let db: Database | null = null
+	try {
+		db = new Database(dbPath, { readonly: true })
+		const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | null
+		return row?.value ?? null
+	} catch {
+		return null
+	} finally {
+		db?.close()
+	}
+}
+
 function connectionsUseKey(db: Database, key: Uint8Array): boolean {
 	const rows = db.prepare('SELECT config FROM connections').all() as { config: string }[]
 	for (const row of rows) {

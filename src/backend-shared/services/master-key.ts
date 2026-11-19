@@ -16,9 +16,9 @@
 
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, readdirSync } from 'node:fs'
+import { closeSync, existsSync, openSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { type AppDatabase, databaseUsesKey } from '../storage/app-db'
+import { type AppDatabase, databaseUsesKey, readDatabaseSetting } from '../storage/app-db'
 
 export const KEYCHAIN_SERVICE = 'dotaz'
 /** The item every version before identity binding used, readable by any official `bun`. */
@@ -66,11 +66,33 @@ export function parseDesignatedRequirement(output: string): string | null {
 	return match ? match[1].trim() : null
 }
 
-/** The keychain item for a program with this designated requirement. */
+/** Team ID in the signature of the official `bun` binaries. */
+export const BUN_TEAM_ID = '7FRXF46ZSN'
+
+/**
+ * The keychain item for a program with this designated requirement. Bun's own
+ * signature (unsigned Dotaz builds, dev builds) keeps the legacy item: binding to
+ * it would gain nothing, since every official `bun` meets that requirement.
+ */
 export function keyItemFor(requirement: string | null): string {
-	if (!requirement) return LEGACY_KEY_ITEM
+	if (!requirement || isBunRequirement(requirement)) return LEGACY_KEY_ITEM
 	const digest = createHash('sha256').update(requirement).digest('hex').slice(0, 16)
 	return `app-encryption-key-v2-${digest}`
+}
+
+function isBunRequirement(requirement: string): boolean {
+	return new RegExp(`subject\\.OU\\]\\s*=\\s*"?${BUN_TEAM_ID}"?`).test(requirement)
+}
+
+/**
+ * The item for the running program, or null when that can't be told. On macOS a
+ * missing requirement means `codesign` failed this time (a timeout on a busy
+ * start, say), not that the program changed, so the caller keeps the recorded
+ * item. Elsewhere there are no per-program access lists and the item is the legacy one.
+ */
+export function keyItemForPlatform(requirement: string | null, platform: string = process.platform): string | null {
+	if (!requirement && platform === 'darwin') return null
+	return keyItemFor(requirement)
 }
 
 /**
@@ -94,12 +116,17 @@ export function siblingAppDatabases(userDataDir: string, fileName: string): stri
 export interface MasterKeyOptions {
 	appDb: AppDatabase
 	store: SecretStore
-	/** Item bound to the program running now, from `keyItemFor`. */
-	item: string
+	/** Item bound to the program running now, from `keyItemForPlatform`; null keeps the recorded item. */
+	item: string | null
 	/** Key derived from the machine, used when the keychain can't be used at all. */
 	fallbackKey: Uint8Array | null
 	/** Other channels' databases, from `siblingAppDatabases`. */
 	siblingDatabases: string[]
+	/**
+	 * File shared by all channels that serialises moves, so two channels starting
+	 * at once don't each create the shared item. No lock when absent.
+	 */
+	lockPath?: string
 	log?: (message: string) => void
 }
 
@@ -115,63 +142,77 @@ export type MasterKeyOutcome =
 	/** The old item could not be read; it will be asked for again on the next start. */
 	| 'previous-unreadable'
 	/**
-	 * An item Dotaz can't vouch for sits under the new name and could not be
-	 * removed; the key stays where it was.
+	 * The item under the new name could not be created (the keychain refused the
+	 * write, or an item Dotaz can't vouch for sits there and could not be removed);
+	 * the key stays where it was.
 	 */
-	| 'item-occupied'
+	| 'item-unavailable'
 	/** The keychain holds a different key than the one this database recorded; it was refused. */
 	| 'key-mismatch'
 	/** The keychain could not be used; the machine-derived key is in use. */
 	| 'fallback'
 
+type Log = (message: string) => void
+
 export async function setupMasterKey(options: MasterKeyOptions): Promise<MasterKeyOutcome> {
-	const { appDb, store, item, fallbackKey, siblingDatabases } = options
 	const log = options.log ?? ((message: string) => console.warn(message))
-	const recorded = appDb.getSetting(KEY_ITEM_SETTING) ?? LEGACY_KEY_ITEM
+	const recorded = options.appDb.getSetting(KEY_ITEM_SETTING) ?? LEGACY_KEY_ITEM
+	const item = options.item ?? recorded
+	if (item === recorded) return keepRecordedItem(options, item, log)
+	return withLock(options.lockPath, () => moveKey(options, recorded, item, log))
+}
 
-	const fallBack = (err: unknown): MasterKeyOutcome => {
-		log(`Keychain unavailable, falling back to machine-derived key: ${errorMessage(err)}`)
-		if (fallbackKey) appDb.setLocalKey(fallbackKey)
-		return 'fallback'
-	}
+function fallBack(options: MasterKeyOptions, err: unknown, log: Log): MasterKeyOutcome {
+	log(`Keychain unavailable, falling back to machine-derived key: ${errorMessage(err)}`)
+	if (options.fallbackKey) options.appDb.setLocalKey(options.fallbackKey)
+	return 'fallback'
+}
 
-	let existing: Uint8Array | null
+async function keepRecordedItem(options: MasterKeyOptions, item: string, log: Log): Promise<MasterKeyOutcome> {
+	const { appDb, store, fallbackKey } = options
+	let key: Uint8Array | null
 	try {
-		existing = decodeKey(await store.get(item))
-	} catch (err) {
-		return fallBack(err)
-	}
-
-	if (recorded === item) {
-		let key = existing
+		key = decodeKey(await store.get(item))
 		if (key) {
 			// Anyone may add an item under a name nobody holds, so a key that differs
 			// from the one this database recorded may be a planted one: never encrypt with it.
 			const check = appDb.getSetting(KEY_CHECK_SETTING)
 			if (check && check !== keyFingerprint(key)) {
-				log(`The master key in "${item}" is not the one this database was encrypted with; refusing it`)
+				log(
+					`The master key in keychain item "${item}" is not the one this database was encrypted with, so it is refused `
+						+ 'and saved passwords are unavailable. See "Resetting the key" in docs/keychain.md.',
+				)
 				if (fallbackKey) appDb.setLocalKey(fallbackKey)
 				return 'key-mismatch'
 			}
 		} else {
-			try {
-				key = await createKey(store, item)
-			} catch (err) {
-				return fallBack(err)
-			}
+			key = await createKey(store, item)
 		}
-		appDb.setLocalKey(key, [fallbackKey])
-		appDb.setSetting(KEY_CHECK_SETTING, keyFingerprint(key))
-		return 'current'
+	} catch (err) {
+		return fallBack(options, err, log)
+	}
+	appDb.setLocalKey(key, [fallbackKey])
+	appDb.setSetting(KEY_CHECK_SETTING, keyFingerprint(key))
+	return 'current'
+}
+
+async function moveKey(options: MasterKeyOptions, recorded: string, item: string, log: Log): Promise<MasterKeyOutcome> {
+	const { appDb, store, fallbackKey, siblingDatabases } = options
+
+	let existing: Uint8Array | null
+	try {
+		existing = decodeKey(await store.get(item))
+	} catch (err) {
+		return fallBack(options, err, log)
 	}
 
-	// Moving the key to `item`. An item already under that name is used only when
-	// a database of ours is encrypted with it (another channel with the same
-	// identity moved first, or an earlier attempt here was interrupted). Anything
-	// else could have been planted by another program, with a key it knows and an
-	// access list that lets it read the item, so it is replaced.
+	// An item already under the new name is used only when a database of ours
+	// vouches for it: another channel with the same identity moved first, or an
+	// earlier attempt here was interrupted. Anything else could have been planted
+	// by another program, with a key it knows and an access list that lets it
+	// read the item, so it is replaced.
 	let key: Uint8Array
-	if (existing && (appDb.usesKey(existing) || siblingDatabases.some((path) => databaseUsesKey(path, existing, false)))) {
+	if (existing && (appDb.usesKey(existing) || siblingDatabases.some((path) => siblingVouchesFor(path, existing)))) {
 		key = existing
 	} else {
 		try {
@@ -199,7 +240,11 @@ export async function setupMasterKey(options: MasterKeyOptions): Promise<MasterK
 	appDb.setSetting(KEY_CHECK_SETTING, keyFingerprint(key))
 
 	if (!previous) return 'current'
-	const stillNeeded = siblingDatabases.some((path) => databaseUsesKey(path, previous, true))
+	// Kept while another channel holds secrets under it or still records it as its
+	// key (deleting it then would leave the name free for a planted item there).
+	const stillNeeded = siblingDatabases.some((path) =>
+		databaseUsesKey(path, previous, true) || readDatabaseSetting(path, KEY_CHECK_SETTING) === keyFingerprint(previous)
+	)
 	if (stillNeeded) return 'migrated-kept-previous'
 	try {
 		await store.delete(recorded)
@@ -211,19 +256,69 @@ export async function setupMasterKey(options: MasterKeyOptions): Promise<MasterK
 }
 
 /** The move could not happen: carry on with the recorded item, as before this version. */
-async function keepPrevious(options: MasterKeyOptions, recorded: string, log: (message: string) => void): Promise<MasterKeyOutcome> {
+async function keepPrevious(options: MasterKeyOptions, recorded: string, log: Log): Promise<MasterKeyOutcome> {
 	const { appDb, store, fallbackKey } = options
 	try {
 		const previous = decodeKey(await store.get(recorded))
 		if (previous) {
 			appDb.setLocalKey(previous, [fallbackKey])
-			return 'item-occupied'
+			return 'item-unavailable'
 		}
 	} catch (err) {
 		log(`Could not read the previous master key "${recorded}": ${errorMessage(err)}`)
 	}
 	if (fallbackKey) appDb.setLocalKey(fallbackKey)
-	return 'item-occupied'
+	return 'item-unavailable'
+}
+
+/**
+ * Another channel's database vouches for a key when it holds a secret that the
+ * key decrypts or records the key's fingerprint (it moved there, perhaps with no
+ * passwords saved yet). An unreadable database vouches for nothing.
+ */
+function siblingVouchesFor(path: string, key: Uint8Array): boolean {
+	return databaseUsesKey(path, key, false) || readDatabaseSetting(path, KEY_CHECK_SETTING) === keyFingerprint(key)
+}
+
+const LOCK_WAIT_MS = 30_000
+const LOCK_STALE_MS = 60_000
+
+/**
+ * Runs `fn` holding a lock file, waiting for another holder to finish. A lock
+ * older than a minute is left over from a crash and is taken over. If the lock
+ * can't be created at all (no permission, say), `fn` runs without it.
+ */
+async function withLock<T>(lockPath: string | undefined, fn: () => Promise<T>): Promise<T> {
+	let held = false
+	if (lockPath) {
+		const deadline = Date.now() + LOCK_WAIT_MS
+		while (!held) {
+			try {
+				closeSync(openSync(lockPath, 'wx'))
+				held = true
+			} catch (err) {
+				if ((err as NodeJS.ErrnoException).code !== 'EEXIST') break
+				if (Date.now() > deadline || lockAge(lockPath) > LOCK_STALE_MS) {
+					rmSync(lockPath, { force: true })
+					continue
+				}
+				await Bun.sleep(100)
+			}
+		}
+	}
+	try {
+		return await fn()
+	} finally {
+		if (held && lockPath) rmSync(lockPath, { force: true })
+	}
+}
+
+function lockAge(lockPath: string): number {
+	try {
+		return Date.now() - statSync(lockPath).mtimeMs
+	} catch {
+		return 0
+	}
 }
 
 /**

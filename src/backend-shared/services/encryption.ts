@@ -151,6 +151,3 @@ export function tryDecryptLocalPassword(value: string, key: Uint8Array): string 
 		return null
 	}
 }
-
-// The keychain-backed master key that replaced the hostname-derived one lives in
-// ./master-key.ts.

@@ -1,7 +1,11 @@
 import { encryptLocalPassword, tryDecryptLocalPassword } from '@dotaz/backend-shared/services/encryption'
 import {
+	BUN_TEAM_ID,
+	KEY_CHECK_SETTING,
 	KEY_ITEM_SETTING,
+	keyFingerprint,
 	keyItemFor,
+	keyItemForPlatform,
 	LEGACY_KEY_ITEM,
 	parseDesignatedRequirement,
 	readDesignatedRequirement,
@@ -12,7 +16,7 @@ import {
 import { AppDatabase, databaseUsesKey } from '@dotaz/backend-shared/storage/app-db'
 import type { PostgresConnectionConfig } from '@dotaz/shared/types/connection'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -43,6 +47,7 @@ class FakeStore implements SecretStore {
 
 const BUN_REQUIREMENT = 'identifier bun and anchor apple generic and certificate leaf[subject.OU] = "7FRXF46ZSN"'
 const APP_REQUIREMENT = 'identifier bun and anchor apple generic and certificate leaf[subject.OU] = "ABCDE12345"'
+const OTHER_REQUIREMENT = 'identifier bun and anchor apple generic and certificate leaf[subject.OU] = "ZYXWV98765"'
 
 const pgConfig: PostgresConnectionConfig = {
 	type: 'postgresql',
@@ -116,6 +121,23 @@ describe('keyItemFor', () => {
 	test('keeps the legacy item when the requirement is unknown (Linux, Windows, no codesign)', () => {
 		expect(keyItemFor(null)).toBe(LEGACY_KEY_ITEM)
 	})
+
+	test("keeps the legacy item for Bun's own signature, which every official bun meets", () => {
+		expect(keyItemFor(BUN_REQUIREMENT)).toBe(LEGACY_KEY_ITEM)
+		expect(keyItemFor(BUN_REQUIREMENT.replace('"7FRXF46ZSN"', '7FRXF46ZSN'))).toBe(LEGACY_KEY_ITEM)
+	})
+})
+
+describe('keyItemForPlatform', () => {
+	test('on macOS an unknown requirement means "keep the recorded item"', () => {
+		expect(keyItemForPlatform(null, 'darwin')).toBeNull()
+		expect(keyItemForPlatform(APP_REQUIREMENT, 'darwin')).toBe(keyItemFor(APP_REQUIREMENT))
+	})
+
+	test('elsewhere it is the legacy item', () => {
+		expect(keyItemForPlatform(null, 'linux')).toBe(LEGACY_KEY_ITEM)
+		expect(keyItemForPlatform(null, 'win32')).toBe(LEGACY_KEY_ITEM)
+	})
 })
 
 describe('parseDesignatedRequirement', () => {
@@ -136,7 +158,9 @@ describe('parseDesignatedRequirement', () => {
 		const requirement = readDesignatedRequirement(process.execPath)
 		expect(requirement).not.toBeNull()
 		expect(requirement!).not.toContain('\n')
-		expect(keyItemFor(requirement)).toMatch(/^app-encryption-key-v2-/)
+		// An official bun maps to the legacy item; a self-built one to its own item.
+		const expected = requirement!.includes(BUN_TEAM_ID) ? LEGACY_KEY_ITEM : expect.stringMatching(/^app-encryption-key-v2-/)
+		expect(keyItemFor(requirement)).toEqual(expected)
 	})
 })
 
@@ -225,11 +249,58 @@ describe('setupMasterKey', () => {
 		expect((db.getConnectionById(added.id)!.config as PostgresConnectionConfig).password).toBe('added-later')
 	})
 
-	test('keeps the old item while another channel still needs it, and the last channel to move removes it', async () => {
+	test('an unsigned dev channel keeps working on the legacy item after stable moved off it', async () => {
 		const store = new FakeStore()
 		const legacyKey = randomKey()
 		const stable = legacyChannel('Dotaz', store, legacyKey)
 		const dev = legacyChannel('Dotaz-dev', store, legacyKey)
+		dev.db.setSetting(KEY_CHECK_SETTING, keyFingerprint(legacyKey))
+
+		const moved = await setupMasterKey({
+			appDb: stable.db,
+			store,
+			item: keyItemFor(APP_REQUIREMENT),
+			fallbackKey: randomKey(),
+			siblingDatabases: siblingAppDatabases(stable.dir, 'dotaz.db'),
+		})
+		const devStart = await setupMasterKey({
+			appDb: dev.db,
+			store,
+			item: keyItemFor(BUN_REQUIREMENT),
+			fallbackKey: randomKey(),
+			siblingDatabases: siblingAppDatabases(dev.dir, 'dotaz.db'),
+		})
+
+		expect(moved).toBe('migrated-kept-previous')
+		expect(devStart).toBe('current')
+		expect(store.items.get(LEGACY_KEY_ITEM)).toBe(encodeKey(legacyKey))
+		expect((dev.db.getConnectionById(dev.connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
+	})
+
+	test('keeps the old item while another channel still records it, even with no passwords saved there', async () => {
+		const store = new FakeStore()
+		const legacyKey = randomKey()
+		const stable = legacyChannel('Dotaz', store, legacyKey)
+		const dev = channelDb('Dotaz-dev')
+		dev.db.setSetting(KEY_CHECK_SETTING, keyFingerprint(legacyKey))
+
+		const moved = await setupMasterKey({
+			appDb: stable.db,
+			store,
+			item: keyItemFor(APP_REQUIREMENT),
+			fallbackKey: randomKey(),
+			siblingDatabases: siblingAppDatabases(stable.dir, 'dotaz.db'),
+		})
+
+		expect(moved).toBe('migrated-kept-previous')
+		expect(store.items.has(LEGACY_KEY_ITEM)).toBe(true)
+	})
+
+	test('keeps the old item while another channel still needs it, and the last channel to move removes it', async () => {
+		const store = new FakeStore()
+		const legacyKey = randomKey()
+		const stable = legacyChannel('Dotaz', store, legacyKey)
+		const other = legacyChannel('Dotaz-other', store, legacyKey)
 
 		const first = await setupMasterKey({
 			appDb: stable.db,
@@ -242,16 +313,88 @@ describe('setupMasterKey', () => {
 		expect(store.items.has(LEGACY_KEY_ITEM)).toBe(true)
 
 		const second = await setupMasterKey({
-			appDb: dev.db,
+			appDb: other.db,
 			store,
-			item: keyItemFor(BUN_REQUIREMENT),
+			item: keyItemFor(OTHER_REQUIREMENT),
 			fallbackKey: randomKey(),
-			siblingDatabases: siblingAppDatabases(dev.dir, 'dotaz.db'),
+			siblingDatabases: siblingAppDatabases(other.dir, 'dotaz.db'),
 		})
 		expect(second).toBe('migrated')
 		expect(store.items.has(LEGACY_KEY_ITEM)).toBe(false)
 		expect((stable.db.getConnectionById(stable.connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
-		expect((dev.db.getConnectionById(dev.connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
+		expect((other.db.getConnectionById(other.connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
+	})
+
+	test('a start where the requirement is unknown keeps the recorded item and moves nothing', async () => {
+		const store = new FakeStore()
+		const legacyKey = randomKey()
+		const stable = legacyChannel('Dotaz', store, legacyKey)
+		legacyChannel('Dotaz-dev', store, legacyKey)
+		const signed = keyItemFor(APP_REQUIREMENT)
+		await setupMasterKey({
+			appDb: stable.db,
+			store,
+			item: signed,
+			fallbackKey: randomKey(),
+			siblingDatabases: siblingAppDatabases(stable.dir, 'dotaz.db'),
+		})
+		const signedValue = store.items.get(signed)
+		store.reads = []
+
+		const outcome = await setupMasterKey({
+			appDb: stable.db,
+			store,
+			item: keyItemForPlatform(null, 'darwin'),
+			fallbackKey: randomKey(),
+			siblingDatabases: siblingAppDatabases(stable.dir, 'dotaz.db'),
+		})
+
+		expect(outcome).toBe('current')
+		expect(store.reads).toEqual([signed])
+		expect(store.items.get(signed)).toBe(signedValue)
+		expect(stable.db.getSetting(KEY_ITEM_SETTING)).toBe(signed)
+		expect((stable.db.getConnectionById(stable.connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
+	})
+
+	test('a channel that moved with no passwords saved still vouches for the shared item', async () => {
+		const store = new FakeStore()
+		const legacyKey = randomKey()
+		store.items.set(LEGACY_KEY_ITEM, encodeKey(legacyKey))
+		const stable = channelDb('Dotaz')
+		const canary = legacyChannel('Dotaz-canary', store, legacyKey)
+		const item = keyItemFor(APP_REQUIREMENT)
+
+		await setupMasterKey({ appDb: stable.db, store, item, fallbackKey: randomKey(), siblingDatabases: siblingAppDatabases(stable.dir, 'dotaz.db') })
+		await setupMasterKey({ appDb: canary.db, store, item, fallbackKey: randomKey(), siblingDatabases: siblingAppDatabases(canary.dir, 'dotaz.db') })
+		const restart = await setupMasterKey({
+			appDb: stable.db,
+			store,
+			item,
+			fallbackKey: randomKey(),
+			siblingDatabases: siblingAppDatabases(stable.dir, 'dotaz.db'),
+		})
+
+		expect(restart).toBe('current')
+		expect((canary.db.getConnectionById(canary.connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
+	})
+
+	test('two channels with the same identity starting at once both keep their passwords', async () => {
+		const store = new FakeStore()
+		const legacyKey = randomKey()
+		const stable = legacyChannel('Dotaz', store, legacyKey)
+		const canary = legacyChannel('Dotaz-canary', store, legacyKey)
+		const item = keyItemFor(APP_REQUIREMENT)
+		const lockPath = join(root, 'master-key.lock')
+		const start = (ch: typeof stable) =>
+			setupMasterKey({ appDb: ch.db, store, item, fallbackKey: randomKey(), siblingDatabases: siblingAppDatabases(ch.dir, 'dotaz.db'), lockPath })
+
+		await Promise.all([start(stable), start(canary)])
+		const restarts = await Promise.all([start(stable), start(canary)])
+
+		expect(restarts).toEqual(['current', 'current'])
+		expect(existsSync(lockPath)).toBe(false)
+		expect((stable.db.getConnectionById(stable.connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
+		expect((canary.db.getConnectionById(canary.connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
 	})
 
 	test('an unreadable file in another channel folder does not vouch for a planted item', async () => {
@@ -295,7 +438,7 @@ describe('setupMasterKey', () => {
 
 		const outcome = await setupMasterKey({ appDb: db, store, item, fallbackKey: randomKey(), siblingDatabases: [] })
 
-		expect(outcome).toBe('item-occupied')
+		expect(outcome).toBe('item-unavailable')
 		expect(db.getSetting(KEY_ITEM_SETTING)).toBeNull()
 		expect(store.items.get(LEGACY_KEY_ITEM)).toBe(encodeKey(legacyKey))
 		expect(tryDecryptLocalPassword(rawConfig(db, connId).password, legacyKey)).toBe('db-secret')
@@ -346,14 +489,14 @@ describe('setupMasterKey', () => {
 	test('moves again when the program identity changes later', async () => {
 		const store = new FakeStore()
 		const { db, connId } = legacyChannel('Dotaz', store, randomKey())
-		const unsigned = keyItemFor(BUN_REQUIREMENT)
-		const signed = keyItemFor(APP_REQUIREMENT)
-		await setupMasterKey({ appDb: db, store, item: unsigned, fallbackKey: randomKey(), siblingDatabases: [] })
+		const first = keyItemFor(APP_REQUIREMENT)
+		const second = keyItemFor(OTHER_REQUIREMENT)
+		await setupMasterKey({ appDb: db, store, item: first, fallbackKey: randomKey(), siblingDatabases: [] })
 
-		const outcome = await setupMasterKey({ appDb: db, store, item: signed, fallbackKey: randomKey(), siblingDatabases: [] })
+		const outcome = await setupMasterKey({ appDb: db, store, item: second, fallbackKey: randomKey(), siblingDatabases: [] })
 
 		expect(outcome).toBe('migrated')
-		expect([...store.items.keys()]).toEqual([signed])
+		expect([...store.items.keys()]).toEqual([second])
 		expect((db.getConnectionById(connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
 	})
 
