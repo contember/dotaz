@@ -519,6 +519,37 @@ describe('setupMasterKey', () => {
 		expect(existsSync(lockPath)).toBe(false)
 	})
 
+	test('a start that took over a stale lock backs off when another start took it over right after', async () => {
+		const store = new FakeStore()
+		const { db, dir } = legacyChannel('Dotaz', store, randomKey())
+		const item = keyItemFor(APP_REQUIREMENT)
+		const lockPath = join(root, 'master-key.lock')
+		const stale = `${Bun.spawnSync(['true']).pid} crashed`
+		writeFileSync(lockPath, stale)
+
+		const outcome = setupMasterKey({
+			appDb: db,
+			store,
+			item,
+			fallbackKey: randomKey(),
+			siblingDatabases: siblingAppDatabases(dir, 'dotaz.db'),
+			lockPath,
+			lockWaitMs: 150,
+		})
+		// This start has replaced the stale lock with its own. Another start that
+		// read the same stale lock now removes this one and creates its own.
+		const taken = readFileSync(lockPath, 'utf8')
+		expect(taken).not.toBe(stale)
+		expect(taken.startsWith(`${process.pid} `)).toBe(true)
+		rmSync(lockPath)
+		writeFileSync(lockPath, `${process.pid} other-start`)
+
+		expect(await outcome).toBe('move-deferred')
+		expect(store.items.has(item)).toBe(false)
+		expect(db.getSetting(KEY_ITEM_SETTING)).toBeNull()
+		expect(readFileSync(lockPath, 'utf8')).toBe(`${process.pid} other-start`)
+	})
+
 	test('a lock is taken over once it is older than anyone leaves the prompt open, or names pid 1', async () => {
 		for (const [content, ageMinutes] of [[`${process.pid} reused-pid`, 11], ['1 init', 0]] as const) {
 			const store = new FakeStore()
