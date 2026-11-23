@@ -1,5 +1,5 @@
 // How this start set up the key that encrypts saved passwords (docs/keychain.md). When the
-// keychain key was refused or the keychain could not be used, the window says so: otherwise
+// keychain key was refused or no keychain key could be used, the window says so: otherwise
 // the user sees only empty saved passwords and does not know why.
 
 import type { HandlerReturn } from '@dotaz/backend-types'
@@ -30,10 +30,10 @@ export function keyNoticeFor(status: KeyStatus): KeyNotice | null {
 			}
 		case 'fallback':
 			return {
-				title: 'The system keychain is unavailable',
-				detail: 'Passwords you save now are encrypted with a weaker key derived from this machine. '
-					+ "Passwords saved while the keychain worked can't be decrypted until it is available again: "
-					+ 'unlock it (on Linux, start a Secret Service such as GNOME Keyring) and restart Dotaz.',
+				title: "Dotaz can't use its key in the system keychain",
+				detail: "Passwords saved earlier can't be decrypted, and passwords you save now are encrypted with a weaker key "
+					+ 'derived from this machine. If the keychain is locked or not running, unlock it '
+					+ '(on Linux, start a Secret Service such as GNOME Keyring) and restart Dotaz.',
 				linkLabel: 'About the keychain',
 				linkUrl: `${KEYCHAIN_DOCS_URL}#what-dotaz-does-now`,
 			}

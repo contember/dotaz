@@ -23,9 +23,9 @@ describe('key status notice', () => {
 		expect(notice?.linkUrl).toEndWith('docs/keychain.md#resetting-the-key')
 	})
 
-	test('an unavailable keychain says new passwords use the machine-derived key', () => {
+	test('a start without a keychain key says new passwords use the machine-derived key', () => {
 		keyStatusStore.apply({ outcome: 'fallback', item: 'app-encryption-key-v1' })
-		expect(keyStatusStore.notice?.title).toBe('The system keychain is unavailable')
+		expect(keyStatusStore.notice?.title).toBe("Dotaz can't use its key in the system keychain")
 		expect(keyStatusStore.notice?.detail).toContain('weaker key derived from this machine')
 	})
 

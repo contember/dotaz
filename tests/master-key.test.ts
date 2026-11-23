@@ -819,10 +819,11 @@ describe('storage.keyStatus', () => {
 		expect(await startAndReport(db, store, dir, running)).toEqual({ outcome: 'key-mismatch', item: recorded })
 	})
 
-	test('reports a failed move that leaves only the machine-derived key, so the window shows the notice', async () => {
-		for (const recordedItem of ['missing', 'refused'] as const) {
+	test.each(['missing', 'refused'] as const)(
+		'reports a failed move that leaves only the machine-derived key (recorded item %s), so the window shows the notice',
+		async (recordedItem) => {
 			const store = new FakeStore()
-			const { db, dir } = legacyChannel(`Dotaz-${recordedItem}`, store, randomKey())
+			const { db, dir } = legacyChannel('Dotaz', store, randomKey())
 			if (recordedItem === 'missing') store.items.delete(LEGACY_KEY_ITEM)
 			else store.refuse.add(LEGACY_KEY_ITEM)
 			const running = keyItemFor(APP_REQUIREMENT)
@@ -833,8 +834,8 @@ describe('storage.keyStatus', () => {
 
 			expect(status).toEqual({ outcome: 'fallback', item: LEGACY_KEY_ITEM })
 			expect(keyNoticeFor(status)).not.toBeNull()
-		}
-	})
+		},
+	)
 
 	test('reports a deferred move that leaves only the machine-derived key, so the window shows the notice', async () => {
 		const store = new FakeStore()
