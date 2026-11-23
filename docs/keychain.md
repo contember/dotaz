@@ -57,7 +57,10 @@ predictable. So in step 1 an item already under the new name is used only when o
 Dotaz's databases vouches for it: this one or another channel's holds a secret its key
 decrypts, or records its fingerprint. Anything else could have been planted with a key
 another program knows and is deleted and recreated. If that fails, the key stays in the
-recorded item. The database also keeps a fingerprint of its key (setting
+recorded item. If that item is missing or can't be read either, the start uses the
+machine-derived fallback key and the window says so, as when the keychain is unavailable;
+the same holds for a start that leaves the move to a later one (`move-deferred`, see
+"Channels"). The database also keeps a fingerprint of its key (setting
 `keychain.masterKeyCheck`) and refuses a different key found later under the recorded name
 (see "Resetting the key"). This defence is best-effort: a program that keeps re-adding the
 item can win the moment between Dotaz deleting it and adding its own, and the bigger hole
