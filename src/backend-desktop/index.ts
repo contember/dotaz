@@ -137,8 +137,9 @@ const rpc = BrowserView.defineRPC<DotazRPC>({
 			},
 			// Links in the window would navigate the webview itself; open them in the browser.
 			'system.openExternal': (params: { url: string }) => {
-				if (!params.url.startsWith('https://')) throw new Error('Only https links can be opened')
-				Utils.openExternal(params.url)
+				const url = new URL(params.url)
+				if (url.protocol !== 'https:') throw new Error('Only https links can be opened')
+				if (!Utils.openExternal(url.href)) throw new Error('Could not open the link')
 			},
 		},
 		messages: {},

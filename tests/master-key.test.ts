@@ -776,11 +776,11 @@ describe('siblingAppDatabases', () => {
 
 describe('storage.keyStatus', () => {
 	/** Starts the backend the way the desktop entry does and asks what the window would show. */
-	async function startAndReport(db: AppDatabase, store: FakeStore, dir: string) {
+	async function startAndReport(db: AppDatabase, store: FakeStore, dir: string, item: string | null = null) {
 		const outcome = await setupMasterKey({
 			appDb: db,
 			store,
-			item: null,
+			item,
 			fallbackKey: randomKey(),
 			siblingDatabases: siblingAppDatabases(dir, 'dotaz.db'),
 		})
@@ -799,6 +799,21 @@ describe('storage.keyStatus', () => {
 		store.items.set(LEGACY_KEY_ITEM, encodeKey(randomKey()))
 
 		expect(await startAndReport(db, store, dir)).toEqual({ outcome: 'key-mismatch', item: LEGACY_KEY_ITEM })
+	})
+
+	test("names the recorded item, not the running program's, when a move falls back on a swapped key", async () => {
+		const store = new FakeStore()
+		const { db, dir } = channelDb('Dotaz')
+		const recorded = keyItemFor(APP_REQUIREMENT)
+		const original = randomKey()
+		db.setSetting(KEY_ITEM_SETTING, recorded)
+		db.setSetting(KEY_CHECK_SETTING, keyFingerprint(original))
+		store.items.set(recorded, encodeKey(randomKey()))
+		const running = keyItemFor(OTHER_REQUIREMENT)
+		store.items.set(running, encodeKey(randomKey()))
+		store.undeletable.add(running)
+
+		expect(await startAndReport(db, store, dir, running)).toEqual({ outcome: 'key-mismatch', item: recorded })
 	})
 
 	test('reports an unavailable keychain', async () => {

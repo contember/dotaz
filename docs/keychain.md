@@ -88,9 +88,10 @@ If the window says "Saved passwords can't be decrypted" (the log: the master key
 the one this database was encrypted with"), the item under the recorded name holds a key
 Dotaz did not put there. Dotaz refuses it, the saved passwords show empty, and passwords
 saved from then on are encrypted with the machine-derived key until the state is reset.
-To reset: quit Dotaz, delete the item
-(`security delete-generic-password -s dotaz -a <item named in the notice>`), delete the two
-settings from the app database
+To reset: quit Dotaz, delete the item (service `dotaz`, account named in the notice: on
+macOS `security delete-generic-password -s dotaz -a <item>`, on Linux with a Secret Service
+tool such as Seahorse, on Windows in Credential Manager), delete the two settings from the
+app database
 (`DELETE FROM settings WHERE key IN ('keychain.masterKeyItem', 'keychain.masterKeyCheck')`),
 start Dotaz and re-enter the passwords.
 

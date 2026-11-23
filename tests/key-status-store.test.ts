@@ -29,9 +29,11 @@ describe('key status notice', () => {
 		expect(keyStatusStore.notice?.detail).toContain('weaker key derived from this machine')
 	})
 
-	test('stays hidden for the rest of the session once dismissed', () => {
+	test('hides once dismissed until the next reported start', () => {
 		keyStatusStore.apply({ outcome: 'key-mismatch', item: 'app-encryption-key-v1' })
 		keyStatusStore.dismiss()
 		expect(keyStatusStore.notice).toBeNull()
+		keyStatusStore.apply({ outcome: 'key-mismatch', item: 'app-encryption-key-v1' })
+		expect(keyStatusStore.notice).not.toBeNull()
 	})
 })

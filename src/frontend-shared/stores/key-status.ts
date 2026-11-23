@@ -32,7 +32,8 @@ export function keyNoticeFor(status: KeyStatus): KeyNotice | null {
 			return {
 				title: 'The system keychain is unavailable',
 				detail: 'Passwords you save now are encrypted with a weaker key derived from this machine. '
-					+ "Passwords saved while the keychain worked can't be decrypted until it is available again.",
+					+ "Passwords saved while the keychain worked can't be decrypted until it is available again: "
+					+ 'unlock it (on Linux, start a Secret Service such as GNOME Keyring) and restart Dotaz.',
 				linkLabel: 'About the keychain',
 				linkUrl: `${KEYCHAIN_DOCS_URL}#what-dotaz-does-now`,
 			}
@@ -44,9 +45,10 @@ export function keyNoticeFor(status: KeyStatus): KeyNotice | null {
 const [status, setStatus] = createSignal<KeyStatus>(null)
 const [dismissed, setDismissed] = createSignal(false)
 
-/** What the backend reported for this start. */
+/** What the backend reported for this start; shown again even if an earlier notice was dismissed. */
 function apply(next: KeyStatus) {
 	setStatus(next)
+	setDismissed(false)
 }
 
 /** Ask the backend once the transport is up. */
