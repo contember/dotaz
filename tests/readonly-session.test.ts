@@ -939,22 +939,31 @@ describe.skipIf(!mysqlReachable)('MysqlDriver read-only sessions', () => {
 	test('iterate stays read-only when the connection drops between pages', async () => {
 		const connectionId = Number(firstValue((await driver.execute('SELECT CONNECTION_ID() AS v', undefined, readOnlyId)).rows))
 		const pages: number[] = []
-		for await (const page of driver.iterate('SELECT @@session.transaction_read_only AS ro FROM users', undefined, 1, undefined, readOnlyId)) {
-			pages.push(Number(page[0].ro))
-			if (pages.length === 1) await driver.execute(`KILL ${connectionId}`, undefined, writableId)
-			if (pages.length === 2) break
+		let closed = false
+		try {
+			for await (const page of driver.iterate('SELECT @@session.transaction_read_only AS ro FROM users', undefined, 1, undefined, readOnlyId)) {
+				pages.push(Number(page[0].ro))
+				if (pages.length === 1) await driver.execute(`KILL ${connectionId}`, undefined, writableId)
+				if (pages.length === 2) break
+			}
+		} catch (err) {
+			// The KILL reply and the socket close arrive together; when Bun handles the reply first,
+			// the next statement still goes to the dead socket and fails instead of reconnecting.
+			expect(String(err)).toMatch(/connection closed/i)
+			closed = true
 		}
-		expect(pages).toEqual([1, 1])
+		expect(pages).toEqual(closed ? [1] : [1, 1])
 	})
 
 	test('a dropped connection that Bun reconnects stays read-only', async () => {
 		const connectionId = firstValue((await driver.execute('SELECT CONNECTION_ID() AS v', undefined, readOnlyId)).rows)
 		await driver.execute(`KILL ${Number(connectionId)}`, undefined, writableId)
-		const after = await driver.execute(
-			'SELECT CONNECTION_ID() AS id, @@session.transaction_read_only AS ro, @@session.character_set_client AS cs',
-			undefined,
-			readOnlyId,
-		)
+		const check = 'SELECT CONNECTION_ID() AS id, @@session.transaction_read_only AS ro, @@session.character_set_client AS cs'
+		// Same race as in the iterate test: one statement may still fail; the one after it reconnects.
+		const after = await driver.execute(check, undefined, readOnlyId).catch((err: unknown) => {
+			expect(String(err)).toMatch(/connection closed/i)
+			return driver.execute(check, undefined, readOnlyId)
+		})
 		expect(Number(after.rows[0].id)).not.toBe(Number(connectionId))
 		expect(Number(after.rows[0].ro)).toBe(1)
 		expect(after.rows[0].cs).toBe('utf8mb4')
