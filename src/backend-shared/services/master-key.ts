@@ -156,11 +156,23 @@ export type MasterKeyOutcome =
 	/** The keychain could not be used; the machine-derived key is in use. */
 	| 'fallback'
 
+/** What the window shows about the key: the start's outcome and the item the database records. */
+export interface MasterKeyStatus {
+	outcome: MasterKeyOutcome
+	/** After `key-mismatch`, the item holding the refused key; the reset deletes it. */
+	item: string
+}
+
 type Log = (message: string) => void
+
+/** The item that holds the key this database is encrypted with. */
+export function recordedKeyItem(appDb: AppDatabase): string {
+	return appDb.getSetting(KEY_ITEM_SETTING) ?? LEGACY_KEY_ITEM
+}
 
 export async function setupMasterKey(options: MasterKeyOptions): Promise<MasterKeyOutcome> {
 	const log = options.log ?? ((message: string) => console.warn(message))
-	const recorded = options.appDb.getSetting(KEY_ITEM_SETTING) ?? LEGACY_KEY_ITEM
+	const recorded = recordedKeyItem(options.appDb)
 	const item = options.item ?? recorded
 	if (item === recorded) return keepRecordedItem(options, item, log)
 	return withLock(

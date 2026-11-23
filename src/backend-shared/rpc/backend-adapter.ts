@@ -46,6 +46,7 @@ import type { ConnectionManager } from '../services/connection-manager'
 import type { EncryptionService } from '../services/encryption'
 import { buildExportSelectQuery, exportPreview, exportToFile } from '../services/export-service'
 import { importFromStream, importPreviewFromStream } from '../services/import-service'
+import type { MasterKeyStatus } from '../services/master-key'
 import { ProposalStore } from '../services/proposal-store'
 import { assertSessionWritable } from '../services/query-executor'
 import type { QueryExecutor } from '../services/query-executor'
@@ -72,6 +73,7 @@ export interface BackendAdapterOptions {
 	allowServerFileAccess?: boolean
 	appVersion?: string
 	mode?: 'desktop' | 'web' | 'demo'
+	masterKeyStatus?: MasterKeyStatus
 }
 
 export class BackendAdapter implements RpcAdapter {
@@ -85,6 +87,7 @@ export class BackendAdapter implements RpcAdapter {
 	private allowServerFileAccess: boolean
 	private appVersion: string
 	private mode: 'desktop' | 'web' | 'demo'
+	private keyStatus: MasterKeyStatus | null
 	private proposals = new ProposalStore()
 	private unsubscribeProposals: () => void
 	private remoteApprovals: RemoteApprovals
@@ -107,6 +110,7 @@ export class BackendAdapter implements RpcAdapter {
 		this.allowServerFileAccess = opts?.allowServerFileAccess ?? true
 		this.appVersion = opts?.appVersion ?? '0.0.0'
 		this.mode = opts?.mode ?? 'web'
+		this.keyStatus = opts?.masterKeyStatus ?? null
 		// Every transition, not just creation — an approval banner whose proposal was cancelled
 		// or expired elsewhere must stop being actionable.
 		this.unsubscribeProposals = this.proposals.onChange((proposal) => {
@@ -749,6 +753,10 @@ export class BackendAdapter implements RpcAdapter {
 	async decryptConfig(encryptedConfig: string): Promise<string> {
 		if (!this.encryption) throw new Error('Encryption not available')
 		return this.encryption.decrypt(encryptedConfig)
+	}
+
+	masterKeyStatus(): MasterKeyStatus | null {
+		return this.keyStatus
 	}
 
 	// ── System ────────────────────────────────────────────

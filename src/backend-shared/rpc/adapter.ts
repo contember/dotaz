@@ -35,6 +35,7 @@ import type {
 	UiSnapshot,
 } from '@dotaz/shared/types/rpc'
 import type { DatabaseDriver } from '../db/driver'
+import type { MasterKeyStatus } from '../services/master-key'
 
 export interface RpcAdapter {
 	// ── Connections ────────────────────────────────────────
@@ -159,6 +160,8 @@ export interface RpcAdapter {
 	// ── Storage ──────────────────────────────────────────
 	encryptSecrets?(secrets: string): Promise<string>
 	decryptConfig?(encryptedConfig: string): Promise<string>
+	/** How this start set up the saved-password key; null where no keychain is used (web, demo). */
+	masterKeyStatus(): MasterKeyStatus | null
 
 	// ── System (optional — unavailable in demo/web) ──────
 	showOpenDialog?(params: OpenDialogParams): Promise<{ paths: string[]; cancelled: boolean }>

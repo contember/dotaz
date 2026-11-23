@@ -1,5 +1,6 @@
 import type { ConnectionManager } from '../services/connection-manager'
 import type { EncryptionService } from '../services/encryption'
+import type { MasterKeyStatus } from '../services/master-key'
 import { QueryExecutor } from '../services/query-executor'
 import { SessionManager } from '../services/session-manager'
 import type { AppDatabase } from '../storage/app-db'
@@ -15,6 +16,8 @@ export interface HandlerOptions {
 	/** Reported by `agent.hello` — the entry point knows these, `backend-shared` does not. */
 	appVersion?: string
 	mode?: 'desktop' | 'web' | 'demo'
+	/** Outcome of `setupMasterKey` at start, shown by the window (desktop only). */
+	masterKeyStatus?: MasterKeyStatus
 }
 
 function requireAppDb(appDb: AppDatabase | undefined): AppDatabase {
@@ -44,6 +47,7 @@ export function createHandlers(
 		allowServerFileAccess: opts?.allowServerFileAccess,
 		appVersion: opts?.appVersion,
 		mode: opts?.mode,
+		masterKeyStatus: opts?.masterKeyStatus,
 	})
 	return { handlers: createSharedHandlers(adapter), sessionManager, adapter }
 }
