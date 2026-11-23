@@ -5,6 +5,7 @@ import {
 	bunSecretStore,
 	keyItemForPlatform,
 	readDesignatedRequirement,
+	recordedKeyItem,
 	setupMasterKey,
 	siblingAppDatabases,
 } from '@dotaz/backend-shared/services/master-key'
@@ -61,6 +62,7 @@ const masterKeyOutcome = await setupMasterKey({
 	log: (message) => console.error(message),
 })
 if (masterKeyOutcome !== 'current') console.log(`Master key: ${masterKeyOutcome}`)
+const masterKeyStatus = { outcome: masterKeyOutcome, item: recordedKeyItem(appDb) }
 const connectionManager = new ConnectionManager(appDb)
 
 // Create RPC handlers with deferred message emitter (set after window creation)
@@ -76,6 +78,7 @@ const { handlers, sessionManager } = createHandlers(connectionManager, undefined
 	demoDbTargetPath: join(userDataDir, 'bookstore-demo.db'),
 	appVersion,
 	mode: 'desktop',
+	masterKeyStatus,
 })
 
 // ── CLI control endpoint (see docs/agent-cli.md) ─────────
@@ -131,6 +134,12 @@ const rpc = BrowserView.defineRPC<DotazRPC>({
 			},
 			'window.setTitle': (params: { title: string }) => {
 				mainWindow.setTitle(params.title)
+			},
+			// Links in the window would navigate the webview itself; open them in the browser.
+			'system.openExternal': (params: { url: string }) => {
+				const url = new URL(params.url)
+				if (url.protocol !== 'https:') throw new Error('Only https links can be opened')
+				if (!Utils.openExternal(url.href)) throw new Error('Could not open the link')
 			},
 		},
 		messages: {},

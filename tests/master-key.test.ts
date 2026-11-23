@@ -1,3 +1,5 @@
+import { createHandlers } from '@dotaz/backend-shared/rpc/rpc-handlers'
+import { ConnectionManager } from '@dotaz/backend-shared/services/connection-manager'
 import { encryptLocalPassword, tryDecryptLocalPassword } from '@dotaz/backend-shared/services/encryption'
 import {
 	BUN_TEAM_ID,
@@ -9,6 +11,7 @@ import {
 	LEGACY_KEY_ITEM,
 	parseDesignatedRequirement,
 	readDesignatedRequirement,
+	recordedKeyItem,
 	type SecretStore,
 	setupMasterKey,
 	siblingAppDatabases,
@@ -768,5 +771,70 @@ describe('siblingAppDatabases', () => {
 		mkdirSync(join(root, 'Dotaz-dev'))
 
 		expect(siblingAppDatabases(stable.dir, 'dotaz.db')).toEqual([canary.path])
+	})
+})
+
+describe('storage.keyStatus', () => {
+	/** Starts the backend the way the desktop entry does and asks what the window would show. */
+	async function startAndReport(db: AppDatabase, store: FakeStore, dir: string, item: string | null = null) {
+		const outcome = await setupMasterKey({
+			appDb: db,
+			store,
+			item,
+			fallbackKey: randomKey(),
+			siblingDatabases: siblingAppDatabases(dir, 'dotaz.db'),
+		})
+		const { handlers } = createHandlers(new ConnectionManager(db), undefined, db, undefined, {
+			mode: 'desktop',
+			masterKeyStatus: { outcome, item: recordedKeyItem(db) },
+		})
+		return handlers['storage.keyStatus']()
+	}
+
+	test('reports a refused key and the item holding it', async () => {
+		const store = new FakeStore()
+		const legacyKey = randomKey()
+		const { db, dir } = legacyChannel('Dotaz', store, legacyKey)
+		db.setSetting(KEY_CHECK_SETTING, keyFingerprint(legacyKey))
+		store.items.set(LEGACY_KEY_ITEM, encodeKey(randomKey()))
+
+		expect(await startAndReport(db, store, dir)).toEqual({ outcome: 'key-mismatch', item: LEGACY_KEY_ITEM })
+	})
+
+	test("names the recorded item, not the running program's, when a move falls back on a swapped key", async () => {
+		const store = new FakeStore()
+		const { db, dir } = channelDb('Dotaz')
+		const recorded = keyItemFor(APP_REQUIREMENT)
+		const original = randomKey()
+		db.setSetting(KEY_ITEM_SETTING, recorded)
+		db.setSetting(KEY_CHECK_SETTING, keyFingerprint(original))
+		store.items.set(recorded, encodeKey(randomKey()))
+		const running = keyItemFor(OTHER_REQUIREMENT)
+		store.items.set(running, encodeKey(randomKey()))
+		store.undeletable.add(running)
+
+		expect(await startAndReport(db, store, dir, running)).toEqual({ outcome: 'key-mismatch', item: recorded })
+	})
+
+	test('reports an unavailable keychain', async () => {
+		const store = new FakeStore()
+		const { db, dir } = legacyChannel('Dotaz', store, randomKey())
+		store.unavailable = true
+
+		expect(await startAndReport(db, store, dir)).toEqual({ outcome: 'fallback', item: LEGACY_KEY_ITEM })
+	})
+
+	test('reports a normal start as current', async () => {
+		const store = new FakeStore()
+		const { db, dir } = legacyChannel('Dotaz', store, randomKey())
+
+		expect(await startAndReport(db, store, dir)).toEqual({ outcome: 'current', item: LEGACY_KEY_ITEM })
+	})
+
+	test('reports nothing where the backend uses no keychain (web)', () => {
+		const { db } = channelDb('Dotaz')
+		const { handlers } = createHandlers(new ConnectionManager(db), undefined, db, undefined, { mode: 'web' })
+
+		expect(handlers['storage.keyStatus']()).toBeNull()
 	})
 })

@@ -412,6 +412,9 @@ export function createHandlers(adapter: RpcAdapter) {
 			const config = await adapter.decryptConfig(encryptedConfig)
 			return { config }
 		},
+		'storage.keyStatus': () => {
+			return adapter.masterKeyStatus()
+		},
 
 		// ── AI SQL generation ─────────────────────────────
 		'ai.generateSql': async (params: AiGenerateSqlParams) => {

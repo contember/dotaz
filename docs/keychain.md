@@ -74,7 +74,8 @@ gone and starts a new key. Re-enter the passwords, or reinstall the newer versio
 still has the key.
 
 If the keychain can't be used at all (Linux without a Secret Service, a locked keychain),
-the machine-derived fallback key is used for that session, as before.
+the machine-derived fallback key is used for that session, as before, and the window says
+so.
 
 When `codesign` can't answer on macOS (it fails, or times out on a busy start), the
 identity is unknown, not changed: Dotaz keeps the recorded item and moves nothing. Off
@@ -83,12 +84,14 @@ have no per-program access lists.
 
 ### Resetting the key
 
-If the log says the master key "is not the one this database was encrypted with", the
-item under the recorded name holds a key Dotaz did not put there. Dotaz refuses it, the
-saved passwords show empty, and passwords saved from then on are encrypted with the
-machine-derived key until the state is reset. To reset: quit Dotaz, delete the item
-(`security delete-generic-password -s dotaz -a <item named in the log>`), delete the two
-settings from the app database
+If the window says "Saved passwords can't be decrypted" (the log: the master key "is not
+the one this database was encrypted with"), the item under the recorded name holds a key
+Dotaz did not put there. Dotaz refuses it, the saved passwords show empty, and passwords
+saved from then on are encrypted with the machine-derived key until the state is reset.
+To reset: quit Dotaz, delete the item (service `dotaz`, account named in the notice: on
+macOS `security delete-generic-password -s dotaz -a <item>`, on Linux with a Secret Service
+tool such as Seahorse, on Windows in Credential Manager), delete the two settings from the
+app database
 (`DELETE FROM settings WHERE key IN ('keychain.masterKeyItem', 'keychain.masterKeyCheck')`),
 start Dotaz and re-enter the passwords.
 

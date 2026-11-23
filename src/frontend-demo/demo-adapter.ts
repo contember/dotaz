@@ -606,6 +606,12 @@ export class DemoAdapter implements RpcAdapter {
 		this.state.setSetting(key, value)
 	}
 
+	// ── Storage (no keychain in demo) ─────────────────────
+
+	masterKeyStatus(): null {
+		return null
+	}
+
 	// ── SQL formatting ───────────────────────────────────
 
 	formatSql(sql: string): string {

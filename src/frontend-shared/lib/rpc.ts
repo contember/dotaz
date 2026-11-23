@@ -99,3 +99,8 @@ export function closeWindow(): Promise<void> {
 export function setWindowTitle(title: string): Promise<void> {
 	return call('window.setTitle', { title })
 }
+
+/** Desktop only: open an https link in the system browser. */
+export function openExternal(url: string): Promise<void> {
+	return call('system.openExternal', { url })
+}

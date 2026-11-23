@@ -63,6 +63,7 @@ type DotazRequests =
 		'window.maximize': { params: {}; response: void }
 		'window.close': { params: {}; response: void }
 		'window.setTitle': { params: { title: string }; response: void }
+		'system.openExternal': { params: { url: string }; response: void }
 	}
 
 export type DotazRPC = {

@@ -20,6 +20,7 @@ import { getComparisonParams, setComparisonParams } from '../../stores/compariso
 import { connectionsStore } from '../../stores/connections'
 import { editorStore } from '../../stores/editor'
 import { gridStore } from '../../stores/grid'
+import { keyStatusStore } from '../../stores/key-status'
 import { navigationStore } from '../../stores/navigation'
 import { proposalsStore } from '../../stores/proposals'
 import { sessionStore } from '../../stores/session'
@@ -60,6 +61,7 @@ import DataGrid from '../grid/DataGrid'
 import QueryHistory from '../history/QueryHistory'
 import SchemaViewer from '../schema/SchemaViewer'
 import DatabaseSearchDialog from '../search/DatabaseSearchDialog'
+import KeyNotice from './KeyNotice'
 import Resizer from './Resizer'
 import Sidebar, { SidebarExpandButton } from './Sidebar'
 import type { TabStatus } from './TabBar'
@@ -273,6 +275,7 @@ export default function AppShell() {
 		removeUpdateListener = messages.onUpdateReady(({ version }) => {
 			setUpdateVersion(version)
 		})
+		void keyStatusStore.load()
 
 		// Listen for the CLI — write proposals to approve and UI commands to perform
 		removeProposalListener = messages.onCliProposal((proposal) => {
@@ -507,6 +510,7 @@ export default function AppShell() {
 					</div>
 				)}
 			</Show>
+			<KeyNotice />
 			<div class="app-shell__body">
 				<Show when={sidebarCollapsed()}>
 					<SidebarExpandButton onClick={toggleCollapse} />
