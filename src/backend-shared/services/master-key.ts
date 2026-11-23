@@ -146,14 +146,17 @@ export type MasterKeyOutcome =
 	/**
 	 * The item under the new name could not be created (the keychain refused the
 	 * write, or an item Dotaz can't vouch for sits there and could not be removed);
-	 * the key stays where it was.
+	 * the key stays in the recorded item (`fallback` when that item holds no readable key).
 	 */
 	| 'item-unavailable'
-	/** Another start was still moving the key (its keychain prompt open, say); the key stays where it was until the next start. */
+	/**
+	 * Another start was still moving the key (its keychain prompt open, say); the key stays in
+	 * the recorded item until the next start (`fallback` when that item holds no readable key).
+	 */
 	| 'move-deferred'
 	/** The keychain holds a different key than the one this database recorded; it was refused. */
 	| 'key-mismatch'
-	/** The keychain could not be used; the machine-derived key is in use. */
+	/** No key from the keychain could be used (the keychain failed, or a move failed with the recorded item missing); the machine-derived key is in use. */
 	| 'fallback'
 
 /** What the window shows about the key: the start's outcome and the item the database records. */
@@ -288,7 +291,7 @@ async function keepPrevious(
 	options: MasterKeyOptions,
 	recorded: string,
 	log: Log,
-	outcome: MasterKeyOutcome = 'item-unavailable',
+	outcome: 'item-unavailable' | 'move-deferred' = 'item-unavailable',
 ): Promise<MasterKeyOutcome> {
 	const { appDb, store, fallbackKey } = options
 	try {
@@ -307,11 +310,13 @@ async function keepPrevious(
 			appDb.setLocalKey(previous, [fallbackKey])
 			return outcome
 		}
+		log(`No master key in keychain item "${recorded}", falling back to machine-derived key`)
 	} catch (err) {
-		log(`Could not read the previous master key "${recorded}": ${errorMessage(err)}`)
+		log(`Could not read the previous master key "${recorded}", falling back to machine-derived key: ${errorMessage(err)}`)
 	}
+	// No keychain key is in use, so the window must say so, as for an unavailable keychain.
 	if (fallbackKey) appDb.setLocalKey(fallbackKey)
-	return outcome
+	return 'fallback'
 }
 
 /**

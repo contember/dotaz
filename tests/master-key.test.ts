@@ -17,6 +17,7 @@ import {
 	siblingAppDatabases,
 } from '@dotaz/backend-shared/services/master-key'
 import { AppDatabase, databaseUsesKey } from '@dotaz/backend-shared/storage/app-db'
+import { keyNoticeFor } from '@dotaz/frontend-shared/stores/key-status'
 import type { PostgresConnectionConfig } from '@dotaz/shared/types/connection'
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync as dirFiles, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
@@ -776,13 +777,15 @@ describe('siblingAppDatabases', () => {
 
 describe('storage.keyStatus', () => {
 	/** Starts the backend the way the desktop entry does and asks what the window would show. */
-	async function startAndReport(db: AppDatabase, store: FakeStore, dir: string, item: string | null = null) {
+	async function startAndReport(db: AppDatabase, store: FakeStore, dir: string, item: string | null = null, lockPath?: string) {
 		const outcome = await setupMasterKey({
 			appDb: db,
 			store,
 			item,
 			fallbackKey: randomKey(),
 			siblingDatabases: siblingAppDatabases(dir, 'dotaz.db'),
+			lockPath,
+			lockWaitMs: 150,
 		})
 		const { handlers } = createHandlers(new ConnectionManager(db), undefined, db, undefined, {
 			mode: 'desktop',
@@ -814,6 +817,37 @@ describe('storage.keyStatus', () => {
 		store.undeletable.add(running)
 
 		expect(await startAndReport(db, store, dir, running)).toEqual({ outcome: 'key-mismatch', item: recorded })
+	})
+
+	test.each(['missing', 'refused'] as const)(
+		'reports a failed move that leaves only the machine-derived key (recorded item %s), so the window shows the notice',
+		async (recordedItem) => {
+			const store = new FakeStore()
+			const { db, dir } = legacyChannel('Dotaz', store, randomKey())
+			if (recordedItem === 'missing') store.items.delete(LEGACY_KEY_ITEM)
+			else store.refuse.add(LEGACY_KEY_ITEM)
+			const running = keyItemFor(APP_REQUIREMENT)
+			store.items.set(running, encodeKey(randomKey()))
+			store.undeletable.add(running)
+
+			const status = await startAndReport(db, store, dir, running)
+
+			expect(status).toEqual({ outcome: 'fallback', item: LEGACY_KEY_ITEM })
+			expect(keyNoticeFor(status)).not.toBeNull()
+		},
+	)
+
+	test('reports a deferred move that leaves only the machine-derived key, so the window shows the notice', async () => {
+		const store = new FakeStore()
+		const { db, dir } = legacyChannel('Dotaz', store, randomKey())
+		store.items.delete(LEGACY_KEY_ITEM)
+		const lockPath = join(root, 'master-key.lock')
+		writeFileSync(lockPath, `${process.pid} someone-else`)
+
+		const status = await startAndReport(db, store, dir, keyItemFor(APP_REQUIREMENT), lockPath)
+
+		expect(status).toEqual({ outcome: 'fallback', item: LEGACY_KEY_ITEM })
+		expect(keyNoticeFor(status)).not.toBeNull()
 	})
 
 	test('reports an unavailable keychain', async () => {
