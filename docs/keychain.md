@@ -98,6 +98,24 @@ app database
 (`DELETE FROM settings WHERE key IN ('keychain.masterKeyItem', 'keychain.masterKeyCheck')`),
 start Dotaz and re-enter the passwords.
 
+### When the key is missing
+
+If the item the database records is gone (the window says "Saved passwords can't be
+decrypted" and names the item; the log: the master key item "is missing from the keychain"),
+Dotaz does not start a new key under that name: that would leave the saved passwords
+undecryptable without a word and stand in the way of restoring the item. It records nothing,
+uses the machine-derived key for that session and says so on every start until one of these:
+
+- Restore the item (service `dotaz`, account named in the notice), for example from a backup
+  of the keychain, and restart Dotaz. The saved passwords are back.
+- Or give the passwords up: reset as in "Resetting the key" (there is no item to delete) and
+  re-enter them.
+
+This applies when the database recorded its key's fingerprint, so a database that has never
+had a key (a fresh install, or one that only ever ran without a keychain) still gets a new one
+silently. The same holds when a move finds the recorded item gone: the move is not recorded,
+so a restored item moves on a later start.
+
 ### Channels
 
 Stable, canary and dev builds keep separate app databases next to each other

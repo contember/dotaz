@@ -1,5 +1,5 @@
 // How this start set up the key that encrypts saved passwords (docs/keychain.md). When the
-// keychain key was refused or no keychain key could be used, the window says so: otherwise
+// keychain key was refused or is missing, or no keychain key could be used, the window says so: otherwise
 // the user sees only empty saved passwords and does not know why.
 
 import type { HandlerReturn } from '@dotaz/backend-types'
@@ -27,6 +27,15 @@ export function keyNoticeFor(status: KeyStatus): KeyNotice | null {
 					+ 'Passwords you save now are encrypted with a weaker key derived from this machine until you reset the key.',
 				linkLabel: 'How to reset the key',
 				linkUrl: `${KEYCHAIN_DOCS_URL}#resetting-the-key`,
+			}
+		case 'key-missing':
+			return {
+				title: "Saved passwords can't be decrypted",
+				detail: `Keychain item "${status.item}" (service "dotaz"), which holds the key this app's database was encrypted with, is missing. `
+					+ 'If you can restore it, for example from a keychain backup, do so and restart Dotaz. Otherwise reset the key and re-enter the passwords. '
+					+ 'Until then, passwords you save are encrypted with a weaker key derived from this machine.',
+				linkLabel: 'What to do',
+				linkUrl: `${KEYCHAIN_DOCS_URL}#when-the-key-is-missing`,
 			}
 		case 'fallback':
 			return {

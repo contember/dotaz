@@ -156,13 +156,19 @@ export type MasterKeyOutcome =
 	| 'move-deferred'
 	/** The keychain holds a different key than the one this database recorded; it was refused. */
 	| 'key-mismatch'
+	/**
+	 * The recorded item is gone although this database recorded its key's fingerprint, so saved
+	 * passwords can't be decrypted. Nothing is recorded or created under that name, so a restored
+	 * item works again; the machine-derived key is in use until then.
+	 */
+	| 'key-missing'
 	/** No key from the keychain could be used (the keychain failed, or a move failed with the recorded item missing); the machine-derived key is in use. */
 	| 'fallback'
 
 /** What the window shows about the key: the start's outcome and the item the database records. */
 export interface MasterKeyStatus {
 	outcome: MasterKeyOutcome
-	/** After `key-mismatch`, the item holding the refused key; the reset deletes it. */
+	/** After `key-mismatch`, the item holding the refused key (the reset deletes it); after `key-missing`, the item that is gone. */
 	item: string
 }
 
@@ -212,6 +218,8 @@ async function keepRecordedItem(options: MasterKeyOptions, item: string, log: Lo
 				if (fallbackKey) appDb.setLocalKey(fallbackKey)
 				return 'key-mismatch'
 			}
+		} else if (appDb.getSetting(KEY_CHECK_SETTING)) {
+			return keyMissing(options, item, log)
 		} else {
 			key = await createKey(store, item)
 		}
@@ -262,6 +270,10 @@ async function moveKey(options: MasterKeyOptions, recorded: string, item: string
 		return 'previous-unreadable'
 	}
 
+	// Recording the move would encrypt with a new key for good and forget which one the saved
+	// passwords need; left unrecorded, a restored item is moved on a later start.
+	if (!previous && appDb.getSetting(KEY_CHECK_SETTING)) return keyMissing(options, recorded, log)
+
 	// One transaction: a start that dies part-way must not record the new item with
 	// the old fingerprint (refused for good) or leave secrets under an unrecorded key.
 	appDb.transaction(() => {
@@ -284,6 +296,20 @@ async function moveKey(options: MasterKeyOptions, recorded: string, item: string
 		log(`Could not remove the previous master key "${recorded}": ${errorMessage(err)}`)
 		return 'migrated-delete-failed'
 	}
+}
+
+/**
+ * The item holding this database's key is gone. A fresh key under its name would silently
+ * leave every saved password undecryptable and block restoring the item, so use the
+ * machine-derived key and leave the item and both settings as they are.
+ */
+function keyMissing(options: MasterKeyOptions, item: string, log: Log): MasterKeyOutcome {
+	log(
+		`The master key item "${item}" is missing from the keychain, so saved passwords are unavailable. `
+			+ 'Restore the item, or see "When the key is missing" in docs/keychain.md.',
+	)
+	if (options.fallbackKey) options.appDb.setLocalKey(options.fallbackKey)
+	return 'key-missing'
 }
 
 /** The move could not happen: carry on with the recorded item, as before this version. */

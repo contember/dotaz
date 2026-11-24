@@ -733,6 +733,74 @@ describe('setupMasterKey', () => {
 		expect(tryDecryptLocalPassword(rawConfig(db, added.id).password, hostKey)).toBe('db-secret')
 	})
 
+	test('a recorded item gone from the keychain is reported, not replaced, and works again once restored', async () => {
+		const store = new FakeStore()
+		const legacyKey = randomKey()
+		const { db, connId } = legacyChannel('Dotaz', store, legacyKey)
+		expect(await setupMasterKey({ appDb: db, store, item: LEGACY_KEY_ITEM, fallbackKey: null, siblingDatabases: [] })).toBe('current')
+		const check = db.getSetting(KEY_CHECK_SETTING)
+		store.items.delete(LEGACY_KEY_ITEM)
+		const hostKey = randomKey()
+
+		const outcome = await setupMasterKey({ appDb: db, store, item: LEGACY_KEY_ITEM, fallbackKey: hostKey, siblingDatabases: [] })
+
+		expect(outcome).toBe('key-missing')
+		expect(store.items.has(LEGACY_KEY_ITEM)).toBe(false)
+		expect(db.getSetting(KEY_CHECK_SETTING)).toBe(check)
+		expect(tryDecryptLocalPassword(rawConfig(db, connId).password, legacyKey)).toBe('db-secret')
+		const added = db.createConnection({ name: 'Meanwhile', config: { ...pgConfig, password: 'added-meanwhile' } })
+		expect(tryDecryptLocalPassword(rawConfig(db, added.id).password, hostKey)).toBe('added-meanwhile')
+
+		store.items.set(LEGACY_KEY_ITEM, encodeKey(legacyKey))
+		const restored = await setupMasterKey({ appDb: db, store, item: LEGACY_KEY_ITEM, fallbackKey: hostKey, siblingDatabases: [] })
+
+		expect(restored).toBe('current')
+		expect((db.getConnectionById(connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
+		expect((db.getConnectionById(added.id)!.config as PostgresConnectionConfig).password).toBe('added-meanwhile')
+	})
+
+	test('a move whose recorded item is gone is reported and not recorded, and moves once the item is restored', async () => {
+		const store = new FakeStore()
+		const legacyKey = randomKey()
+		const { db, connId } = legacyChannel('Dotaz', store, legacyKey)
+		expect(await setupMasterKey({ appDb: db, store, item: LEGACY_KEY_ITEM, fallbackKey: null, siblingDatabases: [] })).toBe('current')
+		const check = db.getSetting(KEY_CHECK_SETTING)
+		store.items.delete(LEGACY_KEY_ITEM)
+		const item = keyItemFor(APP_REQUIREMENT)
+		const hostKey = randomKey()
+
+		const outcome = await setupMasterKey({ appDb: db, store, item, fallbackKey: hostKey, siblingDatabases: [] })
+
+		expect(outcome).toBe('key-missing')
+		expect(db.getSetting(KEY_ITEM_SETTING)).toBeNull()
+		expect(db.getSetting(KEY_CHECK_SETTING)).toBe(check)
+		expect(tryDecryptLocalPassword(rawConfig(db, connId).password, legacyKey)).toBe('db-secret')
+		const added = db.createConnection({ name: 'Meanwhile', config: { ...pgConfig, password: 'added-meanwhile' } })
+		expect(tryDecryptLocalPassword(rawConfig(db, added.id).password, hostKey)).toBe('added-meanwhile')
+
+		store.items.set(LEGACY_KEY_ITEM, encodeKey(legacyKey))
+		const restored = await setupMasterKey({ appDb: db, store, item, fallbackKey: hostKey, siblingDatabases: [] })
+
+		expect(restored).toBe('migrated')
+		expect(db.getSetting(KEY_ITEM_SETTING)).toBe(item)
+		expect((db.getConnectionById(connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
+		expect((db.getConnectionById(added.id)!.config as PostgresConnectionConfig).password).toBe('added-meanwhile')
+	})
+
+	test.each([LEGACY_KEY_ITEM, keyItemFor(APP_REQUIREMENT)])(
+		'a database without a recorded key fingerprint still gets a fresh key quietly (running item %s)',
+		async (item) => {
+			const store = new FakeStore()
+			const { db } = channelDb('Dotaz')
+
+			const outcome = await setupMasterKey({ appDb: db, store, item, fallbackKey: randomKey(), siblingDatabases: [] })
+
+			expect(outcome).toBe('current')
+			expect(db.getSetting(KEY_ITEM_SETTING) ?? LEGACY_KEY_ITEM).toBe(item)
+			expect(db.getSetting(KEY_CHECK_SETTING)).toBe(keyFingerprint(new Uint8Array(Buffer.from(store.items.get(item)!, 'base64'))))
+		},
+	)
+
 	test('leaves the legacy item in place where there is no code identity to bind to', async () => {
 		const store = new FakeStore()
 		const legacyKey = randomKey()
@@ -850,6 +918,21 @@ describe('storage.keyStatus', () => {
 		expect(keyNoticeFor(status)).not.toBeNull()
 	})
 
+	test.each([null, keyItemFor(APP_REQUIREMENT)])(
+		'reports a recorded item gone from the keychain and names it, so the window shows the notice (running item %p)',
+		async (running) => {
+			const store = new FakeStore()
+			const { db, dir } = legacyChannel('Dotaz', store, randomKey())
+			await startAndReport(db, store, dir)
+			store.items.delete(LEGACY_KEY_ITEM)
+
+			const status = await startAndReport(db, store, dir, running)
+
+			expect(status).toEqual({ outcome: 'key-missing', item: LEGACY_KEY_ITEM })
+			expect(keyNoticeFor(status)?.detail).toContain(`"${LEGACY_KEY_ITEM}"`)
+		},
+	)
+
 	test('reports an unavailable keychain', async () => {
 		const store = new FakeStore()
 		const { db, dir } = legacyChannel('Dotaz', store, randomKey())
@@ -858,11 +941,15 @@ describe('storage.keyStatus', () => {
 		expect(await startAndReport(db, store, dir)).toEqual({ outcome: 'fallback', item: LEGACY_KEY_ITEM })
 	})
 
-	test('reports a normal start as current', async () => {
+	test('reports a normal start as current, with no notice', async () => {
 		const store = new FakeStore()
 		const { db, dir } = legacyChannel('Dotaz', store, randomKey())
+		await startAndReport(db, store, dir)
 
-		expect(await startAndReport(db, store, dir)).toEqual({ outcome: 'current', item: LEGACY_KEY_ITEM })
+		const status = await startAndReport(db, store, dir)
+
+		expect(status).toEqual({ outcome: 'current', item: LEGACY_KEY_ITEM })
+		expect(keyNoticeFor(status)).toBeNull()
 	})
 
 	test('reports nothing where the backend uses no keychain (web)', () => {

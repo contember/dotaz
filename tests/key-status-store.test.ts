@@ -23,6 +23,16 @@ describe('key status notice', () => {
 		expect(notice?.linkUrl).toEndWith('docs/keychain.md#resetting-the-key')
 	})
 
+	test('a missing key item names it and says how to restore it or reset the key', () => {
+		keyStatusStore.apply({ outcome: 'key-missing', item: 'app-encryption-key-v1' })
+		const notice = keyStatusStore.notice
+		expect(notice?.title).toBe("Saved passwords can't be decrypted")
+		expect(notice?.detail).toContain('"app-encryption-key-v1"')
+		expect(notice?.detail).toContain('restore it')
+		expect(notice?.detail).toContain('weaker key derived from this machine')
+		expect(notice?.linkUrl).toEndWith('docs/keychain.md#when-the-key-is-missing')
+	})
+
 	test('a start without a keychain key says new passwords use the machine-derived key', () => {
 		keyStatusStore.apply({ outcome: 'fallback', item: 'app-encryption-key-v1' })
 		expect(keyStatusStore.notice?.title).toBe("Dotaz can't use its key in the system keychain")
