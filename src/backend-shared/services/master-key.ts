@@ -157,12 +157,12 @@ export type MasterKeyOutcome =
 	/** The keychain holds a different key than the one this database recorded; it was refused. */
 	| 'key-mismatch'
 	/**
-	 * The recorded item is gone although this database recorded its key's fingerprint, so saved
-	 * passwords can't be decrypted. Nothing is recorded or created under that name, so a restored
-	 * item works again; the machine-derived key is in use until then.
+	 * The recorded item is gone and saved passwords need its key (this database recorded its
+	 * fingerprint). Nothing is recorded under that name or in the settings, so a restored item
+	 * works again; the machine-derived key is in use until then.
 	 */
 	| 'key-missing'
-	/** No key from the keychain could be used (the keychain failed, or a move failed with the recorded item missing); the machine-derived key is in use. */
+	/** No key from the keychain could be used (the keychain failed, or a move failed with the recorded item missing and nothing lost); the machine-derived key is in use. */
 	| 'fallback'
 
 /** What the window shows about the key: the start's outcome and the item the database records. */
@@ -218,7 +218,7 @@ async function keepRecordedItem(options: MasterKeyOptions, item: string, log: Lo
 				if (fallbackKey) appDb.setLocalKey(fallbackKey)
 				return 'key-mismatch'
 			}
-		} else if (appDb.getSetting(KEY_CHECK_SETTING)) {
+		} else if (lostKey(appDb, [fallbackKey])) {
 			return keyMissing(options, item, log)
 		} else {
 			key = await createKey(store, item)
@@ -272,7 +272,7 @@ async function moveKey(options: MasterKeyOptions, recorded: string, item: string
 
 	// Recording the move would encrypt with a new key for good and forget which one the saved
 	// passwords need; left unrecorded, a restored item is moved on a later start.
-	if (!previous && appDb.getSetting(KEY_CHECK_SETTING)) return keyMissing(options, recorded, log)
+	if (!previous && lostKey(appDb, [key, fallbackKey])) return keyMissing(options, recorded, log)
 
 	// One transaction: a start that dies part-way must not record the new item with
 	// the old fingerprint (refused for good) or leave secrets under an unrecorded key.
@@ -296,6 +296,14 @@ async function moveKey(options: MasterKeyOptions, recorded: string, item: string
 		log(`Could not remove the previous master key "${recorded}": ${errorMessage(err)}`)
 		return 'migrated-delete-failed'
 	}
+}
+
+/**
+ * Whether the recorded item's key held saved passwords that only it decrypts. A database that
+ * never recorded a key, or holds nothing the keys at hand miss, loses nothing to a fresh key.
+ */
+function lostKey(appDb: AppDatabase, keysAtHand: (Uint8Array | null)[]): boolean {
+	return appDb.getSetting(KEY_CHECK_SETTING) !== null && appDb.holdsSecretNoneDecrypt(keysAtHand)
 }
 
 /**
@@ -336,6 +344,7 @@ async function keepPrevious(
 			appDb.setLocalKey(previous, [fallbackKey])
 			return outcome
 		}
+		if (lostKey(appDb, [fallbackKey])) return keyMissing(options, recorded, log)
 		log(`No master key in keychain item "${recorded}", falling back to machine-derived key`)
 	} catch (err) {
 		log(`Could not read the previous master key "${recorded}", falling back to machine-derived key: ${errorMessage(err)}`)

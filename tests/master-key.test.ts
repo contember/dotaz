@@ -787,6 +787,55 @@ describe('setupMasterKey', () => {
 		expect((db.getConnectionById(added.id)!.config as PostgresConnectionConfig).password).toBe('added-meanwhile')
 	})
 
+	test('after a missing key is reset, the next start is quiet and passwords saved meanwhile decrypt', async () => {
+		const store = new FakeStore()
+		const { db } = legacyChannel('Dotaz', store, randomKey())
+		await setupMasterKey({ appDb: db, store, item: LEGACY_KEY_ITEM, fallbackKey: null, siblingDatabases: [] })
+		store.items.delete(LEGACY_KEY_ITEM)
+		const hostKey = randomKey()
+		expect(await setupMasterKey({ appDb: db, store, item: LEGACY_KEY_ITEM, fallbackKey: hostKey, siblingDatabases: [] })).toBe('key-missing')
+		const added = db.createConnection({ name: 'Meanwhile', config: { ...pgConfig, password: 'added-meanwhile' } })
+
+		db.db.prepare('DELETE FROM settings WHERE key IN (?, ?)').run(KEY_ITEM_SETTING, KEY_CHECK_SETTING)
+		const outcome = await setupMasterKey({ appDb: db, store, item: LEGACY_KEY_ITEM, fallbackKey: hostKey, siblingDatabases: [] })
+
+		expect(outcome).toBe('current')
+		expect((db.getConnectionById(added.id)!.config as PostgresConnectionConfig).password).toBe('added-meanwhile')
+	})
+
+	test('a move that cannot create its new item reports a missing recorded item the passwords need', async () => {
+		const store = new FakeStore()
+		const legacyKey = randomKey()
+		const { db, connId } = legacyChannel('Dotaz', store, legacyKey)
+		await setupMasterKey({ appDb: db, store, item: LEGACY_KEY_ITEM, fallbackKey: null, siblingDatabases: [] })
+		store.items.delete(LEGACY_KEY_ITEM)
+		const item = keyItemFor(APP_REQUIREMENT)
+		store.items.set(item, encodeKey(randomKey()))
+		store.undeletable.add(item)
+
+		const outcome = await setupMasterKey({ appDb: db, store, item, fallbackKey: randomKey(), siblingDatabases: [] })
+
+		expect(outcome).toBe('key-missing')
+		expect(db.getSetting(KEY_ITEM_SETTING)).toBeNull()
+		expect(tryDecryptLocalPassword(rawConfig(db, connId).password, legacyKey)).toBe('db-secret')
+	})
+
+	test.each([LEGACY_KEY_ITEM, keyItemFor(APP_REQUIREMENT)])(
+		'a missing item whose key no saved password needs is replaced quietly (running item %s)',
+		async (item) => {
+			const store = new FakeStore()
+			const { db } = channelDb('Dotaz')
+			await setupMasterKey({ appDb: db, store, item: LEGACY_KEY_ITEM, fallbackKey: null, siblingDatabases: [] })
+			db.createConnection({ name: 'Local', config: { type: 'sqlite', path: '/data/app.db' } })
+			store.items.delete(LEGACY_KEY_ITEM)
+
+			const outcome = await setupMasterKey({ appDb: db, store, item, fallbackKey: randomKey(), siblingDatabases: [] })
+
+			expect(outcome).toBe('current')
+			expect(db.getSetting(KEY_CHECK_SETTING)).toBe(keyFingerprint(new Uint8Array(Buffer.from(store.items.get(item)!, 'base64'))))
+		},
+	)
+
 	test.each([LEGACY_KEY_ITEM, keyItemFor(APP_REQUIREMENT)])(
 		'a database without a recorded key fingerprint still gets a fresh key quietly (running item %s)',
 		async (item) => {

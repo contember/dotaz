@@ -100,21 +100,24 @@ start Dotaz and re-enter the passwords.
 
 ### When the key is missing
 
-If the item the database records is gone (the window says "Saved passwords can't be
-decrypted" and names the item; the log: the master key item "is missing from the keychain"),
-Dotaz does not start a new key under that name: that would leave the saved passwords
-undecryptable without a word and stand in the way of restoring the item. It records nothing,
-uses the machine-derived key for that session and says so on every start until one of these:
+If the item the database records is gone while saved passwords need its key (the window says
+"Saved passwords can't be decrypted" and names the item; the log: the master key item "is
+missing from the keychain"), Dotaz does not start a new key under that name: that would leave
+the saved passwords undecryptable without a word and stand in the way of restoring the item.
+It changes neither setting, uses the machine-derived key for that session and says so on every
+start until one of these:
 
 - Restore the item (service `dotaz`, account named in the notice), for example from a backup
-  of the keychain, and restart Dotaz. The saved passwords are back.
+  of the keychain, and restart Dotaz. The saved passwords are back, and passwords saved in the
+  meantime are re-encrypted under the restored key.
 - Or give the passwords up: reset as in "Resetting the key" (there is no item to delete) and
   re-enter them.
 
-This applies when the database recorded its key's fingerprint, so a database that has never
-had a key (a fresh install, or one that only ever ran without a keychain) still gets a new one
-silently. The same holds when a move finds the recorded item gone: the move is not recorded,
-so a restored item moves on a later start.
+Only a database that recorded its key's fingerprint and holds a password no key at hand
+decrypts gets this. A fresh install, a database that only ever ran without a keychain, or one
+with no saved passwords gets a new key without a word, since nothing is lost. When a move finds
+the recorded item gone, the move is not recorded and a restored item moves on a later start;
+the item it created for the running program stays in the keychain until then.
 
 ### Channels
 
@@ -125,7 +128,9 @@ databases (opened read-only) and leaves the item in place while any of them stil
 secret it decrypts or records it as its key. The last channel to move deletes it. A
 channel folder that is never started again keeps the old item alive; once every channel
 you use has moved, it can be removed by hand:
-`security delete-generic-password -s dotaz -a app-encryption-key-v1`.
+`security delete-generic-password -s dotaz -a app-encryption-key-v1`. A channel that still records it (a dev
+build, or a channel folder started again later) then reports the key as missing if it has saved
+passwords.
 
 Signed stable and canary builds share one requirement and therefore one item. Moves take a
 lock file next to the channel folders (`master-key.lock`, holding the holder's process ID),

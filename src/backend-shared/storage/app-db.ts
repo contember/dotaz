@@ -104,6 +104,12 @@ export class AppDatabase {
 		return connectionsUseKey(this.db, key)
 	}
 
+	/** Whether a saved secret in this database decrypts with none of `keys`, so it needs a key not at hand. */
+	holdsSecretNoneDecrypt(keys: readonly (Uint8Array | null)[]): boolean {
+		const usable = keys.filter((k): k is Uint8Array => k instanceof Uint8Array)
+		return encryptedSecrets(this.db).some((secret) => usable.every((key) => tryDecryptLocalPassword(secret, key) === null))
+	}
+
 	private encryptConfigJson(config: ConnectionConfig): string {
 		if (this.localKey && isServerConfig(config)) {
 			let encrypted: ConnectionConfig = { ...config, password: encryptLocalPassword(config.password, this.localKey) }
@@ -750,7 +756,13 @@ export function readDatabaseSetting(dbPath: string, key: string): string | null 
 }
 
 function connectionsUseKey(db: Database, key: Uint8Array): boolean {
+	return encryptedSecrets(db).some((secret) => tryDecryptLocalPassword(secret, key) !== null)
+}
+
+/** Every encrypted secret saved in the connections of `db`. */
+function encryptedSecrets(db: Database): string[] {
 	const rows = db.prepare('SELECT config FROM connections').all() as { config: string }[]
+	const found: string[] = []
 	for (const row of rows) {
 		let config: ConnectionConfig
 		try {
@@ -764,10 +776,8 @@ function connectionsUseKey(db: Database, key: Uint8Array): boolean {
 			secrets.push(config.sshTunnel.password ?? '', config.sshTunnel.keyPassphrase ?? '')
 		}
 		for (const secret of secrets) {
-			if (secret && isEncryptedPassword(secret) && tryDecryptLocalPassword(secret, key) !== null) {
-				return true
-			}
+			if (secret && isEncryptedPassword(secret)) found.push(secret)
 		}
 	}
-	return false
+	return found
 }
