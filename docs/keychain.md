@@ -58,7 +58,8 @@ Dotaz's databases vouches for it: this one or another channel's holds a secret i
 decrypts, or records its fingerprint. Anything else could have been planted with a key
 another program knows and is deleted and recreated. If that fails, the key stays in the
 recorded item. If that item is missing or can't be read either, the start uses the
-machine-derived fallback key and the window says so, as when the keychain is unavailable;
+machine-derived fallback key and the window says so, as when the keychain is unavailable
+(or, when the item is gone and saved passwords need it, as in "When the key is missing");
 the same holds for a start that leaves the move to a later one (`move-deferred`, see
 "Channels"). The database also keeps a fingerprint of its key (setting
 `keychain.masterKeyCheck`) and refuses a different key found later under the recorded name
@@ -114,8 +115,9 @@ start until one of these:
   re-enter them.
 
 Only a database that recorded its key's fingerprint and holds a password no key at hand
-decrypts gets this. A fresh install, a database that only ever ran without a keychain, or one
-with no saved passwords gets a new key without a word, since nothing is lost. When a move finds
+decrypts, or shares the item with another channel's database that does, gets this. A fresh
+install, a database that only ever ran without a keychain, or one with no saved passwords
+(empty ones don't count) gets a new key without a word, since nothing is lost. When a move finds
 the recorded item gone, the move is not recorded and a restored item moves on a later start;
 the item it created for the running program stays in the keychain until then.
 

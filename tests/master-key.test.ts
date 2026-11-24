@@ -820,6 +820,55 @@ describe('setupMasterKey', () => {
 		expect(tryDecryptLocalPassword(rawConfig(db, connId).password, legacyKey)).toBe('db-secret')
 	})
 
+	test('a deferred move reports a missing recorded item the passwords need', async () => {
+		const store = new FakeStore()
+		const { db, dir } = legacyChannel('Dotaz', store, randomKey())
+		await setupMasterKey({ appDb: db, store, item: LEGACY_KEY_ITEM, fallbackKey: null, siblingDatabases: [] })
+		store.items.delete(LEGACY_KEY_ITEM)
+		const lockPath = join(root, 'master-key.lock')
+		writeFileSync(lockPath, `${process.pid} someone-else`)
+
+		const outcome = await setupMasterKey({
+			appDb: db,
+			store,
+			item: keyItemFor(APP_REQUIREMENT),
+			fallbackKey: randomKey(),
+			siblingDatabases: siblingAppDatabases(dir, 'dotaz.db'),
+			lockPath,
+			lockWaitMs: 150,
+		})
+
+		expect(outcome).toBe('key-missing')
+		expect(db.getSetting(KEY_ITEM_SETTING)).toBeNull()
+	})
+
+	test('a missing item shared with a channel whose passwords need it is not replaced by a channel without any', async () => {
+		const store = new FakeStore()
+		const legacyKey = randomKey()
+		const stable = legacyChannel('Dotaz', store, legacyKey)
+		const canary = channelDb('Dotaz-canary')
+		canary.db.setLocalKey(legacyKey)
+		for (const db of [stable.db, canary.db]) {
+			await setupMasterKey({ appDb: db, store, item: LEGACY_KEY_ITEM, fallbackKey: null, siblingDatabases: [] })
+		}
+		store.items.delete(LEGACY_KEY_ITEM)
+
+		const outcome = await setupMasterKey({
+			appDb: canary.db,
+			store,
+			item: LEGACY_KEY_ITEM,
+			fallbackKey: randomKey(),
+			siblingDatabases: siblingAppDatabases(canary.dir, 'dotaz.db'),
+		})
+
+		expect(outcome).toBe('key-missing')
+		expect(store.items.has(LEGACY_KEY_ITEM)).toBe(false)
+		store.items.set(LEGACY_KEY_ITEM, encodeKey(legacyKey))
+		expect(await setupMasterKey({ appDb: stable.db, store, item: LEGACY_KEY_ITEM, fallbackKey: randomKey(), siblingDatabases: [] }))
+			.toBe('current')
+		expect((stable.db.getConnectionById(stable.connId)!.config as PostgresConnectionConfig).password).toBe('db-secret')
+	})
+
 	test.each([LEGACY_KEY_ITEM, keyItemFor(APP_REQUIREMENT)])(
 		'a missing item whose key no saved password needs is replaced quietly (running item %s)',
 		async (item) => {
@@ -827,6 +876,7 @@ describe('setupMasterKey', () => {
 			const { db } = channelDb('Dotaz')
 			await setupMasterKey({ appDb: db, store, item: LEGACY_KEY_ITEM, fallbackKey: null, siblingDatabases: [] })
 			db.createConnection({ name: 'Local', config: { type: 'sqlite', path: '/data/app.db' } })
+			db.createConnection({ name: 'No password', config: { ...pgConfig, password: '', sshTunnel: undefined } })
 			store.items.delete(LEGACY_KEY_ITEM)
 
 			const outcome = await setupMasterKey({ appDb: db, store, item, fallbackKey: randomKey(), siblingDatabases: [] })

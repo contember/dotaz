@@ -18,7 +18,7 @@ import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { closeSync, existsSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { type AppDatabase, databaseUsesKey, readDatabaseSetting } from '../storage/app-db'
+import { type AppDatabase, databaseHoldsSecretNoneDecrypt, databaseUsesKey, readDatabaseSetting } from '../storage/app-db'
 
 export const KEYCHAIN_SERVICE = 'dotaz'
 /** The item every version before identity binding used, readable by any official `bun`. */
@@ -146,12 +146,14 @@ export type MasterKeyOutcome =
 	/**
 	 * The item under the new name could not be created (the keychain refused the
 	 * write, or an item Dotaz can't vouch for sits there and could not be removed);
-	 * the key stays in the recorded item (`fallback` when that item holds no readable key).
+	 * the key stays in the recorded item (`fallback` when that item holds no readable key,
+	 * `key-missing` when it is gone and saved passwords need it).
 	 */
 	| 'item-unavailable'
 	/**
 	 * Another start was still moving the key (its keychain prompt open, say); the key stays in
-	 * the recorded item until the next start (`fallback` when that item holds no readable key).
+	 * the recorded item until the next start (`fallback` when that item holds no readable key,
+	 * `key-missing` when it is gone and saved passwords need it).
 	 */
 	| 'move-deferred'
 	/** The keychain holds a different key than the one this database recorded; it was refused. */
@@ -218,7 +220,7 @@ async function keepRecordedItem(options: MasterKeyOptions, item: string, log: Lo
 				if (fallbackKey) appDb.setLocalKey(fallbackKey)
 				return 'key-mismatch'
 			}
-		} else if (lostKey(appDb, [fallbackKey])) {
+		} else if (lostKey(appDb, [fallbackKey]) || siblingLostKey(options, [fallbackKey])) {
 			return keyMissing(options, item, log)
 		} else {
 			key = await createKey(store, item)
@@ -304,6 +306,19 @@ async function moveKey(options: MasterKeyOptions, recorded: string, item: string
  */
 function lostKey(appDb: AppDatabase, keysAtHand: (Uint8Array | null)[]): boolean {
 	return appDb.getSetting(KEY_CHECK_SETTING) !== null && appDb.holdsSecretNoneDecrypt(keysAtHand)
+}
+
+/**
+ * Whether another channel recording the same key holds passwords only it decrypts. A key
+ * created under the shared name would be refused there, and restoring the item would then
+ * replace this channel's new key. The machine-derived key is the same for every channel.
+ */
+function siblingLostKey(options: MasterKeyOptions, keysAtHand: (Uint8Array | null)[]): boolean {
+	const check = options.appDb.getSetting(KEY_CHECK_SETTING)
+	return check !== null
+		&& options.siblingDatabases.some((path) =>
+			readDatabaseSetting(path, KEY_CHECK_SETTING) === check && databaseHoldsSecretNoneDecrypt(path, keysAtHand, true)
+		)
 }
 
 /**
