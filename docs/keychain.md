@@ -121,6 +121,11 @@ install, a database that only ever ran without a keychain, or one with no saved 
 the recorded item gone, the move is not recorded and a restored item moves on a later start;
 the item it created for the running program stays in the keychain until then.
 
+When the passwords that need the key are another channel's (stable and canary share an item),
+the log names that channel's database. Restoring the item is the fix. If that channel is no
+longer used, remove its folder; resetting this channel instead starts a new key under the
+shared name, which the other channel then refuses.
+
 ### Channels
 
 Stable, canary and dev builds keep separate app databases next to each other

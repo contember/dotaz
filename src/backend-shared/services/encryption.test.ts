@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 import { hkdfSync } from 'node:crypto'
-import { createLocalKey, decryptLocalPassword, EncryptionService, encryptLocalPassword, isEncryptedPassword } from './encryption'
+import {
+	createLocalKey,
+	decryptLocalPassword,
+	EncryptionService,
+	encryptLocalPassword,
+	encryptsEmptyPassword,
+	isEncryptedPassword,
+} from './encryption'
 
 describe('EncryptionService', () => {
 	test('encrypt and decrypt round-trip', async () => {
@@ -115,6 +122,13 @@ describe('Local password encryption', () => {
 		const encrypted = encryptLocalPassword('', testKey)
 		const decrypted = decryptLocalPassword(encrypted, testKey)
 		expect(decrypted).toBe('')
+	})
+
+	test('tells an encrypted empty password without the key, and nothing longer', () => {
+		expect(encryptsEmptyPassword(encryptLocalPassword('', testKey))).toBe(true)
+		expect(encryptsEmptyPassword(encryptLocalPassword('a', testKey))).toBe(false)
+		expect(encryptsEmptyPassword('')).toBe(false)
+		expect(encryptsEmptyPassword('enc:v1:')).toBe(false)
 	})
 
 	test('handles unicode password', () => {
