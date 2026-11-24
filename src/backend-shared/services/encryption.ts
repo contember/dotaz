@@ -133,6 +133,12 @@ export function decryptLocalPassword(value: string, key: Uint8Array): string {
 	return decipher.update(encrypted).toString('utf8') + decipher.final('utf8')
 }
 
+/** Whether an encrypted value holds an empty password (IV and auth tag, no ciphertext), told without its key. */
+export function encryptsEmptyPassword(value: string): boolean {
+	return isEncryptedPassword(value)
+		&& Buffer.from(value.slice(ENCRYPTED_PREFIX.length), 'base64').length === LOCAL_IV_LENGTH + LOCAL_AUTH_TAG_LENGTH
+}
+
 /**
  * Check if a password string is encrypted (has the encryption prefix).
  */

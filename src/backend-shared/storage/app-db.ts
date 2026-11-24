@@ -3,7 +3,7 @@ import { isServerConfig } from '@dotaz/shared/types/connection'
 import type { QueryHistoryEntry, QueryHistoryStatus } from '@dotaz/shared/types/query'
 import type { HistoryListParams, QueryBookmark, RemoteApprover, SavedView, SavedViewConfig } from '@dotaz/shared/types/rpc'
 import Database from 'bun:sqlite'
-import { encryptLocalPassword, isEncryptedPassword, tryDecryptLocalPassword } from '../services/encryption'
+import { encryptLocalPassword, encryptsEmptyPassword, isEncryptedPassword, tryDecryptLocalPassword } from '../services/encryption'
 import { runMigrations } from './migrations'
 
 /** Default settings values — returned when a key has not been explicitly set. */
@@ -102,6 +102,11 @@ export class AppDatabase {
 	/** Whether a saved secret in this database decrypts with `key`. */
 	usesKey(key: Uint8Array): boolean {
 		return connectionsUseKey(this.db, key)
+	}
+
+	/** Whether a saved secret in this database decrypts with none of `keys`, so it needs a key not at hand. */
+	holdsSecretNoneDecrypt(keys: readonly (Uint8Array | null)[]): boolean {
+		return secretsNoneDecrypt(this.db, keys)
 	}
 
 	private encryptConfigJson(config: ConnectionConfig): string {
@@ -732,6 +737,19 @@ export function databaseUsesKey(dbPath: string, key: Uint8Array, ifUnreadable: b
 	}
 }
 
+/** `AppDatabase.holdsSecretNoneDecrypt` for the database at `dbPath`, opened read-only like `databaseUsesKey`. */
+export function databaseHoldsSecretNoneDecrypt(dbPath: string, keys: readonly (Uint8Array | null)[], ifUnreadable: boolean): boolean {
+	let db: Database | null = null
+	try {
+		db = new Database(dbPath, { readonly: true })
+		return secretsNoneDecrypt(db, keys)
+	} catch {
+		return ifUnreadable
+	} finally {
+		db?.close()
+	}
+}
+
 /**
  * One setting from the app database at `dbPath`, opened read-only like
  * `databaseUsesKey`. Null when it is not set or the file can't be read.
@@ -750,7 +768,19 @@ export function readDatabaseSetting(dbPath: string, key: string): string | null 
 }
 
 function connectionsUseKey(db: Database, key: Uint8Array): boolean {
+	return encryptedSecrets(db).some((secret) => tryDecryptLocalPassword(secret, key) !== null)
+}
+
+// An empty password is stored encrypted too, but losing its key loses nothing.
+function secretsNoneDecrypt(db: Database, keys: readonly (Uint8Array | null)[]): boolean {
+	const usable = keys.filter((k): k is Uint8Array => k instanceof Uint8Array)
+	return encryptedSecrets(db).some((secret) => !encryptsEmptyPassword(secret) && usable.every((key) => tryDecryptLocalPassword(secret, key) === null))
+}
+
+/** Every encrypted secret saved in the connections of `db`. */
+function encryptedSecrets(db: Database): string[] {
 	const rows = db.prepare('SELECT config FROM connections').all() as { config: string }[]
+	const found: string[] = []
 	for (const row of rows) {
 		let config: ConnectionConfig
 		try {
@@ -764,10 +794,8 @@ function connectionsUseKey(db: Database, key: Uint8Array): boolean {
 			secrets.push(config.sshTunnel.password ?? '', config.sshTunnel.keyPassphrase ?? '')
 		}
 		for (const secret of secrets) {
-			if (secret && isEncryptedPassword(secret) && tryDecryptLocalPassword(secret, key) !== null) {
-				return true
-			}
+			if (secret && isEncryptedPassword(secret)) found.push(secret)
 		}
 	}
-	return false
+	return found
 }

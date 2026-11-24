@@ -18,7 +18,7 @@ import { spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { closeSync, existsSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { type AppDatabase, databaseUsesKey, readDatabaseSetting } from '../storage/app-db'
+import { type AppDatabase, databaseHoldsSecretNoneDecrypt, databaseUsesKey, readDatabaseSetting } from '../storage/app-db'
 
 export const KEYCHAIN_SERVICE = 'dotaz'
 /** The item every version before identity binding used, readable by any official `bun`. */
@@ -146,23 +146,31 @@ export type MasterKeyOutcome =
 	/**
 	 * The item under the new name could not be created (the keychain refused the
 	 * write, or an item Dotaz can't vouch for sits there and could not be removed);
-	 * the key stays in the recorded item (`fallback` when that item holds no readable key).
+	 * the key stays in the recorded item (`fallback` when that item holds no readable key,
+	 * `key-missing` when it is gone and saved passwords need it).
 	 */
 	| 'item-unavailable'
 	/**
 	 * Another start was still moving the key (its keychain prompt open, say); the key stays in
-	 * the recorded item until the next start (`fallback` when that item holds no readable key).
+	 * the recorded item until the next start (`fallback` when that item holds no readable key,
+	 * `key-missing` when it is gone and saved passwords need it).
 	 */
 	| 'move-deferred'
 	/** The keychain holds a different key than the one this database recorded; it was refused. */
 	| 'key-mismatch'
-	/** No key from the keychain could be used (the keychain failed, or a move failed with the recorded item missing); the machine-derived key is in use. */
+	/**
+	 * The recorded item is gone and passwords saved here, or in another channel sharing the item,
+	 * need its key. Nothing is recorded under that name or in the settings, so a restored item
+	 * works again; the machine-derived key is in use until then.
+	 */
+	| 'key-missing'
+	/** No key from the keychain could be used (the keychain failed, or a move failed with the recorded item missing and nothing lost); the machine-derived key is in use. */
 	| 'fallback'
 
 /** What the window shows about the key: the start's outcome and the item the database records. */
 export interface MasterKeyStatus {
 	outcome: MasterKeyOutcome
-	/** After `key-mismatch`, the item holding the refused key; the reset deletes it. */
+	/** After `key-mismatch`, the item holding the refused key (the reset deletes it); after `key-missing`, the item that is gone. */
 	item: string
 }
 
@@ -199,7 +207,8 @@ async function keepRecordedItem(options: MasterKeyOptions, item: string, log: Lo
 	const { appDb, store, fallbackKey } = options
 	let key: Uint8Array | null
 	try {
-		key = decodeKey(await store.get(item))
+		const stored = await store.get(item)
+		key = decodeKey(stored)
 		if (key) {
 			// Anyone may add an item under a name nobody holds, so a key that differs
 			// from the one this database recorded may be a planted one: never encrypt with it.
@@ -212,7 +221,11 @@ async function keepRecordedItem(options: MasterKeyOptions, item: string, log: Lo
 				if (fallbackKey) appDb.setLocalKey(fallbackKey)
 				return 'key-mismatch'
 			}
+		} else if (stored === null && lostKey(appDb, [fallbackKey])) {
+			return keyMissing(options, item, log)
 		} else {
+			const sibling = stored === null ? siblingNeedingKey(options, [fallbackKey]) : undefined
+			if (sibling) return keyMissing(options, item, log, sibling)
 			key = await createKey(store, item)
 		}
 	} catch (err) {
@@ -251,9 +264,9 @@ async function moveKey(options: MasterKeyOptions, recorded: string, item: string
 		}
 	}
 
-	let previous: Uint8Array | null
+	let previousStored: string | null
 	try {
-		previous = decodeKey(await store.get(recorded))
+		previousStored = await store.get(recorded)
 	} catch (err) {
 		// Refused or failed: don't record the move, so the next start asks again
 		// rather than leaving the saved passwords encrypted with a key nobody reads.
@@ -261,6 +274,11 @@ async function moveKey(options: MasterKeyOptions, recorded: string, item: string
 		appDb.setLocalKey(key, [fallbackKey])
 		return 'previous-unreadable'
 	}
+
+	// Recording the move would encrypt with a new key for good and forget which one the saved
+	// passwords need; left unrecorded, a restored item is moved on a later start.
+	const previous = decodeKey(previousStored)
+	if (previousStored === null && lostKey(appDb, [key, fallbackKey])) return keyMissing(options, recorded, log)
 
 	// One transaction: a start that dies part-way must not record the new item with
 	// the old fingerprint (refused for good) or leave secrets under an unrecorded key.
@@ -286,6 +304,42 @@ async function moveKey(options: MasterKeyOptions, recorded: string, item: string
 	}
 }
 
+/**
+ * Whether the recorded item's key held saved passwords that only it decrypts. A database that
+ * never recorded a key, or holds nothing the keys at hand miss, loses nothing to a fresh key.
+ */
+function lostKey(appDb: AppDatabase, keysAtHand: (Uint8Array | null)[]): boolean {
+	return appDb.getSetting(KEY_CHECK_SETTING) !== null && appDb.holdsSecretNoneDecrypt(keysAtHand)
+}
+
+/**
+ * Another channel's database that records the same key and holds passwords only it decrypts.
+ * A key created under the shared name would be refused there, and restoring the item would then
+ * replace this channel's new key. The machine-derived key is the same for every channel.
+ */
+function siblingNeedingKey(options: MasterKeyOptions, keysAtHand: (Uint8Array | null)[]): string | undefined {
+	const check = options.appDb.getSetting(KEY_CHECK_SETTING)
+	if (check === null) return undefined
+	return options.siblingDatabases.find((path) =>
+		readDatabaseSetting(path, KEY_CHECK_SETTING) === check && databaseHoldsSecretNoneDecrypt(path, keysAtHand, false)
+	)
+}
+
+/**
+ * The item holding this database's key is gone. A fresh key under its name would silently
+ * leave every saved password undecryptable and block restoring the item, so use the
+ * machine-derived key and leave the item and both settings as they are.
+ */
+function keyMissing(options: MasterKeyOptions, item: string, log: Log, sibling?: string): MasterKeyOutcome {
+	const needed = sibling ? `passwords saved in "${sibling}" are unavailable` : 'saved passwords are unavailable'
+	log(
+		`The master key item "${item}" is missing from the keychain, so ${needed}. `
+			+ 'Restore the item, or see "When the key is missing" in docs/keychain.md.',
+	)
+	if (options.fallbackKey) options.appDb.setLocalKey(options.fallbackKey)
+	return 'key-missing'
+}
+
 /** The move could not happen: carry on with the recorded item, as before this version. */
 async function keepPrevious(
 	options: MasterKeyOptions,
@@ -295,7 +349,8 @@ async function keepPrevious(
 ): Promise<MasterKeyOutcome> {
 	const { appDb, store, fallbackKey } = options
 	try {
-		const previous = decodeKey(await store.get(recorded))
+		const stored = await store.get(recorded)
+		const previous = decodeKey(stored)
 		if (previous) {
 			// Same check as keepRecordedItem: never encrypt with a substituted key.
 			const check = appDb.getSetting(KEY_CHECK_SETTING)
@@ -310,6 +365,7 @@ async function keepPrevious(
 			appDb.setLocalKey(previous, [fallbackKey])
 			return outcome
 		}
+		if (stored === null && lostKey(appDb, [fallbackKey])) return keyMissing(options, recorded, log)
 		log(`No master key in keychain item "${recorded}", falling back to machine-derived key`)
 	} catch (err) {
 		log(`Could not read the previous master key "${recorded}", falling back to machine-derived key: ${errorMessage(err)}`)
